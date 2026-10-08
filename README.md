@@ -105,8 +105,14 @@ ID は `TASK-0012` / `task-12` / `12`（要望を取るコマンドでは `12` �
 pnpm dev                     # API サーバ（tsx watch）+ Vite  http://localhost:5173
 pnpm build && pnpm start     # 本番ビルドを API サーバから配信
 pnpm typecheck
+pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
+pnpm check                   # 型検査 + テスト + ビルド
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 ```
+
+テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
+Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
+CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシンの `.env` の Codex 設定は効かないようにしている。
 
 `pnpm dev` / `pnpm start` は pcube 自体の開発用で、`.pcube/` が見つからなければ pcube 自身の開発を題材にした
 デモデータ（`.pcube-demo/`、git 管理外）で起動する。`pnpm demo:reset` はこのデモデータを作り直すだけで、
@@ -242,6 +248,7 @@ src/
     components/      タスク詳細ドロワーほか
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 docs/                設計の方針
+test/                ユニットテスト（store / locate / intel / schedule / ops / preflight / api / cli）
 ```
 
 技術: TypeScript, React 19, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

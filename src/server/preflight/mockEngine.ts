@@ -4,7 +4,7 @@ import { stringifyFrontmatter } from "../store/frontmatter.ts";
 import { writeFileAtomic } from "../store/fsutil.ts";
 import type { EngineOutcome, PreflightEngine, PreflightJob } from "./engine.ts";
 
-const sleep = (ms: number, signal: AbortSignal) =>
+const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>((res, rej) => {
     const t = setTimeout(res, ms);
     signal.addEventListener("abort", () => (clearTimeout(t), rej(new Error("aborted"))), { once: true });
@@ -16,17 +16,27 @@ const sleep = (ms: number, signal: AbortSignal) =>
  */
 export class MockEngine implements PreflightEngine {
   readonly name = "mock" as const;
+  /** 待ち時間の倍率（画面で進み具合が見えるように少し待つ。テストでは 0） */
+  private delay: number;
+
+  constructor(opts: { delay?: number } = {}) {
+    this.delay = opts.delay ?? 1;
+  }
+
+  private sleep(ms: number, signal: AbortSignal) {
+    return wait(ms * this.delay, signal);
+  }
 
   async run(job: PreflightJob, log: Parameters<PreflightEngine["run"]>[1], signal: AbortSignal): Promise<EngineOutcome> {
     const { request, context } = job;
     log({ kind: "info", text: "mock engine: Codex を使わずにヒューリスティックで評価します" });
-    await sleep(400, signal);
+    await this.sleep(400, signal);
     for (const d of job.project.docs) log({ kind: "command", text: `$ ls ${d}` });
     log({ kind: "command", text: `$ rg -l "${request.title.slice(0, 20)}" .` });
-    await sleep(400, signal);
+    await this.sleep(400, signal);
     for (const c of context.slice(0, 3)) {
       log({ kind: "command", text: `$ cat ${job.dataDirRel}/${c.kind === "task" ? "tasks" : "requests"}/${c.id}.md` });
-      await sleep(250, signal);
+      await this.sleep(250, signal);
     }
 
     const bullets = request.body
@@ -74,7 +84,7 @@ export class MockEngine implements PreflightEngine {
       const { description, ...meta } = d;
       await writeFileAtomic(join(job.runDir, "drafts", `${d.key}.md`), stringifyFrontmatter(meta, description));
       log({ kind: "info", text: `✎ ${job.runDirRel}/drafts/${d.key}.md` });
-      await sleep(150, signal);
+      await this.sleep(150, signal);
     }
     log({ kind: "message", text: assessment.summary });
     return { changed: [`${job.runDirRel}/assessment.json`, ...drafts.map((d) => `${job.runDirRel}/drafts/${d.key}.md`)] };

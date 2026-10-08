@@ -79,6 +79,7 @@
 
 ## 品質
 
-- [ ] ★★★ テスト: ストア（競合・外部編集）、intel（類似・影響範囲・循環）、schedule、preflight のファイル契約
+- [x] ユニットテスト（store / locate / intel / schedule / ops / preflight（mock・偽の app-server）/ REST API / CLI）
+- [ ] ★★ 画面のテスト（React コンポーネント、Playwright での操作）
 - [ ] ★★ Lint / Format（Biome など）と CI
 - [ ] ★ 大規模データ（数千タスク）での性能確認

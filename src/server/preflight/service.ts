@@ -130,10 +130,11 @@ export class PreflightService {
       this.log(run, { kind: "error", text: run.error });
     } finally {
       run.finishedAt = nowIso();
-      this.active.delete(run.id);
       await this.ws.preflight.save(run);
       // 失敗したら「評価中」のまま残さず下書きへ戻す
       await this.ws.requests.update(run.requestId, { status: run.status === "completed" ? "reviewed" : "draft" });
+      // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
+      this.active.delete(run.id);
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
       this.ws.emit({ type: "changed", kind: "request", id: run.requestId });
     }

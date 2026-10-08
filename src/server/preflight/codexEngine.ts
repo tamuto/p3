@@ -10,6 +10,8 @@ export interface CodexWorkspaceConfig {
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
+  /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
+  command?: (workspace: string) => string[];
 }
 
 export function codexConfigFromEnv(): CodexWorkspaceConfig | undefined {
@@ -61,7 +63,8 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       log({ kind: "info", text: `Codex ${await ensureImage()}` });
     }
 
-    const command = dockerCommand(workspace, { authVolume: this.cfg.authVolume, authFile: this.cfg.authFile });
+    const command =
+      this.cfg.command?.(workspace) ?? dockerCommand(workspace, { authVolume: this.cfg.authVolume, authFile: this.cfg.authFile });
     await using session = await WorkspaceSession.open(command, {
       model: this.cfg.model,
       effort: this.cfg.effort,
