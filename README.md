@@ -231,7 +231,8 @@ Codex を使えない環境では **Mock エンジン**（要望本文の箇条�
 
 どの画面でも `?task=TASK-0003` でタスク詳細を重ねて開き、`?stream=REQ-0002` で作業ツリー（要望）に絞る。
 
-ページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる
+ページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる。
+ページの中身もそのファイルに書き、複数のページで使う部品だけを `src/web/components/` に置く
 （`board.tsx` → `/board`、`preflight/$requestId.tsx` → `/preflight/:requestId`、`__root.tsx` は全画面共通の枠）。
 ルート一覧 `src/web/routeTree.gen.ts` は `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される
 （設定は `tsr.config.json`。生成物だが、型検査のためにコミットしておく）。
@@ -264,10 +265,9 @@ src/
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
     api/             REST + SSE、AI 向けマニフェスト
   web/               React + TanStack Router + Tailwind（text-base 基準）
-    routes/          ページ（ファイルベースのルーティング。__root.tsx が共通の枠）
+    routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
     routeTree.gen.ts ルート一覧（自動生成）
-    views/           かんばん・スケジュール・Preflight
-    components/      タスク詳細ドロワーほか
+    components/      複数のページで使う部品（タスク詳細のドロワー、要望のステータスなど）
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / schedule / ops / preflight / api / cli）

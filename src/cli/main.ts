@@ -100,7 +100,6 @@ const OPTIONS = {
   host: { type: "string" },
 } as const;
 
-type Opts = ReturnType<typeof parse>["values"];
 const parse = (argv: string[]) => parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });
 
 /** `--body "- 箇条書き"` のように値が - で始まっても受け取れるよう、`--body=...` の形にまとめる */

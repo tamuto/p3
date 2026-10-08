@@ -59,7 +59,7 @@ export async function seedDemo(dir: string) {
   await req({
     title: "かんばんとガントチャート表示",
     status: "accepted",
-    areas: ["src/web/views", "src/shared/schedule.ts"],
+    areas: ["src/web/routes", "src/shared/schedule.ts"],
     workstream: { branch: "req/REQ-0002-kanban-gantt", worktree: ".worktrees/REQ-0002" },
     body: "まずはかんばんで運用し、依存関係を踏まえたガントチャートでスケジュールも見たい。",
   });
@@ -91,9 +91,9 @@ TF-IDF より精度の高い関連タスク検索を行いたい。サーバが�
   await task({ title: "frontmatter パーサと書き出し", status: "done", request: "REQ-0001", areas: ["src/server/store"], estimate: 1, start: day(-14), due: day(-13), progress: 100, labels: ["store"], body: "YAML frontmatter + Markdown 本文の読み書き。" });
   await task({ title: "Markdown コレクションと楽観ロック", status: "done", request: "REQ-0001", areas: ["src/server/store"], estimate: 2, start: day(-12), due: day(-10), progress: 100, labels: ["store"], relations: [rel("depends_on", "TASK-0001")], body: "rev による楽観ロック、tmp→rename の原子的書き込み、ID の排他採番。" });
   await task({ title: "ファイル監視で外部編集を取り込む", status: "in_progress", request: "REQ-0001", areas: ["src/server/store/workspace.ts"], estimate: 2, start: day(-3), progress: 50, labels: ["store"], assignee: "tamuto", relations: [rel("depends_on", "TASK-0002"), rel("impacts", "TASK-0007", { origin: "ai", confidence: 0.6, note: "外部編集時に resolve の結果が変わる" })], body: "AI やエディタがファイルを直接変更したら SSE で画面に反映する。" });
-  await task({ title: "かんばんボード", status: "review", request: "REQ-0002", areas: ["src/web/views/Kanban.tsx"], estimate: 2, start: day(-6), due: day(-3), progress: 90, labels: ["ui"], body: "ドラッグ&ドロップで列移動。" });
+  await task({ title: "かんばんボード", status: "review", request: "REQ-0002", areas: ["src/web/routes/board.tsx"], estimate: 2, start: day(-6), due: day(-3), progress: 90, labels: ["ui"], body: "ドラッグ&ドロップで列移動。" });
   await task({ title: "依存ベースの自動スケジュール", status: "ready", request: "REQ-0002", areas: ["src/shared/schedule.ts"], estimate: 1.5, labels: ["ui", "schedule"], relations: [rel("depends_on", "TASK-0002")], body: "日付未設定のタスクを、depends_on と見積りから前詰めで配置する。" });
-  await task({ title: "ガントチャート表示", status: "in_progress", request: "REQ-0002", areas: ["src/web/views/Gantt.tsx"], estimate: 3, start: day(-1), labels: ["ui", "schedule"], assignee: "claude", relations: [rel("depends_on", "TASK-0005"), rel("relates_to", "TASK-0004")], body: "依存の矢印と今日線を描く。" });
+  await task({ title: "ガントチャート表示", status: "in_progress", request: "REQ-0002", areas: ["src/web/routes/schedule.tsx"], estimate: 3, start: day(-1), labels: ["ui", "schedule"], assignee: "claude", relations: [rel("depends_on", "TASK-0005"), rel("relates_to", "TASK-0004")], body: "依存の矢印と今日線を描く。" });
   await task({ title: "自然文でタスクを特定する resolve API", status: "ready", request: "REQ-0003", areas: ["src/server/api", "src/server/intel"], estimate: 1, labels: ["ai"], relations: [rel("depends_on", "TASK-0002")], body: "ID 完全一致 → タイトル部分一致 → 内容類似 の順で候補を返す。" });
   await task({ title: "競合時に 409 と最新状態を返す", status: "backlog", request: "REQ-0003", areas: ["src/server/api"], estimate: 0.5, labels: ["ai"], relations: [rel("depends_on", "TASK-0002"), rel("relates_to", "TASK-0007")], body: "AI が古い rev で更新しようとしたら拒否して最新を返す。" });
 }
