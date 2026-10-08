@@ -76,12 +76,12 @@ export interface Task {
   areas: string[];
   /** 成果物（PR / MR の URL、ドキュメントのパスなど） */
   outputs: string[];
-  /** YYYY-MM-DD */
-  start?: string;
-  /** YYYY-MM-DD */
-  due?: string;
-  /** 0..100 */
-  progress?: number;
+  /**
+   * 作業中にした日時（着手を指示した目安）と、完了にした日時。
+   * 予定ではなく、ステータスを変えたときに pcube が記録する（AI や人が書くものではない）
+   */
+  startedAt?: string;
+  doneAt?: string;
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -114,6 +114,12 @@ export interface Request {
   areas: string[];
   /** 別の要望・タスクとの関係（target は "<要望ID>" か "<要望ID>/T003"） */
   relations: Relation[];
+  /** 期限（YYYY-MM-DD） */
+  due?: string;
+  /** まとめてリリースする単位（project.yaml の milestones の id） */
+  milestone?: string;
+  /** カテゴリやタグ（例: feature, bug, ui） */
+  tags: string[];
   workstream?: Workstream;
   /** 最新 preflight run */
   lastPreflight?: string;
@@ -131,11 +137,6 @@ export interface RequestProgress {
   counts: Record<string, number>;
   total: number;
   done: number;
-  /** スケジュール上の期間（タスクが無ければ無し） */
-  start?: string;
-  end?: string;
-  /** 依存先より前に始まっているタスクがある */
-  conflicts: number;
   /** 最後に変更された日時（要望かタスク） */
   updatedAt: string;
 }
@@ -212,6 +213,16 @@ export interface PreflightLogEntry {
 // プロジェクト / グラフ
 // ---------------------------------------------------------------------------
 
+export interface Milestone {
+  /** 要望の milestone に書く短い名前（例: v0.2） */
+  id: string;
+  title: string;
+  /** 予定日（YYYY-MM-DD） */
+  due?: string;
+  /** リリース済み */
+  done?: boolean;
+}
+
 export interface ProjectConfig {
   name: string;
   /** 何を作っているプロジェクトか。Preflight の前提になる */
@@ -221,6 +232,8 @@ export interface ProjectConfig {
   /** プロジェクトのドキュメント（リポジトリ相対のファイル/フォルダ）。Preflight で最初に読ませる */
   docs: string[];
   statuses: StatusDef[];
+  /** マイルストーン（リリース）。複数の要望をまとめる */
+  milestones: Milestone[];
   /** ブランチ命名規則。{id} {slug} を置換 */
   branchPattern: string;
   worktreeDir: string;

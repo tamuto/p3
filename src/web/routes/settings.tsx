@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import type { ProjectConfig, StatusDef } from "../../shared/types.ts";
+import type { Milestone, ProjectConfig, StatusDef } from "../../shared/types.ts";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
@@ -44,6 +44,10 @@ function SettingsPage() {
     }
   }
 
+  /** そのマイルストーンに入っている要望の数 */
+  const inMilestone = (id: string) => ctx.requests.filter((p) => p.request.milestone === id).length;
+  const updateMilestone = (i: number, patch: Partial<Milestone>) =>
+    set("milestones", draft.milestones.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const updateStatus = (i: number, patch: Partial<StatusDef>) =>
     set("statuses", draft.statuses.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const moveStatus = (i: number, d: -1 | 1) => {
@@ -117,6 +121,28 @@ function SettingsPage() {
             </div>
           ))}
           <Button onClick={() => set("statuses", [...draft.statuses, { id: "", label: "" }])}>＋ 列を追加</Button>
+        </div>
+      </Section>
+
+      <Section title="マイルストーン（リリース）">
+        <p className="text-slate-500">複数の要望をまとめてリリースする単位です。要望の概要でマイルストーンを選ぶと、進捗画面でまとめて表示されます。</p>
+        <div className="space-y-2">
+          {draft.milestones.map((m, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input className={`${inputCls} !w-32 font-mono`} value={m.id} placeholder="v0.2" onChange={(e) => updateMilestone(i, { id: e.target.value })} />
+              <input className={inputCls} value={m.title} placeholder="名前" onChange={(e) => updateMilestone(i, { title: e.target.value })} />
+              <input type="date" className={`${inputCls} !w-44 shrink-0`} value={m.due ?? ""} onChange={(e) => updateMilestone(i, { due: e.target.value || undefined })} />
+              <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+                <input type="checkbox" checked={!!m.done} onChange={(e) => updateMilestone(i, { done: e.target.checked || undefined })} />
+                リリース済み
+              </label>
+              <span className="w-16 shrink-0 text-right text-sm text-slate-400">要望 {inMilestone(m.id)}</span>
+              <Button variant="ghost" disabled={inMilestone(m.id) > 0} onClick={() => set("milestones", draft.milestones.filter((_, j) => j !== i))}>
+                削除
+              </Button>
+            </div>
+          ))}
+          <Button onClick={() => set("milestones", [...draft.milestones, { id: "", title: "" }])}>＋ マイルストーンを追加</Button>
         </div>
       </Section>
 

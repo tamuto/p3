@@ -1,15 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { RequestProgress, StatusDef } from "../../shared/types.ts";
+import { daysUntil, localToday } from "../../shared/dates.ts";
+import type { Milestone, RequestProgress, StatusDef } from "../../shared/types.ts";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
+import { fmtTime } from "../lib/format.ts";
+import { optionalString } from "../lib/search.ts";
 
 type Show = "open" | "closed" | "all";
 
-/** 進捗: 要望ごとの状況を横断して見る（タスクの中身は要望の画面で） */
+/**
+ * 進捗: 要望ごとの状況を横断して見る（タスクの中身は要望の画面で）。
+ * 要望はマイルストーン（まとめてリリースする単位）ごとにまとめ、期限とタグを添える。
+ */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string } => ({
     show: s.show === "closed" || s.show === "all" ? s.show : undefined,
+    tag: optionalString(s.tag),
   }),
   component: ProgressPage,
 });
@@ -22,23 +29,55 @@ const CLOSED = new Set(["done", "rejected"]);
  *   作業中 = 最初の列と完了以外の列のタスク（青で塗る）
  *   未着手 = 最初の列のタスク            （塗らない）
  */
-function tally(p: RequestProgress, statuses: StatusDef[]) {
+function tally(ps: RequestProgress[], statuses: StatusDef[]) {
   const first = statuses[0]?.id;
-  const doing = statuses.filter((s) => !s.done && s.id !== first).reduce((n, s) => n + (p.counts[s.id] ?? 0), 0);
-  return { done: p.done, doing, todo: p.total - p.done - doing, total: p.total };
+  const sum = (f: (p: RequestProgress) => number) => ps.reduce((n, p) => n + f(p), 0);
+  const total = sum((p) => p.total);
+  const done = sum((p) => p.done);
+  const doing = sum((p) => statuses.filter((s) => !s.done && s.id !== first).reduce((n, s) => n + (p.counts[s.id] ?? 0), 0));
+  return { total, done, doing, todo: total - done - doing };
+}
+
+function ProgressBar({ t }: { t: ReturnType<typeof tally> }) {
+  const pct = (n: number) => (t.total ? (n / t.total) * 100 : 0);
+  return (
+    <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+      <span className="bg-emerald-500" style={{ width: `${pct(t.done)}%` }} />
+      <span className="bg-indigo-400" style={{ width: `${pct(t.doing)}%` }} />
+    </div>
+  );
+}
+
+/** 期限の表示。過ぎていれば赤、7日以内なら黄 */
+function Due({ due, closed }: { due?: string; closed?: boolean }) {
+  if (!due) return null;
+  const days = daysUntil(due, localToday());
+  const tone = closed ? "text-slate-400" : days < 0 ? "text-rose-600" : days <= 7 ? "text-amber-600" : "text-slate-500";
+  const note = closed ? "" : days < 0 ? `（${-days}日超過）` : days === 0 ? "（今日）" : `（あと${days}日）`;
+  return (
+    <span className={tone}>
+      期限 {due.slice(5).replace("-", "/")}
+      {note}
+    </span>
+  );
 }
 
 function ProgressPage() {
   const ctx = useAppCtx();
-  const show = Route.useSearch().show ?? "open";
-  const { statuses } = ctx.info.project;
-  const list = ctx.requests.filter((p) => show === "all" || (show === "closed") === CLOSED.has(p.request.status));
+  const { show = "open", tag } = Route.useSearch();
+  const { statuses, milestones } = ctx.info.project;
+  const list = ctx.requests
+    .filter((p) => show === "all" || (show === "closed") === CLOSED.has(p.request.status))
+    .filter((p) => !tag || p.request.tags.includes(tag));
   const open = ctx.requests.filter((p) => !CLOSED.has(p.request.status));
-  const totals = open.map((p) => tally(p, statuses)).reduce((a, t) => ({ total: a.total + t.total, done: a.done + t.done, doing: a.doing + t.doing }), {
-    total: 0,
-    done: 0,
-    doing: 0,
-  });
+  const totals = tally(open, statuses);
+  const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
+
+  // マイルストーンごとにまとめる（定義の順。リリース済みは後ろ）。どれにも属さない要望は最後
+  const groups: { m?: Milestone; ps: RequestProgress[] }[] = [
+    ...[...milestones].sort((a, b) => Number(!!a.done) - Number(!!b.done)).map((m) => ({ m, ps: list.filter((p) => p.request.milestone === m.id) })),
+    { ps: list.filter((p) => !p.request.milestone || !milestones.some((m) => m.id === p.request.milestone)) },
+  ].filter((g) => g.ps.length);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-8">
@@ -60,7 +99,7 @@ function ProgressPage() {
             <Link
               key={v}
               to="/"
-              search={{ show: v === "open" ? undefined : v }}
+              search={(prev) => ({ ...prev, show: v === "open" ? undefined : v })}
               className={cx(
                 "rounded-md px-3 py-1",
                 show === v ? "bg-white shadow-sm dark:bg-slate-800" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200",
@@ -72,7 +111,7 @@ function ProgressPage() {
         </nav>
       </header>
 
-      <div className="flex flex-wrap gap-4 text-sm text-slate-500">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-4 rounded-sm bg-emerald-500" /> 完了
         </span>
@@ -83,9 +122,29 @@ function ProgressPage() {
           <span className="inline-block h-2.5 w-4 rounded-sm bg-slate-200 dark:bg-slate-700" /> 未着手
         </span>
         <span>％は全タスクのうち完了した割合</span>
+        {tags.length > 0 && (
+          <span className="ml-auto flex flex-wrap items-center gap-1">
+            タグ:
+            {tags.map((t) => (
+              <Link
+                key={t}
+                to="/"
+                search={(prev) => ({ ...prev, tag: tag === t ? undefined : t })}
+                className={cx(
+                  "rounded px-1.5 py-0.5 ring-1 ring-inset",
+                  tag === t
+                    ? "bg-indigo-600 text-white ring-indigo-600"
+                    : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700",
+                )}
+              >
+                #{t}
+              </Link>
+            ))}
+          </span>
+        )}
       </div>
 
-      {list.length === 0 ? (
+      {groups.length === 0 ? (
         <Empty>
           要望はありません。
           <Link to="/requests/new" className={buttonCls("ghost", "ml-2 underline")}>
@@ -93,11 +152,36 @@ function ProgressPage() {
           </Link>
         </Empty>
       ) : (
-        <ul className="space-y-3">
-          {list.map((p) => (
-            <RequestRow key={p.request.id} p={p} statuses={statuses} />
-          ))}
-        </ul>
+        groups.map((g) => {
+          const t = tally(g.ps, statuses);
+          return (
+            <section key={g.m?.id ?? "-"} className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-slate-200 pb-2 dark:border-slate-800">
+                <h2 className="text-lg font-semibold">{g.m ? g.m.title : "マイルストーンなし"}</h2>
+                {g.m && <span className="font-mono text-sm text-slate-400">{g.m.id}</span>}
+                {g.m?.done && <span className="text-sm text-emerald-600">リリース済み</span>}
+                {g.m && (
+                  <span className="text-sm">
+                    <Due due={g.m.due} closed={g.m.done} />
+                  </span>
+                )}
+                {g.m && t.total > 0 && (
+                  <span className="ml-auto flex w-64 items-center gap-2 text-sm text-slate-500">
+                    <span className="flex-1">
+                      <ProgressBar t={t} />
+                    </span>
+                    {t.done}/{t.total}
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-3">
+                {g.ps.map((p) => (
+                  <RequestRow key={p.request.id} p={p} statuses={statuses} />
+                ))}
+              </ul>
+            </section>
+          );
+        })
       )}
     </div>
   );
@@ -105,9 +189,9 @@ function ProgressPage() {
 
 function RequestRow({ p, statuses }: { p: RequestProgress; statuses: StatusDef[] }) {
   const r = p.request;
-  const t = tally(p, statuses);
-  const pct = (n: number) => (t.total ? (n / t.total) * 100 : 0);
-  const allDone = t.total > 0 && t.done === t.total && !CLOSED.has(r.status);
+  const t = tally([p], statuses);
+  const closed = CLOSED.has(r.status);
+  const allDone = t.total > 0 && t.done === t.total && !closed;
   return (
     <li>
       <Link
@@ -116,10 +200,14 @@ function RequestRow({ p, statuses }: { p: RequestProgress; statuses: StatusDef[]
         className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] dark:bg-slate-900 dark:ring-slate-800"
       >
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm text-slate-500">{r.id}</span>
             <RequestStatusBadge status={r.status} />
-            {allDone && <span className="text-sm text-emerald-600">全タスク完了</span>}
+            {r.tags.map((x) => (
+              <span key={x} className="text-sm text-slate-500">
+                #{x}
+              </span>
+            ))}
           </div>
           <p className="truncate font-semibold">{r.title}</p>
           {r.workstream && <p className="truncate font-mono text-sm text-slate-400">⎇ {r.workstream.branch}</p>}
@@ -132,28 +220,23 @@ function RequestRow({ p, statuses }: { p: RequestProgress; statuses: StatusDef[]
             <>
               <div className="flex items-baseline justify-between text-sm">
                 <span className="font-medium text-slate-700 dark:text-slate-300">
-                  完了 {t.done}/{t.total}（{Math.round(pct(t.done))}%）
+                  完了 {t.done}/{t.total}（{Math.round((t.done / t.total) * 100)}%）
+                  {allDone && <span className="ml-2 font-normal text-emerald-600">全タスク完了</span>}
                 </span>
                 <span className="text-slate-500">
                   作業中 {t.doing} · 未着手 {t.todo}
                 </span>
               </div>
-              <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                <span className="bg-emerald-500" style={{ width: `${pct(t.done)}%` }} />
-                <span className="bg-indigo-400" style={{ width: `${pct(t.doing)}%` }} />
-              </div>
+              <ProgressBar t={t} />
             </>
           )}
         </div>
 
-        <div className="row-start-1 text-right text-sm whitespace-nowrap text-slate-500 md:row-start-auto">
-          {p.start && (
-            <p>
-              {p.start.slice(5)} 〜 {p.end!.slice(5)}
-            </p>
-          )}
-          {p.conflicts > 0 && <p className="text-rose-600">依存と矛盾 {p.conflicts}</p>}
-          <p className="text-slate-400">更新 {new Date(p.updatedAt).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
+        <div className="row-start-1 space-y-0.5 text-right text-sm whitespace-nowrap md:row-start-auto">
+          <p>
+            <Due due={r.due} closed={closed} />
+          </p>
+          <p className="text-slate-400">更新 {fmtTime(p.updatedAt)}</p>
         </div>
       </Link>
     </li>

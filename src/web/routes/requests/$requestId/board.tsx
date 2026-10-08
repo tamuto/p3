@@ -4,6 +4,7 @@ import type { Task } from "../../../../shared/types.ts";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
+import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
 
 /**
@@ -121,17 +122,10 @@ function BoardPage() {
                           ))}
                         </ul>
                       )}
-                      {(t.progress ?? 0) > 0 && !s.done && (
-                        <div className="mt-2 flex items-center gap-3 text-sm text-slate-500">
-                          {(
-                            <span className="ml-auto flex items-center gap-1.5">
-                              <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                                <span className="block h-full bg-indigo-500" style={{ width: `${t.progress}%` }} />
-                              </span>
-                              {t.progress}%
-                            </span>
-                          )}
-                        </div>
+                      {(t.doneAt || t.startedAt) && (
+                        <p className="mt-2 text-sm text-slate-400" title="ステータスを変えたときに記録された日時">
+                          {t.doneAt ? `完了 ${fmtTime(t.doneAt)}` : `作業中にした ${fmtTime(t.startedAt)}`}
+                        </p>
                       )}
                     </article>
                   );

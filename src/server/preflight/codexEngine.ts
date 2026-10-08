@@ -1,6 +1,10 @@
-import { UsageLimitError, WorkspaceSession, dockerCommand, ensureImage, type WorkspaceEvent } from "@llmcs/codex-workspace";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { DEFAULT_IMAGE, UsageLimitError, WorkspaceSession, dockerCommand, ensureImage, type WorkspaceEvent } from "@llmcs/codex-workspace";
 import type { RelatedItem } from "../../shared/types.ts";
-import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type PreflightEngine, type PreflightJob } from "./engine.ts";
+import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
+
+const run = promisify(execFile);
 
 export interface CodexWorkspaceConfig {
   authVolume?: string;
@@ -44,6 +48,36 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   readonly name = "codex" as const;
 
   constructor(private cfg: CodexWorkspaceConfig) {}
+
+  private checked?: { at: number; status: EngineStatus };
+
+  /**
+   * 使えるか: Docker が動くか、認証情報（ボリューム / ファイル）があるか、イメージがあるか。
+   * イメージが無くても、初回の Preflight で作るので使える扱いにする。結果は1分ためる。
+   */
+  async status(): Promise<EngineStatus> {
+    if (this.checked && Date.now() - this.checked.at < 60_000) return this.checked.status;
+    const ng = (detail: string): EngineStatus => ({ name: "codex", ok: false, detail });
+    let status: EngineStatus;
+    try {
+      await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeout: 5000 });
+      if (this.cfg.authVolume) {
+        await run("docker", ["volume", "inspect", this.cfg.authVolume], { timeout: 5000 }).catch(() => {
+          throw new Error(`認証情報のボリューム ${this.cfg.authVolume} がありません`);
+        });
+      }
+      const image = await run("docker", ["image", "inspect", "--format", "{{.Created}}", DEFAULT_IMAGE], { timeout: 5000 })
+        .then((r) => `イメージ ${DEFAULT_IMAGE}（${r.stdout.trim().slice(0, 10)} 作成）`)
+        .catch(() => `イメージ ${DEFAULT_IMAGE} は初回の実行で作ります`);
+      const auth = this.cfg.authVolume ? `認証 ボリューム ${this.cfg.authVolume}` : `認証 ${this.cfg.authFile}`;
+      status = { name: "codex", ok: true, detail: `Codex（codex-workspace）で評価します · ${image} · ${auth}${this.cfg.model ? ` · モデル ${this.cfg.model}` : ""}` };
+    } catch (e) {
+      const msg = (e as NodeJS.ErrnoException).code === "ENOENT" ? "docker コマンドがありません" : (e as Error).message.split("\n")[0];
+      status = ng(`Codex を使えません: ${msg}`);
+    }
+    this.checked = { at: Date.now(), status };
+    return status;
+  }
 
   hostPath(local: string): string {
     for (const [from, to] of this.cfg.pathMap) {

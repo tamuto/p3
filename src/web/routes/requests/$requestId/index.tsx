@@ -7,8 +7,8 @@ import {
   type ProposedTask,
   type Request,
 } from "../../../../shared/types.ts";
-import { Badge, Button, buttonCls, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api } from "../../../lib/api.ts";
+import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
+import { api, type EngineStatus } from "../../../lib/api.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
@@ -59,6 +59,11 @@ function RequestPanel({
   const runId = selectedRun ?? request.lastPreflight ?? null;
   const [run, setRun] = useState<PreflightRun>();
   const [error, setError] = useState<string | null>(null);
+  const [engine, setEngine] = useState<EngineStatus>();
+
+  useEffect(() => {
+    void api.engine().then(setEngine);
+  }, []);
 
   useEffect(() => {
     if (!runId) return setRun(undefined);
@@ -91,6 +96,8 @@ function RequestPanel({
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
+      <RequestMeta ctx={ctx} data={data} />
+
       <section className="space-y-3">
         {request.areas.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -107,12 +114,15 @@ function RequestPanel({
       </section>
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={start} disabled={running}>
+        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false}>
           {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
-        {ctx.info.defaultEngine === "mock" && (
-          <span className="text-sm text-amber-700 dark:text-amber-400" title="pcube 本体の .env に PCUBE_CODEX_AUTH_VOLUME などを設定すると Codex で評価します">
-            Codex が未設定のため、本文の箇条書きをそのままタスク案にする簡易評価（Mock）で実行します
+        {engine && (
+          <span
+            className={cx("text-sm", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
+            title={engine.name === "mock" ? "pcube 本体の .env に PCUBE_CODEX_AUTH_VOLUME などを設定すると Codex で評価します" : undefined}
+          >
+            {engine.ok ? "●" : "✕"} {engine.detail}
           </span>
         )}
         {running && run && (
@@ -413,5 +423,59 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
         {error && <span className="text-rose-600">{error}</span>}
       </div>
     </Section>
+  );
+}
+
+/** 要望の管理項目（期限・マイルストーン・タグ）。変えるとすぐ保存する */
+function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
+  const { request } = data;
+  const [tags, setTags] = useState(request.tags.join(", "));
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setTags(request.tags.join(", ")), [request.tags]);
+
+  async function save(patch: { due?: string | null; milestone?: string | null; tags?: string[] }) {
+    try {
+      await api.patchRequest(request.id, { ...patch, rev: request.rev } as never);
+      setError(null);
+      data.reload();
+      ctx.reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const tagList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+  return (
+    <section className="flex flex-wrap items-end gap-4">
+      <Field label="期限">
+        <input type="date" className={`${inputCls} !w-44`} value={request.due ?? ""} onChange={(e) => void save({ due: e.target.value || null })} />
+      </Field>
+      <Field label="マイルストーン">
+        <select className={`${inputCls} !w-56`} value={request.milestone ?? ""} onChange={(e) => void save({ milestone: e.target.value || null })}>
+          <option value="">（なし）</option>
+          {ctx.info.project.milestones.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.title}
+              {m.due ? `（${m.due}）` : ""}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="タグ（カンマ区切り）">
+        <input
+          className={`${inputCls} !w-64`}
+          value={tags}
+          placeholder="feature, ui"
+          onChange={(e) => setTags(e.target.value)}
+          onBlur={() => tagList(tags).join() !== request.tags.join() && void save({ tags: tagList(tags) })}
+        />
+      </Field>
+      {ctx.info.project.milestones.length === 0 && (
+        <Link to="/settings" className={buttonCls("ghost", "text-sm underline")}>
+          マイルストーンを設定で作る
+        </Link>
+      )}
+      {error && <p className="w-full text-rose-600">{error}</p>}
+    </section>
   );
 }

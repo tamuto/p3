@@ -10,6 +10,12 @@ describe("tokenize", () => {
     expect(tokens).not.toContain("する");
     expect(tokens).toEqual(expect.arrayContaining(["src/web/views", "src", "web", "views"]));
   });
+
+  it("要望・タスク・Preflight の ID は語にしない", () => {
+    const tokens = tokenize("要望 261009-0zbha より。T003 に依存 / preflight: PF-20261008-165438-f0da");
+    expect(tokens.some((t) => /0zbha|261009|t003|f0da|pf-/.test(t))).toBe(false);
+    expect(tokens).toEqual(expect.arrayContaining(["要望", "依存", "preflight"]));
+  });
 });
 
 describe("TfIdf", () => {

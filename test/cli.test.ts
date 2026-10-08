@@ -81,13 +81,15 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
 
     expect(pcube(root, ["move", "T2", "doing", ...r]).code).toBe(0);
     expect(pcube(root, ["move", "2", "in_progress", ...r]).err).toContain("ステータスは");
-    expect(pcube(root, ["set", "1", "progress=30", "due=2026-10-20", "labels=a,b", ...r]).code).toBe(0);
-    expect(pcube(root, ["set", "1", "due=", ...r]).code).toBe(0);
+    expect(pcube(root, ["set", "1", "labels=a,b", "outputs=docs/a.md", ...r]).code).toBe(0);
+    expect(pcube(root, ["set", "1", "outputs=", ...r]).code).toBe(0);
+    expect(pcube(root, ["set", "1", "due=2026-10-20", ...r]).err).toContain("変更できるキー"); // 予定の日付は持たない
 
     const ls = pcube(root, ["ls", "--status", "todo", "--json", ...r]).json();
     expect(ls).toHaveLength(1);
-    expect(ls[0]).toMatchObject({ id: "T001", progress: 30, labels: ["a", "b"] });
-    expect(ls[0].due).toBeUndefined();
+    expect(ls[0]).toMatchObject({ id: "T001", labels: ["a", "b"], outputs: [] });
+    // 作業中にした日時は記録される
+    expect(pcube(root, ["show", "T2", "--json", ...r]).json().item.startedAt).toBeTruthy();
 
     const show = pcube(root, ["show", "T1", "--json", ...r]).json();
     expect(show.graph.incoming).toEqual([expect.objectContaining({ from: `${rid}/T002`, type: "depends_on" })]);
@@ -117,7 +119,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     const { root, rid } = await initialized();
     const r = ["--req", rid];
     pcube(root, ["new", "A", ...r]);
-    pcube(root, ["set", "1", "progress=10", ...r]);
+    pcube(root, ["set", "1", "labels=x", ...r]);
     const conflict = pcube(root, ["move", "1", "done", "--rev", "1", ...r]);
     expect(conflict.code).toBe(3);
     expect(conflict.err).toContain("競合");
@@ -180,6 +182,26 @@ describe("pcube preflight / drafts / accept", () => {
     ]);
     expect(accepted[1].relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
     expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+  });
+});
+
+describe("pcube milestone と要望の管理項目", () => {
+  it("マイルストーンを作り、要望に期限・マイルストーン・タグを付け、進捗をマイルストーンごとにまとめる", async () => {
+    const { root, rid } = await initialized();
+    expect(pcube(root, ["milestone", "add", "v0.2", "--title", "要望単位の運用", "--due", "2026-11-30"]).code).toBe(0);
+    expect(pcube(root, ["milestone", "add", "v0.2"]).err).toContain("既にあります");
+    expect(pcube(root, ["request", "set", rid, "milestone=nope"]).err).toContain("マイルストーンがありません");
+    expect(pcube(root, ["request", "set", rid, "milestone=v0.2", "due=2026-11-15", "tags=ui,feature"]).code).toBe(0);
+    const other = pcube(root, ["request", "new", "別の要望", "--tag", "bug", "--json"]).json();
+    expect(other.tags).toEqual(["bug"]);
+    expect(pcube(root, ["request", "ls", "--milestone", "v0.2", "--json"]).json().map((r: any) => r.id)).toEqual([rid]);
+    expect(pcube(root, ["request", "ls", "--tag", "bug", "--json"]).json().map((r: any) => r.id)).toEqual([other.id]);
+    const text = pcube(root, ["progress"]).out;
+    expect(text).toContain("■ 要望単位の運用（v0.2 · 2026-11-30）");
+    expect(text).toContain("■ マイルストーンなし");
+    expect(pcube(root, ["milestone", "rm", "v0.2"]).err).toContain("使っている要望があります");
+    expect(pcube(root, ["milestone", "set", "v0.2", "--done"]).code).toBe(0);
+    expect(pcube(root, ["milestone", "--json"]).json()).toEqual([{ id: "v0.2", title: "要望単位の運用", due: "2026-11-30", done: true }]);
   });
 });
 

@@ -9,7 +9,7 @@ import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
 
 /**
- * 要望の枠: 見出し・タブ（概要と Preflight / かんばん / スケジュール）・タスク詳細（?task=T003）。
+ * 要望の枠: 見出し・タブ（概要と Preflight / かんばん）・タスク詳細（?task=T003）。
  * 要望は作業の単位で、ここから下はすべてこの要望の中だけを扱う。
  */
 export const Route = createFileRoute("/requests/$requestId")({
@@ -36,7 +36,6 @@ function RequestLayout() {
 const TABS = [
   { to: "/requests/$requestId", label: "概要・Preflight", exact: true },
   { to: "/requests/$requestId/board", label: "かんばん", exact: false },
-  { to: "/requests/$requestId/schedule", label: "スケジュール", exact: false },
 ] as const;
 
 function RequestFrame() {

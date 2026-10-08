@@ -32,9 +32,6 @@ const taskInput = z.object({
   labels: z.array(z.string()).optional(),
   areas: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
-  start: date.nullish(),
-  due: date.nullish(),
-  progress: z.number().min(0).max(100).nullish(),
   body: z.string().optional(),
 });
 const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional() });
@@ -42,6 +39,9 @@ const requestInput = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   areas: z.array(z.string()).optional(),
+  due: date.nullish(),
+  milestone: z.string().nullish(),
+  tags: z.array(z.string()).optional(),
 });
 const requestPatch = requestInput
   .partial()
@@ -52,15 +52,27 @@ const projectPatch = z
     description: z.string(),
     docs: z.array(z.string().min(1)),
     statuses: z.array(z.object({ id: z.string().regex(/^[a-z0-9_]+$/), label: z.string().min(1), done: z.boolean().optional() })).min(1),
+    milestones: z.array(
+      z.object({
+        id: z.string().regex(/^[A-Za-z0-9._-]+$/, "マイルストーンの id は英数字と . _ -"),
+        title: z.string().min(1),
+        due: date.optional(),
+        done: z.boolean().optional(),
+      }),
+    ),
     branchPattern: z.string().includes("{id}"),
     worktreeDir: z.string().min(1),
     preflight: z.object({ instructions: z.string() }),
   })
   .partial()
   .superRefine((p, ctx) => {
-    const ids = p.statuses?.map((x) => x.id) ?? [];
-    const dup = ids.find((x, i) => ids.indexOf(x) !== i);
-    if (dup) ctx.addIssue({ code: "custom", message: `ステータスの id が重複しています: ${dup}` });
+    for (const [label, ids] of [
+      ["ステータス", p.statuses?.map((x) => x.id) ?? []],
+      ["マイルストーン", p.milestones?.map((x) => x.id) ?? []],
+    ] as const) {
+      const dup = ids.find((x, i) => ids.indexOf(x) !== i);
+      if (dup) ctx.addIssue({ code: "custom", message: `${label}の id が重複しています: ${dup}` });
+    }
   });
 
 /** null は「項目を消す」意味。frontmatter から外すため undefined に変換 */
@@ -119,15 +131,27 @@ export function apiRoutes(ctx: PcubeContext) {
         throw new Error(`使用中のステータスは消せません: ${[...new Set(orphan.map((t) => t.status))].join(", ")}（${orphan.map((t) => t.ref).join(", ")}）`);
       }
     }
+    if (patch.milestones) {
+      const ids = new Set(patch.milestones.map((m) => m.id));
+      const used = ws.requests.list().filter((r) => r.milestone && !ids.has(r.milestone));
+      if (used.length) throw new Error(`使用中のマイルストーンは消せません: ${[...new Set(used.map((r) => r.milestone))].join(", ")}`);
+    }
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
+  /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
+  app.get("/engine", async (c) => c.json(await preflight.engineStatus()));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));
+  /** 要望のマイルストーンは project.yaml にあるものだけ */
+  const checkMilestone = (m: string | null | undefined) => {
+    if (m && !ws.project.milestones.some((x) => x.id === m)) throw new Error(`マイルストーンがありません: ${m}（設定で追加してください）`);
+  };
   app.post("/requests", async (c) => {
-    const b = requestInput.parse(await c.req.json());
-    const r = await ws.requests.create({ title: b.title, body: b.body ?? "", areas: b.areas ?? [], status: "draft" }, actorOf(c));
+    const b = unnull(requestInput.parse(await c.req.json()));
+    checkMilestone(b.milestone);
+    const r = await ws.requests.create({ ...b, body: b.body ?? "", areas: b.areas ?? [], tags: b.tags ?? [], status: "draft" }, actorOf(c));
     changed("request", r.id);
     return c.json(r, 201);
   });
@@ -142,7 +166,8 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.patch("/requests/:rid", async (c) => {
     const { rev, ...patch } = requestPatch.parse(await c.req.json());
-    const r = await ws.requests.update(rid(c), patch as never, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    checkMilestone(patch.milestone);
+    const r = await ws.requests.update(rid(c), unnull(patch) as never, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     changed("request", r.id);
     return c.json(r);
   });

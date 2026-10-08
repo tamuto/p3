@@ -30,11 +30,11 @@ describe("REST API", () => {
 
   it("タスクは要望の中に作り、null で項目を消し、T3 / 3 でも指せる", async () => {
     const { call, rid } = await setup();
-    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", due: "2026-10-20" }, { "x-pcube-actor": "ai:claude" });
+    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", labels: ["x"] }, { "x-pcube-actor": "ai:claude" });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ id: "T001", ref: `${rid}/T001`, status: "todo", updatedBy: "ai:claude" });
-    const patched = await call("PATCH", `/requests/${rid}/tasks/1`, { due: null, outputs: ["https://example.com/pull/1"], rev: 1 });
-    expect(patched.body.due).toBeUndefined();
+    const patched = await call("PATCH", `/requests/${rid}/tasks/1`, { labels: [], outputs: ["https://example.com/pull/1"], rev: 1 });
+    expect(patched.body.labels).toEqual([]);
     expect(patched.body.outputs).toEqual(["https://example.com/pull/1"]);
     expect((await call("GET", `/requests/${rid}/tasks/T1`)).body.task.title).toBe("A");
   });
@@ -51,7 +51,8 @@ describe("REST API", () => {
   it("入力の検証に失敗したら 400、無い要望・タスクは 404", async () => {
     const { call, rid } = await setup();
     expect((await call("POST", `/requests/${rid}/tasks`, { title: "" })).status).toBe(400);
-    expect((await call("POST", `/requests/${rid}/tasks`, { title: "A", due: "10/8" })).status).toBe(400);
+    expect((await call("PATCH", `/requests/${rid}`, { due: "10/8" })).status).toBe(400);
+    expect((await call("PATCH", `/requests/${rid}`, { milestone: "nope" })).status).toBe(400);
     expect((await call("GET", `/requests/${rid}/tasks/T404`)).status).toBe(404);
     expect((await call("GET", "/requests/261001-nopee")).status).toBe(404);
   });
@@ -86,6 +87,23 @@ describe("REST API", () => {
     expect(dup.status).toBe(400);
     const ok = await call("PUT", "/project", { name: "新しい名前", docs: ["docs"] });
     expect(ok.body).toMatchObject({ name: "新しい名前", docs: ["docs"] });
+  });
+
+  it("マイルストーン: 重複と使用中の削除を拒み、要望には定義済みのものだけ付けられる", async () => {
+    const { call, rid } = await setup();
+    const dup = await call("PUT", "/project", { milestones: [{ id: "v1", title: "a" }, { id: "v1", title: "b" }] });
+    expect(dup.status).toBe(400);
+    expect((await call("PUT", "/project", { milestones: [{ id: "v1", title: "最初", due: "2026-11-30" }] })).status).toBe(200);
+    const r = await call("PATCH", `/requests/${rid}`, { milestone: "v1", due: "2026-11-01", tags: ["ui"] });
+    expect(r.body).toMatchObject({ milestone: "v1", due: "2026-11-01", tags: ["ui"] });
+    expect((await call("PUT", "/project", { milestones: [] })).body.error).toContain("使用中のマイルストーン");
+    expect((await call("PATCH", `/requests/${rid}`, { milestone: null, due: null })).body).not.toHaveProperty("milestone");
+    expect((await call("PUT", "/project", { milestones: [] })).status).toBe(200);
+  });
+
+  it("エンジンの状態を返す（Codex が未設定なら Mock）", async () => {
+    const { call } = await setup();
+    expect((await call("GET", "/engine")).body).toMatchObject({ name: "mock", ok: true });
   });
 
   it("Preflight を API から実行し、案を直してタスク化する", async () => {

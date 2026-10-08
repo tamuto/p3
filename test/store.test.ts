@@ -60,7 +60,8 @@ describe("normalize", () => {
     const t = normalizeTaskIn("261009-abcde")(
       {
         title: "t",
-        start: new Date("2026-10-01T00:00:00Z"),
+        start: new Date("2026-10-01T00:00:00Z"), // 予定の日付は持たない（古いファイルにあっても読まない）
+        startedAt: new Date("2026-10-01T09:00:00Z"),
         estimate: "1.5", // 見積りは持たない（古いファイルにあっても読まない）
         labels: "single",
         outputs: ["https://example.com/pull/1"],
@@ -69,7 +70,8 @@ describe("normalize", () => {
       "body",
       "T009",
     );
-    expect(t).toMatchObject({ id: "T009", request: "261009-abcde", ref: "261009-abcde/T009", start: "2026-10-01" });
+    expect(t).toMatchObject({ id: "T009", request: "261009-abcde", ref: "261009-abcde/T009", startedAt: "2026-10-01T09:00:00.000Z" });
+    expect(t).not.toHaveProperty("start");
     expect(t).not.toHaveProperty("estimate");
     expect(t.labels).toEqual(["single"]);
     expect(t.outputs).toEqual(["https://example.com/pull/1"]);
@@ -111,6 +113,35 @@ describe("要望とタスク", () => {
     expect(data).not.toHaveProperty("ref");
     expect(ctx.ws.allTasks().map((t) => t.ref)).toHaveLength(3);
     expect(ctx.ws.task(`${a.id}/T2`)?.title).toBe("A-2");
+  });
+
+  it("ステータスを変えた日時を記録する（作業中にした / 完了にした。戻したら消す）", async () => {
+    const { ctx } = await makeProject();
+    const r = await newRequest(ctx);
+    const tasks = ctx.ws.tasksOf(r.id);
+    const t = await newTask(ctx, r.id, { title: "A" });
+    expect(t.startedAt).toBeUndefined();
+    const doing = await tasks.update(t.id, { status: "doing" });
+    expect(doing.startedAt).toBe(doing.updatedAt);
+    const relabel = await tasks.update(t.id, { labels: ["x"] });
+    expect(relabel.startedAt).toBe(doing.startedAt); // ステータスが変わらなければそのまま
+    const done = await tasks.update(t.id, { status: "done" });
+    expect(done).toMatchObject({ startedAt: doing.startedAt, doneAt: done.updatedAt });
+    const back = await tasks.update(t.id, { status: "doing" });
+    expect(back.doneAt).toBeUndefined();
+    expect((await tasks.update(t.id, { status: "todo" })).startedAt).toBeUndefined();
+    // いきなり完了で作っても両方付く。ファイルにも書かれる
+    const d = await newTask(ctx, r.id, { title: "B", status: "done" });
+    expect(d.startedAt && d.doneAt).toBeTruthy();
+    expect(await readFile(tasks.path(d.id), "utf8")).toContain("doneAt:");
+  });
+
+  it("要望の期限・マイルストーン・タグを読み書きする", async () => {
+    const { ctx } = await makeProject({ milestones: [{ id: "v1", title: "最初", due: "2026-11-30" }] });
+    const r = await newRequest(ctx, { title: "A", due: "2026-11-01", milestone: "v1", tags: ["ui", "bug"] });
+    await ctx.ws.load();
+    expect(ctx.ws.requests.get(r.id)).toMatchObject({ due: "2026-11-01", milestone: "v1", tags: ["ui", "bug"] });
+    expect(ctx.ws.project.milestones).toEqual([{ id: "v1", title: "最初", due: "2026-11-30", done: undefined }]);
   });
 
   it("別のプロセスが同じ番号のタスクを先に作っていたら次の番号にする", async () => {

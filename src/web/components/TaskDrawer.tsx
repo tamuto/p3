@@ -3,17 +3,15 @@ import { normalizeTaskId } from "../../shared/refs.ts";
 import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
+import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 
-type Draft = Pick<Task, "title" | "status" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string; outputs: string };
+type Draft = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
 
 const toDraft = (t: Task): Draft => ({
   title: t.title,
   status: t.status,
-  start: t.start,
-  due: t.due,
-  progress: t.progress,
   body: t.body,
   labels: t.labels.join(", "),
   areas: t.areas.join(", "),
@@ -89,9 +87,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     try {
       await api.patchTask(id, {
         ...draft!,
-        start: draft!.start || null,
-        due: draft!.due || null,
-        progress: draft!.progress ?? null,
         labels: split(draft!.labels),
         areas: split(draft!.areas),
         outputs: draft!.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
@@ -125,7 +120,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     data.reload();
   }
 
-  const num = (v: string) => (v === "" ? undefined : Number(v));
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20" onClick={onClose}>
@@ -157,7 +151,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           <input className={`${inputCls} text-lg font-semibold`} value={draft.title} onChange={(e) => set("title", e.target.value)} />
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-[1fr_2fr] items-end gap-3">
             <Field label="ステータス">
               <select className={inputCls} value={draft.status} onChange={(e) => set("status", e.target.value)}>
                 {ctx.info.project.statuses.map((s) => (
@@ -167,15 +161,20 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 ))}
               </select>
             </Field>
-            <Field label="開始">
-              <input type="date" className={inputCls} value={draft.start ?? ""} onChange={(e) => set("start", e.target.value)} />
-            </Field>
-            <Field label="期限">
-              <input type="date" className={inputCls} value={draft.due ?? ""} onChange={(e) => set("due", e.target.value)} />
-            </Field>
-            <Field label="進捗 %">
-              <input type="number" min={0} max={100} className={inputCls} value={draft.progress ?? ""} onChange={(e) => set("progress", num(e.target.value))} />
-            </Field>
+            <dl className="grid grid-cols-3 gap-2 pb-1.5 text-sm" title="ステータスを変えたときに pcube が記録する日時">
+              <div>
+                <dt className="text-slate-500">作成</dt>
+                <dd>{fmtTime(task.createdAt)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">作業中にした</dt>
+                <dd>{fmtTime(task.startedAt) || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">完了にした</dt>
+                <dd>{fmtTime(task.doneAt) || "—"}</dd>
+              </div>
+            </dl>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="ラベル (カンマ区切り)">

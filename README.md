@@ -8,7 +8,8 @@
 
 - 要望 = フォルダ = 作業ツリー（ブランチ）。タスクは要望の中で連番（T001, T002, ...）。共有も要望単位
 - タスクは AI か人が実施する。かんばんの列は少なく（未着手 / 作業中 / 完了）、完了したタスクには成果物（PR・MR・ドキュメント）を残す
-- 進捗は要望ごとに横断して見る。かんばん・スケジュール（依存を考慮したガント）は要望の中で見る
+- 進捗は要望ごとに横断して見る（マイルストーン＝まとめてリリースする単位ごと、期限・タグつき）。かんばんは要望の中で見る
+- タスクは予定の日付や見積りを持たない。ステータスを変えた日時（作業中にした・完了にした）だけを pcube が記録する
 - タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）。要望をまたぐ影響も辿れる
 - DB なし。1タスク = 1 Markdown ファイル。人・AI・Codex が直接編集しても整合する
 - 人も AI も同じ **CLI**（`pcube`）で操作する。ファイルを直接読み書きするので認証が要らない
@@ -57,12 +58,14 @@ pcube init --yes --description "社内向けの経費精算アプリ" --docs doc
 ### 要望からタスクまで
 
 ```bash
-pcube request new "通知機能を追加したい" --area src/notify --body "- メール送信基盤
+pcube milestone add v0.2 --title "通知まわり" --due 2026-11-30   # まとめてリリースする単位（任意）
+pcube request new "通知機能を追加したい" --area src/notify --milestone v0.2 --due 2026-11-15 --tag feature \
+  --body "- メール送信基盤
 - 通知設定画面"                        # → 261009-k7m3x（作成日-乱数。ID の一部 k7m3x でも指せる）
 pcube preflight k7m3x                  # Codex で評価・細分化（完了まで待つ）
 pcube drafts k7m3x                     # 評価とタスク案（D1, D2 ...）を見る。ファイルを直接直してもよい
 pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
-pcube serve                            # http://localhost:4310 で進捗・かんばん・スケジュールを見る
+pcube serve                            # http://localhost:4310 で進捗・かんばんを見る
 ```
 
 タスク化すると要望は「進行中」になり、作業ツリーのブランチ名（`req/261009-k7m3x-...`）が割り当てられる。
@@ -81,8 +84,9 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 
 | コマンド | 内容 |
 | --- | --- |
-| `pcube progress` | 要望ごとの進捗 |
-| `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=done` など）・アーカイブ |
+| `pcube progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも） |
+| `pcube milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
+| `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=done` `due=` `milestone=` `tags=`）・アーカイブ |
 | `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望） |
 | `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
 | `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
@@ -127,6 +131,8 @@ status: done
 areas: [src/server/store/workspace.ts]
 outputs:
   - https://github.com/me/myapp/pull/42      # 成果物（PR / MR / ドキュメント）
+startedAt: 2026-10-09T10:12:00.000Z         # 作業中にした日時（pcube が記録）
+doneAt: 2026-10-09T15:40:00.000Z            # 完了にした日時（pcube が記録）
 relations:
   - type: depends_on
     target: T002                             # 同じ要望のタスク
@@ -163,7 +169,7 @@ AI やエディタがファイルを直接変更したら SSE で画面に反映
 - **影響範囲** — `depends_on` / `part_of` の逆向きと `impacts` を、要望をまたいで推移的に辿る
 - **循環検出** — `depends_on` を追加するときに拒否する
 - **文脈選定** — Preflight で Codex に渡す関連項目を、全件ではなくスコア上位に絞る（トークン節約）
-- **スケジュール** — 要望の中の `depends_on` を制約に、日付未設定のタスクを1日ずつ前詰めで配置（見積りは持たない。期間は開始・期限の日付で表す）（`src/shared/schedule.ts`）
+
 
 ## Preflight
 
@@ -193,6 +199,8 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 | `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
 | `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Codex が設定されていても Mock で評価する |
 
+概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
+
 エンジンは1つだけで、選ぶものではない。Codex の認証が設定されていなければ **Mock**（要望本文の箇条書きを
 そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
@@ -207,12 +215,11 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 
 | URL | 画面 |
 | --- | --- |
-| `/` | 進捗。要望ごとの完了率（完了 / 作業中 / 未着手のタスク数）と期間を横断して見る（`?show=closed\|all`） |
+| `/` | 進捗。マイルストーンごとに、要望の完了率（完了 / 作業中 / 未着手のタスク数）と期限を横断して見る（`?show=closed\|all` `?tag=`） |
 | `/requests/new` | 新しい要望 |
-| `/requests/261009-k7m3x` | 要望の概要と Preflight（`?run=PF-...` で過去の評価） |
+| `/requests/261009-k7m3x` | 要望の概要（期限・マイルストーン・タグ）と Preflight（`?run=PF-...` で過去の評価）。評価エンジンの状態も出す |
 | `/requests/261009-k7m3x/board` | 要望のかんばん（ドラッグで列を移動。完了カードに成果物のリンク） |
-| `/requests/261009-k7m3x/schedule` | 要望のスケジュール（依存を考慮したガント） |
-| `/settings` | プロジェクト設定 |
+| `/settings` | プロジェクト設定（マイルストーン・列・ドキュメントなど） |
 
 要望の中のページでは `?task=T003` でタスク詳細を重ねて開く。
 
@@ -246,6 +253,8 @@ pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 
 `pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
 デモデータは無ければ自動で作られる（`scripts/demo.ts`。製品のコードではないので `src/` の外に置いている）。
+作るときに実際に Preflight（Mock）を走らせ、評価・タスク案・タスク化・作業の進行（成果物つきの完了など）まで
+済ませるので、マイルストーン・期限・タグを含めて各画面をそのまま確かめられる。
 `pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
 サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
 信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
@@ -258,7 +267,7 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシン�
 
 ```
 src/
-  shared/            型定義・参照の解き方・スケジュール計算（サーバ/Web 共通）
+  shared/            型定義・参照の解き方・日付（サーバ/Web 共通）
   cli/               pcube CLI（ファイルを直接操作。serve でサーバも起動する）
   server/
     ops.ts           CLI と API で共通の操作（参照・関係の規則・進捗の集計など）
@@ -273,7 +282,7 @@ src/
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 scripts/demo.ts      開発用のデモデータを作る
 docs/                設計の方針
-test/                ユニットテスト（store / locate / intel / schedule / ops / preflight / api / cli）
+test/                ユニットテスト（store / locate / intel / ops / preflight / api / cli）
 ```
 
 技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

@@ -47,6 +47,8 @@ export interface CollectionOptions<T extends Entity> {
   keyOrder: (keyof T)[];
   /** ファイルに書かないキー（場所から決まるもの） */
   derived?: (keyof T)[];
+  /** 書く直前の加工（ステータスを変えた日時の記録など）。prev は作成時 undefined */
+  beforeWrite?: (prev: T | undefined, next: T) => T;
 }
 
 /**
@@ -118,6 +120,8 @@ export class MarkdownCollection<T extends Entity> {
       const now = nowIso();
       const item = this.opts.normalize({}, "", id);
       Object.assign(item, input, { id, rev: 1, createdAt: now, updatedAt: now, updatedBy: actor });
+      const final = this.opts.beforeWrite?.(undefined, item) ?? item;
+      Object.assign(item, final);
       if (await createExclusive(this.layout.path(id), this.serialize(item))) {
         this.items.set(id, item);
         return item;
@@ -136,7 +140,7 @@ export class MarkdownCollection<T extends Entity> {
     if (opts.expectedRev !== undefined && opts.expectedRev !== cur.rev) {
       throw new ConflictError(id, opts.expectedRev, cur.rev);
     }
-    const next = {
+    const merged = {
       ...cur,
       ...patch,
       id,
@@ -145,6 +149,7 @@ export class MarkdownCollection<T extends Entity> {
       updatedAt: nowIso(),
       updatedBy: opts.actor ?? cur.updatedBy,
     } as T;
+    const next = this.opts.beforeWrite?.(cur, merged) ?? merged;
     await writeFileAtomic(this.layout.path(id), this.serialize(next));
     this.items.set(id, next);
     return next;

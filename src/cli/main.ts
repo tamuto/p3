@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
+import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type Task } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
@@ -30,22 +31,23 @@ const HELP = `pcube — 要望ごとにフォルダを分けて管理するフ�
   init                         .pcube/ を作り初期設定する（端末では対話式）
                                --name --description --docs a,b --instructions 観点 --agents --yes
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
-  progress                     要望ごとの進捗
+  progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも）
+  milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       変更者と今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動
 
 要望
-  request new <タイトル>         --body 本文|- --area パス
-  request ls                   一覧（--status draft,active ...）
+  request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag t
+  request ls                   一覧（--status draft,active ... --milestone id --tag t）
   request show [<要望>]
-  request set [<要望>] キー=値   title status areas（status: ${REQUEST_STATUSES.join(" ")}）
+  request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
   request archive <要望>
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
   show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
-  new <タイトル>                 --body 本文|- --area a --label l --start --due --status
-  set <T003> キー=値 ...         title status start due progress labels areas outputs（空で消す）
+  new <タイトル>                 --body 本文|- --area a --label l --status
+  set <T003> キー=値 ...         title status labels areas outputs（空で消す）
   move <T003> <ステータス>        --output URL/パス（成果物を足す）
   link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
   unlink <T003> <種類> <相手>
@@ -81,8 +83,11 @@ const OPTIONS = {
   label: { type: "string", multiple: true },
   output: { type: "string", multiple: true },
   q: { type: "string", short: "q" },
-  start: { type: "string" },
   due: { type: "string" },
+  milestone: { type: "string" },
+  tag: { type: "string", multiple: true },
+  title: { type: "string" },
+  done: { type: "boolean" },
   body: { type: "string" },
   note: { type: "string" },
   confidence: { type: "string" },
@@ -189,21 +194,42 @@ async function main(argv: string[]): Promise<number> {
       );
 
     case "progress": {
-      const ps = progress(ctx);
-      return out.result(ps, () =>
-        table([
-          ["要望", "状態", "進捗", ...ctx.ws.project.statuses.map((s) => s.label), "期間", "タイトル"],
-          ...ps.map((p) => [
-            p.request.id,
-            p.request.status,
-            `${bar(p.total ? p.done / p.total : 0)} ${p.done}/${p.total}`,
-            ...ctx.ws.project.statuses.map((s) => String(p.counts[s.id] ?? 0)),
-            p.start ? `${p.start.slice(5)}〜${p.end!.slice(5)}${p.conflicts ? " !" : ""}` : "",
-            p.request.title,
-          ]),
-        ]),
-      );
+      const ps = progress(ctx).filter((p) => o.all || !["done", "rejected"].includes(p.request.status));
+      const today = localToday();
+      return out.result(ps, () => {
+        const groups = [
+          ...ctx.ws.project.milestones.map((m) => ({ m, ps: ps.filter((p) => p.request.milestone === m.id) })),
+          { m: undefined, ps: ps.filter((p) => !p.request.milestone) },
+        ];
+        return (
+          groups
+            .filter((g) => g.ps.length)
+            .map((g) => {
+              const done = g.ps.reduce((n, p) => n + p.done, 0);
+              const total = g.ps.reduce((n, p) => n + p.total, 0);
+              const head = g.m
+                ? `■ ${g.m.title}（${g.m.id}${g.m.due ? ` · ${g.m.due}` : ""}${g.m.done ? " · リリース済み" : ""}）  タスク ${done}/${total}`
+                : "■ マイルストーンなし";
+              const rows = g.ps.map((p) => [
+                `  ${p.request.id}`,
+                p.request.status,
+                `${bar(p.total ? p.done / p.total : 0)} ${p.done}/${p.total}`,
+                p.request.due
+                  ? `${p.request.due}${daysUntil(p.request.due, today) < 0 && !["done", "rejected"].includes(p.request.status) ? " 超過" : ""}`
+                  : "",
+                p.request.tags.map((t) => `#${t}`).join(" "),
+                p.request.title,
+              ]);
+              return `${head}\n${table(rows)}`;
+            })
+            .join("\n\n") || "要望はありません"
+        );
+      });
     }
+
+    case "milestone":
+    case "milestones":
+      return milestoneCommand(ctx, out, args, o);
 
     // --- 要望 ---------------------------------------------------------------
     case "request":
@@ -259,8 +285,6 @@ async function main(argv: string[]): Promise<number> {
           labels: o.label ?? [],
           areas: o.area ?? [],
           outputs: o.output ?? [],
-          start: o.start && date(o.start),
-          due: o.due && date(o.due),
           body: readBody(o.body),
         },
         actor,
@@ -373,15 +397,25 @@ async function requestCommand(
     case "add": {
       const title = rest.join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
-      const r = await ctx.ws.requests.create({ title, body: readBody(o.body), areas: o.area ?? [], status: "draft" }, actor);
+      if (o.milestone) checkMilestone(ctx, o.milestone);
+      const r = await ctx.ws.requests.create(
+        { title, body: readBody(o.body), areas: o.area ?? [], tags: o.tag ?? [], due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
+        actor,
+      );
       return out.result(r, () => `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`);
     }
     case undefined:
     case "ls":
     case "list": {
       const status = o.status?.split(",");
-      const reqs = ctx.ws.requests.list().filter((r) => !status || status.includes(r.status));
-      return out.result(reqs, () => table(reqs.map((r) => [r.id, r.status, r.title, r.workstream?.branch ?? ""])) || "要望はありません");
+      const reqs = ctx.ws.requests
+        .list()
+        .filter((r) => !status || status.includes(r.status))
+        .filter((r) => !o.milestone || r.milestone === o.milestone)
+        .filter((r) => !o.tag?.length || o.tag.some((t) => r.tags.includes(t)));
+      return out.result(reqs, () =>
+        table(reqs.map((r) => [r.id, r.status, r.title, r.milestone ?? "", r.due ?? "", r.tags.map((t) => `#${t}`).join(" ")])) || "要望はありません",
+      );
     }
     case "show": {
       const rid = requestArg(rest[0]);
@@ -407,10 +441,16 @@ async function requestCommand(
         const [key, value] = splitPair(pair);
         if (key === "title") patch.title = value;
         else if (key === "areas") patch.areas = list(value);
+        else if (key === "tags") patch.tags = list(value);
+        else if (key === "due") patch.due = value ? date(value) : undefined;
+        else if (key === "milestone") {
+          if (value) checkMilestone(ctx, value);
+          patch.milestone = value || undefined;
+        }
         else if (key === "status") {
           if (!REQUEST_STATUSES.includes(value as Request["status"])) throw new UsageError(`要望のステータスは ${REQUEST_STATUSES.join(", ")}`);
           patch.status = value as Request["status"];
-        } else throw new UsageError("変更できるキー: title status areas");
+        } else throw new UsageError("変更できるキー: title status due milestone tags areas");
       }
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
@@ -425,6 +465,46 @@ async function requestCommand(
     default:
       throw new UsageError("pcube request [new | ls | show | set | archive]");
   }
+}
+
+// --- マイルストーン -----------------------------------------------------------
+
+function checkMilestone(ctx: PcubeContext, id: string) {
+  if (!ctx.ws.project.milestones.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id}（pcube milestone add ${id}）`);
+}
+
+/** マイルストーン（リリース）。複数の要望をまとめる単位で、project.yaml に書く */
+async function milestoneCommand(ctx: PcubeContext, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
+  const [sub, id] = args;
+  const ms = ctx.ws.project.milestones;
+  const count = (mid: string) => ctx.ws.requests.list().filter((r) => r.milestone === mid).length;
+  if (sub === "add" || sub === "set") {
+    if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) throw new UsageError(`pcube milestone ${sub} <id>（英数字と . _ -）`);
+    const cur = ms.find((m) => m.id === id);
+    if (sub === "add" && cur) throw new UsageError(`既にあります: ${id}（変えるなら pcube milestone set）`);
+    if (sub === "set" && !cur) throw new UsageError(`マイルストーンがありません: ${id}`);
+    const next = {
+      id,
+      title: o.title ?? cur?.title ?? id,
+      due: o.due !== undefined ? (o.due ? date(o.due) : undefined) : cur?.due,
+      done: o.done ?? cur?.done,
+    };
+    await ctx.ws.saveProject({ milestones: cur ? ms.map((m) => (m.id === id ? next : m)) : [...ms, next] });
+    return out.result(next, () => `${cur ? "更新" : "追加"}しました: ${next.title}（${id}${next.due ? ` · ${next.due}` : ""}）`);
+  }
+  if (sub === "rm" || sub === "remove") {
+    if (!id || !ms.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id ?? ""}`);
+    if (count(id)) throw new UsageError(`${id} を使っている要望があります（${count(id)} 件）。要望の milestone を外してから消してください`);
+    await ctx.ws.saveProject({ milestones: ms.filter((m) => m.id !== id) });
+    return out.result({ removed: id }, () => `外しました: ${id}`);
+  }
+  if (sub && sub !== "ls" && sub !== "list") throw new UsageError("pcube milestone [ls | add <id> | set <id> | rm <id>]");
+  return out.result(
+    ms,
+    () =>
+      table(ms.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`])) ||
+      "マイルストーンはありません（pcube milestone add v0.1 --title 最初のリリース --due 2026-11-30）",
+  );
 }
 
 // --- 表示 -----------------------------------------------------------------
@@ -502,7 +582,7 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
 
 // --- 入力 -----------------------------------------------------------------
 
-const TASK_KEYS = ["title", "status", "start", "due", "progress", "labels", "areas", "outputs"];
+const TASK_KEYS = ["title", "status", "labels", "areas", "outputs"];
 
 function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task> {
   const patch: Record<string, unknown> = {};
@@ -513,9 +593,7 @@ function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task>
       patch[key] = key === "labels" || key === "areas" || key === "outputs" ? [] : undefined;
       continue;
     }
-    if (key === "progress") patch[key] = num(raw, key);
-    else if (key === "start" || key === "due") patch[key] = date(raw);
-    else if (key === "labels" || key === "areas" || key === "outputs") patch[key] = list(raw);
+    if (key === "labels" || key === "areas" || key === "outputs") patch[key] = list(raw);
     else if (key === "status") {
       checkStatus(ctx, raw);
       patch[key] = raw;

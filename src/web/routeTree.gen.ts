@@ -15,7 +15,6 @@ import { Route as RequestsRequestIdRouteImport } from './routes/requests/$reques
 import { Route as RequestsNewRouteImport } from './routes/requests/new'
 import { Route as RequestsRequestIdIndexRouteImport } from './routes/requests/$requestId/index'
 import { Route as RequestsRequestIdBoardRouteImport } from './routes/requests/$requestId/board'
-import { Route as RequestsRequestIdScheduleRouteImport } from './routes/requests/$requestId/schedule'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -47,12 +46,6 @@ const RequestsRequestIdBoardRoute = RequestsRequestIdBoardRouteImport.update({
   path: '/board',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
-const RequestsRequestIdScheduleRoute =
-  RequestsRequestIdScheduleRouteImport.update({
-    id: '/schedule',
-    path: '/schedule',
-    getParentRoute: () => RequestsRequestIdRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -60,7 +53,6 @@ export interface FileRoutesByFullPath {
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -68,7 +60,6 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesById {
@@ -78,7 +69,6 @@ export interface FileRoutesById {
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -89,7 +79,6 @@ export interface FileRouteTypes {
     | '/requests/$requestId'
     | '/requests/new'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/schedule'
     | '/requests/$requestId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -97,7 +86,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/requests/new'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/schedule'
     | '/requests/$requestId'
   id:
     | '__root__'
@@ -106,7 +94,6 @@ export interface FileRouteTypes {
     | '/requests/$requestId'
     | '/requests/new'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/schedule'
     | '/requests/$requestId/'
   fileRoutesById: FileRoutesById
 }
@@ -161,25 +148,16 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdBoardRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
-    '/requests/$requestId/schedule': {
-      id: '/requests/$requestId/schedule'
-      path: '/schedule'
-      fullPath: '/requests/$requestId/schedule'
-      preLoaderRoute: typeof RequestsRequestIdScheduleRouteImport
-      parentRoute: typeof RequestsRequestIdRoute
-    }
   }
 }
 
 interface RequestsRequestIdRouteChildren {
   RequestsRequestIdBoardRoute: typeof RequestsRequestIdBoardRoute
-  RequestsRequestIdScheduleRoute: typeof RequestsRequestIdScheduleRoute
   RequestsRequestIdIndexRoute: typeof RequestsRequestIdIndexRoute
 }
 
 const RequestsRequestIdRouteChildren: RequestsRequestIdRouteChildren = {
   RequestsRequestIdBoardRoute: RequestsRequestIdBoardRoute,
-  RequestsRequestIdScheduleRoute: RequestsRequestIdScheduleRoute,
   RequestsRequestIdIndexRoute: RequestsRequestIdIndexRoute,
 }
 

@@ -4,7 +4,7 @@ import type { ProjectConfig } from "../../shared/types.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
 const ORDER: (keyof ProjectConfig)[] = [
-  "name", "description", "repo", "docs", "statuses", "branchPattern", "worktreeDir", "preflight",
+  "name", "description", "repo", "docs", "statuses", "milestones", "branchPattern", "worktreeDir", "preflight",
 ];
 
 /** project.yaml に書く形。既定値のままの項目や空の項目は省き、人が読み書きしやすく保つ */
@@ -15,6 +15,9 @@ function toPlain(cfg: ProjectConfig): Record<string, unknown> {
     repo: cfg.repo,
     docs: cfg.docs.length ? cfg.docs : undefined,
     statuses: cfg.statuses.map((s) => (s.done ? { id: s.id, label: s.label, done: true } : { id: s.id, label: s.label })),
+    milestones: cfg.milestones.length
+      ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
+      : undefined,
     branchPattern: cfg.branchPattern,
     worktreeDir: cfg.worktreeDir,
     preflight: cfg.preflight.instructions ? { instructions: cfg.preflight.instructions } : undefined,

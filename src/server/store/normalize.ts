@@ -33,9 +33,8 @@ export const normalizeTaskIn =
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
-    start: date(d.start),
-    due: date(d.due),
-    progress: num(d.progress),
+    startedAt: d.startedAt ? iso(d.startedAt) : undefined,
+    doneAt: d.doneAt ? iso(d.doneAt) : undefined,
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -46,7 +45,7 @@ export const normalizeTaskIn =
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "labels", "areas", "outputs",
-  "start", "due", "progress", "relations", "rev", "createdAt", "updatedAt", "updatedBy",
+  "relations", "rev", "createdAt", "startedAt", "doneAt", "updatedAt", "updatedBy",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
@@ -58,6 +57,9 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     status: REQUEST_STATUSES.includes(status) ? status : "draft",
     areas: strs(d.areas),
     relations: normalizeRelations(d.relations),
+    due: date(d.due),
+    milestone: str(d.milestone),
+    tags: strs(d.tags),
     workstream: ws && ws.branch ? { branch: String(ws.branch), worktree: String(ws.worktree ?? "") } : undefined,
     lastPreflight: str(d.lastPreflight),
     rev: num(d.rev) ?? 1,
@@ -69,7 +71,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "areas", "workstream", "relations", "lastPreflight",
+  "id", "title", "status", "due", "milestone", "tags", "areas", "workstream", "relations", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
@@ -88,6 +90,11 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
     repo: str(d.repo) ?? ".",
     docs: strs(d.docs),
     statuses,
+    milestones: Array.isArray(d.milestones)
+      ? (d.milestones as unknown[])
+          .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !!(m as Record<string, unknown>).id)
+          .map((m) => ({ id: String(m.id), title: str(m.title) ?? String(m.id), due: date(m.due), done: m.done === true ? true : undefined }))
+      : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     worktreeDir: str(d.worktreeDir) ?? ".worktrees",
     preflight: { instructions: str(preflight.instructions) ?? "" },

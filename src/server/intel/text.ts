@@ -7,9 +7,12 @@ const CJK = /[぀-ヿ㐀-鿿豈-﫿]/;
 const HIRAGANA_ONLY = /^[\u3040-\u309f]+$/;
 const STOP = new Set(["the", "and", "for", "with", "to", "of", "in", "on", "a", "an", "is", "be", "を", "に", "は", "が"]);
 
+/** 要望 ID・タスク ID・Preflight の run ID は内容ではないので、類似度の語から除く */
+const IDS = /\b\d{6}-[0-9a-z]{5}(?:\/t\d+)?\b|\bpf-[0-9a-z-]+|\bt\d{3,}\b/g;
+
 export function tokenize(text: string): string[] {
   const out: string[] = [];
-  const norm = text.normalize("NFKC").toLowerCase();
+  const norm = text.normalize("NFKC").toLowerCase().replace(IDS, " ");
   for (const m of norm.matchAll(/[a-z0-9_./-]{2,}|[぀-ヿ㐀-鿿豈-﫿]+/g)) {
     const w = m[0];
     if (CJK.test(w)) {

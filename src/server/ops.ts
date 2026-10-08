@@ -1,5 +1,4 @@
 import { absRef, normalizeTaskId, parseRef, relRef } from "../shared/refs.ts";
-import { localToday, schedule } from "../shared/schedule.ts";
 import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task } from "../shared/types.ts";
 import type { PcubeContext } from "./context.ts";
 import { NotFoundError } from "./store/collection.ts";
@@ -135,7 +134,7 @@ export async function removeRelation(
 }
 
 /** 要望ごとの進捗。進捗の画面と `pcube progress` で使う */
-export function progress(ctx: PcubeContext, today = localToday()): RequestProgress[] {
+export function progress(ctx: PcubeContext): RequestProgress[] {
   const { statuses } = ctx.ws.project;
   const doneIds = new Set(statuses.filter((s) => s.done).map((s) => s.id));
   return ctx.ws.requests
@@ -145,15 +144,11 @@ export function progress(ctx: PcubeContext, today = localToday()): RequestProgre
       const counts = Object.fromEntries(statuses.map((s) => [s.id, 0]));
       for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
       const done = tasks.filter((t) => doneIds.has(t.status));
-      const bars = [...schedule(tasks, today).values()];
       return {
         request,
         counts,
         total: tasks.length,
         done: done.length,
-        start: bars.length ? bars.map((b) => b.start).sort()[0] : undefined,
-        end: bars.length ? bars.map((b) => b.end).sort().at(-1) : undefined,
-        conflicts: bars.filter((b) => b.conflict).length,
         updatedAt: [request.updatedAt, ...tasks.map((t) => t.updatedAt)].sort().at(-1)!,
       };
     })

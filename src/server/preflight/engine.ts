@@ -27,8 +27,17 @@ export interface EngineOutcome {
  *   <runDir>/drafts/D1.md ...   タスク案（frontmatter + 説明）
  * ファイル契約にしておくことで、Codex でも人手でも別エージェントでも同じ取り込み処理になる。
  */
+/** エンジンが使えるか（画面に出す） */
+export interface EngineStatus {
+  name: "codex" | "mock";
+  ok: boolean;
+  /** 人が読む説明（使えないならその理由） */
+  detail: string;
+}
+
 export interface PreflightEngine {
   readonly name: "codex" | "mock";
+  status(): Promise<EngineStatus>;
   run(job: PreflightJob, log: (e: Omit<PreflightLogEntry, "at">) => void, signal: AbortSignal): Promise<EngineOutcome>;
 }
 

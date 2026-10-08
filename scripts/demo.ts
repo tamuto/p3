@@ -4,7 +4,8 @@
  *   pnpm demo         .pcube-demo/ が無ければ作る（pnpm dev / pnpm start の前に自動で動く）
  *   pnpm demo:reset   作り直す
  *
- * 題材は pcube 自身の開発。areas が実在のパスなので、Codex の preflight がそのまま試せる。
+ * 題材は pcube 自身の開発。要望を作り、実際に Preflight（Mock エンジン）を走らせてタスク化し、
+ * 作業を進めた状態まで作る。だから評価・タスク案・かんばん・進捗の画面がそのまま確かめられる。
  * データディレクトリは pcube リポジトリ内に置き（git 管理外）、repo: ".." でリポジトリルートを指す。
  */
 import { existsSync } from "node:fs";
@@ -12,9 +13,12 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { ProjectIndex } from "../src/server/intel/index.ts";
+import { MockEngine } from "../src/server/preflight/mockEngine.ts";
+import { PreflightService } from "../src/server/preflight/service.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
-import { localToday } from "../src/shared/schedule.ts";
-import { DEFAULT_STATUSES, type Relation, type Request, type Task } from "../src/shared/types.ts";
+import { localToday } from "../src/shared/dates.ts";
+import { DEFAULT_STATUSES, type Request } from "../src/shared/types.ts";
 
 const DEMO_DIR = fileURLToPath(new URL("../.pcube-demo", import.meta.url));
 
@@ -23,7 +27,6 @@ const day = (offset: number) => {
   d.setDate(d.getDate() + offset);
   return localToday(d);
 };
-const rel = (type: Relation["type"], target: string, extra: Partial<Relation> = {}): Relation => ({ type, target, ...extra });
 
 async function seedDemo(dir: string) {
   await mkdir(dir, { recursive: true });
@@ -35,6 +38,11 @@ async function seedDemo(dir: string) {
       repo: "..",
       docs: ["README.md", "docs", "TODO.md"],
       statuses: DEFAULT_STATUSES,
+      milestones: [
+        { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
+        { id: "v0.2", title: "要望単位の運用", due: day(12) },
+        { id: "v0.3", title: "AI 連携の拡充", due: day(40) },
+      ],
       branchPattern: "req/{id}-{slug}",
       worktreeDir: ".worktrees",
       preflight: { instructions: "依存パッケージの追加は最小限に。ファイルが唯一の正である前提を崩さないこと。" },
@@ -42,63 +50,102 @@ async function seedDemo(dir: string) {
   );
   const ws = new Workspace(dir);
   await ws.load();
+  const index = new ProjectIndex(ws);
+  const preflight = new PreflightService(ws, index, { mock: new MockEngine({ delay: 0 }) }, "mock");
 
-  const req = (r: Partial<Request> & { title: string; body: string }) => ws.requests.create({ status: "draft", areas: [], relations: [], ...r }, "seed");
-  const tasks = (rid: string) => (t: Partial<Task> & { title: string }) =>
-    ws.tasksOf(rid).create({ status: "todo", labels: [], areas: [], outputs: [], relations: [], body: "", ...t }, "ai:claude");
-  const branch = (id: string, slug: string) => ({ branch: `req/${id}-${slug}`, worktree: `.worktrees/${id}` });
+  /** 要望を作って Preflight し、タスク化する（skip したタスク案はタスクにしない） */
+  async function request(r: Partial<Request> & { title: string; body: string }, opts: { materialize?: boolean; skip?: string[] } = {}) {
+    const req = await ws.requests.create({ status: "draft", ...r }, "human:tamuto");
+    if (opts.materialize === undefined) return req.id; // Preflight 前のまま
+    const run = await preflight.start(req.id, { actor: "human:tamuto" });
+    await preflight.wait(req.id, run.id);
+    if (opts.materialize) {
+      for (const key of opts.skip ?? []) await preflight.updateDraft(req.id, run.id, key, { include: false });
+      await preflight.materialize(req.id, run.id, "human:tamuto");
+    }
+    index.invalidate();
+    return req.id;
+  }
+  /** AI が作業を進める（作業中 → 完了 + 成果物） */
+  const work = async (rid: string, tid: string, status: "doing" | "done", output?: string) => {
+    const col = ws.tasksOf(rid);
+    if (status === "done" && col.require(tid).status === "todo") await col.update(tid, { status: "doing" }, { actor: "ai:claude" });
+    await col.update(tid, { status, ...(output ? { outputs: [output] } : {}) }, { actor: "ai:claude" });
+  };
+  const pr = (n: number) => `https://github.com/tamuto/pcube/pull/${n}`;
 
-  // 1. 完了した要望
-  const store = await req(
+  // v0.1: リリース済み
+  const store = await request(
     {
       title: "ファイルベースのタスクストア",
-      status: "done",
+      milestone: "v0.1",
+      tags: ["core"],
+      due: day(-12),
       areas: ["src/server/store"],
-      body: "DB を使わず 1タスク=1ファイル で管理したい。AI や人がファイルを直接編集しても整合が取れること。",
-    },
-  );
-  await ws.requests.update(store.id, { workstream: branch(store.id, "file-store") }, { actor: "seed" });
-  const s = tasks(store.id);
-  await s({ title: "frontmatter パーサと書き出し", status: "done", areas: ["src/server/store"], start: day(-18), due: day(-17), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/1"], body: "YAML frontmatter + Markdown 本文の読み書き。" });
-  await s({ title: "Markdown コレクションと楽観ロック", status: "done", areas: ["src/server/store"], start: day(-16), due: day(-14), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/2"], relations: [rel("depends_on", "T001")], body: "rev による楽観ロック、tmp→rename の原子的書き込み、排他的な採番。" });
-  await s({ title: "ファイル監視で外部編集を取り込む", status: "done", areas: ["src/server/store/workspace.ts"], start: day(-13), due: day(-11), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/3"], relations: [rel("depends_on", "T002")], body: "AI やエディタがファイルを直接変更したら SSE で画面に反映する。" });
+      body: `DB を使わず 1タスク=1ファイル で管理したい。AI や人がファイルを直接編集しても整合が取れること。
 
-  // 2. 進行中の要望
-  const views = await req(
+- frontmatter のパーサと書き出し
+- Markdown コレクションと楽観ロック
+- ファイル監視で外部編集を取り込む`,
+    },
+    { materialize: true },
+  );
+  for (const [i, t] of ["T001", "T002", "T003"].entries()) await work(store, t, "done", pr(i + 1));
+  await ws.requests.update(store, { status: "done" }, { actor: "human:tamuto" });
+
+  // v0.2: 進行中
+  const views = await request(
     {
-      title: "かんばんとガントチャート表示",
-      status: "active",
-      areas: ["src/web/routes", "src/shared/schedule.ts"],
-      relations: [rel("depends_on", store.id, { note: "ストアのファイル形式が前提" })],
-      body: "要望ごとにかんばんで運用し、依存関係を踏まえたガントチャートでスケジュールも見たい。",
-    },
-  );
-  await ws.requests.update(views.id, { workstream: branch(views.id, "kanban-gantt") }, { actor: "seed" });
-  const v = tasks(views.id);
-  await v({ title: "かんばんボード", status: "done", areas: ["src/web/routes/requests/$requestId/board.tsx"], start: day(-6), due: day(-4), progress: 100, labels: ["ui"], outputs: ["https://github.com/tamuto/pcube/pull/4"], body: "ドラッグ&ドロップで列移動。" });
-  await v({ title: "依存ベースの自動スケジュール", status: "doing", areas: ["src/shared/schedule.ts"], start: day(-1), progress: 40, labels: ["schedule"], body: "日付未設定のタスクを、depends_on と見積りから前詰めで配置する。" });
-  await v({ title: "ガントチャート表示", status: "todo", areas: ["src/web/routes/requests/$requestId/schedule.tsx"], labels: ["ui", "schedule"], relations: [rel("depends_on", "T002"), rel("relates_to", "T001")], body: "依存の矢印と今日線を描く。" });
-  await v({ title: "スケジュールの日付をドラッグで変える", status: "todo", labels: ["ui"], relations: [rel("depends_on", "T003")], body: "作業中に AI が追加したタスク。" });
+      title: "要望ごとのかんばんと進捗の画面",
+      milestone: "v0.2",
+      tags: ["ui"],
+      due: day(5),
+      areas: ["src/web/routes"],
+      body: `要望ごとにかんばんで運用し、要望を横断して進捗を見たい。
 
-  // 3. 進行中の要望（別の要望に影響する）
-  const api = await req(
+- かんばんボード（ドラッグで列を移動）
+- 進捗の画面（要望ごとの完了率）
+- タスク詳細のドロワー
+- マイルストーンごとのまとめ表示`,
+    },
+    { materialize: true },
+  );
+  await work(views, "T001", "done", pr(4));
+  await work(views, "T002", "done", pr(5));
+  await work(views, "T003", "doing");
+  // 作業中に AI が見つけて足したタスク
+  await ws.tasksOf(views).create(
+    { title: "完了カードに成果物のリンクを出す", body: "作業中に見つかった追加の作業。", relations: [{ type: "relates_to", target: "T001" }] },
+    "ai:claude",
+  );
+
+  const cli = await request(
     {
       title: "AI エージェント向けの CLI",
-      status: "active",
+      milestone: "v0.2",
+      tags: ["cli", "ai"],
+      due: day(-1),
       areas: ["src/cli"],
-      relations: [rel("impacts", views.id, { origin: "preflight", confidence: 0.6, note: "画面と同じ操作を提供する" })],
-      body: "AI がタスクを特定し、状態を更新できる CLI。同時編集で人の変更を上書きしないこと。",
-    },
-  );
-  await ws.requests.update(api.id, { workstream: branch(api.id, "ai-cli") }, { actor: "seed" });
-  const a = tasks(api.id);
-  await a({ title: "自然文でタスクを特定する find", status: "doing", areas: ["src/cli", "src/server/intel"], start: day(0), progress: 20, relations: [rel("depends_on", `${store.id}/T002`)], body: "参照の一致 → タイトル部分一致 → 内容類似 の順で候補を返す。" });
-  await a({ title: "競合時に終了コード 3 で知らせる", status: "todo", areas: ["src/cli"], relations: [rel("depends_on", "T001")], body: "古い rev で更新しようとしたら拒否する。" });
+      body: `AI がタスクを特定し、状態を更新できる CLI。同時編集で人の変更を上書きしないこと。
 
-  // 4. Preflight を試すための下書き
-  await req(
+- 自然文でタスクを特定する find
+- 要望の作業ツリーから今の要望を判定する
+- 競合時に終了コード 3 で知らせる`,
+    },
+    { materialize: true },
+  );
+  await work(cli, "T001", "done", pr(6));
+  await work(cli, "T002", "doing");
+  // 要望をまたぐ依存（CLI の find はストアの楽観ロックが前提）
+  const t1 = ws.tasksOf(cli).require("T003");
+  await ws.tasksOf(cli).update("T003", { relations: [...t1.relations, { type: "depends_on", target: `${store}/T002`, origin: "human" }] }, { actor: "human:tamuto" });
+
+  // v0.3: 評価済み（タスク案のレビュー待ち）
+  await request(
     {
       title: "pcube を MCP サーバとして公開する",
+      milestone: "v0.3",
+      tags: ["ai"],
       areas: ["src/cli"],
       body: `Claude Code や Codex から pcube のタスクを直接操作できるよう、MCP サーバとして公開したい。
 
@@ -106,15 +153,17 @@ async function seedDemo(dir: string) {
 - stdio と Streamable HTTP の両方に対応する
 - 変更者 (actor) を MCP クライアント名から自動で付与する`,
     },
+    { materialize: false },
   );
-  await req(
-    {
-      title: "埋め込みベクトルによる関連検索",
-      areas: ["src/server/intel"],
-      body: `llmcs の embedding-server (bge-m3, OpenAI 互換 /v1/embeddings) を使い、
+
+  // マイルストーンなし: Preflight 前の下書き
+  await request({
+    title: "埋め込みベクトルによる関連検索",
+    tags: ["intel"],
+    areas: ["src/server/intel"],
+    body: `llmcs の embedding-server (bge-m3, OpenAI 互換 /v1/embeddings) を使い、
 TF-IDF より精度の高い関連タスク検索を行いたい。サーバが無い環境では TF-IDF にフォールバックする。`,
-    },
-  );
+  });
 }
 
 if (existsSync(DEMO_DIR)) {

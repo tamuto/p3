@@ -23,6 +23,14 @@ export class MockEngine implements PreflightEngine {
     this.delay = opts.delay ?? 1;
   }
 
+  async status() {
+    return {
+      name: "mock" as const,
+      ok: true,
+      detail: "Codex が未設定のため、要望本文の箇条書きをそのままタスク案にする簡易評価（Mock）で実行します",
+    };
+  }
+
   private sleep(ms: number, signal: AbortSignal) {
     return wait(ms * this.delay, signal);
   }

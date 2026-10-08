@@ -35,6 +35,7 @@ export function projectConfig(patch: Partial<ProjectConfig> = {}): ProjectConfig
     repo: "..",
     docs: [],
     statuses: DEFAULT_STATUSES,
+    milestones: [],
     branchPattern: "req/{id}-{slug}",
     worktreeDir: ".worktrees",
     preflight: { instructions: "" },

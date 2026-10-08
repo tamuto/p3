@@ -28,6 +28,12 @@ export class PreflightService {
     readonly defaultEngine: PreflightEngine["name"],
   ) {}
 
+  /** 既定のエンジンが使えるか */
+  async engineStatus() {
+    const e = this.engines[this.defaultEngine];
+    return e ? e.status() : { name: this.defaultEngine, ok: false, detail: "エンジンがありません" };
+  }
+
   availableEngines() {
     return Object.keys(this.engines) as PreflightEngine["name"][];
   }
