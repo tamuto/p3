@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task } from "../../shared/types.ts";
+import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
@@ -165,10 +165,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
           <div className="grid grid-cols-[1fr_2fr] items-end gap-3">
             <Field label="ステータス">
-              <select className={inputCls} value={draft.status} onChange={(e) => set("status", e.target.value)}>
-                {ctx.info.project.statuses.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
+              <select className={inputCls} value={draft.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
+                {TASK_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {TASK_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>

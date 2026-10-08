@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import type { StatusDef as Status, Task } from "../../../../shared/types.ts";
+import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
@@ -19,7 +19,6 @@ import { useRequestData } from "../../../lib/requestData.tsx";
  *
  * 未着手から下りて作業中、上がって完了。完了に人が「済み」を付けると消えるので、画面に残るのは要対応のものだけ。
  * 済みのタスクは「対応済み」のタブで一覧する。
- * 列の設定が増えても、最初の列を左上、完了扱いの列を右上、残りを下段に並べる。
  */
 export const Route = createFileRoute("/requests/$requestId/board")({
   component: BoardPage,
@@ -28,17 +27,12 @@ export const Route = createFileRoute("/requests/$requestId/board")({
 function BoardPage() {
   const ctx = useAppCtx();
   const { request, tasks, reload } = useRequestData();
-  const { statuses } = ctx.info.project;
   const [dragId, setDragId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const doneIds = new Set(tasks.filter((t) => statuses.find((s) => s.id === t.status)?.done).map((t) => t.id));
+  const doneIds = new Set(tasks.filter((t) => t.status === "done").map((t) => t.id));
+  const checked = tasks.filter((t) => t.status === "done" && t.checkedAt).length;
 
-  const first = statuses[0];
-  const doneStatuses = statuses.filter((s) => s.done && s !== first);
-  const middle = statuses.filter((s) => s !== first && !s.done);
-  const checked = tasks.filter((t) => doneIds.has(t.id) && t.checkedAt).length;
-
-  async function patch(t: Task, p: { status?: string; checked?: boolean }) {
+  async function patch(t: Task, p: { status?: TaskStatus; checked?: boolean }) {
     try {
       await api.patchTask(t.ref, { ...p, rev: t.rev });
       setError(null);
@@ -48,7 +42,7 @@ function BoardPage() {
     reload();
     ctx.reload();
   }
-  const move = (id: string, status: string) => {
+  const move = (id: string, status: TaskStatus) => {
     const t = tasks.find((x) => x.id === id);
     if (t && t.status !== status) void patch(t, { status });
   };
@@ -61,18 +55,16 @@ function BoardPage() {
     );
   }
 
-  const pane = (s: Status, kind: keyof typeof MARK, extra?: { aside?: ReactNode; className?: string }) => {
-    const items = tasks.filter((t) => t.status === s.id && !(s.done && t.checkedAt));
+  const pane = (s: TaskStatus, aside?: ReactNode) => {
+    // 完了は、人が済みにしたものを出さない（対応済みのタブで見る）
+    const items = tasks.filter((t) => t.status === s && !t.checkedAt);
     return (
       <Pane
-        key={s.id}
         status={s}
-        kind={kind}
         count={items.length}
-        className={extra?.className}
-        aside={extra?.aside}
+        aside={aside}
         onDrop={() => {
-          if (dragId) move(dragId, s.id);
+          if (dragId) move(dragId, s);
           setDragId(null);
         }}
       >
@@ -80,7 +72,7 @@ function BoardPage() {
           <Card
             key={t.id}
             task={t}
-            done={!!s.done}
+            done={s === "done"}
             tasks={tasks}
             doneIds={doneIds}
             dragging={dragId === t.id}
@@ -98,48 +90,39 @@ function BoardPage() {
       {error && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{error}</div>}
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-4 p-5">
         <div className="grid min-h-0 grid-cols-2 gap-4">
-          {pane(first, "todo")}
-          <div className="flex min-h-0 gap-4">
-            {doneStatuses.map((s) =>
-              pane(s, "done", {
-                className: "flex-1",
-                aside:
-                  checked > 0 ? (
-                    <Link
-                      to="/requests/$requestId/done"
-                      params={{ requestId: request.id }}
-                      className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
-                      title="済みにしたタスクの一覧"
-                    >
-                      済み {checked} 件 →
-                    </Link>
-                  ) : null,
-              }),
-            )}
-          </div>
+          {pane("todo")}
+          {pane(
+            "done",
+            checked > 0 ? (
+              <Link
+                to="/requests/$requestId/done"
+                params={{ requestId: request.id }}
+                className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
+                title="済みにしたタスクの一覧"
+              >
+                済み {checked} 件 →
+              </Link>
+            ) : null,
+          )}
         </div>
-        <div className="flex min-h-0 gap-4">{middle.map((s) => pane(s, "doing", { className: "flex-1" }))}</div>
+        {pane("doing")}
       </div>
     </div>
   );
 }
 
-const MARK = { todo: <TodoMark />, doing: <DoingMark />, done: <DoneMark checked={false} /> };
+const MARK: Record<TaskStatus, ReactNode> = { todo: <TodoMark />, doing: <DoingMark />, done: <DoneMark checked={false} /> };
 
 function Pane({
   status,
-  kind,
   count,
   aside,
-  className,
   onDrop,
   children,
 }: {
-  status: Status;
-  kind: keyof typeof MARK;
+  status: TaskStatus;
   count: number;
   aside?: ReactNode;
-  className?: string;
   onDrop: () => void;
   children: ReactNode;
 }) {
@@ -149,11 +132,11 @@ function Pane({
       onDragOver={(e) => (e.preventDefault(), setOver(true))}
       onDragLeave={() => setOver(false)}
       onDrop={() => (setOver(false), onDrop())}
-      className={cx("flex min-h-0 min-w-0 flex-col rounded-lg bg-slate-100 dark:bg-slate-900", over && "ring-2 ring-indigo-400", className)}
+      className={cx("flex min-h-0 min-w-0 flex-col rounded-lg bg-slate-100 dark:bg-slate-900", over && "ring-2 ring-indigo-400")}
     >
       <header className="flex items-center gap-2 px-3 py-2.5">
-        {MARK[kind]}
-        <span className="font-semibold">{status.label}</span>
+        {MARK[status]}
+        <span className="font-semibold">{TASK_STATUS_LABEL[status]}</span>
         <span className="text-sm text-slate-500">{count}</span>
         <span className="ml-auto">{aside}</span>
       </header>

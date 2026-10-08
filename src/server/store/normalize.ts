@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type Request, type RequestStatus, type Task } from "../../shared/types.ts";
+import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type Request, type RequestStatus, type Task } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
 const num = (v: unknown): number | undefined => (v === undefined || v === null || v === "" ? undefined : Number(v));
@@ -29,7 +29,8 @@ export const normalizeTaskIn =
     request: requestId,
     ref: `${requestId}/${id}`,
     title: str(d.title) ?? id,
-    status: str(d.status) ?? DEFAULT_STATUSES[0].id,
+    // 3つ以外（古い設定の列など）は未着手として読む
+    status: isTaskStatus(d.status) ? d.status : "todo",
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
@@ -77,20 +78,12 @@ export const REQUEST_KEY_ORDER: (keyof Request)[] = [
 ];
 
 export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
-  const statuses = Array.isArray(d.statuses)
-    ? (d.statuses as Record<string, unknown>[]).map((s) => ({
-        id: String(s.id),
-        label: String(s.label ?? s.id),
-        done: Boolean(s.done),
-      }))
-    : DEFAULT_STATUSES;
   const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
     repo: str(d.repo) ?? ".",
     docs: strs(d.docs),
-    statuses,
     milestones: Array.isArray(d.milestones)
       ? (d.milestones as unknown[])
           .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !!(m as Record<string, unknown>).id)

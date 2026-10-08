@@ -60,6 +60,7 @@ describe("normalize", () => {
     const t = normalizeTaskIn("261009-abcde")(
       {
         title: "t",
+        status: "review", // 3つ以外のステータス（以前は列を設定できた）は未着手として読む
         start: new Date("2026-10-01T00:00:00Z"), // 予定の日付は持たない（古いファイルにあっても読まない）
         startedAt: new Date("2026-10-01T09:00:00Z"),
         estimate: "1.5", // 見積りは持たない（古いファイルにあっても読まない）
@@ -79,10 +80,10 @@ describe("normalize", () => {
     expect(t.status).toBe("todo");
   });
 
-  it("プロジェクト設定の既定値を補う（列は 未着手 / 作業中 / 完了）", () => {
-    const p = normalizeProject({});
+  it("プロジェクト設定の既定値を補う", () => {
+    const p = normalizeProject({ statuses: [{ id: "hold", label: "保留" }] });
     expect(p.name).toBe("pcube project");
-    expect(p.statuses.map((s) => s.id)).toEqual(["todo", "doing", "done"]);
+    expect(p).not.toHaveProperty("statuses"); // 列は 未着手 / 作業中 / 完了 で固定
     expect(p.preflight.instructions).toBe("");
   });
 
@@ -220,12 +221,13 @@ describe("project.yaml", () => {
   it("人が書いたコメントを残したまま更新する", async () => {
     const dir = tempDir();
     const path = join(dir, "project.yaml");
-    await writeFile(path, "# このプロジェクトの設定\nname: old # 名前\nrepo: ..\n");
+    await writeFile(path, "# このプロジェクトの設定\nname: old # 名前\nrepo: ..\nstatuses:\n  - id: todo\n    label: 未着手\n");
     await writeProjectFile(path, projectConfig({ name: "new", docs: ["docs"], preflight: { instructions: "観点" } }));
     const text = await readFile(path, "utf8");
     expect(text).toContain("# このプロジェクトの設定");
     expect(text).toContain("name: new");
     expect(text).toContain("instructions: 観点");
+    expect(text).not.toContain("statuses"); // 列の設定は無くなったので消す
     expect(normalizeProject((await import("yaml")).parse(text)).docs).toEqual(["docs"]);
   });
 

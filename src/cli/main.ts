@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type Task } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
@@ -278,8 +278,8 @@ async function main(argv: string[]): Promise<number> {
       const title = (args[0] === "task" ? args.slice(1) : args).join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
       const rid = requestArg(undefined);
-      const status = o.status ?? ctx.ws.project.statuses[0]?.id;
-      checkStatus(ctx, status);
+      const status = o.status ?? "todo";
+      checkStatus(status);
       const t = await ctx.ws.tasksOf(rid).create(
         {
           title,
@@ -296,7 +296,7 @@ async function main(argv: string[]): Promise<number> {
 
     case "set": {
       const ref = taskArg(args[0]);
-      const patch = parseTaskAssignments(ctx, args.slice(1));
+      const patch = parseTaskAssignments(args.slice(1));
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       const { col, tid } = split(ref);
@@ -308,7 +308,7 @@ async function main(argv: string[]): Promise<number> {
       const ref = taskArg(args[0]);
       const status = args[1];
       if (!status) throw new UsageError("移動先のステータスを指定してください");
-      checkStatus(ctx, status);
+      checkStatus(status);
       const { col, tid } = split(ref);
       const cur = col.require(tid);
       const patch: Partial<Task> = { status };
@@ -321,7 +321,7 @@ async function main(argv: string[]): Promise<number> {
       const ref = taskArg(args[0]);
       const { col, tid } = split(ref);
       const cur = col.require(tid);
-      if (!o.off && !ctx.ws.project.statuses.some((s) => s.done && s.id === cur.status)) {
+      if (!o.off && cur.status !== "done") {
         throw new UsageError(`${ref} はまだ完了していません（済みにできるのは完了したタスクだけ）`);
       }
       const next = await col.update(tid, { checkedAt: o.off ? undefined : new Date().toISOString() }, { expectedRev, actor });
@@ -597,7 +597,7 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
 
 const TASK_KEYS = ["title", "status", "labels", "areas", "outputs"];
 
-function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task> {
+function parseTaskAssignments(pairs: string[]): Partial<Task> {
   const patch: Record<string, unknown> = {};
   for (const pair of pairs) {
     const [key, raw] = splitPair(pair);
@@ -608,7 +608,7 @@ function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task>
     }
     if (key === "labels" || key === "areas" || key === "outputs") patch[key] = list(raw);
     else if (key === "status") {
-      checkStatus(ctx, raw);
+      checkStatus(raw);
       patch[key] = raw;
     } else patch[key] = raw;
   }
@@ -621,9 +621,8 @@ function splitPair(pair: string): [string, string] {
   return [pair.slice(0, eq), pair.slice(eq + 1).trim()];
 }
 
-function checkStatus(ctx: PcubeContext, status: string | undefined) {
-  const ids = ctx.ws.project.statuses.map((s) => s.id);
-  if (!status || !ids.includes(status)) throw new UsageError(`ステータスは ${ids.join(", ")} のいずれか`);
+function checkStatus(status: string | undefined): asserts status is TaskStatus {
+  if (!isTaskStatus(status)) throw new UsageError(`ステータスは ${TASK_STATUSES.join(", ")} のいずれか`);
 }
 
 const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);

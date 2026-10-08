@@ -43,8 +43,7 @@ function RequestFrame() {
   const { request, tasks } = data;
   const { task } = Route.useSearch();
   const navigate = useNavigate();
-  const done = new Set(ctx.info.project.statuses.filter((s) => s.done).map((s) => s.id));
-  const finished = tasks.filter((t) => done.has(t.status)).length;
+  const finished = tasks.filter((t) => t.status === "done").length;
 
   return (
     <div className="flex h-full flex-col">

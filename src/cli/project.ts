@@ -5,7 +5,7 @@ import { userInfo } from "node:os";
 import { basename, join, relative } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { REQUEST_ID } from "../shared/refs.ts";
-import { DEFAULT_STATUSES, type ProjectConfig } from "../shared/types.ts";
+import type { ProjectConfig } from "../shared/types.ts";
 import type { PcubeContext } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
 import { DATA_DIR_NAME } from "../server/store/locate.ts";
@@ -119,7 +119,6 @@ export async function init(o: InitOptions): Promise<string> {
       description,
       repo: relative(dir, root) || ".",
       docs,
-      statuses: DEFAULT_STATUSES,
       milestones: [],
       branchPattern: "req/{id}-{slug}",
       worktreeDir: ".worktrees",
@@ -177,7 +176,6 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `description    ${p.description || "（なし）"}`,
     `repo           ${p.repo}  (${ws.repoRoot})`,
     `docs           ${p.docs.join(", ") || "（なし）"}`,
-    `statuses       ${p.statuses.map((s) => `${s.id}${s.done ? "(完了)" : ""}`).join(" → ")}`,
     `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `worktreeDir    ${p.worktreeDir}`,

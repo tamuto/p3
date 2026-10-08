@@ -1,5 +1,5 @@
 import { absRef, normalizeTaskId, parseRef, relRef } from "../shared/refs.ts";
-import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task } from "../shared/types.ts";
+import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { PcubeContext } from "./context.ts";
 import { NotFoundError } from "./store/collection.ts";
 
@@ -135,15 +135,13 @@ export async function removeRelation(
 
 /** 要望ごとの進捗。進捗の画面と `pcube progress` で使う */
 export function progress(ctx: PcubeContext): RequestProgress[] {
-  const { statuses } = ctx.ws.project;
-  const doneIds = new Set(statuses.filter((s) => s.done).map((s) => s.id));
   return ctx.ws.requests
     .list()
     .map((request) => {
       const tasks = ctx.ws.tasksOf(request.id).list();
-      const counts = Object.fromEntries(statuses.map((s) => [s.id, 0]));
-      for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
-      const done = tasks.filter((t) => doneIds.has(t.status));
+      const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+      for (const t of tasks) counts[t.status]++;
+      const done = tasks.filter((t) => t.status === "done");
       return {
         request,
         tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt })),

@@ -46,7 +46,7 @@ describe("pcube init", () => {
     expect(yaml).toContain(`name: ${root.split("/").at(-1)}`);
     expect(yaml).toContain("repo: ..");
     expect(yaml).toMatch(/docs:\n {2}- docs\n {2}- README.md\n {2}- AGENTS.md/);
-    expect(yaml).toContain("id: doing");
+    expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（pcube）");
     expect(pcube(root, ["init", "--yes"]).code).toBe(1); // 2回目は拒む

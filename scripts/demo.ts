@@ -19,7 +19,7 @@ import { PreflightService } from "../src/server/preflight/service.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 import { localToday } from "../src/shared/dates.ts";
-import { DEFAULT_STATUSES, type Request } from "../src/shared/types.ts";
+import type { Request } from "../src/shared/types.ts";
 
 const DEMO_DIR = fileURLToPath(new URL("../.pcube-demo", import.meta.url));
 
@@ -38,7 +38,6 @@ async function seedDemo(dir: string) {
       description: "ファイルベースのプロジェクト管理ツール pcube 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
       repo: "..",
       docs: ["README.md", "docs", "TODO.md"],
-      statuses: DEFAULT_STATUSES,
       milestones: [
         { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
         { id: "v0.2", title: "要望単位の運用", due: day(12) },

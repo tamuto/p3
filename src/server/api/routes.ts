@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { REQUEST_STATUSES, relationTypes, type Relation, type ServerEvent, type Task } from "../../shared/types.ts";
+import { REQUEST_STATUSES, relationTypes, type Relation, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
 import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
@@ -28,7 +28,7 @@ const relation = z.object({
 });
 const taskInput = z.object({
   title: z.string().min(1),
-  status: z.string().optional(),
+  status: z.enum(TASK_STATUSES).optional(),
   labels: z.array(z.string()).optional(),
   areas: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
@@ -52,7 +52,6 @@ const projectPatch = z
     name: z.string().min(1),
     description: z.string(),
     docs: z.array(z.string().min(1)),
-    statuses: z.array(z.object({ id: z.string().regex(/^[a-z0-9_]+$/), label: z.string().min(1), done: z.boolean().optional() })).min(1),
     milestones: z.array(
       z.object({
         id: z.string().regex(/^[A-Za-z0-9._-]+$/, "マイルストーンの id は英数字と . _ -"),
@@ -67,10 +66,7 @@ const projectPatch = z
   })
   .partial()
   .superRefine((p, ctx) => {
-    for (const [label, ids] of [
-      ["ステータス", p.statuses?.map((x) => x.id) ?? []],
-      ["マイルストーン", p.milestones?.map((x) => x.id) ?? []],
-    ] as const) {
+    for (const [label, ids] of [["マイルストーン", p.milestones?.map((x) => x.id) ?? []]] as const) {
       const dup = ids.find((x, i) => ids.indexOf(x) !== i);
       if (dup) ctx.addIssue({ code: "custom", message: `${label}の id が重複しています: ${dup}` });
     }
@@ -124,14 +120,6 @@ export function apiRoutes(ctx: PcubeContext) {
   );
   app.put("/project", async (c) => {
     const patch = projectPatch.parse(await c.req.json());
-    if (patch.statuses) {
-      // 使われているステータスを消すと、そのタスクがタスクボードから消えてしまう
-      const ids = new Set(patch.statuses.map((s) => s.id));
-      const orphan = ws.allTasks().filter((t) => !ids.has(t.status));
-      if (orphan.length) {
-        throw new Error(`使用中のステータスは消せません: ${[...new Set(orphan.map((t) => t.status))].join(", ")}（${orphan.map((t) => t.ref).join(", ")}）`);
-      }
-    }
     if (patch.milestones) {
       const ids = new Set(patch.milestones.map((m) => m.id));
       const used = ws.requests.list().filter((r) => r.milestone && !ids.has(r.milestone));
@@ -181,7 +169,7 @@ export function apiRoutes(ctx: PcubeContext) {
   app.post("/requests/:rid/tasks", async (c) => {
     const id = rid(c);
     const b = unnull(taskInput.parse(await c.req.json()));
-    const t = await ws.tasksOf(id).create({ ...b, status: b.status ?? ws.project.statuses[0]?.id } as Partial<Task>, actorOf(c));
+    const t = await ws.tasksOf(id).create({ ...b, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
     changed("task", id, t.ref);
     return c.json(t, 201);
   });
@@ -195,7 +183,7 @@ export function apiRoutes(ctx: PcubeContext) {
     const col = ws.tasksOf(id);
     const next: Partial<Task> = unnull(patch) as Partial<Task>;
     if (checked !== undefined) {
-      const done = ws.project.statuses.some((s) => s.done && s.id === (next.status ?? col.require(tid(c)).status));
+      const done = (next.status ?? col.require(tid(c)).status) === "done";
       if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
       next.checkedAt = checked ? new Date().toISOString() : undefined;
     }

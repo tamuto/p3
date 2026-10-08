@@ -1,4 +1,5 @@
 import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Logo } from "../components/Logo.tsx";
 import { buttonCls, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 
@@ -40,10 +41,8 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-6 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-        <Link to="/" className="flex items-baseline gap-2" title="infodb p3">
-          <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-            P<sup className="ml-px text-[0.6em]">3</sup>
-          </span>
+        <Link to="/" className="flex items-center gap-3" title="infodb p3">
+          <Logo />
           <span className="font-medium">{ctx.info.project.name}</span>
         </Link>
         <nav className="flex gap-1">
