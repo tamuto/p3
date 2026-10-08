@@ -1,9 +1,21 @@
+/**
+ * pcube 自体の開発用のデモデータを作る（製品のコードではない）。
+ *
+ *   pnpm demo         .pcube-demo/ が無ければ作る（pnpm dev / pnpm start の前に自動で動く）
+ *   pnpm demo:reset   作り直す
+ *
+ * 題材は pcube 自身の開発。areas が実在のパスなので、Codex の preflight がそのまま試せる。
+ * データディレクトリは pcube リポジトリ内に置き（git 管理外）、repo: ".." でリポジトリルートを指す。
+ */
 import { existsSync } from "node:fs";
-import { rm, writeFile, mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
-import type { Relation, Request, Task } from "../../shared/types.ts";
-import { Workspace } from "../store/workspace.ts";
+import { Workspace } from "../src/server/store/workspace.ts";
+import type { Relation, Request, Task } from "../src/shared/types.ts";
+
+const DEMO_DIR = fileURLToPath(new URL("../.pcube-demo", import.meta.url));
 
 const day = (offset: number) => {
   const d = new Date();
@@ -12,11 +24,7 @@ const day = (offset: number) => {
 };
 const rel = (type: Relation["type"], target: string, extra: Partial<Relation> = {}): Relation => ({ type, target, ...extra });
 
-/**
- * デモ用データ。題材は pcube 自身の開発（areas が実在のパスなので、Codex の preflight がそのまま試せる）。
- * データディレクトリは pcube リポジトリ内に置き、repo: ".." でリポジトリルートを指す。
- */
-export async function seedDemo(dir: string) {
+async function seedDemo(dir: string) {
   await mkdir(dir, { recursive: true });
   await writeFile(
     join(dir, "project.yaml"),
@@ -98,13 +106,9 @@ TF-IDF より精度の高い関連タスク検索を行いたい。サーバが�
   await task({ title: "競合時に 409 と最新状態を返す", status: "backlog", request: "REQ-0003", areas: ["src/server/api"], estimate: 0.5, labels: ["ai"], relations: [rel("depends_on", "TASK-0002"), rel("relates_to", "TASK-0007")], body: "AI が古い rev で更新しようとしたら拒否して最新を返す。" });
 }
 
-// npm run demo:reset
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const dir = resolve(process.env.PCUBE_DATA_DIR ?? ".pcube-demo");
-  if (existsSync(dir)) {
-    if (!process.argv.includes("--force")) throw new Error(`${dir} は既にあります (--force で作り直し)`);
-    await rm(dir, { recursive: true });
-  }
-  await seedDemo(dir);
-  console.log(`seeded ${dir}`);
+if (existsSync(DEMO_DIR)) {
+  if (!process.argv.includes("--force")) process.exit(0);
+  await rm(DEMO_DIR, { recursive: true });
 }
+await seedDemo(DEMO_DIR);
+console.log(`デモデータを作りました: ${DEMO_DIR}`);

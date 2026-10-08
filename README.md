@@ -102,13 +102,19 @@ ID は `TASK-0012` / `task-12` / `12`（要望を取るコマンドでは `12` �
 ### pcube 自体の開発
 
 ```bash
-pnpm dev                     # API サーバ（tsx watch）+ Vite  http://localhost:5173
-pnpm build && pnpm start     # 本番ビルドを API サーバから配信
+pnpm dev                     # API サーバ（pcube serve, tsx watch）+ Vite  http://localhost:5173
+pnpm build && pnpm start     # ビルドした画面を pcube serve から配信  http://localhost:4310
 pnpm typecheck
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm check                   # 型検査 + テスト + ビルド
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 ```
+
+`pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
+デモデータは無ければ自動で作られる（`scripts/demo.ts`。製品のコードではないので `src/` の外に置いている）。
+`pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
+サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
+信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
 
 テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
 Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
@@ -257,7 +263,7 @@ pcube link TASK-0006 impacts TASK-0004 --confidence 0.7 --note "列の描画を�
 ```
 src/
   shared/            型定義・スケジュール計算（サーバ/Web 共通）
-  cli/               pcube CLI（ファイルを直接操作）
+  cli/               pcube CLI（ファイルを直接操作。serve でサーバも起動する）
   server/
     ops.ts           CLI と API で共通の操作（関係の規則・対象の特定など）
     store/           Markdown コレクション、frontmatter、Preflight の保存、監視
@@ -269,6 +275,7 @@ src/
     routeTree.gen.ts ルート一覧（自動生成）
     components/      複数のページで使う部品（タスク詳細のドロワー、要望のステータスなど）
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
+scripts/demo.ts      開発用のデモデータを作る
 docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / schedule / ops / preflight / api / cli）
 ```

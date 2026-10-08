@@ -9,18 +9,19 @@
     "pcube": "bin/pcube.mjs"
   },
   "scripts": {
-    "dev": "concurrently -n server,web -c blue,magenta \"pnpm:dev:server\" \"pnpm:dev:web\"",
-    "dev:server": "tsx watch --clear-screen=false src/server/main.ts",
+    "dev": "pnpm demo && concurrently -n server,web -c blue,magenta \"pnpm:dev:server\" \"pnpm:dev:web\"",
+    "dev:server": "tsx watch --clear-screen=false src/cli/main.ts serve --dir .pcube-demo",
     "dev:web": "vite",
     "build": "vite build",
-    "start": "NODE_ENV=production tsx src/server/main.ts",
-    "typecheck": "tsr generate && tsc --noEmit -p .",
-    "demo:reset": "tsx src/server/scripts/seedDemo.ts --force",
+    "start": "pnpm demo && node bin/pcube.mjs serve --dir .pcube-demo",
     "pcube": "node bin/pcube.mjs",
+    "demo": "tsx scripts/demo.ts",
+    "demo:reset": "tsx scripts/demo.ts --force",
+    "routes": "tsr generate",
+    "typecheck": "tsr generate && tsc --noEmit -p .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
-    "routes": "tsr generate"
+    "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@hono/node-server": "~2.1.3",
