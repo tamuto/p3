@@ -17,7 +17,7 @@ import type { Workspace } from "../store/workspace.ts";
 import type { PreflightEngine } from "./engine.ts";
 
 export class PreflightService {
-  private active = new Map<string, { run: PreflightRun; abort: AbortController }>();
+  private active = new Map<string, { run: PreflightRun; abort: AbortController; done: Promise<void> }>();
 
   constructor(
     private ws: Workspace,
@@ -78,9 +78,15 @@ export class PreflightService {
     this.ws.emit({ type: "changed", kind: "request", id: requestId });
 
     const abort = new AbortController();
-    this.active.set(id, { run, abort });
-    void this.execute(engine, run, runDir, abort.signal);
+    const done = this.execute(engine, run, runDir, abort.signal);
+    this.active.set(id, { run, abort, done });
     return run;
+  }
+
+  /** 実行中の run の完了を待つ（CLI 用）。完了後の run を返す */
+  async wait(requestId: string, runId: string): Promise<PreflightRun | undefined> {
+    await this.active.get(runId)?.done;
+    return this.ws.preflight.get(requestId, runId);
   }
 
   cancel(runId: string) {
@@ -192,7 +198,11 @@ export class PreflightService {
       .filter((i) => i.target !== requestId && !request.relations.some((r) => r.target === i.target && r.type === i.type))
       .map((i) => ({ type: i.type, target: i.target, note: i.reason, origin: "preflight", confidence: i.confidence }));
     const p = this.ws.project;
-    const branch = p.branchPattern.replace("{id}", requestId).replace("{slug}", slugify(request.title));
+    // 日本語のタイトルは slug にならないので、そのときは区切りごと落とす (req/REQ-0001)
+    const slug = slugify(request.title);
+    const branch = p.branchPattern
+      .replace("{id}", requestId)
+      .replace(slug ? "{slug}" : /[-_/]?\{slug\}/, slug);
     await this.ws.requests.update(
       requestId,
       {

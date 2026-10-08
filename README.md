@@ -7,48 +7,67 @@ Codex（`codex app-server`）がリポジトリを読んで妥当性・実現可
 - かんばん + 依存関係を考慮したガントチャート
 - タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）
 - DB なし。1タスク = 1 Markdown ファイル。人・AI・Codex が直接編集しても整合する
-- 1サーバ = 1プロジェクト。要望ごとに作業ツリー（ブランチ / worktree）を割り当てる
-- AI エージェントが API でタスクを特定・更新できる（楽観ロック・変更者記録つき）
+- 1プロジェクト = 1リポジトリの `.pcube/`。要望ごとに作業ツリー（ブランチ / worktree）を割り当てる
+- 人も AI も同じ **CLI**（`pcube`）で操作する。ファイルを直接読み書きするので認証が要らない
+- ブラウザはローカルのビューア兼エディタ（`pcube serve`）。データはすべてローカルで完結する
 
-> 現在はプロトタイプ。到達点と今後は [TODO.md](TODO.md) を参照。
+> 現在はプロトタイプ。設計の方針は [docs/architecture.md](docs/architecture.md)、到達点と今後は [TODO.md](TODO.md) を参照。
 
 ## はじめかた
 
 ```bash
 pnpm install
-cp .env.example .env         # Codex の認証・パス対応を設定
-pnpm dev                     # http://localhost:5173 （API は :4310）
+cp .env.example .env         # Codex の認証・パス対応（マシンごとの設定。プロジェクトには置かない）
+pnpm link --global           # `pcube` コマンドを使えるようにする（または `pnpm pcube ...`）
 ```
 
-API サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証はまだ無いので、
-信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
+### プロジェクトで使う
 
-`PCUBE_DATA_DIR` を指定しなければ、pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`）を作って起動する。
-作り直すときは `pnpm demo:reset`。
+```bash
+cd ~/src/myapp               # 管理したいリポジトリのルート
+pcube init --name myapp      # .pcube/ を作る。project.yaml の description に何を作っているかを書く
+pcube new request "通知機能を追加したい" --area src/notify --body "- メール送信基盤
+- 通知設定画面"
+pcube preflight 1            # Codex で評価・細分化（完了まで待つ）
+pcube drafts 1               # 評価とタスク案を見る（.pcube/preflight/... のファイルを直接直してもよい）
+pcube accept 1 --skip T3     # タスク化
+pcube serve                  # http://localhost:4310 でかんばん・ガント・Preflight を見る
+```
+
+`pcube` は git のメインの作業ツリーの `.pcube/` を探して使う。要望ごとの作業ツリー（`git worktree`）の中で
+実行しても、タスクの状態はメインの1か所に書かれる（ブランチごとに状態が分岐しない）。
+
+### CLI
 
 | コマンド | 内容 |
 | --- | --- |
-| `pnpm dev` | API サーバ（tsx watch）+ Vite |
-| `pnpm build && pnpm start` | 本番ビルドを API サーバから配信 |
-| `pnpm typecheck` | 型チェック |
-| `pnpm demo:reset` | デモデータを作り直す |
+| `pcube ls [tasks\|requests]` | 一覧（`--status` `--request` `--area` `-q`） |
+| `pcube show <ID\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
+| `pcube find <語句>` / `pcube impact <ID>` | 対象の特定 / 変更が波及する項目 |
+| `pcube new task\|request <タイトル>` | 作成（`--request` `--area` `--estimate` `--body -` で標準入力から本文） |
+| `pcube set <ID> key=value ...` | 更新（値を空にすると消す） |
+| `pcube move <ID> <status>` | かんばんの列を移動 |
+| `pcube link\|unlink <ID> <種類> <相手>` | 関係の追加・削除（`depends_on` は循環チェックあり） |
+| `pcube archive <ID>` | `.archive/` へ移す |
+| `pcube preflight\|drafts\|accept <REQ>` | Preflight の実行・確認・タスク化 |
+| `pcube init` / `pcube serve` | 初期化 / ビューアの起動 |
 
-### 実プロジェクトで使う
+ID は `TASK-0012` / `task-12` / `12`（要望を取るコマンドでは `12` は `REQ-0012`）のどれでもよい。
+`--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
+サーバが動いていれば、CLI での変更はファイル監視経由ですぐ画面に反映される。
 
-管理したいリポジトリの中にデータディレクトリを置き、そのディレクトリを指して起動する。
-プロジェクトごとに別のサーバ（別ポート）を立てる。
+### pcube 自体の開発
 
 ```bash
-mkdir -p ~/src/myapp/.pcube
-cat > ~/src/myapp/.pcube/project.yaml <<'EOF'
-name: myapp
-description: 何を作っているプロジェクトか（Preflight の文脈になる）
-repo: ..                      # データディレクトリから見たリポジトリルート
-branchPattern: req/{id}-{slug}
-worktreeDir: .worktrees
-EOF
-PCUBE_DATA_DIR=~/src/myapp/.pcube PCUBE_PORT=4311 pnpm start
+pnpm dev                     # API サーバ（tsx watch）+ Vite  http://localhost:5173
+pnpm build && pnpm start     # 本番ビルドを API サーバから配信
+pnpm typecheck
+pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 ```
+
+`.pcube/` が見つからなければ、pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`）で起動する。
+サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
+信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
 
 ## データの持ち方
 
@@ -148,32 +167,27 @@ Codex を使えない環境では **Mock エンジン**（要望本文の箇条�
 
 ## AI エージェントから使う
 
-最初に `GET /api/ai/manifest` を読ませる（手順と全エンドポイントの自己記述）。
+AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。プロジェクトの `AGENTS.md` / `CLAUDE.md` に書く例は
+[docs/architecture.md](docs/architecture.md#ai-エージェントへの指示プロジェクトの-agentsmd--claudemd-に書く例) を参照。
 
 ```bash
-# 自然文で対象を特定
-curl -G localhost:4310/api/resolve --data-urlencode 'q=ガントチャート'
-# 取得（関係グラフつき）→ rev を添えて更新
-curl localhost:4310/api/tasks/TASK-0006
-curl -X PATCH localhost:4310/api/tasks/TASK-0006 \
-  -H 'content-type: application/json' -H 'x-pcube-actor: ai:claude' \
-  -d '{"status":"review","progress":100,"rev":3}'
-# 関係を1本追加（depends_on は循環チェックあり）
-curl -X POST localhost:4310/api/tasks/TASK-0006/relations \
-  -H 'content-type: application/json' -H 'x-pcube-actor: ai:claude' \
-  -d '{"type":"impacts","target":"TASK-0004","confidence":0.7,"note":"列の描画を共有"}'
+export PCUBE_ACTOR=ai:claude                 # updatedBy に残り、張った関係は origin: ai になる
+pcube find ガントチャート --json              # 対象を特定（match が null なら candidates から選ぶ）
+pcube show TASK-0006 --json                  # 関係グラフと影響範囲、現在の rev
+pcube move TASK-0006 review --rev 3          # 他者が先に変えていたら終了コード 3
+pcube link TASK-0006 impacts TASK-0004 --confidence 0.7 --note "列の描画を共有"
 ```
 
-- `rev` が古ければ 409 と最新状態が返る（人の変更を AI が上書きしない）
-- `x-pcube-actor` は `updatedBy` に記録され、AI が張った関係は `origin: ai` になる
-- ファイルを直接編集してもよい（サーバが取り込む）
+ブラウザ用の REST API（`/api/...`、自己記述は `GET /api/ai/manifest`）もあるが、ローカルの画面のためのもの。
 
 ## 構成
 
 ```
 src/
   shared/            型定義・スケジュール計算（サーバ/Web 共通）
+  cli/               pcube CLI（ファイルを直接操作）
   server/
+    ops.ts           CLI と API で共通の操作（関係の規則・対象の特定など）
     store/           Markdown コレクション、frontmatter、Preflight の保存、監視
     intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
@@ -181,6 +195,8 @@ src/
   web/               React + Tailwind（text-base 基準）
     views/           かんばん・スケジュール・Preflight
     components/      タスク詳細ドロワーほか
+bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
+docs/                設計の方針
 ```
 
 技術: TypeScript, React 19, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

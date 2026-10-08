@@ -2,10 +2,9 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { relationTypes, type Relation, type ServerEvent, type Task } from "../../shared/types.ts";
-import type { ProjectIndex } from "../intel/index.ts";
-import type { PreflightService } from "../preflight/service.ts";
+import type { PcubeContext } from "../context.ts";
+import { addRelation, listTasks, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
-import type { Workspace } from "../store/workspace.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -53,7 +52,8 @@ const actorOf = (c: Context) => c.req.header("x-pcube-actor") ?? "human:web";
 /** 楽観ロック: body.rev か If-Match ヘッダ */
 const expectedRev = (c: Context, body: { rev?: number }) => body.rev ?? (c.req.header("if-match") ? Number(c.req.header("if-match")) : undefined);
 
-export function apiRoutes(ws: Workspace, index: ProjectIndex, preflight: PreflightService) {
+export function apiRoutes(ctx: PcubeContext) {
+  const { ws, index, preflight } = ctx;
   const app = new Hono();
 
   app.onError((err, c) => {
@@ -80,15 +80,7 @@ export function apiRoutes(ws: Workspace, index: ProjectIndex, preflight: Preflig
   // --- tasks --------------------------------------------------------------
   app.get("/tasks", (c) => {
     const { status, request, area, q } = c.req.query();
-    let tasks = ws.tasks.list();
-    if (status) tasks = tasks.filter((t) => status.split(",").includes(t.status));
-    if (request) tasks = tasks.filter((t) => t.request === request);
-    if (area) tasks = tasks.filter((t) => t.areas.some((a) => a.startsWith(area)));
-    if (q) {
-      const ql = q.toLowerCase();
-      tasks = tasks.filter((t) => `${t.id} ${t.title} ${t.body}`.toLowerCase().includes(ql));
-    }
-    return c.json(tasks);
+    return c.json(listTasks(ctx, { status: status?.split(","), request, area, q }));
   });
 
   app.get("/tasks/:id", (c) => {
@@ -131,30 +123,17 @@ export function apiRoutes(ws: Workspace, index: ProjectIndex, preflight: Preflig
 
   // 関係の追加/削除（多元的な関係を1本ずつ操作する）
   app.post("/:kind{tasks|requests}/:id/relations", async (c) => {
-    const col = c.req.param("kind") === "tasks" ? ws.tasks : ws.requests;
     const id = c.req.param("id");
-    const rel = relation.parse(await c.req.json()) as Relation;
-    if (rel.target === id) throw new Error("自分自身には関係を張れません");
-    if (!ws.tasks.get(rel.target) && !ws.requests.get(rel.target)) throw new NotFoundError(rel.target);
-    if (rel.type === "depends_on" && index.wouldCycle(id, rel.target)) throw new Error(`${id} → ${rel.target} は依存の循環になります`);
-    const cur = col.require(id);
-    const relations = [...cur.relations.filter((r) => !(r.type === rel.type && r.target === rel.target)), { ...rel, origin: rel.origin ?? (actorOf(c).startsWith("ai") ? "ai" : "human") }];
-    const t = await col.update(id, { relations } as never, { actor: actorOf(c) });
-    index.invalidate();
-    changed(c.req.param("kind") === "tasks" ? "task" : "request", id);
+    const t = await addRelation(ctx, id, relation.parse(await c.req.json()) as Relation, actorOf(c));
+    ws.emit({ type: "changed", kind: c.req.param("kind") === "tasks" ? "task" : "request", id });
     return c.json(t);
   });
 
   app.delete("/:kind{tasks|requests}/:id/relations", async (c) => {
-    const col = c.req.param("kind") === "tasks" ? ws.tasks : ws.requests;
     const id = c.req.param("id");
     const { type, target } = c.req.query();
-    const cur = col.require(id);
-    const t = await col.update(id, { relations: cur.relations.filter((r) => !(r.type === type && r.target === target)) } as never, {
-      actor: actorOf(c),
-    });
-    index.invalidate();
-    changed(c.req.param("kind") === "tasks" ? "task" : "request", id);
+    const t = await removeRelation(ctx, id, { type, target }, actorOf(c));
+    ws.emit({ type: "changed", kind: c.req.param("kind") === "tasks" ? "task" : "request", id });
     return c.json(t);
   });
 
@@ -227,17 +206,7 @@ export function apiRoutes(ws: Workspace, index: ProjectIndex, preflight: Preflig
    * AI 向け: 自然文や部分的な ID から対象タスクを特定する。
    * 完全一致 ID → タイトル部分一致 → 内容類似 の順で候補を返す。
    */
-  app.get("/resolve", (c) => {
-    const q = (c.req.query("q") ?? "").trim();
-    const exact = ws.tasks.get(q.toUpperCase()) ?? ws.requests.get(q.toUpperCase());
-    if (exact) return c.json({ match: exact.id, candidates: [{ id: exact.id, title: exact.title, score: 1, reasons: ["ID 一致"] }] });
-    const byTitle = [...ws.tasks.list(), ...ws.requests.list()]
-      .filter((t) => q && t.title.toLowerCase().includes(q.toLowerCase()))
-      .map((t) => ({ id: t.id, title: t.title, score: 0.9, reasons: ["タイトルに含む"] }));
-    const similar = index.related({ text: q, limit: 5, minScore: 0.15 }).filter((r) => !byTitle.some((b) => b.id === r.id));
-    const candidates = [...byTitle, ...similar].slice(0, 8);
-    return c.json({ match: candidates.length === 1 ? candidates[0].id : null, candidates });
-  });
+  app.get("/resolve", (c) => c.json(resolve(ctx, c.req.query("q") ?? "")));
 
   // --- events (SSE) ------------------------------------------------------
   app.get("/events", (c) =>

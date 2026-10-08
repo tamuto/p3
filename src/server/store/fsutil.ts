@@ -33,6 +33,6 @@ export function slugify(s: string): string {
       .normalize("NFKC")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "work"
+      .slice(0, 40)
   );
 }

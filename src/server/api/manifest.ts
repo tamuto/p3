@@ -7,7 +7,8 @@ import { RELATION_TYPES } from "../../shared/types.ts";
 export const AI_MANIFEST = {
   name: "pcube",
   description:
-    "1サーバ=1プロジェクトのファイルベースのタスク管理。タスクは tasks/TASK-xxxx.md、要望は requests/REQ-xxxx.md。API 経由でもファイル直接編集でも同じ状態になる。",
+    "1リポジトリ=1プロジェクトのファイルベースのタスク管理。タスクは .pcube/tasks/TASK-xxxx.md、要望は .pcube/requests/REQ-xxxx.md。" +
+    "この REST API はローカルのブラウザ用。AI エージェントは `pcube` CLI（`pcube help`、`--json` 出力）を使うこと。CLI・API・ファイル直接編集のどれでも同じ状態になる。",
   conventions: {
     actor: "変更時は `X-Pcube-Actor: ai:<agent-name>` ヘッダを付ける（履歴の updatedBy に残る）",
     optimisticLock: "更新時は取得した rev を body.rev か If-Match ヘッダで送る。他者が先に更新していたら 409 と最新状態が返る",
