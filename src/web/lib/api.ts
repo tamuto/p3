@@ -72,7 +72,8 @@ export const api = {
 
   task: (ref: string) => call<{ task: Task; graph: Neighborhood }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
-  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number }) => call<Task>("PATCH", taskPath(ref), patch),
+  /** checked: 完了したタスクに人が「済み」を付ける / 外す */
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) => call<Task>("PATCH", taskPath(ref), patch),
   addRelation: (ref: string, r: Relation) => call<Task>("POST", relPath(ref), r),
   removeRelation: (ref: string, r: Pick<Relation, "type" | "target">) =>
     call<Task>("DELETE", `${relPath(ref)}?type=${r.type}&target=${encodeURIComponent(r.target)}`),

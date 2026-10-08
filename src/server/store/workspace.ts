@@ -15,6 +15,7 @@ type Listener = (e: ServerEvent) => void;
  * ステータスを変えた日時を記録する（予定ではなく事実）。
  *   最初の列（未着手）以外にした → startedAt（未着手に戻したら消す）
  *   完了扱いの列にした          → doneAt（完了から戻したら消す）
+ *   完了から戻した              → 人の「済み」（checkedAt）も消す
  */
 export function stampStatus(prev: Task | undefined, next: Task, statuses: StatusDef[]): Task {
   if (prev && prev.status === next.status) return next;
@@ -25,6 +26,7 @@ export function stampStatus(prev: Task | undefined, next: Task, statuses: Status
     ...next,
     startedAt: next.status === first ? undefined : (prev?.startedAt ?? next.startedAt ?? now),
     doneAt: done ? now : undefined,
+    checkedAt: done ? next.checkedAt : undefined,
   };
 }
 

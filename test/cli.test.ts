@@ -109,6 +109,12 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(done.code, done.err).toBe(0);
     const t = pcube(root, ["show", `${rid}/T1`, "--json"]).json().item;
     expect(t).toMatchObject({ status: "done", outputs: ["https://example.com/pull/7"], updatedBy: "ai:claude" });
+    // 人が確認して「済み」にする（完了前のタスクは拒む）
+    expect(pcube(root, ["check", "T2", "--req", rid]).err).toContain("まだ完了していません");
+    expect(pcube(root, ["check", "T1", "--req", rid]).code).toBe(0);
+    expect(pcube(root, ["show", `${rid}/T1`, "--json"]).json().item.checkedAt).toBeTruthy();
+    expect(pcube(root, ["check", "T1", "--off", "--req", rid]).code).toBe(0);
+    expect(pcube(root, ["show", `${rid}/T1`, "--json"]).json().item.checkedAt).toBeUndefined();
     expect(pcube(root, ["ls", "--all", "--json"]).json()).toHaveLength(2);
     const progress = pcube(root, ["progress", "--json"]).json();
     expect(progress[0]).toMatchObject({ total: 2, done: 1, counts: { todo: 1, doing: 0, done: 1 } });

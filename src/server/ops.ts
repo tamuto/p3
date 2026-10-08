@@ -146,6 +146,7 @@ export function progress(ctx: PcubeContext): RequestProgress[] {
       const done = tasks.filter((t) => doneIds.has(t.status));
       return {
         request,
+        tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt })),
         counts,
         total: tasks.length,
         done: done.length,

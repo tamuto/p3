@@ -82,6 +82,8 @@ export interface Task {
    */
   startedAt?: string;
   doneAt?: string;
+  /** 完了したタスクを人が確認して「済み」にした日時（完了から戻すと消える） */
+  checkedAt?: string;
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -131,8 +133,12 @@ export interface Request {
 }
 
 /** 進捗の画面・CLI 用の集計 */
+/** 進捗のスケジュールに描くためのタスクの要約 */
+export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt">;
+
 export interface RequestProgress {
   request: Request;
+  tasks: TaskMark[];
   /** ステータスごとのタスク数 */
   counts: Record<string, number>;
   total: number;

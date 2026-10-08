@@ -127,8 +127,11 @@ describe("要望とタスク", () => {
     expect(relabel.startedAt).toBe(doing.startedAt); // ステータスが変わらなければそのまま
     const done = await tasks.update(t.id, { status: "done" });
     expect(done).toMatchObject({ startedAt: doing.startedAt, doneAt: done.updatedAt });
+    const checked = await tasks.update(t.id, { checkedAt: "2026-10-09T08:00:00.000Z" });
+    expect(checked.checkedAt).toBe("2026-10-09T08:00:00.000Z");
     const back = await tasks.update(t.id, { status: "doing" });
     expect(back.doneAt).toBeUndefined();
+    expect(back.checkedAt).toBeUndefined(); // 完了から戻したら人の「済み」も消える
     expect((await tasks.update(t.id, { status: "todo" })).startedAt).toBeUndefined();
     // いきなり完了で作っても両方付く。ファイルにも書かれる
     const d = await newTask(ctx, r.id, { title: "B", status: "done" });

@@ -101,6 +101,17 @@ describe("REST API", () => {
     expect((await call("PUT", "/project", { milestones: [] })).status).toBe(200);
   });
 
+  it("完了したタスクに人が「済み」を付け外しできる。完了前は 400", async () => {
+    const { call, rid } = await setup();
+    await call("POST", `/requests/${rid}/tasks`, { title: "A" });
+    expect((await call("PATCH", `/requests/${rid}/tasks/T001`, { checked: true })).status).toBe(400);
+    const done = await call("PATCH", `/requests/${rid}/tasks/T001`, { status: "done", checked: true });
+    expect(done.body.checkedAt).toBeTruthy();
+    expect((await call("PATCH", `/requests/${rid}/tasks/T001`, { checked: false })).body.checkedAt).toBeUndefined();
+    const list = await call("GET", "/requests");
+    expect(list.body[0].tasks).toEqual([expect.objectContaining({ id: "T001", status: "done", doneAt: expect.any(String) })]);
+  });
+
   it("エンジンの状態を返す（Codex が未設定なら Mock）", async () => {
     const { call } = await setup();
     expect((await call("GET", "/engine")).body).toMatchObject({ name: "mock", ok: true });

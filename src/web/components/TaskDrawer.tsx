@@ -5,6 +5,7 @@ import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
+import { DoneMark } from "./Marks.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 
 type Draft = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
@@ -102,6 +103,17 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     }
   }
 
+  async function toggleChecked() {
+    try {
+      await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
+      await load();
+      data.reload();
+      ctx.reload();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
   async function addRel(type: RelationType, target: string, note?: string) {
     try {
       await api.addRelation(id, { type, target, note });
@@ -172,7 +184,18 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               </div>
               <div>
                 <dt className="text-slate-500">完了にした</dt>
-                <dd>{fmtTime(task.doneAt) || "—"}</dd>
+                <dd className="flex items-center gap-1.5">
+                  {fmtTime(task.doneAt) || "—"}
+                  {task.doneAt && (
+                    <button
+                      onClick={() => void toggleChecked()}
+                      title={task.checkedAt ? `済み ${fmtTime(task.checkedAt)}（クリックで外す）` : "クリックで済みにする"}
+                      className="transition hover:scale-125"
+                    >
+                      <DoneMark checked={!!task.checkedAt} />
+                    </button>
+                  )}
+                </dd>
               </div>
             </dl>
           </div>

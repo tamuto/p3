@@ -49,6 +49,7 @@ const HELP = `pcube — 要望ごとにフォルダを分けて管理するフ�
   new <タイトル>                 --body 本文|- --area a --label l --status
   set <T003> キー=値 ...         title status labels areas outputs（空で消す）
   move <T003> <ステータス>        --output URL/パス（成果物を足す）
+  check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
   link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
   unlink <T003> <種類> <相手>
   archive <T003>               .archive/ へ移す
@@ -88,6 +89,7 @@ const OPTIONS = {
   tag: { type: "string", multiple: true },
   title: { type: "string" },
   done: { type: "boolean" },
+  off: { type: "boolean" },
   body: { type: "string" },
   note: { type: "string" },
   confidence: { type: "string" },
@@ -313,6 +315,17 @@ async function main(argv: string[]): Promise<number> {
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
       const next = await col.update(tid, patch, { expectedRev, actor });
       return out.result(next, () => `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`);
+    }
+
+    case "check": {
+      const ref = taskArg(args[0]);
+      const { col, tid } = split(ref);
+      const cur = col.require(tid);
+      if (!o.off && !ctx.ws.project.statuses.some((s) => s.done && s.id === cur.status)) {
+        throw new UsageError(`${ref} はまだ完了していません（済みにできるのは完了したタスクだけ）`);
+      }
+      const next = await col.update(tid, { checkedAt: o.off ? undefined : new Date().toISOString() }, { expectedRev, actor });
+      return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
     case "link":

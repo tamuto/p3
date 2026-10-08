@@ -9,13 +9,14 @@
  * データディレクトリは pcube リポジトリ内に置き（git 管理外）、repo: ".." でリポジトリルートを指す。
  */
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import { MockEngine } from "../src/server/preflight/mockEngine.ts";
 import { PreflightService } from "../src/server/preflight/service.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 import { localToday } from "../src/shared/dates.ts";
 import { DEFAULT_STATUSES, type Request } from "../src/shared/types.ts";
@@ -74,6 +75,26 @@ async function seedDemo(dir: string) {
   };
   const pr = (n: number) => `https://github.com/tamuto/pcube/pull/${n}`;
 
+  /**
+   * 出来事の日時をさかのぼって書く（デモでスケジュールに経過が出るように）。
+   * pcube は日時を書き込んだ瞬間で記録するので、ファイルを直接書き換える。日数は今日からの相対、時刻は 10 時台
+   */
+  const at = (offset: number, hour = 10) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    d.setHours(hour, 0, 0, 0);
+    return d.toISOString();
+  };
+  async function backdate(path: string, fields: Record<string, number | undefined>) {
+    const { data, body } = parseFrontmatter(await readFile(path, "utf8"));
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined) data[k] = at(v, k === "createdAt" ? 9 : k === "checkedAt" ? 17 : 11);
+    data.updatedAt = [data.createdAt, data.startedAt, data.doneAt, data.checkedAt].filter(Boolean).sort().at(-1);
+    await writeFile(path, stringifyFrontmatter(data, body));
+  }
+  const task = (rid: string, tid: string, f: { created?: number; started?: number; done?: number; checked?: number }) =>
+    backdate(ws.tasksOf(rid).path(tid), { createdAt: f.created, startedAt: f.started, doneAt: f.done, checkedAt: f.checked });
+  const req = (rid: string, created: number) => backdate(ws.requests.path(rid), { createdAt: created });
+
   // v0.1: リリース済み
   const store = await request(
     {
@@ -92,6 +113,10 @@ async function seedDemo(dir: string) {
   );
   for (const [i, t] of ["T001", "T002", "T003"].entries()) await work(store, t, "done", pr(i + 1));
   await ws.requests.update(store, { status: "done" }, { actor: "human:tamuto" });
+  await req(store, -24);
+  await task(store, "T001", { created: -23, started: -22, done: -20, checked: -19 });
+  await task(store, "T002", { created: -23, started: -19, done: -17, checked: -16 });
+  await task(store, "T003", { created: -23, started: -15, done: -13, checked: -12 });
 
   // v0.2: 進行中
   const views = await request(
@@ -113,11 +138,17 @@ async function seedDemo(dir: string) {
   await work(views, "T001", "done", pr(4));
   await work(views, "T002", "done", pr(5));
   await work(views, "T003", "doing");
+  await req(views, -9);
+  await task(views, "T001", { created: -8, started: -7, done: -6, checked: -5 });
+  await task(views, "T002", { created: -8, started: -4, done: -2 });
+  await task(views, "T003", { created: -8, started: -1 });
+  await task(views, "T004", { created: -8 });
   // 作業中に AI が見つけて足したタスク
   await ws.tasksOf(views).create(
     { title: "完了カードに成果物のリンクを出す", body: "作業中に見つかった追加の作業。", relations: [{ type: "relates_to", target: "T001" }] },
     "ai:claude",
   );
+  await task(views, "T005", { created: -1 });
 
   const cli = await request(
     {
@@ -139,9 +170,13 @@ async function seedDemo(dir: string) {
   // 要望をまたぐ依存（CLI の find はストアの楽観ロックが前提）
   const t1 = ws.tasksOf(cli).require("T003");
   await ws.tasksOf(cli).update("T003", { relations: [...t1.relations, { type: "depends_on", target: `${store}/T002`, origin: "human" }] }, { actor: "human:tamuto" });
+  await req(cli, -7);
+  await task(cli, "T001", { created: -6, started: -5, done: -3, checked: -3 });
+  await task(cli, "T002", { created: -6, started: -2 });
+  await task(cli, "T003", { created: -6 });
 
   // v0.3: 評価済み（タスク案のレビュー待ち）
-  await request(
+  const mcp = await request(
     {
       title: "pcube を MCP サーバとして公開する",
       milestone: "v0.3",
@@ -155,15 +190,17 @@ async function seedDemo(dir: string) {
     },
     { materialize: false },
   );
+  await req(mcp, -2);
 
   // マイルストーンなし: Preflight 前の下書き
-  await request({
+  const emb = await request({
     title: "埋め込みベクトルによる関連検索",
     tags: ["intel"],
     areas: ["src/server/intel"],
     body: `llmcs の embedding-server (bge-m3, OpenAI 互換 /v1/embeddings) を使い、
 TF-IDF より精度の高い関連タスク検索を行いたい。サーバが無い環境では TF-IDF にフォールバックする。`,
   });
+  await req(emb, -1);
 }
 
 if (existsSync(DEMO_DIR)) {

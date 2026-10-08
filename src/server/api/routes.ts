@@ -34,7 +34,8 @@ const taskInput = z.object({
   outputs: z.array(z.string()).optional(),
   body: z.string().optional(),
 });
-const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional() });
+/** checked: 完了したタスクに人が「済み」を付ける / 外す */
+const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional() });
 const requestInput = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
@@ -189,9 +190,16 @@ export function apiRoutes(ctx: PcubeContext) {
     return c.json({ task, graph: index.neighborhood(task.ref) });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
-    const { rev, ...patch } = taskPatch.parse(await c.req.json());
+    const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
     const id = rid(c);
-    const t = await ws.tasksOf(id).update(tid(c), unnull(patch) as Partial<Task>, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    const col = ws.tasksOf(id);
+    const next: Partial<Task> = unnull(patch) as Partial<Task>;
+    if (checked !== undefined) {
+      const done = ws.project.statuses.some((s) => s.done && s.id === (next.status ?? col.require(tid(c)).status));
+      if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
+      next.checkedAt = checked ? new Date().toISOString() : undefined;
+    }
+    const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     changed("task", id, t.ref);
     return c.json(t);
   });

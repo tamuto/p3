@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Task } from "../../../../shared/types.ts";
+import { DoneMark } from "../../../components/Marks.tsx";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
@@ -37,6 +38,13 @@ function BoardPage() {
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? `${id} は他で更新されました。最新を読み込みました。` : String(e));
     }
+    reload();
+    ctx.reload();
+  }
+
+  /** 完了したタスクに人が「済み」を付ける / 外す */
+  async function toggleChecked(t: Task) {
+    await api.patchTask(t.ref, { checked: !t.checkedAt, rev: t.rev });
     reload();
     ctx.reload();
   }
@@ -94,7 +102,18 @@ function BoardPage() {
                         <Id id={t.id} />
                         {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
                       </div>
-                      <p className="mt-1 leading-snug font-medium">{t.title}</p>
+                      <div className="mt-1 flex items-start gap-2">
+                        <p className="flex-1 leading-snug font-medium">{t.title}</p>
+                        {s.done && (
+                          <button
+                            onClick={(e) => (e.stopPropagation(), void toggleChecked(t))}
+                            title={t.checkedAt ? "済み（クリックで外す）" : "完了（クリックで済みにする）"}
+                            className="mt-1 transition hover:scale-125"
+                          >
+                            <DoneMark checked={!!t.checkedAt} />
+                          </button>
+                        )}
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-1">
                         {blocking.length > 0 && !s.done && (
                           <Badge tone="amber" title={blocking.map((b) => b.target).join(", ")}>
