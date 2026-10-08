@@ -231,6 +231,11 @@ Codex を使えない環境では **Mock エンジン**（要望本文の箇条�
 
 どの画面でも `?task=TASK-0003` でタスク詳細を重ねて開き、`?stream=REQ-0002` で作業ツリー（要望）に絞る。
 
+ページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる
+（`board.tsx` → `/board`、`preflight/$requestId.tsx` → `/preflight/:requestId`、`__root.tsx` は全画面共通の枠）。
+ルート一覧 `src/web/routeTree.gen.ts` は `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される
+（設定は `tsr.config.json`。生成物だが、型検査のためにコミットしておく）。
+
 ## AI エージェントから使う
 
 AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。プロジェクトの `AGENTS.md` / `CLAUDE.md` に書く例は
@@ -259,7 +264,8 @@ src/
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
     api/             REST + SSE、AI 向けマニフェスト
   web/               React + TanStack Router + Tailwind（text-base 基準）
-    router.tsx       ルート定義（URL と検索パラメータ）
+    routes/          ページ（ファイルベースのルーティング。__root.tsx が共通の枠）
+    routeTree.gen.ts ルート一覧（自動生成）
     views/           かんばん・スケジュール・Preflight
     components/      タスク詳細ドロワーほか
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
