@@ -1,0 +1,297 @@
+import { useEffect, useState } from "react";
+import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task } from "../../shared/types.ts";
+import type { AppCtx } from "../App.tsx";
+import { api, ApiError } from "../lib/api.ts";
+import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
+
+type Draft = Pick<Task, "title" | "status" | "assignee" | "estimate" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string };
+
+const toDraft = (t: Task): Draft => ({
+  title: t.title,
+  status: t.status,
+  assignee: t.assignee,
+  estimate: t.estimate,
+  start: t.start,
+  due: t.due,
+  progress: t.progress,
+  body: t.body,
+  labels: t.labels.join(", "),
+  areas: t.areas.join(", "),
+});
+
+const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+
+export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onClose: () => void }) {
+  const [task, setTask] = useState<Task>();
+  const [graph, setGraph] = useState<Neighborhood>();
+  const [draft, setDraft] = useState<Draft>();
+  const [dirty, setDirty] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [relType, setRelType] = useState<RelationType>("depends_on");
+  const [relTarget, setRelTarget] = useState("");
+
+  const load = async () => {
+    const r = await api.task(id);
+    setTask(r.task);
+    setGraph(r.graph);
+    if (!dirty) setDraft(toDraft(r.task));
+  };
+
+  useEffect(() => {
+    setDirty(false);
+    setMsg(null);
+    void api.task(id).then((r) => {
+      setTask(r.task);
+      setGraph(r.graph);
+      setDraft(toDraft(r.task));
+    });
+  }, [id]);
+
+  // 外部更新の反映。編集中なら上書きせず通知だけ
+  useEffect(() => {
+    if (!task) return;
+    void api.task(id).then((r) => {
+      if (r.task.rev !== task.rev && dirty) setMsg(`他で更新されました (rev ${r.task.rev}${r.task.updatedBy ? ` by ${r.task.updatedBy}` : ""})`);
+      setGraph(r.graph);
+      if (!dirty) {
+        setTask(r.task);
+        setDraft(toDraft(r.task));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.tick]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!task || !draft || !graph) return null;
+
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    setDraft({ ...draft, [k]: v });
+    setDirty(true);
+  };
+  const title = (tid: string) => ctx.tasks.find((t) => t.id === tid)?.title ?? ctx.requests.find((r) => r.id === tid)?.title ?? "";
+  const open = (tid: string) => (tid.startsWith("REQ") ? ctx.openRequest(tid) : ctx.openTask(tid));
+
+  async function save() {
+    try {
+      await api.patchTask(id, {
+        ...draft!,
+        assignee: draft!.assignee || null,
+        estimate: draft!.estimate ?? null,
+        start: draft!.start || null,
+        due: draft!.due || null,
+        progress: draft!.progress ?? null,
+        labels: split(draft!.labels),
+        areas: split(draft!.areas),
+        rev: task!.rev,
+      });
+      setDirty(false);
+      setMsg(null);
+      await load();
+      ctx.reload();
+    } catch (e) {
+      setMsg(e instanceof ApiError && e.status === 409 ? "競合: 他で更新されています。破棄して読み直してください。" : String((e as Error).message));
+    }
+  }
+
+  async function addRel(type: RelationType, target: string, note?: string) {
+    try {
+      await api.addRelation(id, { type, target, note });
+      setRelTarget("");
+      setMsg(null);
+      await load();
+      ctx.reload();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
+  async function removeRel(e: GraphEdge) {
+    await api.removeRelation(id, { type: e.type as RelationType, target: e.to });
+    await load();
+    ctx.reload();
+  }
+
+  const num = (v: string) => (v === "" ? undefined : Number(v));
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20" onClick={onClose}>
+      <aside
+        onClick={(e) => e.stopPropagation()}
+        className="flex h-full w-full max-w-2xl flex-col bg-white shadow-xl dark:bg-slate-900"
+      >
+        <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+          <Id id={task.id} />
+          {task.request && (
+            <button className="font-mono text-sm text-indigo-600 hover:underline" onClick={() => ctx.openRequest(task.request!)}>
+              {task.request}
+            </button>
+          )}
+          <span className="text-sm text-slate-400">
+            rev {task.rev} · {task.updatedBy ?? "?"}
+          </span>
+          <div className="ml-auto flex gap-2">
+            {dirty && (
+              <Button variant="ghost" onClick={() => (setDirty(false), setDraft(toDraft(task)), void load())}>
+                破棄
+              </Button>
+            )}
+            <Button variant="primary" disabled={!dirty} onClick={save}>
+              保存
+            </Button>
+            <Button variant="ghost" onClick={onClose}>
+              ✕
+            </Button>
+          </div>
+        </div>
+        {msg && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{msg}</div>}
+
+        <div className="flex-1 space-y-6 overflow-y-auto p-5">
+          <input className={`${inputCls} text-lg font-semibold`} value={draft.title} onChange={(e) => set("title", e.target.value)} />
+
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="ステータス">
+              <select className={inputCls} value={draft.status} onChange={(e) => set("status", e.target.value)}>
+                {ctx.info.project.statuses.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="担当">
+              <input className={inputCls} value={draft.assignee ?? ""} onChange={(e) => set("assignee", e.target.value)} />
+            </Field>
+            <Field label="見積り (人日)">
+              <input type="number" step="0.5" className={inputCls} value={draft.estimate ?? ""} onChange={(e) => set("estimate", num(e.target.value))} />
+            </Field>
+            <Field label="開始">
+              <input type="date" className={inputCls} value={draft.start ?? ""} onChange={(e) => set("start", e.target.value)} />
+            </Field>
+            <Field label="期限">
+              <input type="date" className={inputCls} value={draft.due ?? ""} onChange={(e) => set("due", e.target.value)} />
+            </Field>
+            <Field label="進捗 %">
+              <input type="number" min={0} max={100} className={inputCls} value={draft.progress ?? ""} onChange={(e) => set("progress", num(e.target.value))} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ラベル (カンマ区切り)">
+              <input className={inputCls} value={draft.labels} onChange={(e) => set("labels", e.target.value)} />
+            </Field>
+            <Field label="影響領域 areas (カンマ区切り)">
+              <input className={`${inputCls} font-mono`} value={draft.areas} onChange={(e) => set("areas", e.target.value)} />
+            </Field>
+          </div>
+          <Field label="本文 (Markdown)">
+            <textarea rows={6} className={`${inputCls} font-mono`} value={draft.body} onChange={(e) => set("body", e.target.value)} />
+          </Field>
+
+          <Section title="関係（明示）">
+            {graph.outgoing.length + graph.incoming.length === 0 && <Empty>明示的な関係はありません</Empty>}
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {graph.outgoing.map((e) => (
+                <li key={`o-${e.type}-${e.to}`} className="flex items-center gap-2 py-1.5">
+                  <Badge tone="indigo">{RELATION_TYPES[e.type as RelationType]?.label ?? e.type}</Badge>
+                  <Id id={e.to} onClick={() => open(e.to)} />
+                  <span className="truncate">{title(e.to)}</span>
+                  <Origin e={e} />
+                  {e.origin !== "index" && (
+                    <button className="ml-auto text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(e)}>
+                      削除
+                    </button>
+                  )}
+                </li>
+              ))}
+              {graph.incoming.map((e) => (
+                <li key={`i-${e.type}-${e.from}`} className="flex items-center gap-2 py-1.5">
+                  <Badge tone="violet">{RELATION_TYPES[e.type as RelationType]?.inverse ?? e.type}</Badge>
+                  <Id id={e.from} onClick={() => open(e.from)} />
+                  <span className="truncate">{title(e.from)}</span>
+                  <Origin e={e} />
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2 pt-1">
+              <select className={`${inputCls} !w-40 shrink-0`} value={relType} onChange={(e) => setRelType(e.target.value as RelationType)}>
+                {relationTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {RELATION_TYPES[t].label}
+                  </option>
+                ))}
+              </select>
+              <select className={inputCls} value={relTarget} onChange={(e) => setRelTarget(e.target.value)}>
+                <option value="">対象を選択…</option>
+                {[...ctx.tasks, ...ctx.requests]
+                  .filter((t) => t.id !== id)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.id} {t.title}
+                    </option>
+                  ))}
+              </select>
+              <Button className="shrink-0 whitespace-nowrap" disabled={!relTarget} onClick={() => addRel(relType, relTarget)}>
+                追加
+              </Button>
+            </div>
+          </Section>
+
+          <Section title="関係しそう（暗黙: 領域・内容の近さ）">
+            {graph.implicit.length === 0 ? (
+              <Empty>候補はありません</Empty>
+            ) : (
+              <ul className="space-y-1.5">
+                {graph.implicit.map((r) => (
+                  <li key={r.id} className="flex items-start gap-2">
+                    <span className="w-12 pt-0.5 text-right font-mono text-sm text-slate-400">{r.score.toFixed(2)}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Id id={r.id} onClick={() => open(r.id)} />
+                        <span className="truncate">{r.title}</span>
+                      </div>
+                      <p className="text-sm text-slate-500">{r.reasons.join(" / ")}</p>
+                    </div>
+                    <Button variant="ghost" className="text-sm" onClick={() => addRel("relates_to", r.id, r.reasons.join(" / "))}>
+                      ＋関連付け
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="影響範囲（推移的）">
+            {graph.impactScope.length === 0 ? (
+              <Empty>このタスクの変更が波及する項目はありません</Empty>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {graph.impactScope.map((x) => (
+                  <button key={x} onClick={() => open(x)} className="rounded bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
+                    <span className="font-mono text-sm">{x}</span> {title(x)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <p className="font-mono text-sm text-slate-400">{ctx.info.dataDir}/tasks/{task.id}.md</p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function Origin({ e }: { e: GraphEdge }) {
+  if (e.origin === "human") return null;
+  const label = e.origin === "index" ? "構造" : e.origin === "ai" ? "AI" : "preflight";
+  return (
+    <Badge tone={e.origin === "index" ? "slate" : "amber"} title={e.note}>
+      {label}
+      {e.weight !== undefined && ` ${Math.round(e.weight * 100)}%`}
+    </Badge>
+  );
+}
