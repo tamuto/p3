@@ -1,19 +1,10 @@
-import {
-  DEFAULT_STATUSES,
-  RELATION_TYPES,
-  type ProjectConfig,
-  type Relation,
-  type Request,
-  type RequestStatus,
-  type Task,
-} from "../../shared/types.ts";
+import { DEFAULT_STATUSES, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type Request, type RequestStatus, type Task } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
 const num = (v: unknown): number | undefined => (v === undefined || v === null || v === "" ? undefined : Number(v));
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? [v] : []);
 /** YAML は日付を Date にしてしまうので YYYY-MM-DD に戻す */
-const date = (v: unknown): string | undefined =>
-  v instanceof Date ? v.toISOString().slice(0, 10) : str(v);
+const date = (v: unknown): string | undefined => (v instanceof Date ? v.toISOString().slice(0, 10) : str(v));
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : (str(v) ?? new Date(0).toISOString()));
 
 export function normalizeRelations(v: unknown): Relation[] {
@@ -30,15 +21,18 @@ export function normalizeRelations(v: unknown): Relation[] {
     }));
 }
 
-export function normalizeTask(d: Record<string, unknown>, body: string, id: string): Task {
-  return {
+/** 要望 requestId のタスクとして読む（request / ref は場所から決まる） */
+export const normalizeTaskIn =
+  (requestId: string) =>
+  (d: Record<string, unknown>, body: string, id: string): Task => ({
     id,
+    request: requestId,
+    ref: `${requestId}/${id}`,
     title: str(d.title) ?? id,
-    status: str(d.status) ?? "backlog",
-    request: str(d.request),
-    assignee: str(d.assignee),
+    status: str(d.status) ?? DEFAULT_STATUSES[0].id,
     labels: strs(d.labels),
     areas: strs(d.areas),
+    outputs: strs(d.outputs),
     estimate: num(d.estimate),
     start: date(d.start),
     due: date(d.due),
@@ -49,15 +43,12 @@ export function normalizeTask(d: Record<string, unknown>, body: string, id: stri
     updatedAt: iso(d.updatedAt),
     updatedBy: str(d.updatedBy),
     body,
-  };
-}
+  });
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
-  "id", "title", "status", "request", "assignee", "labels", "areas",
+  "id", "title", "status", "labels", "areas", "outputs",
   "estimate", "start", "due", "progress", "relations", "rev", "createdAt", "updatedAt", "updatedBy",
 ];
-
-const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "accepted", "rejected"];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
   const ws = d.workstream as Record<string, unknown> | undefined;
@@ -91,24 +82,12 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
         done: Boolean(s.done),
       }))
     : DEFAULT_STATUSES;
-  const members = Array.isArray(d.members)
-    ? (d.members as unknown[])
-        .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && typeof (m as Record<string, unknown>).id === "string")
-        .map((m) => ({
-          id: String(m.id),
-          name: str(m.name) ?? String(m.id),
-          email: str(m.email),
-          role: str(m.role),
-          kind: m.kind === "ai" ? ("ai" as const) : ("human" as const),
-        }))
-    : [];
   const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
     repo: str(d.repo) ?? ".",
     docs: strs(d.docs),
-    members,
     statuses,
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     worktreeDir: str(d.worktreeDir) ?? ".worktrees",

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import type { Member, ProjectConfig, StatusDef } from "../../shared/types.ts";
+import type { ProjectConfig, StatusDef } from "../../shared/types.ts";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
@@ -10,7 +10,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 /**
- * プロジェクト設定（project.yaml）の編集。CLI の pcube config / pcube member と同じ内容。
+ * プロジェクト設定（project.yaml）の編集。CLI の pcube config と同じ内容。
  * ファイルのコメントは保存しても残る。
  */
 function SettingsPage() {
@@ -29,8 +29,8 @@ function SettingsPage() {
     setDirty(true);
     setMsg(null);
   };
-  const assigned = (id: string) => ctx.tasks.filter((t) => t.assignee === id).length;
-  const used = (id: string) => ctx.tasks.filter((t) => t.status === id).length;
+  /** その列にあるタスクの数（全要望） */
+  const used = (id: string) => ctx.requests.reduce((n, p) => n + (p.counts[id] ?? 0), 0);
 
   async function save() {
     try {
@@ -44,8 +44,6 @@ function SettingsPage() {
     }
   }
 
-  const updateMember = (i: number, patch: Partial<Member>) =>
-    set("members", draft.members.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const updateStatus = (i: number, patch: Partial<StatusDef>) =>
     set("statuses", draft.statuses.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const moveStatus = (i: number, d: -1 | 1) => {
@@ -92,56 +90,11 @@ function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="メンバー">
-        <p className="text-slate-500">
-          担当者の候補になります。メールが git の user.email と一致すると、CLI での変更者が自動でそのメンバーになります。
-        </p>
-        <div className="overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-800">
-          <table className="w-full">
-            <thead className="bg-slate-50 text-left text-sm text-slate-500 dark:bg-slate-900">
-              <tr>
-                <th className="px-3 py-2 font-medium">id</th>
-                <th className="px-3 py-2 font-medium">表示名</th>
-                <th className="px-3 py-2 font-medium">メール</th>
-                <th className="px-3 py-2 font-medium">役割</th>
-                <th className="px-3 py-2 font-medium">AI</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-950">
-              {draft.members.map((m, i) => (
-                <tr key={i}>
-                  <td className="px-2 py-1.5">
-                    <input className={`${inputCls} font-mono`} value={m.id} onChange={(e) => updateMember(i, { id: e.target.value })} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input className={inputCls} value={m.name} onChange={(e) => updateMember(i, { name: e.target.value })} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input className={inputCls} value={m.email ?? ""} onChange={(e) => updateMember(i, { email: e.target.value || undefined })} />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <input className={inputCls} value={m.role ?? ""} placeholder="owner など" onChange={(e) => updateMember(i, { role: e.target.value || undefined })} />
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <input type="checkbox" checked={m.kind === "ai"} onChange={(e) => updateMember(i, { kind: e.target.checked ? "ai" : "human" })} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                    <span className="mr-2 text-sm text-slate-400">担当 {assigned(m.id)}</span>
-                    <Button variant="ghost" onClick={() => set("members", draft.members.filter((_, j) => j !== i))}>
-                      削除
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <Button onClick={() => set("members", [...draft.members, { id: "", name: "", kind: "human" }])}>＋ メンバーを追加</Button>
-      </Section>
-
       <Section title="かんばんの列（ステータス）">
-        <p className="text-slate-500">id はタスクファイルの status に書かれる値です。使用中の列は消せません。</p>
+        <p className="text-slate-500">
+          id はタスクファイルの status に書かれる値です。使用中の列は消せません。タスクは AI か人が実施するので、
+          「まだ動いていない / 作業中 / 完了（PR・MR・ドキュメントが出た）」程度の少ない列を勧めます。
+        </p>
         <div className="space-y-2">
           {draft.statuses.map((s, i) => (
             <div key={i} className="flex items-center gap-2">

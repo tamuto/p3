@@ -1,11 +1,18 @@
 /**
- * pcube のドメイン型。サーバ・Web・AI API で共有する。
- * 永続化はすべてファイル（1エンティティ = 1ファイル）で行う。
+ * pcube のドメイン型。サーバ・CLI・Web で共有する。
+ *
+ * 作業の単位は「要望」。要望ごとにフォルダを作り、そこから生まれたタスクや Preflight の記録は
+ * すべてその下に置く。タスクは要望をまたいで移動しないので、要望の中で素直な連番（T001, T002, ...）にする。
+ *
+ *   .pcube/requests/<要望ID>/request.md
+ *   .pcube/requests/<要望ID>/tasks/T001.md
+ *   .pcube/requests/<要望ID>/preflight/<run>/...
  */
 
 // ---------------------------------------------------------------------------
-// Relations: タスク間の関係は「多元的」なので、型付きの有向エッジとして持つ。
-// エッジは source 側ファイルの frontmatter に保存し、逆方向はインデックスで導出する。
+// 関係: 多元的なので、型付きの有向エッジとして持つ。
+// エッジは張った側のファイルに書き、逆向きはインデックスで導く。
+// 相手の書き方（参照）は shared/refs.ts を参照。
 // ---------------------------------------------------------------------------
 
 export const RELATION_TYPES = {
@@ -21,12 +28,12 @@ export const RELATION_TYPES = {
 export type RelationType = keyof typeof RELATION_TYPES;
 export const relationTypes = Object.keys(RELATION_TYPES) as RelationType[];
 
-/** 誰がそのエッジを張ったか。AI 由来のものは confidence を持ち、人がレビューできる。 */
+/** 誰がそのエッジを張ったか。AI 由来のものは confidence を持ち、人が見直せる。 */
 export type RelationOrigin = "human" | "ai" | "preflight";
 
 export interface Relation {
   type: RelationType;
-  /** TASK-xxxx / REQ-xxxx */
+  /** 同じ要望のタスクは "T003"、別の要望のタスクは "<要望ID>/T003"、要望そのものは "<要望ID>" */
   target: string;
   note?: string;
   origin?: RelationOrigin;
@@ -35,7 +42,7 @@ export interface Relation {
 }
 
 // ---------------------------------------------------------------------------
-// Task
+// タスク
 // ---------------------------------------------------------------------------
 
 export interface StatusDef {
@@ -45,24 +52,30 @@ export interface StatusDef {
   done?: boolean;
 }
 
+/**
+ * タスクは AI か人が実施する。人から見て必要なのは「まだ動いていない / AI が処理中 / 処理が終わった」だけ。
+ * 終わったもの（PR・MR・ドキュメント）のレビューは成果物の側で行うので、タスクとしては完了でよい。
+ */
 export const DEFAULT_STATUSES: StatusDef[] = [
-  { id: "backlog", label: "Backlog" },
-  { id: "ready", label: "Ready" },
-  { id: "in_progress", label: "In Progress" },
-  { id: "review", label: "Review" },
-  { id: "done", label: "Done", done: true },
+  { id: "todo", label: "未着手" },
+  { id: "doing", label: "作業中" },
+  { id: "done", label: "完了", done: true },
 ];
 
 export interface Task {
+  /** 要望の中での ID（T001） */
   id: string;
+  /** 所属する要望の ID（フォルダから決まる。ファイルには書かない） */
+  request: string;
+  /** プロジェクト全体で一意な参照（<要望ID>/T001。ファイルには書かない） */
+  ref: string;
   title: string;
   status: string;
-  /** 由来する要望（= 作業ツリー単位） */
-  request?: string;
-  assignee?: string;
   labels: string[];
-  /** 影響するコード領域・コンポーネント（例: "src/server/store", "auth"）。暗黙的関連の根拠になる */
+  /** 影響するコード領域（例: "src/server/store"）。暗黙の関連の根拠になる */
   areas: string[];
+  /** 成果物（PR / MR の URL、ドキュメントのパスなど） */
+  outputs: string[];
   /** 見積り（人日） */
   estimate?: number;
   /** YYYY-MM-DD */
@@ -72,20 +85,22 @@ export interface Task {
   /** 0..100 */
   progress?: number;
   relations: Relation[];
-  /** 楽観ロック用リビジョン。AI と人の同時編集を検出する */
+  /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
   createdAt: string;
   updatedAt: string;
+  /** 変更者（ai:claude / human:<git の user.name>） */
   updatedBy?: string;
   /** Markdown 本文 */
   body: string;
 }
 
 // ---------------------------------------------------------------------------
-// Request (要望) — preflight の入力。1要望 = 1作業ツリー(ブランチ)
+// 要望 — 作業の単位。1要望 = 1フォルダ = 1作業ツリー（ブランチ）
 // ---------------------------------------------------------------------------
 
-export type RequestStatus = "draft" | "preflight" | "reviewed" | "accepted" | "rejected";
+export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "done" | "rejected";
+export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "done", "rejected"];
 
 export interface Workstream {
   branch: string;
@@ -94,10 +109,12 @@ export interface Workstream {
 }
 
 export interface Request {
+  /** フォルダ名（作成日 + 乱数。例: 261009-k7m3x） */
   id: string;
   title: string;
   status: RequestStatus;
   areas: string[];
+  /** 別の要望・タスクとの関係（target は "<要望ID>" か "<要望ID>/T003"） */
   relations: Relation[];
   workstream?: Workstream;
   /** 最新 preflight run */
@@ -109,6 +126,25 @@ export interface Request {
   body: string;
 }
 
+/** 進捗の画面・CLI 用の集計 */
+export interface RequestProgress {
+  request: Request;
+  /** ステータスごとのタスク数 */
+  counts: Record<string, number>;
+  total: number;
+  done: number;
+  /** 見積り（人日）の合計と完了分 */
+  estimate: number;
+  estimateDone: number;
+  /** スケジュール上の期間（タスクが無ければ無し） */
+  start?: string;
+  end?: string;
+  /** 依存先より前に始まっているタスクがある */
+  conflicts: number;
+  /** 最後に変更された日時（要望かタスク） */
+  updatedAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Preflight
 // ---------------------------------------------------------------------------
@@ -116,7 +152,7 @@ export interface Request {
 export type Verdict = "go" | "clarify" | "no_go";
 
 export interface ProposedTask {
-  /** run 内のローカルキー (T1, T2, ...) */
+  /** run 内のキー (D1, D2, ...)。タスク化すると要望の連番（T00x）が振られる */
   key: string;
   title: string;
   description: string;
@@ -124,7 +160,7 @@ export interface ProposedTask {
   areas: string[];
   /** 同じ run 内の他の key */
   dependsOn: string[];
-  /** 既存タスク/要望への関係 */
+  /** 既存の要望/タスクへの関係（target は "<要望ID>" か "<要望ID>/T003"） */
   relations: Relation[];
   /** 取り込み対象か（UI で切り替え） */
   include: boolean;
@@ -138,12 +174,13 @@ export interface PreflightAssessment {
   risks: string[];
   questions: string[];
   areas: string[];
-  /** 既存の要望/タスクへの影響 */
+  /** 既存の要望/タスクへの影響（target は "<要望ID>" か "<要望ID>/T003"） */
   impacts: { target: string; type: RelationType; reason: string; confidence: number }[];
 }
 
 export interface RelatedItem {
-  id: string;
+  /** "<要望ID>" か "<要望ID>/T003" */
+  ref: string;
   title: string;
   kind: "task" | "request";
   score: number;
@@ -178,21 +215,8 @@ export interface PreflightLogEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Project / graph
+// プロジェクト / グラフ
 // ---------------------------------------------------------------------------
-
-export interface Member {
-  /** 担当者・変更者として使う短い名前（assignee: tamuto, updatedBy: human:tamuto） */
-  id: string;
-  /** 表示名 */
-  name: string;
-  /** git の user.email と一致すれば、CLI の変更者を自動でこのメンバーにする */
-  email?: string;
-  /** 役割（自由記述: owner, developer, reviewer など） */
-  role?: string;
-  /** AI エージェントも担当者になれる（updatedBy: ai:<id>） */
-  kind: "human" | "ai";
-}
 
 export interface ProjectConfig {
   name: string;
@@ -202,7 +226,6 @@ export interface ProjectConfig {
   repo: string;
   /** プロジェクトのドキュメント（リポジトリ相対のファイル/フォルダ）。Preflight で最初に読ませる */
   docs: string[];
-  members: Member[];
   statuses: StatusDef[];
   /** ブランチ命名規則。{id} {slug} を置換 */
   branchPattern: string;
@@ -213,26 +236,29 @@ export interface ProjectConfig {
   };
 }
 
+/** グラフの辺。from / to は絶対参照（"<要望ID>" か "<要望ID>/T003"） */
 export interface GraphEdge {
   from: string;
   to: string;
-  type: RelationType | "implicit";
+  type: RelationType;
   origin: RelationOrigin | "index";
   weight?: number;
   note?: string;
 }
 
 export interface Neighborhood {
-  id: string;
+  ref: string;
   outgoing: GraphEdge[];
   incoming: GraphEdge[];
   /** 明示エッジは無いが、領域・内容の類似から推定された関連 */
   implicit: RelatedItem[];
-  /** depends_on / impacts / part_of を逆にたどった影響範囲 */
+  /** depends_on / impacts / part_of を逆にたどった影響範囲（絶対参照） */
   impactScope: string[];
+  /** 上に出てくる参照のタイトル（別の要望のタスクも画面に名前で出すため） */
+  titles: Record<string, string>;
 }
 
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "project"; id?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "project"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };

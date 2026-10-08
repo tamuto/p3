@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
-import { RELATION_TYPES, relationTypes, type Relation, type RelationType, type Task } from "../shared/types.ts";
+import { absRef } from "../shared/refs.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type Task } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
-import { addRelation, listTasks, normalizeId, removeRelation, resolve } from "../server/ops.ts";
+import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
 import { DATA_DIR_NAME, locateDataDir } from "../server/store/locate.ts";
 import { table } from "./format.ts";
-import { config, init, member, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, resolveActor, UsageError } from "./project.ts";
 
 /**
  * pcube CLI。人も AI エージェントも使う。
@@ -16,48 +17,51 @@ import { config, init, member, resolveActor, UsageError } from "./project.ts";
  * サーバを経由せず、データディレクトリ（.pcube/）のファイルを直接読み書きする。
  * だから認証は要らず、サーバが動いていれば変更は監視経由でそのまま画面に反映される。
  * AI は `--json` で機械可読な出力を得て、`PCUBE_ACTOR=ai:<name>` で変更者を名乗る。
+ *
+ * 作業の単位は要望。タスクの操作は「今の要望」に対して行う。今の要望は --req、PCUBE_REQUEST、
+ * または要望の作業ツリー（ブランチ req/<要望ID>-...）から決まる。
  */
 
-const HELP = `pcube — ファイルベースのタスク管理 CLI
+const HELP = `pcube — 要望ごとにフォルダを分けて管理するファイルベースのタスク管理
 
 使い方: pcube <コマンド> [引数] [オプション]
 
 プロジェクト
-  init                                  .pcube/ を作り初期設定する（端末では対話式）
-                                        --name --description --docs a,b --member id:名前:メール
-                                        --instructions 観点 --agents（AGENTS.md に追記） --yes
-  config [set キー=値 ...]               設定の表示・変更  name description docs branchPattern
-                                        worktreeDir instructions repo
-  member [ls | add <id> | rm <id>]      メンバー  --name 表示名 --email メール --role 役割 --ai
-  whoami                                CLI の変更者（git の user.email からメンバーを判定）
-  serve [--port 4310] [--host 0.0.0.0]  ブラウザ用のビューアを起動
+  init                         .pcube/ を作り初期設定する（端末では対話式）
+                               --name --description --docs a,b --instructions 観点 --agents --yes
+  config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
+  progress                     要望ごとの進捗
+  whoami                       変更者と今の要望
+  serve [--port] [--host]      ブラウザ用のビューアを起動
 
-参照
-  ls [tasks|requests]                   一覧  --status s1,s2  --request REQ  --area パス  -q 語句
-  show <ID|語句>                         詳細と関係（明示・暗黙・影響範囲）
-  find <語句>                            ID・タイトル・内容から対象を探す
-  impact <ID>                           変更が波及する項目（推移的）
+要望
+  request new <タイトル>         --body 本文|- --area パス
+  request ls                   一覧（--status draft,active ...）
+  request show [<要望>]
+  request set [<要望>] キー=値   title status areas（status: ${REQUEST_STATUSES.join(" ")}）
+  request archive <要望>
 
-作成・更新
-  new task <タイトル>                    --request REQ --status s --area a --label l --estimate 人日
-                                        --start YYYY-MM-DD --due YYYY-MM-DD --assignee 名前 --body 本文|-
-  new request <タイトル>                 --area a --body 本文|-
-  set <ID> キー=値 ...                   title status assignee estimate start due progress request labels areas
-                                        （値を空にすると消す。labels/areas はカンマ区切り）
-  move <ID> <ステータス>                  かんばんの列を移動
-  link <ID> <種類> <相手ID>              関係を張る  --note 理由 --confidence 0..1
-  unlink <ID> <種類> <相手ID>            関係を外す
-  archive <ID>                          .archive/ へ移す
+タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
+  ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
+  show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
+  new <タイトル>                 --body 本文|- --area a --label l --estimate 人日 --start --due --status
+  set <T003> キー=値 ...         title status estimate start due progress labels areas outputs（空で消す）
+  move <T003> <ステータス>        --output URL/パス（成果物を足す）
+  link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
+  unlink <T003> <種類> <相手>
+  archive <T003>               .archive/ へ移す
+  find <語句> / impact <T003>    対象を探す / 変更が波及する項目
 
 Preflight
-  preflight <REQ>                       評価・細分化を実行し、完了まで待つ  --engine codex|mock
-  drafts <REQ>                          最新の評価とタスク案  --run PF-...
-  accept <REQ>                          タスク案をタスク化  --run PF-...  --only T1,T2  --skip T3
+  preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
+  drafts [<要望>]               最新の評価とタスク案  --run PF-...
+  accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
 
 共通オプション
   --dir パス     データディレクトリ（既定: git のメインの作業ツリー → 上位へ辿って .pcube/ を探す）
+  --req 要望     今の要望（既定: $PCUBE_REQUEST → 要望の作業ツリー）。ID の一部（k7m3x）でもよい
   --json        JSON で出力（AI 向け）
-  --actor 名前   変更者（既定: $PCUBE_ACTOR → git の user.email が一致するメンバー → human:$USER）
+  --actor 名前   変更者（既定: $PCUBE_ACTOR → human:<git の user.name>）
   --rev 番号     楽観ロック。指定した rev でなければ更新しない（set / move）
 
 関係の種類: ${relationTypes.map((t) => `${t}(${RELATION_TYPES[t].label})`).join(" ")}
@@ -65,19 +69,21 @@ Preflight
 
 const OPTIONS = {
   dir: { type: "string" },
+  req: { type: "string" },
+  request: { type: "string" },
   json: { type: "boolean" },
   actor: { type: "string" },
   rev: { type: "string" },
   help: { type: "boolean", short: "h" },
+  all: { type: "boolean" },
   status: { type: "string" },
-  request: { type: "string" },
   area: { type: "string", multiple: true },
   label: { type: "string", multiple: true },
+  output: { type: "string", multiple: true },
   q: { type: "string", short: "q" },
   estimate: { type: "string" },
   start: { type: "string" },
   due: { type: "string" },
-  assignee: { type: "string" },
   body: { type: "string" },
   note: { type: "string" },
   confidence: { type: "string" },
@@ -89,13 +95,9 @@ const OPTIONS = {
   repo: { type: "string" },
   description: { type: "string" },
   docs: { type: "string" },
-  member: { type: "string", multiple: true },
   instructions: { type: "string" },
   agents: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
-  email: { type: "string" },
-  role: { type: "string" },
-  ai: { type: "boolean" },
   port: { type: "string" },
   host: { type: "string" },
 } as const;
@@ -117,7 +119,6 @@ function joinValues(argv: string[]): string[] {
   return out;
 }
 
-
 async function main(argv: string[]): Promise<number> {
   const { values: o, positionals } = parse(argv);
   const [cmd, ...args] = positionals;
@@ -126,23 +127,16 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   loadMachineEnv();
+  const cwd = process.cwd();
+
   if (cmd === "init") {
-    const text = await init({
-      cwd: process.cwd(),
-      dir: o.dir,
-      name: o.name,
-      description: o.description,
-      docs: o.docs,
-      members: o.member,
-      instructions: o.instructions,
-      agents: o.agents,
-      yes: o.yes,
-    });
-    console.log(text);
+    console.log(
+      await init({ cwd, dir: o.dir, name: o.name, description: o.description, docs: o.docs, instructions: o.instructions, agents: o.agents, yes: o.yes }),
+    );
     return 0;
   }
 
-  const dataDir = locateDataDir(process.cwd(), o.dir ?? process.env.PCUBE_DATA_DIR);
+  const dataDir = locateDataDir(cwd, o.dir ?? process.env.PCUBE_DATA_DIR);
   if (!dataDir) throw new UsageError(`${DATA_DIR_NAME}/ が見つかりません。リポジトリのルートで \`pcube init\` してください`);
 
   if (cmd === "serve") {
@@ -157,20 +151,32 @@ async function main(argv: string[]): Promise<number> {
 
   const ctx = await openProject(dataDir);
   const out = new Output(o.json ?? false);
-  const actor = resolveActor(ctx.ws, o.actor ?? process.env.PCUBE_ACTOR, process.cwd());
-  /** メンバー以外を担当にしたら警告だけ出す（メンバー未登録のプロジェクトでは何もしない） */
-  const checkAssignee = (a: string | undefined) => {
-    if (a && ctx.ws.project.members.length && !ctx.ws.member(a)) {
-      process.stderr.write(`警告: ${a} はメンバーにいません（pcube member add ${a}）\n`);
-    }
-  };
-  const id = (raw: string | undefined, what = "ID") => {
-    if (!raw) throw new UsageError(`${what} を指定してください`);
-    const found = normalizeId(ctx, raw, what === "要望" ? "REQ" : "TASK");
-    if (!found) throw new NotFoundError(raw);
-    return found;
-  };
+  const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
+  const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
+
+  /** 要望の引数（省略時は今の要望） */
+  const requestArg = (raw: string | undefined): string => {
+    if (raw) {
+      const id = resolveRequestId(ctx, raw);
+      if (!id) throw new NotFoundError(raw);
+      return id;
+    }
+    if (!current) throw new UsageError("要望を指定してください（引数か --req。要望の作業ツリーの中なら省略可）");
+    return current;
+  };
+  /** タスクの引数（T003 は今の要望の中） */
+  const taskArg = (raw: string | undefined): string => {
+    if (!raw) throw new UsageError("タスクを指定してください（T003 / <要望>/T003）");
+    const ref = resolveRef(ctx, raw, current);
+    if (ref?.includes("/")) return ref;
+    if (!ref && !raw.includes("/") && !current) throw new UsageError(`${raw}: 要望を --req で指定してください`);
+    throw new NotFoundError(raw);
+  };
+  const split = (ref: string) => {
+    const [rid, tid] = ref.split("/");
+    return { col: ctx.ws.tasksOf(rid), rid, tid };
+  };
 
   switch (cmd) {
     case "config": {
@@ -178,172 +184,173 @@ async function main(argv: string[]): Promise<number> {
       return out.result(r.data, () => r.text);
     }
 
-    case "member":
-    case "members": {
-      const r = await member(ctx.ws, args, o);
-      return out.result(r.data, () => r.text);
+    case "whoami":
+      return out.result({ actor, request: current ?? null }, () =>
+        [`変更者  ${actor}`, `要望    ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`].join("\n"),
+      );
+
+    case "progress": {
+      const ps = progress(ctx);
+      return out.result(ps, () =>
+        table([
+          ["要望", "状態", "進捗", ...ctx.ws.project.statuses.map((s) => s.label), "期間", "タイトル"],
+          ...ps.map((p) => [
+            p.request.id,
+            p.request.status,
+            `${bar(p.total ? p.done / p.total : 0)} ${p.done}/${p.total}`,
+            ...ctx.ws.project.statuses.map((s) => String(p.counts[s.id] ?? 0)),
+            p.start ? `${p.start.slice(5)}〜${p.end!.slice(5)}${p.conflicts ? " !" : ""}` : "",
+            p.request.title,
+          ]),
+        ]),
+      );
     }
 
-    case "whoami": {
-      const m = ctx.ws.member(actor);
-      return out.result({ actor, member: m ?? null }, () => `${actor}${m ? `  ${m.name}${m.role ? ` (${m.role})` : ""}` : "  （メンバー未登録）"}`);
-    }
+    // --- 要望 ---------------------------------------------------------------
+    case "request":
+    case "req":
+      return requestCommand(ctx, out, args, o, actor, requestArg, expectedRev);
 
+    // --- タスク -------------------------------------------------------------
     case "ls":
     case "list": {
-      if (args[0] === "requests" || args[0] === "req") {
-        const reqs = ctx.ws.requests.list();
-        return out.result(reqs, () => table(reqs.map((r) => [r.id, r.status, r.title, r.workstream?.branch ?? ""])));
-      }
-      const tasks = listTasks(ctx, { status: o.status?.split(","), request: o.request && id(o.request, "要望"), area: o.area?.[0], q: o.q });
+      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q };
+      const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       return out.result(tasks, () =>
-        table(tasks.map((t) => [t.id, t.status, t.title, t.request ?? "", t.estimate !== undefined ? `${t.estimate}d` : "", t.assignee ? `@${t.assignee}` : ""])),
+        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, t.estimate !== undefined ? `${t.estimate}d` : "", deps(t)])) || "タスクはありません",
       );
     }
 
     case "show": {
       const query = args.join(" ");
-      const target = normalizeId(ctx, query) ?? resolve(ctx, query).match;
-      if (!target) return ambiguous(out, ctx, query);
-      const item = ctx.ws.tasks.get(target) ?? ctx.ws.requests.get(target)!;
-      const graph = ctx.index.neighborhood(target);
-      return out.result({ item, graph, file: relative(process.cwd(), join(dataDir, target.startsWith("REQ") ? "requests" : "tasks", `${target}.md`)) }, () => {
-        const lines = [`${item.id}  ${item.title}`, ""];
-        const meta = Object.entries(item).filter(([k, v]) => !["id", "title", "body", "relations"].includes(k) && v !== undefined && !(Array.isArray(v) && !v.length));
-        for (const [k, v] of meta) lines.push(`  ${k.padEnd(10)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
-        if (item.body.trim()) lines.push("", indent(item.body.trim()));
-        const title = (x: string) => ctx.ws.tasks.get(x)?.title ?? ctx.ws.requests.get(x)?.title ?? "?";
-        if (graph.outgoing.length || graph.incoming.length) {
-          lines.push("", "関係:");
-          for (const e of graph.outgoing) lines.push(`  → ${RELATION_TYPES[e.type as RelationType]?.label ?? e.type}  ${e.to} ${title(e.to)}${e.origin !== "human" ? `  [${e.origin}${e.weight !== undefined ? ` ${e.weight}` : ""}]` : ""}`);
-          for (const e of graph.incoming) lines.push(`  ← ${RELATION_TYPES[e.type as RelationType]?.inverse ?? e.type}  ${e.from} ${title(e.from)}`);
-        }
-        if (graph.implicit.length) {
-          lines.push("", "関係しそう:");
-          for (const r of graph.implicit) lines.push(`  ${r.score.toFixed(2)}  ${r.id} ${r.title}  (${r.reasons.join(" / ")})`);
-        }
-        if (graph.impactScope.length) lines.push("", `影響範囲: ${graph.impactScope.join(", ")}`);
-        return lines.join("\n");
-      });
+      const ref = resolveRef(ctx, query, current) ?? resolve(ctx, query, current).match;
+      if (!ref) return ambiguous(out, ctx, query, current);
+      if (!ref.includes("/")) return requestCommand(ctx, out, ["show", ref], o, actor, requestArg, expectedRev);
+      const item = ctx.ws.requireTask(ref);
+      const graph = ctx.index.neighborhood(ref);
+      const file = relative(cwd, split(ref).col.path(item.id));
+      return out.result({ item, graph, file }, () => formatEntity(ctx, item, graph, file));
     }
 
     case "find":
     case "resolve": {
-      const r = resolve(ctx, args.join(" "));
-      return out.result(r, () => table(r.candidates.map((c) => [c.id, c.score.toFixed(2), c.title, c.reasons.join(" / ")])) || "見つかりません");
+      const r = resolve(ctx, args.join(" "), current);
+      return out.result(r, () => table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title, c.reasons.join(" / ")])) || "見つかりません");
     }
 
     case "impact": {
-      const target = id(args[0]);
-      const scope = ctx.index.impactScope(target);
-      return out.result(scope, () => table(scope.map((x) => [x, ctx.ws.tasks.get(x)?.status ?? ctx.ws.requests.get(x)?.status ?? "", ctx.ws.tasks.get(x)?.title ?? ctx.ws.requests.get(x)?.title ?? ""])) || "なし");
+      const ref = taskArg(args[0]);
+      const scope = ctx.index.impactScope(ref);
+      return out.result(scope, () => table(scope.map((x) => [x, ctx.ws.task(x)?.status ?? ctx.ws.requests.get(x)?.status ?? "", titleOf(ctx, x)])) || "なし");
     }
 
     case "new":
     case "add": {
-      const [kind, ...rest] = args;
-      const title = rest.join(" ").trim();
+      // 互換: new task <タイトル> / new request <タイトル>
+      if (args[0] === "request" || args[0] === "req") return requestCommand(ctx, out, ["new", ...args.slice(1)], o, actor, requestArg, expectedRev);
+      const title = (args[0] === "task" ? args.slice(1) : args).join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
-      const body = readBody(o.body);
-      if (kind === "request" || kind === "req") {
-        const r = await ctx.ws.requests.create({ title, body, areas: o.area ?? [], relations: [], status: "draft" }, actor);
-        return out.result(r, () => `作成: ${r.id}  ${r.title}`);
-      }
-      if (kind !== "task") throw new UsageError("new task か new request を指定してください");
-      const status = o.status ?? ctx.ws.project.statuses[0]?.id ?? "backlog";
+      const rid = requestArg(undefined);
+      const status = o.status ?? ctx.ws.project.statuses[0]?.id;
       checkStatus(ctx, status);
-      checkAssignee(o.assignee);
-      const t = await ctx.ws.tasks.create(
+      const t = await ctx.ws.tasksOf(rid).create(
         {
           title,
           status,
-          request: o.request ? id(o.request, "要望") : undefined,
-          assignee: o.assignee,
           labels: o.label ?? [],
           areas: o.area ?? [],
+          outputs: o.output ?? [],
           estimate: o.estimate !== undefined ? num(o.estimate, "estimate") : undefined,
           start: o.start && date(o.start),
           due: o.due && date(o.due),
-          relations: [],
-          body,
+          body: readBody(o.body),
         },
         actor,
       );
-      return out.result(t, () => `作成: ${t.id}  ${t.title}`);
+      return out.result(t, () => `作成: ${t.ref}  ${t.title}`);
     }
 
     case "set": {
-      const target = id(args[0]);
-      const patch = parseAssignments(ctx, target.startsWith("REQ") ? "request" : "task", args.slice(1), (raw) => id(raw, "要望"));
+      const ref = taskArg(args[0]);
+      const patch = parseTaskAssignments(ctx, args.slice(1));
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
-      checkAssignee((patch as Partial<Task>).assignee);
-      const col = target.startsWith("REQ") ? ctx.ws.requests : ctx.ws.tasks;
-      const next = await col.update(target, patch as never, { expectedRev, actor });
-      return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
+      const { col, tid } = split(ref);
+      const next = await col.update(tid, patch, { expectedRev, actor });
+      return out.result(next, () => `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
 
     case "move": {
-      const target = id(args[0]);
+      const ref = taskArg(args[0]);
       const status = args[1];
       if (!status) throw new UsageError("移動先のステータスを指定してください");
       checkStatus(ctx, status);
-      const next = await ctx.ws.tasks.update(target, { status }, { expectedRev, actor });
-      return out.result(next, () => `${next.id} → ${status}`);
+      const { col, tid } = split(ref);
+      const cur = col.require(tid);
+      const patch: Partial<Task> = { status };
+      if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
+      const next = await col.update(tid, patch, { expectedRev, actor });
+      return out.result(next, () => `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`);
     }
 
     case "link":
     case "unlink": {
-      const [from, type, to] = [id(args[0]), args[1], id(args[2], "相手の ID")];
+      const ref = taskArg(args[0]);
+      const type = args[1];
       if (!type || !(type in RELATION_TYPES)) throw new UsageError(`関係の種類: ${relationTypes.join(", ")}`);
+      const target = resolveRef(ctx, args[2] ?? "", ref.split("/")[0]);
+      if (!target) throw new NotFoundError(args[2] ?? "（相手）");
       if (cmd === "unlink") {
-        const next = await removeRelation(ctx, from, { type, target: to }, actor);
-        return out.result(next, () => `外しました: ${from} ${type} ${to}`);
+        const next = await removeRelation(ctx, ref, { type, target }, actor);
+        return out.result(next, () => `外しました: ${ref} ${type} ${target}`);
       }
-      const rel: Relation = { type: type as RelationType, target: to, note: o.note };
+      const rel: Relation = { type: type as RelationType, target, note: o.note };
       if (o.confidence !== undefined) rel.confidence = num(o.confidence, "confidence");
-      const next = await addRelation(ctx, from, rel, actor);
-      return out.result(next, () => `張りました: ${from} ${RELATION_TYPES[rel.type].label} ${to}`);
+      const next = await addRelation(ctx, ref, rel, actor);
+      return out.result(next, () => `張りました: ${ref} ${RELATION_TYPES[rel.type].label} ${target}`);
     }
 
     case "archive": {
-      const target = id(args[0]);
-      await (target.startsWith("REQ") ? ctx.ws.requests : ctx.ws.tasks).archive(target);
-      return out.result({ archived: target }, () => `アーカイブ: ${target}`);
+      const ref = taskArg(args[0]);
+      const { col, tid } = split(ref);
+      await col.archive(tid);
+      return out.result({ archived: ref }, () => `アーカイブ: ${ref}`);
     }
 
+    // --- Preflight ----------------------------------------------------------
     case "preflight": {
-      const req = id(args[0], "要望");
+      const rid = requestArg(args[0]);
       const engine = o.engine as "codex" | "mock" | undefined;
       const off = ctx.ws.on((e) => {
         if (e.type === "preflight-log" && !out.json) process.stderr.write(`${e.entry.at.slice(11, 19)} ${e.entry.text}\n`);
       });
-      const started = await ctx.preflight.start(req, { engine, actor });
+      const started = await ctx.preflight.start(rid, { engine, actor });
       if (!out.json) process.stderr.write(`preflight ${started.id} (${started.engine})\n`);
-      const run = await ctx.preflight.wait(req, started.id);
+      const run = await ctx.preflight.wait(rid, started.id);
       off();
       if (!run) throw new Error("preflight の結果が読めません");
-      out.result(run, () => formatRun(ctx, run.requestId, run));
+      out.result(run, () => formatRun(ctx, rid, run));
       return run.status === "completed" ? 0 : 1;
     }
 
     case "drafts": {
-      const req = id(args[0], "要望");
-      const run = await pickRun(ctx, req, o.run);
-      return out.result(run, () => formatRun(ctx, req, run));
+      const rid = requestArg(args[0]);
+      const run = await pickRun(ctx, rid, o.run);
+      return out.result(run, () => formatRun(ctx, rid, run));
     }
 
     case "accept": {
-      const req = id(args[0], "要望");
-      const run = await pickRun(ctx, req, o.run);
-      const only = o.only?.split(",").map((s) => s.trim().toUpperCase());
-      const skip = o.skip?.split(",").map((s) => s.trim().toUpperCase()) ?? [];
+      const rid = requestArg(args[0]);
+      const run = await pickRun(ctx, rid, o.run);
+      const keys = (s: string | undefined) => s?.split(",").map((x) => x.trim().toUpperCase());
+      const only = keys(o.only);
+      const skip = keys(o.skip) ?? [];
       for (const d of run.drafts) {
         const include = (only ? only.includes(d.key) : d.include) && !skip.includes(d.key);
-        if (include !== d.include) await ctx.preflight.updateDraft(req, run.id, d.key, { include });
+        if (include !== d.include) await ctx.preflight.updateDraft(rid, run.id, d.key, { include });
       }
-      const created = await ctx.preflight.materialize(req, run.id, actor);
-      return out.result(created, () => `タスク化 (${run.id}):\n${table(created.map((t) => [t.id, t.title, deps(t)]))}`);
+      const created = await ctx.preflight.materialize(rid, run.id, actor);
+      return out.result(created, () => `タスク化 (${rid} / ${run.id}):\n${table(created.map((t) => [t.id, t.title, deps(t)]))}`);
     }
 
     default:
@@ -351,7 +358,78 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-// --- helpers ---------------------------------------------------------------
+// --- 要望 -----------------------------------------------------------------
+
+async function requestCommand(
+  ctx: PcubeContext,
+  out: Output,
+  args: string[],
+  o: ReturnType<typeof parse>["values"],
+  actor: string,
+  requestArg: (raw: string | undefined) => string,
+  expectedRev: number | undefined,
+): Promise<number> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "new":
+    case "add": {
+      const title = rest.join(" ").trim();
+      if (!title) throw new UsageError("タイトルを指定してください");
+      const r = await ctx.ws.requests.create({ title, body: readBody(o.body), areas: o.area ?? [], status: "draft" }, actor);
+      return out.result(r, () => `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`);
+    }
+    case undefined:
+    case "ls":
+    case "list": {
+      const status = o.status?.split(",");
+      const reqs = ctx.ws.requests.list().filter((r) => !status || status.includes(r.status));
+      return out.result(reqs, () => table(reqs.map((r) => [r.id, r.status, r.title, r.workstream?.branch ?? ""])) || "要望はありません");
+    }
+    case "show": {
+      const rid = requestArg(rest[0]);
+      const r = ctx.ws.requests.require(rid);
+      const graph = ctx.index.neighborhood(rid);
+      const file = relative(process.cwd(), ctx.ws.requests.path(rid));
+      return out.result({ item: r, tasks: ctx.ws.tasksOf(rid).list(), graph, file }, () => {
+        const tasks = ctx.ws.tasksOf(rid).list();
+        return [
+          formatEntity(ctx, r, graph, file),
+          "",
+          `タスク (${tasks.length}):`,
+          table(tasks.map((t) => [`  ${t.id}`, t.status, t.title, deps(t)])) || "  （なし）",
+        ].join("\n");
+      });
+    }
+    case "set": {
+      // 1つ目が要望の参照なら対象、キー=値なら今の要望
+      const explicit = rest[0] && !rest[0].includes("=") ? rest.shift() : undefined;
+      const rid = requestArg(explicit);
+      const patch: Partial<Request> = {};
+      for (const pair of rest) {
+        const [key, value] = splitPair(pair);
+        if (key === "title") patch.title = value;
+        else if (key === "areas") patch.areas = list(value);
+        else if (key === "status") {
+          if (!REQUEST_STATUSES.includes(value as Request["status"])) throw new UsageError(`要望のステータスは ${REQUEST_STATUSES.join(", ")}`);
+          patch.status = value as Request["status"];
+        } else throw new UsageError("変更できるキー: title status areas");
+      }
+      if (o.body !== undefined) patch.body = readBody(o.body);
+      if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
+      const next = await ctx.ws.requests.update(rid, patch, { expectedRev, actor });
+      return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
+    }
+    case "archive": {
+      const rid = requestArg(rest[0]);
+      await ctx.ws.requests.archive(rid);
+      return out.result({ archived: rid }, () => `アーカイブ: ${rid}（requests/.archive/ へ）`);
+    }
+    default:
+      throw new UsageError("pcube request [new | ls | show | set | archive]");
+  }
+}
+
+// --- 表示 -----------------------------------------------------------------
 
 class Output {
   constructor(readonly json: boolean) {}
@@ -361,23 +439,52 @@ class Output {
   }
 }
 
-function ambiguous(out: Output, ctx: PcubeContext, query: string): number {
-  const r = resolve(ctx, query);
+function formatEntity(ctx: PcubeContext, item: Task | Request, graph: ReturnType<PcubeContext["index"]["neighborhood"]>, file: string): string {
+  const head = "ref" in item ? item.ref : item.id;
+  const home = "ref" in item ? item.request : item.id;
+  /** 同じ要望の中は T003 と短く見せる */
+  const short = (ref: string) => (ref.startsWith(`${home}/`) ? ref.slice(home.length + 1) : ref);
+  const lines = [`${head}  ${item.title}`, ""];
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations"]);
+  for (const [k, v] of Object.entries(item)) {
+    if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
+    lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
+  }
+  if (item.body.trim()) lines.push("", indent(item.body.trim()));
+  if (graph.outgoing.length || graph.incoming.length) {
+    lines.push("", "関係:");
+    for (const e of graph.outgoing) {
+      const origin = e.origin !== "human" ? `  [${e.origin}${e.weight !== undefined ? ` ${e.weight}` : ""}]` : "";
+      lines.push(`  → ${RELATION_TYPES[e.type].label}  ${short(e.to)} ${titleOf(ctx, e.to)}${origin}`);
+    }
+    for (const e of graph.incoming) lines.push(`  ← ${RELATION_TYPES[e.type].inverse}  ${short(e.from)} ${titleOf(ctx, e.from)}`);
+  }
+  if (graph.implicit.length) {
+    lines.push("", "関係しそう:");
+    for (const r of graph.implicit) lines.push(`  ${r.score.toFixed(2)}  ${short(r.ref)} ${r.title}  (${r.reasons.join(" / ")})`);
+  }
+  if (graph.impactScope.length) lines.push("", `影響範囲: ${graph.impactScope.map(short).join(", ")}`);
+  lines.push("", `ファイル: ${file}`);
+  return lines.join("\n");
+}
+
+function ambiguous(out: Output, ctx: PcubeContext, query: string, current?: string): number {
+  const r = resolve(ctx, query, current);
   out.result(r, () =>
-    r.candidates.length ? `候補が複数あります:\n${table(r.candidates.map((c) => [c.id, c.score.toFixed(2), c.title]))}` : `見つかりません: ${query}`,
+    r.candidates.length ? `候補が複数あります:\n${table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title]))}` : `見つかりません: ${query}`,
   );
   return 1;
 }
 
-async function pickRun(ctx: PcubeContext, req: string, runId?: string) {
-  const runs = await ctx.preflight.list(req);
+async function pickRun(ctx: PcubeContext, rid: string, runId?: string) {
+  const runs = await ctx.preflight.list(rid);
   const run = runId ? runs.find((r) => r.id === runId) : runs[0];
-  if (!run) throw new NotFoundError(runId ?? `${req} の preflight`);
+  if (!run) throw new NotFoundError(runId ?? `${rid} の preflight`);
   return run;
 }
 
-function formatRun(ctx: PcubeContext, req: string, run: Awaited<ReturnType<typeof pickRun>>): string {
-  const lines = [`${req} / ${run.id}  ${run.engine}  ${run.status}`];
+function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeof pickRun>>): string {
+  const lines = [`${rid} / ${run.id}  ${run.engine}  ${run.status}`];
   if (run.error) lines.push(`エラー: ${run.error}`);
   const a = run.assessment;
   if (a) {
@@ -390,62 +497,48 @@ function formatRun(ctx: PcubeContext, req: string, run: Awaited<ReturnType<typeo
     const total = run.drafts.filter((d) => d.include).reduce((s, d) => s + d.estimateDays, 0);
     lines.push("", `タスク案 (${total} 人日):`);
     lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, `${d.estimateDays}d`, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));
-    lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(req, run.id), "drafts"))}/`);
+    lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);
   return lines.join("\n");
 }
 
-const SETTABLE = {
-  task: ["title", "status", "assignee", "estimate", "start", "due", "progress", "request", "labels", "areas"],
-  request: ["title", "status", "areas"],
-};
-const REQUEST_STATUSES = ["draft", "preflight", "reviewed", "accepted", "rejected"];
+// --- 入力 -----------------------------------------------------------------
 
-function parseAssignments(ctx: PcubeContext, kind: "task" | "request", pairs: string[], reqId: (raw: string) => string): Partial<Task> {
+const TASK_KEYS = ["title", "status", "estimate", "start", "due", "progress", "labels", "areas", "outputs"];
+
+function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task> {
   const patch: Record<string, unknown> = {};
   for (const pair of pairs) {
-    const eq = pair.indexOf("=");
-    if (eq < 1) throw new UsageError(`キー=値 の形で指定してください: ${pair}`);
-    const key = pair.slice(0, eq);
-    const raw = pair.slice(eq + 1).trim();
-    if (!SETTABLE[kind].includes(key)) throw new UsageError(`変更できるキー: ${SETTABLE[kind].join(", ")}`);
+    const [key, raw] = splitPair(pair);
+    if (!TASK_KEYS.includes(key)) throw new UsageError(`変更できるキー: ${TASK_KEYS.join(", ")}`);
     if (raw === "") {
-      patch[key] = key === "labels" || key === "areas" ? [] : undefined;
+      patch[key] = key === "labels" || key === "areas" || key === "outputs" ? [] : undefined;
       continue;
     }
-    switch (key) {
-      case "estimate":
-      case "progress":
-        patch[key] = num(raw, key);
-        break;
-      case "start":
-      case "due":
-        patch[key] = date(raw);
-        break;
-      case "labels":
-      case "areas":
-        patch[key] = raw.split(",").map((s) => s.trim()).filter(Boolean);
-        break;
-      case "status":
-        if (kind === "task") checkStatus(ctx, raw);
-        else if (!REQUEST_STATUSES.includes(raw)) throw new UsageError(`要望のステータスは ${REQUEST_STATUSES.join(", ")} のいずれか`);
-        patch[key] = raw;
-        break;
-      case "request":
-        patch[key] = reqId(raw);
-        break;
-      default:
-        patch[key] = raw;
-    }
+    if (key === "estimate" || key === "progress") patch[key] = num(raw, key);
+    else if (key === "start" || key === "due") patch[key] = date(raw);
+    else if (key === "labels" || key === "areas" || key === "outputs") patch[key] = list(raw);
+    else if (key === "status") {
+      checkStatus(ctx, raw);
+      patch[key] = raw;
+    } else patch[key] = raw;
   }
   return patch as Partial<Task>;
 }
 
-function checkStatus(ctx: PcubeContext, status: string) {
-  const ids = ctx.ws.project.statuses.map((s) => s.id);
-  if (!ids.includes(status)) throw new UsageError(`ステータスは ${ids.join(", ")} のいずれか`);
+function splitPair(pair: string): [string, string] {
+  const eq = pair.indexOf("=");
+  if (eq < 1) throw new UsageError(`キー=値 の形で指定してください: ${pair}`);
+  return [pair.slice(0, eq), pair.slice(eq + 1).trim()];
 }
+
+function checkStatus(ctx: PcubeContext, status: string | undefined) {
+  const ids = ctx.ws.project.statuses.map((s) => s.id);
+  if (!status || !ids.includes(status)) throw new UsageError(`ステータスは ${ids.join(", ")} のいずれか`);
+}
+
+const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 function num(v: string, name: string) {
   const n = Number(v);
@@ -463,9 +556,15 @@ function readBody(v: string | undefined): string {
   return v === "-" ? readFileSync(0, "utf8") : v;
 }
 
+/** 依存先（同じ要望なら T003、別の要望なら絶対参照） */
 const deps = (t: Task) => {
-  const d = t.relations.filter((r) => r.type === "depends_on").map((r) => r.target);
+  const d = t.relations.filter((r) => r.type === "depends_on").map((r) => (absRef(r.target, t.request)?.startsWith(`${t.request}/`) ? r.target : (absRef(r.target, t.request) ?? r.target)));
   return d.length ? `← ${d.join(",")}` : "";
+};
+
+const bar = (ratio: number, width = 10) => {
+  const n = Math.round(ratio * width);
+  return `${"█".repeat(n)}${"░".repeat(width - n)}`;
 };
 
 const indent = (s: string) => s.split("\n").map((l) => `  ${l}`).join("\n");

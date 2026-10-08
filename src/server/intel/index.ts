@@ -1,7 +1,9 @@
+import { absRef } from "../../shared/refs.ts";
 import type { GraphEdge, Neighborhood, RelatedItem, Request, Task } from "../../shared/types.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { areaOverlap, TfIdf } from "./text.ts";
 
+/** id は絶対参照（"<要望ID>" か "<要望ID>/T003"） */
 type Node = { id: string; kind: "task" | "request"; title: string; areas: string[]; status: string; text: string };
 
 /**
@@ -9,7 +11,7 @@ type Node = { id: string; kind: "task" | "request"; title: string; areas: string
  *
  * タスクの関連は単一の親子ではなく多元的なので、3つの次元を重ねて扱う:
  *   1. 明示エッジ   — frontmatter の relations（型付き・有向・由来/確信度つき）
- *   2. 構造         — 要望(=作業ツリー)への所属
+ *   2. 構造         — 要望（= フォルダ = 作業ツリー）への所属
  *   3. 暗黙の近さ   — 影響領域(areas)の重なり、内容の類似（TF-IDF）
  *
  * ファイルが真実なので、インデックスは変更のたびに丸ごと再構築する（数千件規模までは十分速い）。
@@ -38,21 +40,29 @@ export class ProjectIndex {
     this.out.clear();
     this.inc.clear();
     const add = (n: Node) => this.nodes.set(n.id, n);
-    for (const r of this.ws.requests.list()) add(requestNode(r));
-    for (const t of this.ws.tasks.list()) add(taskNode(t));
+    const requests = this.ws.requests.list();
+    const tasks = this.ws.allTasks();
+    for (const r of requests) add(requestNode(r));
+    for (const t of tasks) add(taskNode(t));
 
     const edge = (e: GraphEdge) => {
       push(this.out, e.from, e);
       push(this.inc, e.to, e);
     };
-    for (const item of [...this.ws.requests.list(), ...this.ws.tasks.list()]) {
+    // 相対参照（T003）は、張った側の要望の中のタスクとして解く
+    const items: { ref: string; request: string; relations: Request["relations"] }[] = [
+      ...requests.map((r) => ({ ref: r.id, request: r.id, relations: r.relations })),
+      ...tasks.map((t) => ({ ref: t.ref, request: t.request, relations: t.relations })),
+    ];
+    for (const item of items) {
       for (const r of item.relations) {
-        edge({ from: item.id, to: r.target, type: r.type, origin: r.origin ?? "human", weight: r.confidence, note: r.note });
+        const to = absRef(r.target, item.request);
+        if (to) edge({ from: item.ref, to, type: r.type, origin: r.origin ?? "human", weight: r.confidence, note: r.note });
       }
     }
-    for (const t of this.ws.tasks.list()) {
-      if (t.request && !t.relations.some((r) => r.target === t.request)) {
-        edge({ from: t.id, to: t.request, type: "derived_from", origin: "index" });
+    for (const t of tasks) {
+      if (!t.relations.some((r) => absRef(r.target, t.request) === t.request)) {
+        edge({ from: t.ref, to: t.request, type: "derived_from", origin: "index" });
       }
     }
     this.tfidf.build([...this.nodes.values()].map((n) => ({ id: n.id, text: n.text })));
@@ -63,6 +73,7 @@ export class ProjectIndex {
     return [...this.out.values()].flat();
   }
 
+  /** id は絶対参照 */
   neighborhood(id: string): Neighborhood {
     this.ensure();
     const node = this.nodes.get(id);
@@ -72,7 +83,10 @@ export class ProjectIndex {
     const implicit = node
       ? this.related({ text: node.text, areas: node.areas, exclude: [id, ...explicit], limit: 6, minScore: 0.18 })
       : [];
-    return { id, outgoing, incoming, implicit, impactScope: this.impactScope(id) };
+    const impactScope = this.impactScope(id);
+    const refs = [...outgoing.map((e) => e.to), ...incoming.map((e) => e.from), ...impactScope];
+    const titles = Object.fromEntries(refs.filter((r) => this.nodes.has(r)).map((r) => [r, this.nodes.get(r)!.title]));
+    return { ref: id, outgoing, incoming, implicit, impactScope, titles };
   }
 
   /**
@@ -147,7 +161,7 @@ export class ProjectIndex {
       }
       if (n.kind === "task" && n.status === "done" && score > 0) reasons.push("過去に実施済み");
       if (score >= (q.minScore ?? 0.1)) {
-        scored.push({ id: n.id, title: n.title, kind: n.kind, score: round(score), reasons });
+        scored.push({ ref: n.id, title: n.title, kind: n.kind, score: round(score), reasons });
       }
     }
     return scored.sort((a, b) => b.score - a.score).slice(0, q.limit ?? 8);
@@ -173,7 +187,7 @@ const round = (n: number) => Math.round(n * 1000) / 1000;
 
 function taskNode(t: Task): Node {
   return {
-    id: t.id,
+    id: t.ref,
     kind: "task",
     title: t.title,
     areas: t.areas,

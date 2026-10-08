@@ -1,38 +1,51 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import type { Task } from "../../shared/types.ts";
-import { Badge, cx, Id } from "../components/ui.tsx";
-import { api, ApiError } from "../lib/api.ts";
-import { streamColor } from "../lib/colors.ts";
-import { useAppCtx } from "../lib/appCtx.ts";
+import type { Task } from "../../../../shared/types.ts";
+import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
+import { api, ApiError } from "../../../lib/api.ts";
+import { useAppCtx } from "../../../lib/appCtx.ts";
+import { useRequestData } from "../../../lib/requestData.tsx";
 
-export const Route = createFileRoute("/board")({
+/**
+ * 要望のかんばん。列は少なくてよい（既定: 未着手 / 作業中 / 完了）。
+ * 完了は「AI の処理が終わり、成果物（PR・MR・ドキュメント）が出た」状態で、レビューは成果物の側で行う。
+ */
+export const Route = createFileRoute("/requests/$requestId/board")({
   component: BoardPage,
 });
 
 function BoardPage() {
   const ctx = useAppCtx();
+  const { tasks, reload } = useRequestData();
   const { statuses } = ctx.info.project;
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const doneIds = new Set(ctx.tasks.filter((t) => statuses.find((s) => s.id === t.status)?.done).map((t) => t.id));
-  const tasks = ctx.stream ? ctx.tasks.filter((t) => t.request === ctx.stream) : ctx.tasks;
+  const doneIds = new Set(tasks.filter((t) => statuses.find((s) => s.id === t.status)?.done).map((t) => t.id));
 
-  // 逆方向のエッジ（自分に依存しているもの）はカードに件数だけ出す
-  const blockedBy = (t: Task) => t.relations.filter((r) => r.type === "depends_on" && r.target.startsWith("TASK") && !doneIds.has(r.target));
-  const dependents = (id: string) => ctx.tasks.filter((t) => t.relations.some((r) => r.type === "depends_on" && r.target === id)).length;
+  // 同じ要望の中の依存だけを見る（別の要望への依存はタスク詳細で確認する）
+  const blockedBy = (t: Task) => t.relations.filter((r) => r.type === "depends_on" && !r.target.includes("/") && !doneIds.has(r.target));
+  const dependents = (id: string) => tasks.filter((t) => t.relations.some((r) => r.type === "depends_on" && r.target === id)).length;
 
   async function move(id: string, status: string) {
-    const t = ctx.tasks.find((x) => x.id === id);
+    const t = tasks.find((x) => x.id === id);
     if (!t || t.status === status) return;
     try {
-      await api.patchTask(id, { status, rev: t.rev });
+      await api.patchTask(t.ref, { status, rev: t.rev });
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? `${id} は他で更新されました。最新を読み込みました。` : String(e));
     }
+    reload();
     ctx.reload();
+  }
+
+  if (!tasks.length) {
+    return (
+      <div className="mx-auto max-w-xl p-10">
+        <Empty>タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、CLI の `pcube new` で追加してください。</Empty>
+      </div>
+    );
   }
 
   return (
@@ -70,16 +83,15 @@ function BoardPage() {
                       key={t.id}
                       draggable
                       onDragStart={() => setDragId(t.id)}
-                      onClick={() => ctx.openTask(t.id)}
+                      onClick={() => ctx.open(t.ref)}
                       className={cx(
-                        "cursor-pointer rounded-md border-l-4 bg-white p-3 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-800 dark:ring-slate-700",
+                        "cursor-pointer rounded-md bg-white p-3 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-800 dark:ring-slate-700",
                         dragId === t.id && "opacity-50",
                       )}
-                      style={{ borderLeftColor: t.request ? streamColor(t.request) : "transparent" }}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <Id id={t.id} />
-                        {t.request && <span className="truncate font-mono text-sm text-slate-400">{t.request}</span>}
+                        {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
                       </div>
                       <p className="mt-1 leading-snug font-medium">{t.title}</p>
                       <div className="mt-2 flex flex-wrap gap-1">
@@ -94,10 +106,24 @@ function BoardPage() {
                           <Badge key={l}>{l}</Badge>
                         ))}
                       </div>
-                      {(t.estimate !== undefined || t.assignee || (t.progress ?? 0) > 0) && (
+                      {t.outputs.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {t.outputs.map((o) => (
+                            <li key={o} className="truncate text-sm">
+                              {/^https?:/.test(o) ? (
+                                <a href={o} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                                  ↗ {o.replace(/^https?:\/\/(www\.)?/, "")}
+                                </a>
+                              ) : (
+                                <span className="font-mono text-slate-500">{o}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {(t.estimate !== undefined || (t.progress ?? 0) > 0) && (
                         <div className="mt-2 flex items-center gap-3 text-sm text-slate-500">
                           {t.estimate !== undefined && <span>{t.estimate}人日</span>}
-                          {t.assignee && <span title={t.assignee}>@{ctx.info.project.members.find((m) => m.id === t.assignee)?.name ?? t.assignee}</span>}
                           {(t.progress ?? 0) > 0 && !s.done && (
                             <span className="ml-auto flex items-center gap-1.5">
                               <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">

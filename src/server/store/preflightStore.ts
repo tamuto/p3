@@ -6,15 +6,16 @@ import { writeFileAtomic } from "./fsutil.ts";
 import { normalizeRelations } from "./normalize.ts";
 
 /**
- * preflight/<REQ-ID>/<RUN-ID>/
+ * requests/<要望ID>/preflight/<RUN-ID>/
  *   run.json          評価結果・ログ・文脈（機械向け）
- *   drafts/T1.md ...  細分化されたタスク案（1案 = 1ファイル。人や AI が直接編集できる）
+ *   drafts/D1.md ...  細分化されたタスク案（1案 = 1ファイル。人や AI が直接編集できる）
  */
 export class PreflightStore {
-  constructor(readonly dir: string) {}
+  /** requestsDir: .pcube/requests */
+  constructor(readonly requestsDir: string) {}
 
   runDir(requestId: string, runId: string) {
-    return join(this.dir, requestId, runId);
+    return join(this.requestsDir, requestId, "preflight", runId);
   }
 
   async save(run: PreflightRun): Promise<void> {
@@ -67,7 +68,7 @@ export class PreflightStore {
   }
 
   async list(requestId: string): Promise<PreflightRun[]> {
-    const ids = await readdir(join(this.dir, requestId)).catch(() => [] as string[]);
+    const ids = await readdir(join(this.requestsDir, requestId, "preflight")).catch(() => [] as string[]);
     const runs = await Promise.all(ids.filter((i) => i.startsWith("PF-")).map((i) => this.get(requestId, i)));
     return runs.filter((r): r is PreflightRun => !!r).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }

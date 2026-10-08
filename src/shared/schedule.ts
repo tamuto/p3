@@ -62,6 +62,12 @@ export function schedule(tasks: Task[], today: string): Map<string, ScheduledBar
   return out;
 }
 
+/** 今日（ローカル時刻の日付。UTC だと日本の朝は前日になる） */
+export function localToday(now = new Date()): string {
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+}
+
 export function daysBetween(a: string, b: string) {
   return Math.round((toTime(b) - toTime(a)) / DAY);
 }

@@ -4,7 +4,7 @@ import { Button, Field, inputCls } from "../../components/ui.tsx";
 import { api } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 
-export const Route = createFileRoute("/preflight/new")({
+export const Route = createFileRoute("/requests/new")({
   component: NewRequest,
 });
 
@@ -13,7 +13,7 @@ function NewRequest() {
   const navigate = useNavigate();
   const onCreated = (id: string) => {
     ctx.reload();
-    void navigate({ to: "/preflight/$requestId", params: { requestId: id } });
+    void navigate({ to: "/requests/$requestId", params: { requestId: id } });
   };
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -21,6 +21,7 @@ function NewRequest() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-8">
       <h2 className="text-xl font-bold">新しい要望</h2>
+      <p className="text-slate-500">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
       <Field label="タイトル">
         <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>

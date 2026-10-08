@@ -114,7 +114,7 @@ function docsSection(job: PreflightJob) {
 
 function contextList(ctx: RelatedItem[]) {
   if (!ctx.length) return "（関連しそうな既存項目は見つかりませんでした）";
-  return ctx.map((c) => `- ${c.id} [${c.kind}] ${c.title} — score ${c.score}: ${c.reasons.join(" / ")}`).join("\n");
+  return ctx.map((c) => `- ${c.ref} [${c.kind}] ${c.title} — score ${c.score}: ${c.reasons.join(" / ")}`).join("\n");
 }
 
 function developerInstructions(job: PreflightJob) {
@@ -140,7 +140,7 @@ ${docsSection(job)}
 ${r.body.trim() || "(本文なし)"}
 
 ## pcube のインテリジェンス層が選んだ関連項目
-各項目の全文は ${job.dataDirRel}/tasks/<ID>.md と ${job.dataDirRel}/requests/<ID>.md にあります。必要なものだけ読んでください。
+要望は ${job.dataDirRel}/requests/<要望ID>/request.md、タスクは ${job.dataDirRel}/requests/<要望ID>/tasks/<T00x>.md にあります。必要なものだけ読んでください。
 ${contextList(job.context)}
 
 ## やること
@@ -153,7 +153,7 @@ ${contextList(job.context)}
 ## 出力（ファイルとして書く）
 - ${job.runDirRel}/assessment.json — 次の形の JSON:
 ${ASSESSMENT_SPEC}
-- ${job.runDirRel}/drafts/T1.md, T2.md, ... — タスク案1件につき1ファイル:
+- ${job.runDirRel}/drafts/D1.md, D2.md, ... — タスク案1件につき1ファイル:
 ${DRAFT_SPEC}
 
 書き終えたら、最後に結論を2〜3文で返してください。`;

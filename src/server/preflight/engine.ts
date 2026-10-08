@@ -24,7 +24,7 @@ export interface EngineOutcome {
 /**
  * Preflight エンジン。結果は戻り値ではなく run ディレクトリ配下のファイルとして書き出す契約:
  *   <runDir>/assessment.json   評価（PreflightAssessment）
- *   <runDir>/drafts/T1.md ...   タスク案（frontmatter + 説明）
+ *   <runDir>/drafts/D1.md ...   タスク案（frontmatter + 説明）
  * ファイル契約にしておくことで、Codex でも人手でも別エージェントでも同じ取り込み処理になる。
  */
 export interface PreflightEngine {
@@ -41,19 +41,19 @@ export const ASSESSMENT_SPEC = `{
   "questions": ["要望者に確認すべき事項"],
   "areas": ["影響するコード領域やコンポーネント（リポジトリ相対パス推奨）"],
   "impacts": [
-    { "target": "TASK-0003 または REQ-0002", "type": "depends_on|impacts|relates_to|duplicates|supersedes",
+    { "target": "別の要望なら <要望ID>、そのタスクなら <要望ID>/T003", "type": "depends_on|impacts|relates_to|duplicates|supersedes",
       "reason": "なぜ関係するか", "confidence": 0.0-1.0 }
   ]
 }`;
 
 export const DRAFT_SPEC = `---
-key: T1                # T1, T2 ... の連番
+key: D2                # D1, D2 ... の連番
 title: タスク名
 estimateDays: 1.5      # 人日
 areas: [src/foo]       # 触る領域
-dependsOn: [T0]        # 同じ preflight 内で先に終わっている必要があるタスクの key
+dependsOn: [D1]        # 同じ preflight 内で先に終わっている必要があるタスク案の key
 relations:             # 既存タスク/要望との関係（無ければ省略）
-  - { type: impacts, target: TASK-0003, note: "理由", confidence: 0.7 }
+  - { type: impacts, target: 261001-ab3cd/T003, note: "理由", confidence: 0.7 }
 include: true
 ---
 

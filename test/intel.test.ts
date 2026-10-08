@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { areaOverlap, TfIdf, tokenize } from "../src/server/intel/text.ts";
-import { makeProject, newTask } from "./helpers.ts";
+import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 describe("tokenize", () => {
   it("日本語は bigram、ひらがなだけの bigram は捨てる。パスは区切りでも分割する", () => {
@@ -36,60 +36,71 @@ describe("areaOverlap", () => {
 });
 
 describe("ProjectIndex", () => {
+  /**
+   * 要望 A: T001 ストア ← T002 API ← T003 画面
+   * 要望 B: T001 通知 —impacts→ T002 通知設定。T003 監視は A/T001 と領域が重なる。
+   *         T004 は A/T001 に要望をまたいで依存する
+   */
   async function graph() {
     const p = await makeProject();
     const { ctx } = p;
-    await ctx.ws.requests.create({ title: "要望", status: "accepted", areas: [], relations: [], body: "" }, "t");
-    const t1 = await newTask(ctx, { title: "ストア", request: "REQ-0001", areas: ["src/server/store"] });
-    const t2 = await newTask(ctx, { title: "API", relations: [{ type: "depends_on", target: t1.id }] });
-    const t3 = await newTask(ctx, { title: "画面", relations: [{ type: "depends_on", target: t2.id }] });
-    const t4 = await newTask(ctx, { title: "通知", relations: [{ type: "impacts", target: "TASK-0005" }] });
-    const t5 = await newTask(ctx, { title: "通知の設定画面" });
-    const t6 = await newTask(ctx, { title: "監視", areas: ["src/server/store/workspace.ts"] });
+    const A = (await newRequest(ctx, { title: "要望A" })).id;
+    const B = (await newRequest(ctx, { title: "要望B" })).id;
+    await newTask(ctx, A, { title: "ストア", areas: ["src/server/store"] });
+    await newTask(ctx, A, { title: "API", relations: [{ type: "depends_on", target: "T001" }] });
+    await newTask(ctx, A, { title: "画面", relations: [{ type: "depends_on", target: "T002" }] });
+    await newTask(ctx, B, { title: "通知", relations: [{ type: "impacts", target: "T002" }] });
+    await newTask(ctx, B, { title: "通知の設定画面" });
+    await newTask(ctx, B, { title: "監視", areas: ["src/server/store/workspace.ts"] });
+    await newTask(ctx, B, { title: "移行", relations: [{ type: "depends_on", target: `${A}/T001` }] });
     ctx.index.invalidate();
-    return { ...p, t1, t2, t3, t4, t5, t6 };
+    return { ...p, A, B };
   }
 
-  it("逆向きのエッジと、要望への所属（構造）を導く", async () => {
-    const { ctx, t1, t2 } = await graph();
-    const n = ctx.index.neighborhood(t1.id);
-    expect(n.incoming).toEqual([expect.objectContaining({ from: t2.id, type: "depends_on" })]);
-    expect(n.outgoing).toEqual([expect.objectContaining({ to: "REQ-0001", type: "derived_from", origin: "index" })]);
+  it("相対参照（T001）は張った側の要望の中として解き、逆向きのエッジと要望への所属を導く", async () => {
+    const { ctx, A, B } = await graph();
+    const n = ctx.index.neighborhood(`${A}/T001`);
+    expect(n.incoming.map((e) => [e.from, e.type])).toEqual(
+      expect.arrayContaining([
+        [`${A}/T002`, "depends_on"],
+        [`${B}/T004`, "depends_on"],
+      ]),
+    );
+    expect(n.outgoing).toEqual([expect.objectContaining({ to: A, type: "derived_from", origin: "index" })]);
   });
 
-  it("影響範囲は依存の逆向きと impacts を推移的に辿る", async () => {
-    const { ctx, t1, t2, t3, t4, t5 } = await graph();
-    expect(ctx.index.impactScope(t1.id).sort()).toEqual([t2.id, t3.id].sort());
-    expect(ctx.index.impactScope(t4.id)).toEqual([t5.id]);
-    expect(ctx.index.impactScope(t3.id)).toEqual([]);
+  it("影響範囲は依存の逆向きと impacts を、要望をまたいで推移的に辿る", async () => {
+    const { ctx, A, B } = await graph();
+    expect(ctx.index.impactScope(`${A}/T001`).sort()).toEqual([`${A}/T002`, `${A}/T003`, `${B}/T004`].sort());
+    expect(ctx.index.impactScope(`${B}/T001`)).toEqual([`${B}/T002`]);
+    expect(ctx.index.impactScope(`${A}/T003`)).toEqual([]);
   });
 
   it("依存の循環を検出する", async () => {
-    const { ctx, t1, t3 } = await graph();
-    expect(ctx.index.wouldCycle(t1.id, t3.id)).toBe(true);
-    expect(ctx.index.wouldCycle(t3.id, t1.id)).toBe(false);
+    const { ctx, A } = await graph();
+    expect(ctx.index.wouldCycle(`${A}/T001`, `${A}/T003`)).toBe(true);
+    expect(ctx.index.wouldCycle(`${A}/T003`, `${A}/T001`)).toBe(false);
   });
 
-  it("明示の関係が無くても、領域の重なりから関連を理由つきで提示する", async () => {
-    const { ctx, t1, t6 } = await graph();
-    const n = ctx.index.neighborhood(t1.id);
-    const hit = n.implicit.find((r) => r.id === t6.id);
-    expect(hit).toBeDefined();
-    expect(hit!.reasons.join()).toContain("領域が重複");
+  it("明示の関係が無くても、別の要望の作業を領域の重なりから理由つきで提示する", async () => {
+    const { ctx, A, B } = await graph();
+    const hit = ctx.index.neighborhood(`${A}/T001`).implicit.find((r) => r.ref === `${B}/T003`);
+    expect(hit?.reasons.join()).toContain("領域が重複");
+    expect(hit?.kind).toBe("task");
   });
 
   it("関係グラフ上の近さを加点する", async () => {
-    const { ctx, t1, t3 } = await graph();
-    const withSeed = ctx.index.related({ text: "無関係な語", seeds: [t1.id], minScore: 0 });
-    expect(withSeed.find((r) => r.id === "TASK-0002")?.reasons).toContain("関係グラフで 1 ホップ");
-    expect(withSeed.find((r) => r.id === t3.id)?.reasons).toContain("関係グラフで 2 ホップ");
+    const { ctx, A } = await graph();
+    const withSeed = ctx.index.related({ text: "無関係な語", seeds: [`${A}/T001`], minScore: 0 });
+    expect(withSeed.find((r) => r.ref === `${A}/T002`)?.reasons).toContain("関係グラフで 1 ホップ");
+    expect(withSeed.find((r) => r.ref === `${A}/T003`)?.reasons).toContain("関係グラフで 2 ホップ");
   });
 
   it("ファイルの変更通知でインデックスを作り直す", async () => {
-    const { ctx, t5 } = await graph();
-    expect(ctx.index.impactScope(t5.id)).toEqual([]);
-    await newTask(ctx, { title: "後続", relations: [{ type: "depends_on", target: t5.id }] });
-    ctx.ws.emit({ type: "changed", kind: "task", id: "TASK-0007" });
-    expect(ctx.index.impactScope(t5.id)).toEqual(["TASK-0007"]);
+    const { ctx, B } = await graph();
+    expect(ctx.index.impactScope(`${B}/T002`)).toEqual([]);
+    await newTask(ctx, B, { title: "後続", relations: [{ type: "depends_on", target: "T002" }] });
+    ctx.ws.emit({ type: "changed", kind: "task", request: B, ref: `${B}/T005` });
+    expect(ctx.index.impactScope(`${B}/T002`)).toEqual([`${B}/T005`]);
   });
 });

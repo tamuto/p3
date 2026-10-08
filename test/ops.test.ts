@@ -1,77 +1,99 @@
 import { describe, expect, it } from "vitest";
-import { addRelation, listTasks, normalizeId, removeRelation, resolve } from "../src/server/ops.ts";
+import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId } from "../src/server/ops.ts";
 import { NotFoundError } from "../src/server/store/collection.ts";
-import { makeProject, newTask } from "./helpers.ts";
+import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 async function setup() {
   const p = await makeProject();
-  await p.ctx.ws.requests.create({ title: "ガントチャート表示", status: "draft", areas: [], relations: [], body: "" }, "t");
-  await newTask(p.ctx, { title: "ガントの依存矢印", status: "ready", request: "REQ-0001", areas: ["src/web/views"] });
-  await newTask(p.ctx, { title: "認証の整理", status: "done", areas: ["src/server/api"], body: "トークンの扱い" });
-  await newTask(p.ctx, { title: "かんばん", status: "ready" });
-  return p;
+  const { ctx } = p;
+  const A = (await newRequest(ctx, { title: "ガントチャート表示" })).id;
+  const B = (await newRequest(ctx, { title: "認証の見直し", status: "draft" })).id;
+  await newTask(ctx, A, { title: "ガントの依存矢印", status: "doing", areas: ["src/web/routes"], estimate: 2 });
+  await newTask(ctx, A, { title: "かんばん", status: "done", estimate: 1, start: "2026-10-01", due: "2026-10-02" });
+  await newTask(ctx, A, { title: "スケジュール", relations: [{ type: "depends_on", target: "T001" }] });
+  await newTask(ctx, B, { title: "トークンの扱い", areas: ["src/server/api"], body: "期限切れの扱い" });
+  return { ...p, A, B };
 }
 
-describe("normalizeId", () => {
-  it("短い書き方を正式な ID にする。数字だけなら prefer の種類", async () => {
-    const { ctx } = await setup();
-    expect(normalizeId(ctx, "2")).toBe("TASK-0002");
-    expect(normalizeId(ctx, "task-2")).toBe("TASK-0002");
-    expect(normalizeId(ctx, "TASK-0002")).toBe("TASK-0002");
-    expect(normalizeId(ctx, "1", "REQ")).toBe("REQ-0001");
-    expect(normalizeId(ctx, "req-1")).toBe("REQ-0001");
-    expect(normalizeId(ctx, "99")).toBeUndefined();
-    expect(normalizeId(ctx, "ガント")).toBeUndefined();
+describe("参照の解き方", () => {
+  it("要望は完全な ID・乱数部分・一意な一部で指せる", async () => {
+    const { ctx, A } = await setup();
+    expect(resolveRequestId(ctx, A)).toBe(A);
+    expect(resolveRequestId(ctx, A.slice(-5))).toBe(A);
+    expect(resolveRequestId(ctx, A.slice(-5).toUpperCase())).toBe(A);
+    expect(resolveRequestId(ctx, "zz")).toBeUndefined();
+  });
+
+  it("タスクは今の要望の中なら T3 / 3、そうでなければ <要望>/T3", async () => {
+    const { ctx, A, B } = await setup();
+    expect(resolveRef(ctx, "T3", A)).toBe(`${A}/T003`);
+    expect(resolveRef(ctx, "1", B)).toBe(`${B}/T001`);
+    expect(resolveRef(ctx, "T3")).toBeUndefined();
+    expect(resolveRef(ctx, "T9", A)).toBeUndefined();
+    expect(resolveRef(ctx, `${B.slice(-5)}/t1`)).toBe(`${B}/T001`);
+    expect(resolveRef(ctx, B)).toBe(B);
   });
 });
 
 describe("resolve", () => {
-  it("ID → タイトル部分一致 → 内容類似 の順で候補を返し、1件に絞れたら match にする", async () => {
-    const { ctx } = await setup();
-    expect(resolve(ctx, "task-3").match).toBe("TASK-0003");
-    const gantt = resolve(ctx, "ガント");
+  it("参照 → タイトル部分一致（今の要望を先に） → 内容類似 の順で候補を返す", async () => {
+    const { ctx, A, B } = await setup();
+    expect(resolve(ctx, "T3", A).match).toBe(`${A}/T003`);
+    const gantt = resolve(ctx, "ガント", A);
     expect(gantt.match).toBeNull();
-    expect(gantt.candidates.map((c) => c.id)).toEqual(expect.arrayContaining(["TASK-0001", "REQ-0001"]));
-    expect(resolve(ctx, "認証").match).toBe("TASK-0002");
+    expect(gantt.candidates.slice(0, 2).map((c) => c.ref).sort()).toEqual([A, `${A}/T001`].sort());
+    expect(resolve(ctx, "トークン").match).toBe(`${B}/T001`);
   });
 });
 
 describe("listTasks", () => {
-  it("ステータス・要望・領域・語句で絞り込む", async () => {
-    const { ctx } = await setup();
-    const ids = (f: Parameters<typeof listTasks>[1]) => listTasks(ctx, f).map((t) => t.id);
-    expect(ids({ status: ["ready"] })).toEqual(["TASK-0001", "TASK-0003"]);
-    expect(ids({ request: "REQ-0001" })).toEqual(["TASK-0001"]);
-    expect(ids({ area: "src/server" })).toEqual(["TASK-0002"]);
-    expect(ids({ q: "トークン" })).toEqual(["TASK-0002"]);
+  it("要望・ステータス・領域・語句で絞り込む", async () => {
+    const { ctx, A, B } = await setup();
+    const refs = (f: Parameters<typeof listTasks>[1]) => listTasks(ctx, f).map((t) => t.ref);
+    expect(refs({ request: A })).toEqual([`${A}/T001`, `${A}/T002`, `${A}/T003`]);
+    expect(refs({ status: ["todo"] }).sort()).toEqual([`${A}/T003`, `${B}/T001`].sort());
+    expect(refs({ area: "src/server" })).toEqual([`${B}/T001`]);
+    expect(refs({ q: "期限切れ" })).toEqual([`${B}/T001`]);
   });
 });
 
 describe("addRelation / removeRelation", () => {
-  it("変更者が AI なら origin: ai、人なら human を記録する。同じ種類・相手は張り直しで上書き", async () => {
-    const { ctx } = await setup();
-    await addRelation(ctx, "TASK-0001", { type: "impacts", target: "TASK-0003", confidence: 0.6 }, "ai:claude");
-    const t = await addRelation(ctx, "TASK-0001", { type: "impacts", target: "TASK-0003", note: "見直し" }, "human:a");
-    expect(t.relations).toEqual([{ type: "impacts", target: "TASK-0003", note: "見直し", origin: "human" }]);
-    const ai = await addRelation(ctx, "TASK-0002", { type: "relates_to", target: "REQ-0001" }, "ai:claude");
-    expect(ai.relations[0].origin).toBe("ai");
+  it("同じ要望のタスクは T003、別の要望は絶対参照でファイルに書く。変更者が AI なら origin: ai", async () => {
+    const { ctx, A, B } = await setup();
+    const t = await addRelation(ctx, `${A}/T001`, { type: "impacts", target: `${A}/T002` }, "human:a");
+    expect(t.relations).toEqual([{ type: "impacts", target: "T002", origin: "human" }]);
+    const u = await addRelation(ctx, `${A}/T001`, { type: "relates_to", target: `${B}/T1`, confidence: 0.6 }, "ai:claude");
+    expect(u.relations.at(-1)).toEqual({ type: "relates_to", target: `${B}/T001`, origin: "ai", confidence: 0.6 });
+    // 同じ種類・相手は張り直しで上書き（相対・絶対どちらで書いても同じ相手）
+    const v = await addRelation(ctx, `${A}/T001`, { type: "impacts", target: "T2", note: "見直し" }, "human:a");
+    expect(v.relations.filter((r) => r.type === "impacts")).toEqual([{ type: "impacts", target: "T002", note: "見直し", origin: "human" }]);
   });
 
   it("自分自身・存在しない相手・依存の循環を拒む", async () => {
-    const { ctx } = await setup();
-    await expect(addRelation(ctx, "TASK-0001", { type: "relates_to", target: "TASK-0001" }, "h")).rejects.toThrow("自分自身");
-    await expect(addRelation(ctx, "TASK-0001", { type: "relates_to", target: "TASK-0404" }, "h")).rejects.toBeInstanceOf(NotFoundError);
-    await addRelation(ctx, "TASK-0001", { type: "depends_on", target: "TASK-0002" }, "h");
-    await addRelation(ctx, "TASK-0002", { type: "depends_on", target: "TASK-0003" }, "h");
-    await expect(addRelation(ctx, "TASK-0003", { type: "depends_on", target: "TASK-0001" }, "h")).rejects.toThrow("循環");
+    const { ctx, A } = await setup();
+    await expect(addRelation(ctx, `${A}/T001`, { type: "relates_to", target: "T001" }, "h")).rejects.toThrow("自分自身");
+    await expect(addRelation(ctx, `${A}/T001`, { type: "relates_to", target: "T404" }, "h")).rejects.toBeInstanceOf(NotFoundError);
+    await addRelation(ctx, `${A}/T001`, { type: "depends_on", target: "T002" }, "h");
+    await expect(addRelation(ctx, `${A}/T002`, { type: "depends_on", target: "T003" }, "h")).rejects.toThrow("循環");
   });
 
   it("要望にも関係を張れる。無い関係を外そうとしたら NotFound", async () => {
-    const { ctx } = await setup();
-    const r = await addRelation(ctx, "REQ-0001", { type: "impacts", target: "TASK-0002" }, "h");
-    expect(r.relations).toHaveLength(1);
-    const after = await removeRelation(ctx, "REQ-0001", { type: "impacts", target: "TASK-0002" }, "h");
-    expect(after.relations).toHaveLength(0);
-    await expect(removeRelation(ctx, "REQ-0001", { type: "impacts", target: "TASK-0002" }, "h")).rejects.toBeInstanceOf(NotFoundError);
+    const { ctx, A, B } = await setup();
+    const r = await addRelation(ctx, B, { type: "impacts", target: A }, "h");
+    expect(r.relations).toEqual([{ type: "impacts", target: A, origin: "human" }]);
+    expect((await removeRelation(ctx, B, { type: "impacts", target: A }, "h")).relations).toEqual([]);
+    await expect(removeRelation(ctx, B, { type: "impacts", target: A }, "h")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("progress", () => {
+  it("要望ごとにステータス別の件数・見積り・期間を集計し、更新の新しい順に並べる", async () => {
+    const { ctx, A, B } = await setup();
+    const ps = progress(ctx, "2026-10-01");
+    const a = ps.find((p) => p.request.id === A)!;
+    expect(a).toMatchObject({ total: 3, done: 1, counts: { todo: 1, doing: 1, done: 1 }, estimate: 3, estimateDone: 1, start: "2026-10-01" });
+    expect(a.end! >= "2026-10-02").toBe(true);
+    expect(ps.find((p) => p.request.id === B)).toMatchObject({ total: 1, done: 0 });
+    expect(ps[0].request.id).toBe(B); // B のタスクが最後に作られた
   });
 });

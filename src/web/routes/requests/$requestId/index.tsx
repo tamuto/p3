@@ -6,39 +6,31 @@ import {
   type PreflightRun,
   type ProposedTask,
   type Request,
-  type Task,
-} from "../../../shared/types.ts";
-import { RequestStatusBadge } from "../../components/RequestStatus.tsx";
-import { Badge, Button, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../components/ui.tsx";
-import { api } from "../../lib/api.ts";
-import { useAppCtx, type AppCtx } from "../../lib/appCtx.ts";
-import { useServerEvents } from "../../lib/live.ts";
-import { optionalString } from "../../lib/search.ts";
+} from "../../../../shared/types.ts";
+import { Badge, Button, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
+import { api } from "../../../lib/api.ts";
+import { absRef } from "../../../../shared/refs.ts";
+import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
+import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
+import { useServerEvents } from "../../../lib/live.ts";
+import { optionalString } from "../../../lib/search.ts";
 
-/** 要望の詳細。?run= で表示する preflight を選ぶ（省くと最新） */
-export const Route = createFileRoute("/preflight/$requestId")({
+/** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
+export const Route = createFileRoute("/requests/$requestId/")({
   validateSearch: (s: Record<string, unknown>): { run?: string } => ({ run: optionalString(s.run) }),
   component: RequestPage,
 });
 
 function RequestPage() {
   const ctx = useAppCtx();
-  const { requestId } = Route.useParams();
+  const data = useRequestData();
   const { run } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const request = ctx.requests.find((r) => r.id === requestId);
-  if (!request) {
-    return (
-      <div className="p-10">
-        <Empty>{requestId} は見つかりません</Empty>
-      </div>
-    );
-  }
   return (
     <RequestPanel
-      key={request.id}
+      key={data.request.id}
       ctx={ctx}
-      request={request}
+      data={data}
       runId={run}
       onRunChange={(id) => void navigate({ search: (prev) => ({ ...prev, run: id }) })}
     />
@@ -54,31 +46,20 @@ const VERDICT = {
 /** 要望の詳細。表示する preflight の run は URL（?run=）で選ぶ。無ければ最新 */
 function RequestPanel({
   ctx,
-  request,
+  data,
   runId: selectedRun,
   onRunChange: setRunId,
 }: {
   ctx: AppCtx;
-  request: Request;
+  data: RequestData;
   runId?: string;
   onRunChange: (runId: string) => void;
 }) {
-  const [runs, setRuns] = useState<PreflightRun[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { request, runs, tasks } = data;
   const runId = selectedRun ?? request.lastPreflight ?? null;
   const [run, setRun] = useState<PreflightRun>();
   const [engine, setEngine] = useState(ctx.info.defaultEngine);
   const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    const d = await api.request(request.id);
-    setRuns(d.runs);
-    setTasks(d.tasks);
-  };
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.tick, request.id]);
 
   useEffect(() => {
     if (!runId) return setRun(undefined);
@@ -91,7 +72,7 @@ function RequestPanel({
       setRun((r) => (r ? { ...r, log: [...r.log, e.entry] } : r));
     } else if (e.type === "preflight-status" && e.runId === runId) {
       void api.run(request.id, runId).then(setRun);
-      void load();
+      data.reload();
     }
   });
 
@@ -111,17 +92,7 @@ function RequestPanel({
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
-      <header className="space-y-3">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-slate-500">{request.id}</span>
-          <RequestStatusBadge status={request.status} />
-          {request.workstream && (
-            <Badge tone="emerald" title={request.workstream.worktree}>
-              ⎇ {request.workstream.branch}
-            </Badge>
-          )}
-        </div>
-        <h1 className="text-2xl font-bold">{request.title}</h1>
+      <section className="space-y-3">
         {request.areas.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {request.areas.map((a) => (
@@ -134,7 +105,7 @@ function RequestPanel({
         <pre className="font-sans whitespace-pre-wrap rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
           {request.body || "（本文なし）"}
         </pre>
-      </header>
+      </section>
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
         <Button variant="primary" onClick={start} disabled={running}>
@@ -175,7 +146,7 @@ function RequestPanel({
           <ul className="divide-y divide-slate-100 rounded-lg bg-white ring-1 ring-slate-200 dark:divide-slate-800 dark:bg-slate-900 dark:ring-slate-800">
             {tasks.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                <Id id={t.id} onClick={() => ctx.openTask(t.id)} />
+                <Id id={t.id} onClick={() => ctx.open(t.ref)} />
                 <span className="flex-1">{t.title}</span>
                 <Badge>{ctx.info.project.statuses.find((s) => s.id === t.status)?.label ?? t.status}</Badge>
               </li>
@@ -224,13 +195,13 @@ function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reque
           ) : (
             <ul className="space-y-2">
               {run.context.map((c) => (
-                <li key={c.id} className="flex gap-3">
+                <li key={c.ref} className="flex gap-3">
                   <div className="w-14 shrink-0 pt-1">
                     <Meter value={Math.min(100, c.score * 100)} tone={c.score > 0.4 ? "emerald" : "amber"} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <Id id={c.id} onClick={() => (c.kind === "task" ? ctx.openTask(c.id) : ctx.openRequest(c.id))} />
+                      <Id id={c.ref} onClick={() => ctx.open(c.ref)} />
                       <span className="truncate">{c.title}</span>
                     </div>
                     <p className="text-sm text-slate-500">{c.reasons.join(" / ")}</p>
@@ -289,7 +260,7 @@ function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reque
                 {a.impacts.map((i) => (
                   <li key={`${i.type}-${i.target}`} className="flex items-start gap-2">
                     <Badge tone="amber">{RELATION_TYPES[i.type].label}</Badge>
-                    <Id id={i.target} onClick={() => (i.target.startsWith("REQ") ? ctx.openRequest(i.target) : ctx.openTask(i.target))} />
+                    <Id id={i.target} onClick={() => { const ref = absRef(i.target, request.id); if (ref) ctx.open(ref); }} />
                     <span className="text-slate-600 dark:text-slate-400">{i.reason}</span>
                     <span className="ml-auto font-mono text-sm text-slate-400">{Math.round(i.confidence * 100)}%</span>
                   </li>
@@ -393,7 +364,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
   return (
     <Section
       title={`タスク案 (${included.length}/${run.drafts.length} 件 · ${total} 人日)`}
-      aside={<span className="font-mono text-sm text-slate-400">preflight/{request.id}/{run.id}/drafts/*.md</span>}
+      aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
     >
       <div className="flex gap-3 overflow-x-auto pb-2">
         {levels(run.drafts).map((lv, i) => (
@@ -454,7 +425,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           <p className="text-emerald-700 dark:text-emerald-400">
             ✓ タスク化済み:{" "}
             {run.materialized!.map((id) => (
-              <Id key={id} id={id} onClick={() => ctx.openTask(id)} />
+              <Id key={id} id={id} onClick={() => ctx.open(`${request.id}/${id}`)} />
             ))}
           </p>
         ) : (

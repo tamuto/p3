@@ -35,7 +35,8 @@ export class MockEngine implements PreflightEngine {
     log({ kind: "command", text: `$ rg -l "${request.title.slice(0, 20)}" .` });
     await this.sleep(400, signal);
     for (const c of context.slice(0, 3)) {
-      log({ kind: "command", text: `$ cat ${job.dataDirRel}/${c.kind === "task" ? "tasks" : "requests"}/${c.id}.md` });
+      const [rid, tid] = c.ref.split("/");
+      log({ kind: "command", text: `$ cat ${job.dataDirRel}/requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
       await this.sleep(250, signal);
     }
 
@@ -47,12 +48,12 @@ export class MockEngine implements PreflightEngine {
     const items = bullets.length ? bullets : [`${request.title} の設計`, `${request.title} の実装`, `${request.title} のテスト`];
     const areas = request.areas.length ? request.areas : ["src"];
     const drafts: ProposedTask[] = items.map((title, i) => ({
-      key: `T${i + 1}`,
+      key: `D${i + 1}`,
       title,
       description: `要望 ${request.id} より。\n\n## 完了条件\n- ${title} が動作すること\n- 既存機能に回帰がないこと`,
       estimateDays: [1, 2, 1.5, 0.5, 3][i % 5],
       areas,
-      dependsOn: i === 0 ? [] : [`T${i}`],
+      dependsOn: i === 0 ? [] : [`D${i}`],
       relations: [],
       include: true,
     }));
@@ -61,7 +62,7 @@ export class MockEngine implements PreflightEngine {
       .filter((c) => c.score >= 0.25)
       .slice(0, 4)
       .map((c) => ({
-        target: c.id,
+        target: c.ref,
         type: (c.reasons.some((r) => r.includes("領域")) ? "impacts" : "relates_to") as "impacts" | "relates_to",
         reason: c.reasons.join(" / "),
         confidence: Math.min(0.9, c.score),

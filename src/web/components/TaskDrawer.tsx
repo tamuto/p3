@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
+import { normalizeTaskId } from "../../shared/refs.ts";
 import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
+import type { RequestData } from "../lib/requestData.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 
-type Draft = Pick<Task, "title" | "status" | "assignee" | "estimate" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string };
+type Draft = Pick<Task, "title" | "status" | "estimate" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string; outputs: string };
 
 const toDraft = (t: Task): Draft => ({
   title: t.title,
   status: t.status,
-  assignee: t.assignee,
   estimate: t.estimate,
   start: t.start,
   due: t.due,
@@ -17,11 +18,18 @@ const toDraft = (t: Task): Draft => ({
   body: t.body,
   labels: t.labels.join(", "),
   areas: t.areas.join(", "),
+  outputs: t.outputs.join("\n"),
 });
 
 const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
-export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onClose: () => void }) {
+/**
+ * タスク詳細（要望の画面に重ねる）。id は要望の中の ID（T003。T3 / 3 も可）。
+ * 関係の相手は、同じ要望のタスクは T003、別の要望は <要望ID> か <要望ID>/T003 と書く。
+ */
+export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; data: RequestData; id: string; onClose: () => void }) {
+  const rid = data.request.id;
+  const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
   const [graph, setGraph] = useState<Neighborhood>();
   const [draft, setDraft] = useState<Draft>();
@@ -73,25 +81,28 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
     setDraft({ ...draft, [k]: v });
     setDirty(true);
   };
-  const title = (tid: string) => ctx.tasks.find((t) => t.id === tid)?.title ?? ctx.requests.find((r) => r.id === tid)?.title ?? "";
-  const open = (tid: string) => (tid.startsWith("REQ") ? ctx.openRequest(tid) : ctx.openTask(tid));
+  /** 同じ要望の中は T003 と短く見せる */
+  const short = (ref: string) => (ref.startsWith(`${rid}/`) ? ref.slice(rid.length + 1) : ref);
+  const title = (ref: string) => graph.titles[ref] ?? data.tasks.find((t) => t.ref === ref)?.title ?? "";
+  const open = (ref: string) => ctx.open(ref);
 
   async function save() {
     try {
       await api.patchTask(id, {
         ...draft!,
-        assignee: draft!.assignee || null,
         estimate: draft!.estimate ?? null,
         start: draft!.start || null,
         due: draft!.due || null,
         progress: draft!.progress ?? null,
         labels: split(draft!.labels),
         areas: split(draft!.areas),
+        outputs: draft!.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
         rev: task!.rev,
       });
       setDirty(false);
       setMsg(null);
       await load();
+      data.reload();
       ctx.reload();
     } catch (e) {
       setMsg(e instanceof ApiError && e.status === 409 ? "競合: 他で更新されています。破棄して読み直してください。" : String((e as Error).message));
@@ -104,7 +115,7 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
       setRelTarget("");
       setMsg(null);
       await load();
-      ctx.reload();
+      data.reload();
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -113,7 +124,7 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
   async function removeRel(e: GraphEdge) {
     await api.removeRelation(id, { type: e.type as RelationType, target: e.to });
     await load();
-    ctx.reload();
+    data.reload();
   }
 
   const num = (v: string) => (v === "" ? undefined : Number(v));
@@ -126,11 +137,6 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
       >
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
           <Id id={task.id} />
-          {task.request && (
-            <button className="font-mono text-sm text-indigo-600 hover:underline" onClick={() => ctx.openRequest(task.request!)}>
-              {task.request}
-            </button>
-          )}
           <span className="text-sm text-slate-400">
             rev {task.rev} · {task.updatedBy ?? "?"}
           </span>
@@ -163,19 +169,6 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
                 ))}
               </select>
             </Field>
-            <Field label="担当">
-              <input className={inputCls} list="pcube-members" value={draft.assignee ?? ""} onChange={(e) => set("assignee", e.target.value)} />
-              <datalist id="pcube-members">
-                {ctx.info.project.members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </datalist>
-              {draft.assignee && ctx.info.project.members.length > 0 && !ctx.info.project.members.some((m) => m.id === draft.assignee) && (
-                <span className="text-sm text-amber-600">メンバーにいません</span>
-              )}
-            </Field>
             <Field label="見積り (人日)">
               <input type="number" step="0.5" className={inputCls} value={draft.estimate ?? ""} onChange={(e) => set("estimate", num(e.target.value))} />
             </Field>
@@ -197,6 +190,9 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
               <input className={`${inputCls} font-mono`} value={draft.areas} onChange={(e) => set("areas", e.target.value)} />
             </Field>
           </div>
+          <Field label="成果物（PR / MR の URL、ドキュメントのパス。1行に1つ）">
+            <textarea rows={2} className={`${inputCls} font-mono`} value={draft.outputs} onChange={(e) => set("outputs", e.target.value)} />
+          </Field>
           <Field label="本文 (Markdown)">
             <textarea rows={6} className={`${inputCls} font-mono`} value={draft.body} onChange={(e) => set("body", e.target.value)} />
           </Field>
@@ -207,7 +203,7 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
               {graph.outgoing.map((e) => (
                 <li key={`o-${e.type}-${e.to}`} className="flex items-center gap-2 py-1.5">
                   <Badge tone="indigo">{RELATION_TYPES[e.type as RelationType]?.label ?? e.type}</Badge>
-                  <Id id={e.to} onClick={() => open(e.to)} />
+                  <Id id={short(e.to)} onClick={() => open(e.to)} />
                   <span className="truncate">{title(e.to)}</span>
                   <Origin e={e} />
                   {e.origin !== "index" && (
@@ -220,7 +216,7 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
               {graph.incoming.map((e) => (
                 <li key={`i-${e.type}-${e.from}`} className="flex items-center gap-2 py-1.5">
                   <Badge tone="violet">{RELATION_TYPES[e.type as RelationType]?.inverse ?? e.type}</Badge>
-                  <Id id={e.from} onClick={() => open(e.from)} />
+                  <Id id={short(e.from)} onClick={() => open(e.from)} />
                   <span className="truncate">{title(e.from)}</span>
                   <Origin e={e} />
                 </li>
@@ -234,16 +230,29 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
                   </option>
                 ))}
               </select>
-              <select className={inputCls} value={relTarget} onChange={(e) => setRelTarget(e.target.value)}>
-                <option value="">対象を選択…</option>
-                {[...ctx.tasks, ...ctx.requests]
-                  .filter((t) => t.id !== id)
+              <input
+                className={`${inputCls} font-mono`}
+                list="pcube-rel-targets"
+                placeholder="T004 / <要望ID> / <要望ID>/T004"
+                value={relTarget}
+                onChange={(e) => setRelTarget(e.target.value)}
+              />
+              <datalist id="pcube-rel-targets">
+                {data.tasks
+                  .filter((t) => t.ref !== id)
                   .map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.id} {t.title}
+                      {t.title}
                     </option>
                   ))}
-              </select>
+                {ctx.requests
+                  .filter((p) => p.request.id !== rid)
+                  .map((p) => (
+                    <option key={p.request.id} value={p.request.id}>
+                      {p.request.title}
+                    </option>
+                  ))}
+              </datalist>
               <Button className="shrink-0 whitespace-nowrap" disabled={!relTarget} onClick={() => addRel(relType, relTarget)}>
                 追加
               </Button>
@@ -256,16 +265,16 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
             ) : (
               <ul className="space-y-1.5">
                 {graph.implicit.map((r) => (
-                  <li key={r.id} className="flex items-start gap-2">
+                  <li key={r.ref} className="flex items-start gap-2">
                     <span className="w-12 pt-0.5 text-right font-mono text-sm text-slate-400">{r.score.toFixed(2)}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <Id id={r.id} onClick={() => open(r.id)} />
+                        <Id id={short(r.ref)} onClick={() => open(r.ref)} />
                         <span className="truncate">{r.title}</span>
                       </div>
                       <p className="text-sm text-slate-500">{r.reasons.join(" / ")}</p>
                     </div>
-                    <Button variant="ghost" className="text-sm" onClick={() => addRel("relates_to", r.id, r.reasons.join(" / "))}>
+                    <Button variant="ghost" className="text-sm" onClick={() => addRel("relates_to", r.ref, r.reasons.join(" / "))}>
                       ＋関連付け
                     </Button>
                   </li>
@@ -281,14 +290,16 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
               <div className="flex flex-wrap gap-1.5">
                 {graph.impactScope.map((x) => (
                   <button key={x} onClick={() => open(x)} className="rounded bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
-                    <span className="font-mono text-sm">{x}</span> {title(x)}
+                    <span className="font-mono text-sm">{short(x)}</span> {title(x)}
                   </button>
                 ))}
               </div>
             )}
           </Section>
 
-          <p className="font-mono text-sm text-slate-400">{ctx.info.dataDir}/tasks/{task.id}.md</p>
+          <p className="font-mono text-sm text-slate-400">
+            {ctx.info.dataDir}/requests/{rid}/tasks/{task.id}.md
+          </p>
         </div>
       </aside>
     </div>

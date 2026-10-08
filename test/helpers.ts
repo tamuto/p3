@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_STATUSES, type ProjectConfig, type Task } from "../src/shared/types.ts";
+import { DEFAULT_STATUSES, type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
 import type { PcubeContext } from "../src/server/context.ts";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import type { PreflightEngine } from "../src/server/preflight/engine.ts";
@@ -34,7 +34,6 @@ export function projectConfig(patch: Partial<ProjectConfig> = {}): ProjectConfig
     description: "テスト用のプロジェクト",
     repo: "..",
     docs: [],
-    members: [],
     statuses: DEFAULT_STATUSES,
     branchPattern: "req/{id}-{slug}",
     worktreeDir: ".worktrees",
@@ -48,7 +47,6 @@ export async function makeRepo(config: Partial<ProjectConfig> = {}) {
   const root = tempDir();
   gitInit(root);
   const dataDir = join(root, ".pcube");
-  await mkdir(join(dataDir, "tasks"), { recursive: true });
   await mkdir(join(dataDir, "requests"), { recursive: true });
   await writeProjectFile(join(dataDir, "project.yaml"), projectConfig(config));
   return { root, dataDir };
@@ -71,6 +69,10 @@ export async function makeProject(config: Partial<ProjectConfig> = {}) {
   return { ...repo, ctx: await openTestProject(repo.dataDir) };
 }
 
-export function newTask(ctx: PcubeContext, t: Partial<Task> & { title: string }, actor = "test") {
-  return ctx.ws.tasks.create({ status: "backlog", labels: [], areas: [], relations: [], body: "", ...t }, actor);
+export function newRequest(ctx: PcubeContext, r: Partial<Request> & { title: string } = { title: "要望" }, actor = "test") {
+  return ctx.ws.requests.create({ status: "active", body: "", ...r }, actor);
+}
+
+export function newTask(ctx: PcubeContext, requestId: string, t: Partial<Task> & { title: string }, actor = "test") {
+  return ctx.ws.tasksOf(requestId).create({ status: "todo", ...t }, actor);
 }

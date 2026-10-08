@@ -11,6 +11,7 @@ import {
   type RelationType,
   type Task,
 } from "../../shared/types.ts";
+import { absRef, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
 import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -52,7 +53,7 @@ export class PreflightService {
     const context = this.index.related({
       text: `${request.title}\n${request.body}`,
       areas: request.areas,
-      seeds: request.relations.map((r) => r.target),
+      seeds: request.relations.map((r) => absRef(r.target, request.id)).filter((x): x is string => !!x),
       exclude: [request.id],
       limit: 10,
     });
@@ -72,10 +73,10 @@ export class PreflightService {
     await writeFileAtomic(join(runDir, "request.md"), `# ${request.id} ${request.title}\n\n${request.body}`);
     await writeFileAtomic(
       join(runDir, "context.md"),
-      `# Context for ${request.id}\n\n${context.map((c) => `- ${c.id} ${c.title} (${c.score}) — ${c.reasons.join(" / ")}`).join("\n")}\n`,
+      `# Context for ${request.id}\n\n${context.map((c) => `- ${c.ref} ${c.title} (${c.score}) — ${c.reasons.join(" / ")}`).join("\n")}\n`,
     );
     await this.ws.requests.update(requestId, { status: "preflight", lastPreflight: id }, { actor: opts.actor });
-    this.ws.emit({ type: "changed", kind: "request", id: requestId });
+    this.ws.emit({ type: "changed", kind: "request", request: requestId });
 
     const abort = new AbortController();
     const done = this.execute(engine, run, runDir, abort.signal);
@@ -136,7 +137,7 @@ export class PreflightService {
       // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
       this.active.delete(run.id);
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
-      this.ws.emit({ type: "changed", kind: "request", id: run.requestId });
+      this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
     }
   }
 
@@ -150,9 +151,9 @@ export class PreflightService {
   }
 
   /**
-   * タスク化: 採用されたタスク案を tasks/TASK-xxxx.md として書き出し、関係を張る。
-   *   - 同じ run 内の dependsOn → depends_on
-   *   - 案が持つ既存項目への関係 → そのまま（origin: preflight）
+   * タスク化: 採用されたタスク案を、要望のフォルダの tasks/T00x.md として書き出し、関係を張る。
+   *   - 同じ run 内の dependsOn → depends_on（要望の中なので相対参照 T00x）
+   *   - 案が持つ既存項目への関係 → 存在するものだけ（origin: preflight）
    *   - 評価の impacts → 要望側の relations に記録（作業ツリー単位の影響として扱う）
    */
   async materialize(requestId: string, runId: string, actor = "preflight"): Promise<Task[]> {
@@ -160,20 +161,31 @@ export class PreflightService {
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
     if (run.materialized?.length) throw new Error(`既にタスク化済みです: ${run.materialized.join(", ")}`);
     const request = this.ws.requests.require(requestId);
+    const tasks = this.ws.tasksOf(requestId);
     const drafts = run.drafts.filter((d) => d.include);
     const keyToId = new Map<string, string>();
     const created: Task[] = [];
+    // Codex が書いた参照を、存在するものだけ、ファイルに書く形（相対/絶対）にそろえる
+    const toRel = (target: string) => {
+      const abs = absRef(target, requestId);
+      return abs && abs !== requestId && this.ws.exists(abs) ? relRef(abs, requestId) : undefined;
+    };
+    const keepExisting = (rels: Relation[]): Relation[] =>
+      rels.flatMap((r) => {
+        const target = toRel(r.target);
+        return target ? [{ ...r, target, origin: "preflight" as const }] : [];
+      });
 
     for (const d of drafts) {
-      const t = await this.ws.tasks.create(
+      const t = await tasks.create(
         {
           title: d.title,
-          status: this.ws.project.statuses[0]?.id ?? "backlog",
-          request: requestId,
+          status: this.ws.project.statuses[0]?.id ?? "todo",
           labels: [],
           areas: d.areas,
+          outputs: [],
           estimate: d.estimateDays,
-          relations: d.relations.map((r) => ({ ...r, origin: "preflight" as const })),
+          relations: keepExisting(d.relations),
           body: `${d.description}\n\n> preflight: ${runId} / ${d.key}`,
         },
         actor,
@@ -189,17 +201,17 @@ export class PreflightService {
         .map((target) => ({ type: "depends_on", target, origin: "preflight" }));
       if (deps.length) {
         const id = keyToId.get(d.key)!;
-        const cur = this.ws.tasks.require(id);
-        const t = await this.ws.tasks.update(id, { relations: [...cur.relations, ...deps] }, { actor });
+        const cur = tasks.require(id);
+        const t = await tasks.update(id, { relations: [...cur.relations, ...deps] }, { actor });
         created[created.findIndex((c) => c.id === id)] = t;
       }
     }
 
-    const impactRels: Relation[] = (run.assessment?.impacts ?? [])
-      .filter((i) => i.target !== requestId && !request.relations.some((r) => r.target === i.target && r.type === i.type))
-      .map((i) => ({ type: i.type, target: i.target, note: i.reason, origin: "preflight", confidence: i.confidence }));
+    const impactRels = keepExisting(
+      (run.assessment?.impacts ?? []).map((i) => ({ type: i.type, target: i.target, note: i.reason, confidence: i.confidence })),
+    ).filter((i) => !request.relations.some((r) => absRef(r.target, requestId) === absRef(i.target, requestId) && r.type === i.type));
     const p = this.ws.project;
-    // 日本語のタイトルは slug にならないので、そのときは区切りごと落とす (req/REQ-0001)
+    // 日本語のタイトルは slug にならないので、そのときは区切りごと落とす (req/261009-k7m3x)
     const slug = slugify(request.title);
     const branch = p.branchPattern
       .replace("{id}", requestId)
@@ -207,7 +219,7 @@ export class PreflightService {
     await this.ws.requests.update(
       requestId,
       {
-        status: "accepted",
+        status: "active",
         areas: [...new Set([...request.areas, ...(run.assessment?.areas ?? [])])],
         relations: [...request.relations, ...impactRels],
         workstream: request.workstream ?? { branch, worktree: `${p.worktreeDir}/${requestId}` },
@@ -217,8 +229,8 @@ export class PreflightService {
     run.materialized = created.map((t) => t.id);
     await this.ws.preflight.save(run);
     this.index.invalidate();
-    this.ws.emit({ type: "changed", kind: "task" });
-    this.ws.emit({ type: "changed", kind: "request", id: requestId });
+    this.ws.emit({ type: "changed", kind: "task", request: requestId });
+    this.ws.emit({ type: "changed", kind: "request", request: requestId });
     return created;
   }
 }

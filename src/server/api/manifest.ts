@@ -1,42 +1,31 @@
 import { RELATION_TYPES } from "../../shared/types.ts";
 
 /**
- * AI エージェントが最初に読む自己記述。GET /api/ai/manifest
- * （将来 MCP サーバとして公開する際もこの定義を元にする）
+ * 自己記述。GET /api/ai/manifest
+ * この REST API はローカルの画面のためのもので、AI エージェントには CLI を使わせる。
  */
 export const AI_MANIFEST = {
   name: "pcube",
   description:
-    "1リポジトリ=1プロジェクトのファイルベースのタスク管理。タスクは .pcube/tasks/TASK-xxxx.md、要望は .pcube/requests/REQ-xxxx.md。" +
-    "この REST API はローカルのブラウザ用。AI エージェントは `pcube` CLI（`pcube help`、`--json` 出力）を使うこと。CLI・API・ファイル直接編集のどれでも同じ状態になる。",
-  conventions: {
-    actor: "変更時は `X-Pcube-Actor: ai:<agent-name>` ヘッダを付ける（履歴の updatedBy に残る）",
-    optimisticLock: "更新時は取得した rev を body.rev か If-Match ヘッダで送る。他者が先に更新していたら 409 と最新状態が返る",
-    nullClears: "PATCH で値に null を渡すとその項目を消す",
+    "1リポジトリ=1プロジェクトのファイルベースのタスク管理。作業の単位は要望で、要望ごとにフォルダを分ける" +
+    "（.pcube/requests/<要望ID>/request.md, tasks/T001.md, preflight/）。" +
+    "AI エージェントは `pcube` CLI（`pcube help`、`--json` 出力）を使うこと。要望の作業ツリーの中で実行すると、その要望が対象になる。",
+  refs: {
+    request: "<要望ID>（例: 261009-k7m3x）",
+    task: "<要望ID>/T003。同じ要望の中なら T003",
   },
   relationTypes: RELATION_TYPES,
-  workflow: [
-    "1. GET /api/resolve?q=<ID・タイトル・自然文> で対象タスクを特定する（match が null なら candidates から選ぶ）",
-    "2. GET /api/tasks/:id でタスクと関係グラフ(neighborhood: 明示・暗黙・影響範囲)を取得する",
-    "3. PATCH /api/tasks/:id {status, progress, rev, ...} で更新する",
-    "4. 関係は POST /api/tasks/:id/relations {type, target, note, confidence} で1本ずつ追加する（depends_on は循環チェックあり）",
-  ],
   endpoints: [
-    { method: "GET", path: "/api/project", desc: "プロジェクト設定・ステータス一覧" },
-    { method: "GET", path: "/api/tasks?status=&request=&area=&q=", desc: "タスク一覧" },
-    { method: "GET", path: "/api/tasks/:id", desc: "タスク + 関係グラフ" },
-    { method: "POST", path: "/api/tasks", desc: "タスク作成" },
-    { method: "PATCH", path: "/api/tasks/:id", desc: "タスク更新（rev で楽観ロック）" },
-    { method: "DELETE", path: "/api/tasks/:id", desc: "アーカイブ（.archive/ へ移動）" },
-    { method: "POST", path: "/api/tasks/:id/relations", desc: "関係を追加" },
-    { method: "DELETE", path: "/api/tasks/:id/relations?type=&target=", desc: "関係を削除" },
-    { method: "GET", path: "/api/resolve?q=", desc: "自然文/部分 ID からタスク・要望を特定" },
-    { method: "GET", path: "/api/related?q=&areas=&seeds=", desc: "内容・領域・グラフから関連項目を検索" },
-    { method: "GET", path: "/api/requests", desc: "要望一覧" },
-    { method: "POST", path: "/api/requests", desc: "要望作成" },
-    { method: "POST", path: "/api/requests/:id/preflight", desc: "preflight 実行 {engine?: codex|mock}" },
-    { method: "GET", path: "/api/requests/:id/preflight/:run", desc: "preflight 結果" },
-    { method: "POST", path: "/api/requests/:id/preflight/:run/materialize", desc: "採用したタスク案をタスク化" },
+    { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
+    { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
+    { method: "POST", path: "/api/requests", desc: "要望の作成" },
+    { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・関係" },
+    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク" },
+    { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（PATCH は rev で楽観ロック、null で項目を消す）" },
+    { method: "POST|DELETE", path: "/api/requests/:rid[/tasks/:tid]/relations", desc: "関係の追加・削除" },
+    { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock}" },
+    { method: "POST", path: "/api/requests/:rid/preflight/:run/materialize", desc: "採用したタスク案をタスク化" },
+    { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },
     { method: "GET", path: "/api/events", desc: "変更通知 (SSE)" },
   ],
 };

@@ -1,14 +1,44 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { absRef, normalizeTaskId, parseRef, relRef, REQUEST_ID, taskId } from "../src/shared/refs.ts";
 import { ConflictError, NotFoundError } from "../src/server/store/collection.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
-import { slugify } from "../src/server/store/fsutil.ts";
-import { normalizeProject, normalizeTask } from "../src/server/store/normalize.ts";
+import { newRequestId, slugify } from "../src/server/store/fsutil.ts";
+import { normalizeProject, normalizeTaskIn } from "../src/server/store/normalize.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
-import { makeProject, newTask, projectConfig, tempDir } from "./helpers.ts";
+import { makeProject, newRequest, newTask, projectConfig, tempDir } from "./helpers.ts";
+
+describe("参照", () => {
+  it("要望 ID は 作成日-乱数5文字。時刻順に並ぶ", () => {
+    const id = newRequestId(new Date(2026, 9, 9, 8, 0));
+    expect(id).toMatch(REQUEST_ID);
+    expect(id.startsWith("261009-")).toBe(true);
+    expect(new Set(Array.from({ length: 200 }, () => newRequestId())).size).toBe(200);
+  });
+
+  it("タスク ID は要望の中の連番", () => {
+    expect(taskId(3)).toBe("T003");
+    expect(taskId(1200)).toBe("T1200");
+    expect(normalizeTaskId("t3")).toBe("T003");
+    expect(normalizeTaskId("12")).toBe("T012");
+    expect(normalizeTaskId("x")).toBeUndefined();
+  });
+
+  it("相対参照は張った側の要望の中、絶対参照はそのまま。ファイルには短い形で書く", () => {
+    const a = "261009-abcde";
+    const b = "261001-zzzzz";
+    expect(parseRef("T3", a)).toEqual({ request: a, task: "T003" });
+    expect(parseRef("T3")).toBeUndefined();
+    expect(absRef(`${b}/T1`, a)).toBe(`${b}/T001`);
+    expect(absRef(b, a)).toBe(b);
+    expect(relRef(`${a}/T2`, a)).toBe("T002");
+    expect(relRef(`${b}/T2`, a)).toBe(`${b}/T002`);
+    expect(parseRef("REQ-1/T1")).toBeUndefined();
+  });
+});
 
 describe("frontmatter", () => {
   it("書いて読むと元に戻る（本文の前の空行は付かない）", () => {
@@ -26,40 +56,30 @@ describe("frontmatter", () => {
 });
 
 describe("normalize", () => {
-  it("YAML の日付型を YYYY-MM-DD に戻し、不正な関係は捨てる", () => {
-    const t = normalizeTask(
+  it("要望とタスクの参照を場所から決め、YAML の日付型を戻し、不正な関係は捨てる", () => {
+    const t = normalizeTaskIn("261009-abcde")(
       {
         title: "t",
         start: new Date("2026-10-01T00:00:00Z"),
-        due: "2026-10-05",
         estimate: "1.5",
         labels: "single",
-        relations: [
-          { type: "depends_on", target: "TASK-0001" },
-          { type: "unknown", target: "TASK-0002" },
-          { type: "impacts" },
-          "garbage",
-        ],
+        outputs: ["https://example.com/pull/1"],
+        relations: [{ type: "depends_on", target: "T001" }, { type: "unknown", target: "T002" }, { type: "impacts" }, "garbage"],
       },
       "body",
-      "TASK-0009",
+      "T009",
     );
-    expect(t.start).toBe("2026-10-01");
-    expect(t.due).toBe("2026-10-05");
-    expect(t.estimate).toBe(1.5);
+    expect(t).toMatchObject({ id: "T009", request: "261009-abcde", ref: "261009-abcde/T009", start: "2026-10-01", estimate: 1.5 });
     expect(t.labels).toEqual(["single"]);
-    expect(t.relations).toEqual([{ type: "depends_on", target: "TASK-0001" }]);
-    expect(t.status).toBe("backlog");
+    expect(t.outputs).toEqual(["https://example.com/pull/1"]);
+    expect(t.relations).toEqual([{ type: "depends_on", target: "T001" }]);
+    expect(t.status).toBe("todo");
   });
 
-  it("プロジェクト設定の既定値を補い、メンバーの kind を正規化する", () => {
-    const p = normalizeProject({ members: [{ id: "a" }, { id: "b", kind: "ai", name: "B" }, { name: "no id" }] });
+  it("プロジェクト設定の既定値を補う（列は 未着手 / 作業中 / 完了）", () => {
+    const p = normalizeProject({});
     expect(p.name).toBe("pcube project");
-    expect(p.statuses.map((s) => s.id)).toContain("done");
-    expect(p.members).toEqual([
-      { id: "a", name: "a", email: undefined, role: undefined, kind: "human" },
-      { id: "b", name: "B", email: undefined, role: undefined, kind: "ai" },
-    ]);
+    expect(p.statuses.map((s) => s.id)).toEqual(["todo", "doing", "done"]);
     expect(p.preflight.instructions).toBe("");
   });
 
@@ -69,65 +89,95 @@ describe("normalize", () => {
   });
 });
 
-describe("MarkdownCollection", () => {
-  it("連番で採番し、1タスク1ファイルで書く", async () => {
+describe("要望とタスク", () => {
+  it("要望ごとにフォルダを作り、タスクはその中に連番で置く", async () => {
     const { ctx, dataDir } = await makeProject();
-    const a = await newTask(ctx, { title: "A" });
-    const b = await newTask(ctx, { title: "B", areas: ["src/x"] });
-    expect([a.id, b.id]).toEqual(["TASK-0001", "TASK-0002"]);
-    expect(await readdir(join(dataDir, "tasks"))).toEqual(["TASK-0001.md", "TASK-0002.md"]);
-    const { data } = parseFrontmatter(await readFile(join(dataDir, "tasks", "TASK-0002.md"), "utf8"));
-    expect(data).toMatchObject({ id: "TASK-0002", title: "B", areas: ["src/x"], rev: 1, updatedBy: "test" });
+    const a = await newRequest(ctx, { title: "A" });
+    const b = await newRequest(ctx, { title: "B" });
+    expect(a.id).toMatch(REQUEST_ID);
+    expect(a.id).not.toBe(b.id);
+    const a1 = await newTask(ctx, a.id, { title: "A-1" });
+    const a2 = await newTask(ctx, a.id, { title: "A-2", areas: ["src/x"] });
+    const b1 = await newTask(ctx, b.id, { title: "B-1" });
+    expect([a1.id, a2.id, b1.id]).toEqual(["T001", "T002", "T001"]);
+    expect([a1.ref, b1.ref]).toEqual([`${a.id}/T001`, `${b.id}/T001`]);
+    expect(await readdir(join(dataDir, "requests", a.id))).toEqual(expect.arrayContaining(["request.md", "tasks"]));
+    expect(await readdir(join(dataDir, "requests", a.id, "tasks"))).toEqual(["T001.md", "T002.md"]);
+    const { data } = parseFrontmatter(await readFile(join(dataDir, "requests", a.id, "tasks", "T002.md"), "utf8"));
+    expect(data).toMatchObject({ id: "T002", title: "A-2", areas: ["src/x"], rev: 1, updatedBy: "test" });
+    // 要望・参照は場所から決まるのでファイルには書かない
+    expect(data).not.toHaveProperty("request");
+    expect(data).not.toHaveProperty("ref");
+    expect(ctx.ws.allTasks().map((t) => t.ref)).toHaveLength(3);
+    expect(ctx.ws.task(`${a.id}/T2`)?.title).toBe("A-2");
   });
 
-  it("別プロセスが同じ番号のファイルを先に作っていたら次の番号にする", async () => {
+  it("別のプロセスが同じ番号のタスクを先に作っていたら次の番号にする", async () => {
     const { ctx, dataDir } = await makeProject();
-    await newTask(ctx, { title: "A" });
-    // 他のプロセスが TASK-0002 を作った（このプロセスのキャッシュはまだ知らない）
-    await writeFile(join(dataDir, "tasks", "TASK-0002.md"), "---\ntitle: other\n---\n");
-    const c = await newTask(ctx, { title: "C" });
-    expect(c.id).toBe("TASK-0003");
+    const r = await newRequest(ctx);
+    await newTask(ctx, r.id, { title: "A" });
+    await writeFile(join(dataDir, "requests", r.id, "tasks", "T002.md"), "---\ntitle: other\n---\n");
+    expect((await newTask(ctx, r.id, { title: "C" })).id).toBe("T003");
   });
 
   it("rev が違えば更新を拒み、一致すれば rev を進める", async () => {
     const { ctx } = await makeProject();
-    const t = await newTask(ctx, { title: "A" });
-    const u = await ctx.ws.tasks.update(t.id, { status: "ready" }, { expectedRev: 1, actor: "human:a" });
-    expect(u.rev).toBe(2);
-    expect(u.updatedBy).toBe("human:a");
-    await expect(ctx.ws.tasks.update(t.id, { status: "done" }, { expectedRev: 1 })).rejects.toBeInstanceOf(ConflictError);
+    const r = await newRequest(ctx);
+    const t = await newTask(ctx, r.id, { title: "A" });
+    const tasks = ctx.ws.tasksOf(r.id);
+    const u = await tasks.update(t.id, { status: "doing" }, { expectedRev: 1, actor: "ai:claude" });
+    expect(u).toMatchObject({ rev: 2, updatedBy: "ai:claude", ref: t.ref });
+    await expect(tasks.update(t.id, { status: "done" }, { expectedRev: 1 })).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("更新の直前にディスクを読み直すので、外部での編集を上書きしない", async () => {
-    const { ctx, dataDir } = await makeProject();
-    const t = await newTask(ctx, { title: "A" });
-    const path = join(dataDir, "tasks", `${t.id}.md`);
+    const { ctx } = await makeProject();
+    const r = await newRequest(ctx);
+    const t = await newTask(ctx, r.id, { title: "A" });
+    const tasks = ctx.ws.tasksOf(r.id);
+    const path = tasks.path(t.id);
     const text = await readFile(path, "utf8");
-    // エディタや AI がファイルを直接書き換えた（rev も進めた）
     await writeFile(path, text.replace("title: A", "title: 外部で変更").replace("rev: 1", "rev: 2"));
-    await expect(ctx.ws.tasks.update(t.id, { status: "ready" }, { expectedRev: 1 })).rejects.toBeInstanceOf(ConflictError);
-    const u = await ctx.ws.tasks.update(t.id, { status: "ready" });
-    expect(u.title).toBe("外部で変更");
-    expect(u.rev).toBe(3);
+    await expect(tasks.update(t.id, { status: "doing" }, { expectedRev: 1 })).rejects.toBeInstanceOf(ConflictError);
+    const u = await tasks.update(t.id, { status: "doing" });
+    expect(u).toMatchObject({ title: "外部で変更", rev: 3 });
   });
 
-  it("壊れたファイルがあっても他は読め、エラーとして記録する", async () => {
-    const { dataDir } = await makeProject();
-    await writeFile(join(dataDir, "tasks", "TASK-0001.md"), "---\ntitle: ok\n---\n");
-    await writeFile(join(dataDir, "tasks", "TASK-0002.md"), "---\ntitle: [壊れた\n---\n");
+  it("壊れたファイルがあっても他は読め、エラーとして場所を記録する", async () => {
+    const { ctx, dataDir } = await makeProject();
+    const r = await newRequest(ctx);
+    const dir = join(dataDir, "requests", r.id, "tasks");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "T001.md"), "---\ntitle: ok\n---\n");
+    await writeFile(join(dir, "T002.md"), "---\ntitle: [壊れた\n---\n");
+    await writeFile(join(dir, "memo.md"), "タスク以外のファイルは無視する");
     const ws = new Workspace(dataDir);
     await ws.load();
-    expect(ws.tasks.list().map((t) => t.id)).toEqual(["TASK-0001"]);
-    expect([...ws.tasks.errors.keys()]).toEqual(["TASK-0002"]);
+    expect(ws.tasksOf(r.id).list().map((t) => t.id)).toEqual(["T001"]);
+    expect(Object.keys(ws.errors())).toEqual([`requests/${r.id}/tasks/T002.md`]);
   });
 
-  it("アーカイブは物理削除せず .archive/ に移す", async () => {
+  it("アーカイブは物理削除せず .archive/ に移す（タスクも要望も）", async () => {
     const { ctx, dataDir } = await makeProject();
-    const t = await newTask(ctx, { title: "A" });
-    await ctx.ws.tasks.archive(t.id);
-    expect(ctx.ws.tasks.get(t.id)).toBeUndefined();
-    expect(existsSync(join(dataDir, "tasks", ".archive", `${t.id}.md`))).toBe(true);
-    await expect(ctx.ws.tasks.archive(t.id)).rejects.toBeInstanceOf(NotFoundError);
+    const r = await newRequest(ctx);
+    const t = await newTask(ctx, r.id, { title: "A" });
+    await ctx.ws.tasksOf(r.id).archive(t.id);
+    expect(existsSync(join(dataDir, "requests", r.id, "tasks", ".archive", "T001.md"))).toBe(true);
+    await expect(ctx.ws.tasksOf(r.id).archive(t.id)).rejects.toBeInstanceOf(NotFoundError);
+    await ctx.ws.requests.archive(r.id);
+    expect(existsSync(join(dataDir, "requests", ".archive", r.id, "request.md"))).toBe(true);
+    expect(ctx.ws.requests.get(r.id)).toBeUndefined();
+  });
+
+  it("git pull などで要望のフォルダが増えても、読み直せば取り込める", async () => {
+    const { ctx, dataDir } = await makeProject();
+    const id = "261001-pulld";
+    await mkdir(join(dataDir, "requests", id, "tasks"), { recursive: true });
+    await writeFile(join(dataDir, "requests", id, "request.md"), "---\ntitle: 他の人の要望\nstatus: active\n---\n");
+    await writeFile(join(dataDir, "requests", id, "tasks", "T001.md"), "---\ntitle: 他の人のタスク\n---\n");
+    await ctx.ws.load();
+    expect(ctx.ws.requests.get(id)?.title).toBe("他の人の要望");
+    expect(ctx.ws.task(`${id}/T001`)?.title).toBe("他の人のタスク");
   });
 });
 
@@ -148,10 +198,8 @@ describe("project.yaml", () => {
     const { ctx } = await makeProject();
     const events: string[] = [];
     ctx.ws.on((e) => e.type === "changed" && events.push(e.kind));
-    const p = await ctx.ws.saveProject({ members: [{ id: "a", name: "A", kind: "ai" }] });
-    expect(p.members[0].kind).toBe("ai");
-    expect(ctx.ws.member("ai:a")?.name).toBe("A");
-    expect(ctx.ws.member("a")?.name).toBe("A");
+    const p = await ctx.ws.saveProject({ docs: ["docs/design.md"] });
+    expect(p.docs).toEqual(["docs/design.md"]);
     expect(events).toContain("project");
   });
 });

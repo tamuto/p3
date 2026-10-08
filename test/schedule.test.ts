@@ -4,10 +4,13 @@ import type { Task } from "../src/shared/types.ts";
 
 const task = (id: string, t: Partial<Task> = {}): Task => ({
   id,
+  request: "261009-abcde",
+  ref: `261009-abcde/${id}`,
   title: id,
-  status: "backlog",
+  status: "todo",
   labels: [],
   areas: [],
+  outputs: [],
   relations: [],
   rev: 1,
   createdAt: "",
@@ -40,9 +43,9 @@ describe("schedule", () => {
     expect(schedule([task("A", { due: "2026-10-20", estimate: 3 })], today).get("A")).toMatchObject({ start: "2026-10-18", end: "2026-10-20" });
   });
 
-  it("depends_on 以外の関係と、存在しない依存先はスケジュールに効かない", () => {
+  it("depends_on 以外の関係と、要望の外・存在しない依存先はスケジュールに効かない", () => {
     const bars = schedule(
-      [task("A", { estimate: 5 }), task("B", { relations: [{ type: "impacts", target: "A" }, dep("TASK-404")] })],
+      [task("A", { estimate: 5 }), task("B", { relations: [{ type: "impacts", target: "A" }, dep("T404"), dep("261001-other/T001")] })],
       today,
     );
     expect(bars.get("B")?.start).toBe(today);

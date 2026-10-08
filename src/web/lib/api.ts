@@ -5,6 +5,7 @@ import type {
   ProposedTask,
   Relation,
   Request,
+  RequestProgress,
   Task,
 } from "../../shared/types.ts";
 
@@ -37,27 +38,42 @@ export interface ProjectInfo {
   errors: Record<string, string>;
 }
 
+/** 参照（<要望ID>/T003）をパスに */
+const taskPath = (ref: string) => {
+  const [rid, tid] = ref.split("/");
+  return `/requests/${rid}/tasks/${tid}`;
+};
+/** 関係の操作先（要望かタスク） */
+const relPath = (ref: string) => (ref.includes("/") ? `${taskPath(ref)}/relations` : `/requests/${ref}/relations`);
+
+export interface RequestDetail {
+  request: Request;
+  tasks: Task[];
+  runs: PreflightRun[];
+  graph: Neighborhood;
+}
+
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
   saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
-  tasks: () => call<Task[]>("GET", "/tasks"),
-  task: (id: string) => call<{ task: Task; graph: Neighborhood }>("GET", `/tasks/${id}`),
-  createTask: (t: Partial<Task>) => call<Task>("POST", "/tasks", t),
-  patchTask: (id: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number }) =>
-    call<Task>("PATCH", `/tasks/${id}`, patch),
-  addRelation: (id: string, r: Relation) =>
-    call<Task>("POST", `/${id.startsWith("REQ") ? "requests" : "tasks"}/${id}/relations`, r),
-  removeRelation: (id: string, r: Pick<Relation, "type" | "target">) =>
-    call<Task>("DELETE", `/${id.startsWith("REQ") ? "requests" : "tasks"}/${id}/relations?type=${r.type}&target=${r.target}`),
-  requests: () => call<Request[]>("GET", "/requests"),
-  request: (id: string) =>
-    call<{ request: Request; tasks: Task[]; runs: PreflightRun[]; graph: Neighborhood }>("GET", `/requests/${id}`),
+
+  /** 要望の一覧と進捗 */
+  requests: () => call<RequestProgress[]>("GET", "/requests"),
+  request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
   createRequest: (r: { title: string; body: string; areas: string[] }) => call<Request>("POST", "/requests", r),
-  patchRequest: (id: string, patch: Partial<Request>) => call<Request>("PATCH", `/requests/${id}`, patch),
-  startPreflight: (id: string, engine?: string) => call<PreflightRun>("POST", `/requests/${id}/preflight`, { engine }),
-  run: (reqId: string, runId: string) => call<PreflightRun>("GET", `/requests/${reqId}/preflight/${runId}`),
-  cancelRun: (reqId: string, runId: string) => call("POST", `/requests/${reqId}/preflight/${runId}/cancel`, {}),
-  patchDraft: (reqId: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
-    call<ProposedTask>("PATCH", `/requests/${reqId}/preflight/${runId}/drafts/${key}`, patch),
-  materialize: (reqId: string, runId: string) => call<Task[]>("POST", `/requests/${reqId}/preflight/${runId}/materialize`, {}),
+  patchRequest: (rid: string, patch: Partial<Request> & { rev?: number }) => call<Request>("PATCH", `/requests/${rid}`, patch),
+
+  task: (ref: string) => call<{ task: Task; graph: Neighborhood }>("GET", taskPath(ref)),
+  createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number }) => call<Task>("PATCH", taskPath(ref), patch),
+  addRelation: (ref: string, r: Relation) => call<Task>("POST", relPath(ref), r),
+  removeRelation: (ref: string, r: Pick<Relation, "type" | "target">) =>
+    call<Task>("DELETE", `${relPath(ref)}?type=${r.type}&target=${encodeURIComponent(r.target)}`),
+
+  startPreflight: (rid: string, engine?: string) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, { engine }),
+  run: (rid: string, runId: string) => call<PreflightRun>("GET", `/requests/${rid}/preflight/${runId}`),
+  cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
+  patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
+    call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
+  materialize: (rid: string, runId: string) => call<Task[]>("POST", `/requests/${rid}/preflight/${runId}/materialize`, {}),
 };

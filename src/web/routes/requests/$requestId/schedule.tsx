@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { addDays, daysBetween, schedule } from "../../shared/schedule.ts";
-import { RELATION_TYPES, type RelationType, type Task } from "../../shared/types.ts";
-import { cx, Id } from "../components/ui.tsx";
-import { streamColor } from "../lib/colors.ts";
-import { useAppCtx } from "../lib/appCtx.ts";
+import { addDays, daysBetween, localToday, schedule } from "../../../../shared/schedule.ts";
+import { RELATION_TYPES, type RelationType, type Task } from "../../../../shared/types.ts";
+import { cx, Empty, Id } from "../../../components/ui.tsx";
+import { useAppCtx } from "../../../lib/appCtx.ts";
+import { useRequestData } from "../../../lib/requestData.tsx";
 
-export const Route = createFileRoute("/schedule")({
+/** 要望のスケジュール。depends_on と見積りから日付の無いタスクも配置する */
+export const Route = createFileRoute("/requests/$requestId/schedule")({
   component: SchedulePage,
 });
 
@@ -20,37 +21,40 @@ const EDGE_STYLES: Partial<Record<RelationType, { color: string; dash?: string }
   relates_to: { color: "#8b5cf6", dash: "2 4" },
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
 
-type Row = { kind: "group"; id: string; title: string } | { kind: "task"; task: Task };
+type Row = { kind: "task"; task: Task };
 
 function SchedulePage() {
   const ctx = useAppCtx();
+  const { tasks } = useRequestData();
   const [shown, setShown] = useState<Set<RelationType>>(new Set(["depends_on"]));
-  const now = today();
+  const now = localToday();
   const doneStatuses = new Set(ctx.info.project.statuses.filter((s) => s.done).map((s) => s.id));
 
   const { rows, bars, origin, span } = useMemo(() => {
-    const tasks = ctx.stream ? ctx.tasks.filter((t) => t.request === ctx.stream) : ctx.tasks;
-    // スケジュール計算は全タスクで行う（絞り込み外の依存も日付に効くため）
-    const bars = schedule(ctx.tasks, now);
-    const groups = new Map<string, Task[]>();
-    for (const t of tasks) {
-      const k = t.request ?? "(要望なし)";
-      (groups.get(k) ?? groups.set(k, []).get(k)!).push(t);
-    }
-    const rows: Row[] = [];
-    for (const [k, ts] of groups) {
-      rows.push({ kind: "group", id: k, title: ctx.requests.find((r) => r.id === k)?.title ?? "" });
-      ts.sort((a, b) => bars.get(a.id)!.start.localeCompare(bars.get(b.id)!.start));
-      for (const t of ts) rows.push({ kind: "task", task: t });
-    }
+    // 要望の中のタスクだけで計算する（依存は要望の中で閉じている）
+    const bars = schedule(tasks, now);
+    const rows: Row[] = [...tasks]
+      .sort((a, b) => bars.get(a.id)!.start.localeCompare(bars.get(b.id)!.start) || a.id.localeCompare(b.id))
+      .map((task) => ({ kind: "task", task }));
     const starts = tasks.map((t) => bars.get(t.id)!.start);
     const ends = tasks.map((t) => bars.get(t.id)!.end);
     const origin = addDays([now, ...starts].sort()[0], -2);
     const last = addDays([now, ...ends].sort().at(-1)!, 7);
     return { rows, bars, origin, span: daysBetween(origin, last) + 1 };
-  }, [ctx.tasks, ctx.requests, ctx.stream, now]);
+  }, [tasks, now]);
+
+  /** バーの色は列で塗り分ける（完了は緑、最初の列は灰、それ以外は藍） */
+  const { statuses } = ctx.info.project;
+  const barColor = (status: string) => (doneStatuses.has(status) ? "#10b981" : status === statuses[0]?.id ? "#94a3b8" : "#6366f1");
+
+  if (!tasks.length) {
+    return (
+      <div className="mx-auto max-w-xl p-10">
+        <Empty>タスクはまだありません</Empty>
+      </div>
+    );
+  }
 
   const rowIndex = new Map<string, number>();
   rows.forEach((r, i) => r.kind === "task" && rowIndex.set(r.task.id, i));
@@ -108,18 +112,12 @@ function SchedulePage() {
         <div className="sticky left-0 z-20 w-80 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <div style={{ height: HEAD_H }} className="border-b border-slate-200 dark:border-slate-800" />
           {rows.map((r) =>
-            r.kind === "group" ? (
-              <div key={`g-${r.id}`} style={{ height: ROW_H }} className="flex items-center gap-2 bg-slate-50 px-3 dark:bg-slate-950">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: streamColor(r.id) }} />
-                <span className="shrink-0 font-mono text-sm whitespace-nowrap text-slate-500">{r.id}</span>
-                <span className="truncate font-semibold">{r.title}</span>
-              </div>
-            ) : (
+            (
               <div
                 key={r.task.id}
                 style={{ height: ROW_H }}
-                className="flex cursor-pointer items-center gap-2 px-3 pl-6 hover:bg-slate-50 dark:hover:bg-slate-800"
-                onClick={() => ctx.openTask(r.task.id)}
+                className="flex cursor-pointer items-center gap-2 px-3 hover:bg-slate-50 dark:hover:bg-slate-800"
+                onClick={() => ctx.open(r.task.ref)}
               >
                 <Id id={r.task.id} />
                 <span className={cx("truncate", doneStatuses.has(r.task.status) && "text-slate-400 line-through")}>{r.task.title}</span>
@@ -158,7 +156,6 @@ function SchedulePage() {
 
           {/* 幅の狭いバーはタイトルを右側に出す */}
           {rows.map((r, i) => {
-            if (r.kind === "group") return null;
             const b = bars.get(r.task.id)!;
             const w = (daysBetween(b.start, b.end) + 1) * DAY_W - 6;
             return w < 110 ? (
@@ -172,7 +169,6 @@ function SchedulePage() {
             ) : null;
           })}
           {rows.map((r, i) => {
-            if (r.kind === "group") return null;
             const b = bars.get(r.task.id)!;
             const done = doneStatuses.has(r.task.status);
             const w = (daysBetween(b.start, b.end) + 1) * DAY_W - 6;
@@ -180,7 +176,7 @@ function SchedulePage() {
               <button
                 key={r.task.id}
                 title={`${r.task.id} ${r.task.title}\n${b.start} 〜 ${b.end}${b.inferred ? "（推定）" : ""}`}
-                onClick={() => ctx.openTask(r.task.id)}
+                onClick={() => ctx.open(r.task.ref)}
                 className={cx(
                   "absolute z-[2] flex items-center overflow-hidden rounded-md px-2 text-left text-sm text-white shadow-sm",
                   b.inferred && "bar-inferred opacity-80",
@@ -192,7 +188,7 @@ function SchedulePage() {
                   width: w,
                   top: HEAD_H + i * ROW_H + 8,
                   height: ROW_H - 16,
-                  background: r.task.request ? streamColor(r.task.request) : "#64748b",
+                  background: barColor(r.task.status),
                 }}
               >
                 {r.task.progress ? (

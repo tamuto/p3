@@ -1,34 +1,45 @@
 import { readFile, watch } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import YAML from "yaml";
+import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
-import { MarkdownCollection } from "./collection.ts";
-import { normalizeProject, normalizeRequest, normalizeTask, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
+import { fileLayout, folderLayout, MarkdownCollection, NotFoundError } from "./collection.ts";
+import { newRequestId } from "./fsutil.ts";
+import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 
 type Listener = (e: ServerEvent) => void;
 
 /**
- * 1サーバ = 1プロジェクト。データディレクトリ配下がすべての状態。
+ * 1リポジトリ = 1プロジェクト。データディレクトリ配下がすべての状態で、要望ごとにフォルダを分ける。
  *
  *   <data>/project.yaml
- *   <data>/requests/REQ-0001.md
- *   <data>/tasks/TASK-0001.md
- *   <data>/preflight/REQ-0001/PF-.../{run.json,drafts/*.md}
+ *   <data>/requests/<要望ID>/request.md
+ *   <data>/requests/<要望ID>/tasks/T001.md
+ *   <data>/requests/<要望ID>/preflight/PF-.../{run.json, assessment.json, drafts/D1.md}
+ *
+ * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */
 export class Workspace {
   project!: ProjectConfig;
-  readonly tasks: MarkdownCollection<Task>;
   readonly requests: MarkdownCollection<Request>;
   readonly preflight: PreflightStore;
+  private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private abort = new AbortController();
 
   constructor(readonly dataDir: string) {
-    this.tasks = new MarkdownCollection(join(dataDir, "tasks"), "TASK", normalizeTask, TASK_KEY_ORDER);
-    this.requests = new MarkdownCollection(join(dataDir, "requests"), "REQ", normalizeRequest, REQUEST_KEY_ORDER);
-    this.preflight = new PreflightStore(join(dataDir, "preflight"));
+    this.requests = new MarkdownCollection<Request>({
+      layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
+      normalize: normalizeRequest,
+      keyOrder: REQUEST_KEY_ORDER,
+    });
+    this.preflight = new PreflightStore(this.requestsDir);
+  }
+
+  get requestsDir() {
+    return join(this.dataDir, "requests");
   }
 
   /** 管理対象リポジトリの絶対パス（Codex の cwd） */
@@ -38,7 +49,56 @@ export class Workspace {
 
   async load(): Promise<void> {
     await this.loadProject();
-    await Promise.all([this.tasks.load(), this.requests.load()]);
+    await this.requests.load();
+    this.taskCollections.clear();
+    await Promise.all(this.requests.list().map((r) => this.tasksOf(r.id).load()));
+  }
+
+  /** 要望のタスク（要望の中で T001, T002, ... と連番） */
+  tasksOf(requestId: string): MarkdownCollection<Task> {
+    let col = this.taskCollections.get(requestId);
+    if (!col) {
+      col = new MarkdownCollection<Task>({
+        layout: fileLayout(join(this.requestsDir, requestId, "tasks"), TASK_ID, taskId),
+        normalize: normalizeTaskIn(requestId),
+        keyOrder: TASK_KEY_ORDER,
+        derived: ["request", "ref"],
+      });
+      this.taskCollections.set(requestId, col);
+    }
+    return col;
+  }
+
+  /** 全要望のタスク */
+  allTasks(): Task[] {
+    return this.requests.list().flatMap((r) => this.tasksOf(r.id).list());
+  }
+
+  /** 絶対参照（<要望ID>/T003）でタスクを引く */
+  task(ref: string): Task | undefined {
+    const r = parseRef(ref);
+    return r?.task ? this.taskCollections.get(r.request)?.get(r.task) : undefined;
+  }
+
+  requireTask(ref: string): Task {
+    const t = this.task(ref);
+    if (!t) throw new NotFoundError(ref);
+    return t;
+  }
+
+  /** 参照先が存在するか（要望かタスク） */
+  exists(ref: string): boolean {
+    const r = parseRef(ref);
+    if (!r) return false;
+    return r.task ? !!this.task(ref) : !!this.requests.get(r.request);
+  }
+
+  /** 読めなかったファイル（データディレクトリからの相対パス → エラー） */
+  errors(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [id, e] of this.requests.errors) out[`requests/${id}/request.md`] = e;
+    for (const [rid, col] of this.taskCollections) for (const [id, e] of col.errors) out[`requests/${rid}/tasks/${id}.md`] = e;
+    return out;
   }
 
   /** プロジェクト設定を更新して project.yaml に書く（コメントは残す） */
@@ -49,13 +109,6 @@ export class Workspace {
     await this.loadProject();
     this.emit({ type: "changed", kind: "project" });
     return this.project;
-  }
-
-  /** 担当者・変更者の表記（tamuto / human:tamuto / ai:claude）からメンバーを引く */
-  member(ref: string | undefined) {
-    if (!ref) return undefined;
-    const id = ref.replace(/^(human|ai):/, "");
-    return this.project.members.find((m) => m.id === id);
   }
 
   private async loadProject() {
@@ -73,8 +126,8 @@ export class Workspace {
   }
 
   /**
-   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI エージェント・Codex）を取り込む。
-   * これによりファイルが唯一の真実（source of truth）であり続ける。
+   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI・Codex・git pull）を取り込む。
+   * これによりファイルが唯一の正（source of truth）であり続ける。
    */
   async watch(): Promise<void> {
     const pending = new Map<string, NodeJS.Timeout>();
@@ -97,18 +150,26 @@ export class Workspace {
   }
 
   private async onFileChanged(rel: string) {
-    const [top, ...rest] = rel.split(/[\\/]/);
-    if (top === "tasks" && rest.length === 1) {
-      const id = await this.tasks.reloadFile(rest[0]);
-      if (id) this.emit({ type: "changed", kind: "task", id });
-    } else if (top === "requests" && rest.length === 1) {
-      const id = await this.requests.reloadFile(rest[0]);
-      if (id) this.emit({ type: "changed", kind: "request", id });
-    } else if (top === "preflight") {
-      this.emit({ type: "changed", kind: "preflight", id: rest[1] });
-    } else if (top === "project.yaml") {
+    const [top, rid, kind, file] = rel.split(/[\\/]/);
+    if (top === "project.yaml") {
       await this.loadProject();
       this.emit({ type: "changed", kind: "project" });
+      return;
+    }
+    if (top !== "requests" || !rid || !REQUEST_ID.test(rid)) return;
+    if (kind === undefined || kind === "request.md") {
+      // 要望の作成・削除（git pull でフォルダごと増減することもある）
+      const known = !!this.requests.get(rid);
+      await this.requests.reload(rid);
+      if (!known && this.requests.get(rid)) await this.tasksOf(rid).load();
+      this.emit({ type: "changed", kind: "request", request: rid });
+    } else if (kind === "tasks" && file?.endsWith(".md")) {
+      const id = file.slice(0, -3);
+      if (!TASK_ID.test(id)) return;
+      await this.tasksOf(rid).reload(id);
+      this.emit({ type: "changed", kind: "task", request: rid, ref: `${rid}/${id}` });
+    } else if (kind === "preflight") {
+      this.emit({ type: "changed", kind: "preflight", request: rid });
     }
   }
 

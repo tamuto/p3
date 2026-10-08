@@ -10,32 +10,16 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as BoardRouteImport } from './routes/board'
-import { Route as PreflightRouteImport } from './routes/preflight'
-import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as PreflightIndexRouteImport } from './routes/preflight/index'
-import { Route as PreflightRequestIdRouteImport } from './routes/preflight/$requestId'
-import { Route as PreflightNewRouteImport } from './routes/preflight/new'
+import { Route as RequestsRequestIdRouteImport } from './routes/requests/$requestId'
+import { Route as RequestsNewRouteImport } from './routes/requests/new'
+import { Route as RequestsRequestIdIndexRouteImport } from './routes/requests/$requestId/index'
+import { Route as RequestsRequestIdBoardRouteImport } from './routes/requests/$requestId/board'
+import { Route as RequestsRequestIdScheduleRouteImport } from './routes/requests/$requestId/schedule'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BoardRoute = BoardRouteImport.update({
-  id: '/board',
-  path: '/board',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PreflightRoute = PreflightRouteImport.update({
-  id: '/preflight',
-  path: '/preflight',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ScheduleRoute = ScheduleRouteImport.update({
-  id: '/schedule',
-  path: '/schedule',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -43,90 +27,94 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PreflightIndexRoute = PreflightIndexRouteImport.update({
+const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
+  id: '/requests/$requestId',
+  path: '/requests/$requestId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestsNewRoute = RequestsNewRouteImport.update({
+  id: '/requests/new',
+  path: '/requests/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestsRequestIdIndexRoute = RequestsRequestIdIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => PreflightRoute,
+  getParentRoute: () => RequestsRequestIdRoute,
 } as any)
-const PreflightRequestIdRoute = PreflightRequestIdRouteImport.update({
-  id: '/$requestId',
-  path: '/$requestId',
-  getParentRoute: () => PreflightRoute,
+const RequestsRequestIdBoardRoute = RequestsRequestIdBoardRouteImport.update({
+  id: '/board',
+  path: '/board',
+  getParentRoute: () => RequestsRequestIdRoute,
 } as any)
-const PreflightNewRoute = PreflightNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => PreflightRoute,
-} as any)
+const RequestsRequestIdScheduleRoute =
+  RequestsRequestIdScheduleRouteImport.update({
+    id: '/schedule',
+    path: '/schedule',
+    getParentRoute: () => RequestsRequestIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/board': typeof BoardRoute
-  '/preflight': typeof PreflightRouteWithChildren
-  '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
-  '/preflight/$requestId': typeof PreflightRequestIdRoute
-  '/preflight/new': typeof PreflightNewRoute
-  '/preflight/': typeof PreflightIndexRoute
+  '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
+  '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
+  '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/board': typeof BoardRoute
-  '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
-  '/preflight/$requestId': typeof PreflightRequestIdRoute
-  '/preflight/new': typeof PreflightNewRoute
-  '/preflight': typeof PreflightIndexRoute
+  '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
+  '/requests/$requestId': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/board': typeof BoardRoute
-  '/preflight': typeof PreflightRouteWithChildren
-  '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
-  '/preflight/$requestId': typeof PreflightRequestIdRoute
-  '/preflight/new': typeof PreflightNewRoute
-  '/preflight/': typeof PreflightIndexRoute
+  '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
+  '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/schedule': typeof RequestsRequestIdScheduleRoute
+  '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/board'
-    | '/preflight'
-    | '/schedule'
     | '/settings'
-    | '/preflight/$requestId'
-    | '/preflight/new'
-    | '/preflight/'
+    | '/requests/$requestId'
+    | '/requests/new'
+    | '/requests/$requestId/board'
+    | '/requests/$requestId/schedule'
+    | '/requests/$requestId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/board'
-    | '/schedule'
     | '/settings'
-    | '/preflight/$requestId'
-    | '/preflight/new'
-    | '/preflight'
+    | '/requests/new'
+    | '/requests/$requestId/board'
+    | '/requests/$requestId/schedule'
+    | '/requests/$requestId'
   id:
     | '__root__'
     | '/'
-    | '/board'
-    | '/preflight'
-    | '/schedule'
     | '/settings'
-    | '/preflight/$requestId'
-    | '/preflight/new'
-    | '/preflight/'
+    | '/requests/$requestId'
+    | '/requests/new'
+    | '/requests/$requestId/board'
+    | '/requests/$requestId/schedule'
+    | '/requests/$requestId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  BoardRoute: typeof BoardRoute
-  PreflightRoute: typeof PreflightRouteWithChildren
-  ScheduleRoute: typeof ScheduleRoute
   SettingsRoute: typeof SettingsRoute
+  RequestsRequestIdRoute: typeof RequestsRequestIdRouteWithChildren
+  RequestsNewRoute: typeof RequestsNewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -138,27 +126,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/board': {
-      id: '/board'
-      path: '/board'
-      fullPath: '/board'
-      preLoaderRoute: typeof BoardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/preflight': {
-      id: '/preflight'
-      path: '/preflight'
-      fullPath: '/preflight'
-      preLoaderRoute: typeof PreflightRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/schedule': {
-      id: '/schedule'
-      path: '/schedule'
-      fullPath: '/schedule'
-      preLoaderRoute: typeof ScheduleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -166,52 +133,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/preflight/': {
-      id: '/preflight/'
+    '/requests/$requestId': {
+      id: '/requests/$requestId'
+      path: '/requests/$requestId'
+      fullPath: '/requests/$requestId'
+      preLoaderRoute: typeof RequestsRequestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requests/new': {
+      id: '/requests/new'
+      path: '/requests/new'
+      fullPath: '/requests/new'
+      preLoaderRoute: typeof RequestsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requests/$requestId/': {
+      id: '/requests/$requestId/'
       path: '/'
-      fullPath: '/preflight/'
-      preLoaderRoute: typeof PreflightIndexRouteImport
-      parentRoute: typeof PreflightRoute
+      fullPath: '/requests/$requestId/'
+      preLoaderRoute: typeof RequestsRequestIdIndexRouteImport
+      parentRoute: typeof RequestsRequestIdRoute
     }
-    '/preflight/$requestId': {
-      id: '/preflight/$requestId'
-      path: '/$requestId'
-      fullPath: '/preflight/$requestId'
-      preLoaderRoute: typeof PreflightRequestIdRouteImport
-      parentRoute: typeof PreflightRoute
+    '/requests/$requestId/board': {
+      id: '/requests/$requestId/board'
+      path: '/board'
+      fullPath: '/requests/$requestId/board'
+      preLoaderRoute: typeof RequestsRequestIdBoardRouteImport
+      parentRoute: typeof RequestsRequestIdRoute
     }
-    '/preflight/new': {
-      id: '/preflight/new'
-      path: '/new'
-      fullPath: '/preflight/new'
-      preLoaderRoute: typeof PreflightNewRouteImport
-      parentRoute: typeof PreflightRoute
+    '/requests/$requestId/schedule': {
+      id: '/requests/$requestId/schedule'
+      path: '/schedule'
+      fullPath: '/requests/$requestId/schedule'
+      preLoaderRoute: typeof RequestsRequestIdScheduleRouteImport
+      parentRoute: typeof RequestsRequestIdRoute
     }
   }
 }
 
-interface PreflightRouteChildren {
-  PreflightRequestIdRoute: typeof PreflightRequestIdRoute
-  PreflightNewRoute: typeof PreflightNewRoute
-  PreflightIndexRoute: typeof PreflightIndexRoute
+interface RequestsRequestIdRouteChildren {
+  RequestsRequestIdBoardRoute: typeof RequestsRequestIdBoardRoute
+  RequestsRequestIdScheduleRoute: typeof RequestsRequestIdScheduleRoute
+  RequestsRequestIdIndexRoute: typeof RequestsRequestIdIndexRoute
 }
 
-const PreflightRouteChildren: PreflightRouteChildren = {
-  PreflightRequestIdRoute: PreflightRequestIdRoute,
-  PreflightNewRoute: PreflightNewRoute,
-  PreflightIndexRoute: PreflightIndexRoute,
+const RequestsRequestIdRouteChildren: RequestsRequestIdRouteChildren = {
+  RequestsRequestIdBoardRoute: RequestsRequestIdBoardRoute,
+  RequestsRequestIdScheduleRoute: RequestsRequestIdScheduleRoute,
+  RequestsRequestIdIndexRoute: RequestsRequestIdIndexRoute,
 }
 
-const PreflightRouteWithChildren = PreflightRoute._addFileChildren(
-  PreflightRouteChildren,
-)
+const RequestsRequestIdRouteWithChildren =
+  RequestsRequestIdRoute._addFileChildren(RequestsRequestIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  BoardRoute: BoardRoute,
-  PreflightRoute: PreflightRouteWithChildren,
-  ScheduleRoute: ScheduleRoute,
   SettingsRoute: SettingsRoute,
+  RequestsRequestIdRoute: RequestsRequestIdRouteWithChildren,
+  RequestsNewRoute: RequestsNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

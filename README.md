@@ -1,13 +1,16 @@
 # pcube
 
-ファイルベースのプロジェクト管理ツール。最大の特徴は **Preflight** —— 要望をタスクにする前に、
-Codex（`codex app-server`）がリポジトリを読んで妥当性・実現可能性・影響範囲を評価し、
-着手できる粒度のタスク案を **ファイルとして** 書き出す。
+ファイルベースのプロジェクト管理ツール。作業の単位は **要望** で、要望ごとにフォルダを作り、
+そこから生まれたタスクや評価の記録をすべてその下に置く。
 
-- かんばん + 依存関係を考慮したガントチャート
-- タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）
+最大の特徴は **Preflight** —— 要望をタスクにする前に、Codex（`codex app-server`）がリポジトリを読んで
+妥当性・実現可能性・影響範囲を評価し、着手できる粒度のタスク案を **ファイルとして** 書き出す。
+
+- 要望 = フォルダ = 作業ツリー（ブランチ）。タスクは要望の中で連番（T001, T002, ...）。共有も要望単位
+- タスクは AI か人が実施する。かんばんの列は少なく（未着手 / 作業中 / 完了）、完了したタスクには成果物（PR・MR・ドキュメント）を残す
+- 進捗は要望ごとに横断して見る。かんばん・スケジュール（依存を考慮したガント）は要望の中で見る
+- タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）。要望をまたぐ影響も辿れる
 - DB なし。1タスク = 1 Markdown ファイル。人・AI・Codex が直接編集しても整合する
-- 1プロジェクト = 1リポジトリの `.pcube/`。要望ごとに作業ツリー（ブランチ / worktree）を割り当てる
 - 人も AI も同じ **CLI**（`pcube`）で操作する。ファイルを直接読み書きするので認証が要らない
 - ブラウザはローカルのビューア兼エディタ（`pcube serve`）。データはすべてローカルで完結する
 
@@ -24,7 +27,7 @@ pnpm link --global           # `pcube` コマンドを使えるようにする�
 ### プロジェクトの始め方
 
 管理したいリポジトリのルート（どの作業ツリーからでもよい）で `pcube init` を実行する。
-端末からなら対話式で、git の設定とリポジトリの中身から既定値を推測して聞く。
+端末からなら対話式で、リポジトリの中身から既定値を推測して聞く。
 
 ```bash
 cd ~/src/myapp
@@ -32,145 +35,117 @@ pcube init
 #   プロジェクト名 [myapp]:
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
 #   ドキュメントのパス（カンマ区切り。Preflight で最初に読みます） [docs, README.md]:
-#   メンバー: Tamuto(mutomob)                    ← git の user.name / user.email から
-#   メンバーを追加（id:表示名:メール、空で終了）: hanako:花子:hanako@example.com
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 #   AGENTS.md に AI 向けの pcube の使い方を追記しますか (y/n) [y]:
 
 # AI やスクリプトからは引数で（--yes で質問しない）
-pcube init --yes --description "社内向けの経費精算アプリ" --docs docs,README.md \
-  --member tamuto:Tamuto:mutomob@gmail.com --member hanako:花子 --agents
+pcube init --yes --description "社内向けの経費精算アプリ" --docs docs,README.md --agents
 ```
 
-作られるのは `.pcube/project.yaml` と空の `tasks/` `requests/`。`.pcube/` はリポジトリにコミットして共有する
-（同期の方針は [docs/architecture.md](docs/architecture.md)）。あとから変えるときは:
-
-```bash
-pcube config                                  # 設定を表示
-pcube config set description="..." docs=docs,README.md instructions="外部 SaaS の追加は要相談"
-pcube member add claude --name Claude --ai    # AI も担当者になれる
-pcube member rm hanako
-pcube whoami                                  # CLI での変更者（git の user.email が一致するメンバー）
-```
-
-ブラウザの「設定」画面（`pcube serve`）でも同じ項目を編集できる。`project.yaml` を直接編集してもよい
-（コメントは pcube が書き換えても残る）。
+作られるのは `.pcube/project.yaml` と空の `requests/`。`.pcube/` はリポジトリにコミットして共有する
+（同期の方針は [docs/architecture.md](docs/architecture.md)）。設定はあとから `pcube config`、画面の「設定」、
+`project.yaml` の直接編集のどれでも変えられる（コメントは pcube が書き換えても残る）。
 
 | 設定 | 使われ方 |
 | --- | --- |
 | `name` / `description` | 画面の表示と、Preflight の前提（説明が空だと画面に警告を出す） |
 | `docs` | Preflight で Codex に最初に読ませるドキュメント（リポジトリ内のパス。複製はしない） |
-| `members` | 担当者の候補。`email` が git の user.email と一致すると CLI の変更者になる。`kind: ai` で AI |
-| `statuses` | かんばんの列。使用中の列は消せない |
+| `statuses` | かんばんの列（既定: `todo` 未着手 / `doing` 作業中 / `done` 完了）。使用中の列は消せない |
 | `preflight.instructions` | プロジェクト固有の評価の観点・制約。Codex への指示に加わる |
-| `branchPattern` / `worktreeDir` | 要望ごとの作業ツリーのブランチ名と置き場所 |
+| `branchPattern` / `worktreeDir` | 要望ごとの作業ツリーのブランチ名（既定 `req/{id}-{slug}`）と置き場所 |
 
-その後の流れ:
+### 要望からタスクまで
 
 ```bash
-pcube new request "通知機能を追加したい" --area src/notify --body "- メール送信基盤
-- 通知設定画面"
-pcube preflight 1            # Codex で評価・細分化（完了まで待つ）
-pcube drafts 1               # 評価とタスク案を見る（.pcube/preflight/... のファイルを直接直してもよい）
-pcube accept 1 --skip T3     # タスク化
-pcube serve                  # http://localhost:4310 でかんばん・ガント・Preflight・設定を見る
+pcube request new "通知機能を追加したい" --area src/notify --body "- メール送信基盤
+- 通知設定画面"                        # → 261009-k7m3x（作成日-乱数。ID の一部 k7m3x でも指せる）
+pcube preflight k7m3x                  # Codex で評価・細分化（完了まで待つ）
+pcube drafts k7m3x                     # 評価とタスク案（D1, D2 ...）を見る。ファイルを直接直してもよい
+pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
+pcube serve                            # http://localhost:4310 で進捗・かんばん・スケジュールを見る
 ```
 
-`pcube` は git のメインの作業ツリーの `.pcube/` を探して使う。要望ごとの作業ツリー（`git worktree`）の中で
-実行しても、タスクの状態はメインの1か所に書かれる（ブランチごとに状態が分岐しない）。
+タスク化すると要望は「進行中」になり、作業ツリーのブランチ名（`req/261009-k7m3x-...`）が割り当てられる。
+**要望の作業ツリー（そのブランチ）の中で CLI を実行すると、その要望が「今の要望」になり、指定を省ける。**
+状態の書き込みは常に git のメインの作業ツリーの `.pcube/` に行く（ブランチごとに状態が分岐しない）。
+
+```bash
+cd .worktrees/261009-k7m3x
+export PCUBE_ACTOR=ai:claude
+pcube move T001 doing
+pcube new "作業中に見つかった追加の作業" --body "..."        # → T004（要望の中の続きの番号）
+pcube move T001 done --output https://github.com/me/myapp/pull/42
+```
 
 ### CLI
 
 | コマンド | 内容 |
 | --- | --- |
-| `pcube ls [tasks\|requests]` | 一覧（`--status` `--request` `--area` `-q`） |
-| `pcube show <ID\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
-| `pcube find <語句>` / `pcube impact <ID>` | 対象の特定 / 変更が波及する項目 |
-| `pcube new task\|request <タイトル>` | 作成（`--request` `--area` `--estimate` `--body -` で標準入力から本文） |
-| `pcube set <ID> key=value ...` | 更新（値を空にすると消す） |
-| `pcube move <ID> <status>` | かんばんの列を移動 |
-| `pcube link\|unlink <ID> <種類> <相手>` | 関係の追加・削除（`depends_on` は循環チェックあり） |
-| `pcube archive <ID>` | `.archive/` へ移す |
-| `pcube preflight\|drafts\|accept <REQ>` | Preflight の実行・確認・タスク化 |
-| `pcube init` / `pcube config` / `pcube member` / `pcube whoami` | 初期設定 / 設定 / メンバー / 変更者の確認 |
+| `pcube progress` | 要望ごとの進捗 |
+| `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=done` など）・アーカイブ |
+| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望） |
+| `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
+| `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
+| `pcube set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
+| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す） |
+| `pcube link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
+| `pcube find <語句>` / `pcube impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
+| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行・確認・タスク化 |
+| `pcube init` / `pcube config` / `pcube whoami` | 初期設定 / 設定 / 変更者と今の要望 |
 | `pcube serve` | ビューアの起動 |
 
-ID は `TASK-0012` / `task-12` / `12`（要望を取るコマンドでは `12` は `REQ-0012`）のどれでもよい。
+今の要望は `--req <要望>` → `PCUBE_REQUEST` → 要望の作業ツリー の順で決まる。
 `--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
 サーバが動いていれば、CLI での変更はファイル監視経由ですぐ画面に反映される。
-
-### pcube 自体の開発
-
-```bash
-pnpm dev                     # API サーバ（pcube serve, tsx watch）+ Vite  http://localhost:5173
-pnpm build && pnpm start     # ビルドした画面を pcube serve から配信  http://localhost:4310
-pnpm typecheck
-pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
-pnpm check                   # 型検査 + テスト + ビルド
-pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
-```
-
-`pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
-デモデータは無ければ自動で作られる（`scripts/demo.ts`。製品のコードではないので `src/` の外に置いている）。
-`pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
-サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
-信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
-
-テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
-Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
-CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシンの `.env` の Codex 設定は効かないようにしている。
-
-`pnpm dev` / `pnpm start` は pcube 自体の開発用で、`.pcube/` が見つからなければ pcube 自身の開発を題材にした
-デモデータ（`.pcube-demo/`、git 管理外）で起動する。`pnpm demo:reset` はこのデモデータを作り直すだけで、
-実際のプロジェクトの `.pcube/` には触れない。
-サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
-信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
 
 ## データの持ち方
 
 ```
-<data>/
-  project.yaml                       プロジェクト設定（ステータス列・ブランチ命名など）
-  requests/REQ-0001.md               要望（= 作業ツリー単位）
-  tasks/TASK-0001.md                 タスク（1ファイル1タスク）
-  tasks/.archive/                    削除したタスク（物理削除しない）
-  preflight/REQ-0001/PF-.../
-    request.md                       評価時点の要望のスナップショット
-    context.md                       インテリジェンス層が選んだ関連項目と理由
-    assessment.json                  評価（Codex が書く）
-    drafts/T1.md, T2.md ...          タスク案（Codex が書く。1案1ファイル。人が直してもよい）
-    run.json                         実行メタデータ・ログ・タスク化の結果
+.pcube/
+  project.yaml                          プロジェクト設定
+  requests/
+    261009-k7m3x/                       要望のフォルダ（作成日 + 乱数5文字。タイトルが変わっても変わらない）
+      request.md                        要望
+      tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
+      tasks/.archive/                   アーカイブしたタスク
+      preflight/PF-.../
+        request.md                      評価時点の要望のスナップショット
+        context.md                      インテリジェンス層が選んだ関連項目と理由
+        assessment.json                 評価（Codex が書く）
+        drafts/D1.md, D2.md ...         タスク案（Codex が書く。1案1ファイル。人が直してもよい）
+        run.json                        実行メタデータ・ログ・タスク化の結果
+    .archive/                           アーカイブした要望（フォルダごと）
 ```
 
-タスクファイルの例:
+タスクファイルの例（`.pcube/requests/261009-k7m3x/tasks/T003.md`）:
 
 ```markdown
 ---
-id: TASK-0003
+id: T003
 title: ファイル監視で外部編集を取り込む
-status: in_progress
-request: REQ-0001                  # 所属する要望（作業ツリー）
+status: done
 areas: [src/server/store/workspace.ts]
-estimate: 2                        # 人日
-start: 2026-10-05
-progress: 50
+outputs:
+  - https://github.com/me/myapp/pull/42      # 成果物（PR / MR / ドキュメント）
+estimate: 2                                  # 人日
 relations:
   - type: depends_on
-    target: TASK-0002
+    target: T002                             # 同じ要望のタスク
   - type: impacts
-    target: TASK-0007
-    origin: ai                     # human | ai | preflight
+    target: 261001-ab3cd/T001                # 別の要望のタスク
+    origin: ai                               # human | ai | preflight
     confidence: 0.6
-    note: 外部編集時に resolve の結果が変わる
-rev: 3                             # 楽観ロック
+rev: 3                                       # 楽観ロック
 updatedBy: ai:claude
 ---
 
 AI やエディタがファイルを直接変更したら SSE で画面に反映する。
 ```
 
-- 書き込みは tmp → rename で原子的に行い、ID は排他作成で採番する（別プロセスと衝突しない）
-- サーバはデータディレクトリを監視し、外部での編集をそのまま取り込んで画面へ通知する（SSE）
+- **ID**: 要望は「作成日-乱数」なので、複数人が別々に作っても衝突しない。タスクは要望をまたいで移動しないので、要望の中の素直な連番でよい
+- **参照**: 同じ要望の中は `T003`、別の要望は `<要望ID>/T003`、要望そのものは `<要望ID>`
+- 書き込みは tmp → rename で原子的に行い、番号は排他作成で採番する（同じマシンの別プロセスと衝突しない）
+- サーバはデータディレクトリを監視し、外部での編集（git pull で要望のフォルダが増えた場合も）を取り込んで画面へ通知する
 - 読めないファイルがあっても全体は止めず、画面上部に件数を出す
 
 ## タスクの関係（多元的な紐付け）
@@ -180,35 +155,35 @@ AI やエディタがファイルを直接変更したら SSE で画面に反映
 1. **明示エッジ** — `relations` に型付きで持つ。`depends_on` / `part_of` / `derived_from` / `impacts` /
    `relates_to` / `duplicates` / `supersedes`。エッジは張った側のファイルに保存し、逆向きはインデックスで導く。
    誰が張ったか（`origin`）と AI の確信度（`confidence`）を持ち、AI 由来の関係は人が見直せる。
-2. **構造** — タスクは要望（作業ツリー）に所属する。
+2. **構造** — タスクは要望（フォルダ = 作業ツリー）に所属する。
 3. **暗黙の近さ** — 影響領域（`areas`、パスの包含関係を考慮）の重なりと、内容の類似（TF-IDF、日本語は bigram）。
-   明示されていないが関係しそうなものを「理由つき」で提示する。
+   明示されていないが関係しそうなもの（過去の要望の作業を含む）を「理由つき」で提示する。
 
 これらから次を導く:
 
-- **影響範囲** — `depends_on` / `part_of` の逆向きと `impacts` を推移的に辿る
+- **影響範囲** — `depends_on` / `part_of` の逆向きと `impacts` を、要望をまたいで推移的に辿る
 - **循環検出** — `depends_on` を追加するときに拒否する
 - **文脈選定** — Preflight で Codex に渡す関連項目を、全件ではなくスコア上位に絞る（トークン節約）
-- **スケジュール** — `depends_on` だけを制約に、日付未設定のタスクを見積りから前詰めで配置（`src/shared/schedule.ts`）
+- **スケジュール** — 要望の中の `depends_on` を制約に、日付未設定のタスクを見積りから前詰めで配置（`src/shared/schedule.ts`）
 
 ## Preflight
 
 ```
 要望を書く ─▶ 文脈選定 ─▶ Codex が評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
-             (intel)      (codex-workspace)         (drafts/*.md)               (tasks/*.md + 関係 + ブランチ)
+             (intel)      (codex-workspace)         (drafts/D*.md)              (tasks/T*.md + 関係 + ブランチ)
 ```
 
 Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
-（`@llmcs/codex-workspace`、Python 版 codex-workspace の TypeScript 版）で動かす。
-`codex app-server` を、管理対象リポジトリだけを `/workspace` にマウントした Docker コンテナの中で起動する部品で、
-他のプロジェクト（bluenix/slim3 など）とも共有する。途中経過（実行したコマンド・書いたファイル）は SSE で画面に流れる。
+（`@llmcs/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
+コンテナには管理対象リポジトリだけを `/workspace` としてマウントする。途中経過は SSE で画面に流れる。
 
 依存は今は手元の llmcs を `link:../llmcs/codex-workspace-ts` で参照している。llmcs 側にタグ
 （`codex-workspace-ts-v0.1.0`）が打たれたら `github:tamuto/llmcs#codex-workspace-ts-v0.1.0&path:/codex-workspace-ts`
 へ切り替える（サブディレクトリの git 依存を扱えるので、パッケージマネージャは pnpm）。
 
-- Codex に書かせるのは `preflight/<REQ>/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
+- Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
+- 存在しない要望・タスクへの関係はタスク化のときに捨てる
 - 使用量の上限に当たっている場合は頼まずに失敗させる
 
 | 環境変数 | 内容 |
@@ -229,47 +204,65 @@ Codex を使えない環境では **Mock エンジン**（要望本文の箇条�
 
 | URL | 画面 |
 | --- | --- |
-| `/board` | かんばん（ドラッグで列を移動） |
-| `/schedule` | スケジュール（依存を考慮したガント） |
-| `/preflight` / `/preflight/new` | 要望の一覧 / 新しい要望 |
-| `/preflight/REQ-0001?run=PF-...` | 要望の詳細と Preflight の結果（`run` を省くと最新） |
+| `/` | 進捗。要望ごとの状況（列ごとの件数・見積り・期間）を横断して見る（`?show=closed\|all`） |
+| `/requests/new` | 新しい要望 |
+| `/requests/261009-k7m3x` | 要望の概要と Preflight（`?run=PF-...` で過去の評価） |
+| `/requests/261009-k7m3x/board` | 要望のかんばん（ドラッグで列を移動。完了カードに成果物のリンク） |
+| `/requests/261009-k7m3x/schedule` | 要望のスケジュール（依存を考慮したガント） |
 | `/settings` | プロジェクト設定 |
 
-どの画面でも `?task=TASK-0003` でタスク詳細を重ねて開き、`?stream=REQ-0002` で作業ツリー（要望）に絞る。
+要望の中のページでは `?task=T003` でタスク詳細を重ねて開く。
 
 ページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる。
 ページの中身もそのファイルに書き、複数のページで使う部品だけを `src/web/components/` に置く
-（`board.tsx` → `/board`、`preflight/$requestId.tsx` → `/preflight/:requestId`、`__root.tsx` は全画面共通の枠）。
+（`requests/$requestId.tsx` は要望の枠、`requests/$requestId/board.tsx` → `/requests/:id/board`、`__root.tsx` は全画面共通の枠）。
 ルート一覧 `src/web/routeTree.gen.ts` は `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される
 （設定は `tsr.config.json`。生成物だが、型検査のためにコミットしておく）。
 
 ## AI エージェントから使う
 
-AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。プロジェクトの `AGENTS.md` / `CLAUDE.md` に書く例は
-[docs/architecture.md](docs/architecture.md#ai-エージェントへの指示プロジェクトの-agentsmd--claudemd-に書く例) を参照。
+AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。`pcube init --agents` でプロジェクトの
+`AGENTS.md` / `CLAUDE.md` に使い方を追記できる（内容は [docs/architecture.md](docs/architecture.md) を参照）。
 
-```bash
-export PCUBE_ACTOR=ai:claude                 # updatedBy に残り、張った関係は origin: ai になる
-pcube find ガントチャート --json              # 対象を特定（match が null なら candidates から選ぶ）
-pcube show TASK-0006 --json                  # 関係グラフと影響範囲、現在の rev
-pcube move TASK-0006 review --rev 3          # 他者が先に変えていたら終了コード 3
-pcube link TASK-0006 impacts TASK-0004 --confidence 0.7 --note "列の描画を共有"
-```
+- 要望の作業ツリーの中で作業すれば、要望を指定せずに `pcube move` / `pcube new` が使える
+- 作業中に新しく必要になった作業は、AI がそのままタスクとして足す（可視化される）
+- 人への質問（Human in the Loop）はタスクにせず、Claude Code などのチャットで行う
 
 ブラウザ用の REST API（`/api/...`、自己記述は `GET /api/ai/manifest`）もあるが、ローカルの画面のためのもの。
+
+## pcube 自体の開発
+
+```bash
+pnpm dev                     # API サーバ（pcube serve, tsx watch）+ Vite  http://localhost:5173
+pnpm build && pnpm start     # ビルドした画面を pcube serve から配信  http://localhost:4310
+pnpm typecheck
+pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
+pnpm check                   # 型検査 + テスト + ビルド
+pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
+```
+
+`pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
+デモデータは無ければ自動で作られる（`scripts/demo.ts`。製品のコードではないので `src/` の外に置いている）。
+`pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
+サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
+信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
+
+テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
+Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
+CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシンの `.env` の Codex 設定は効かないようにしている。
 
 ## 構成
 
 ```
 src/
-  shared/            型定義・スケジュール計算（サーバ/Web 共通）
+  shared/            型定義・参照の解き方・スケジュール計算（サーバ/Web 共通）
   cli/               pcube CLI（ファイルを直接操作。serve でサーバも起動する）
   server/
-    ops.ts           CLI と API で共通の操作（関係の規則・対象の特定など）
-    store/           Markdown コレクション、frontmatter、Preflight の保存、監視
+    ops.ts           CLI と API で共通の操作（参照・関係の規則・進捗の集計など）
+    store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
     intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
-    api/             REST + SSE、AI 向けマニフェスト
+    api/             REST + SSE
   web/               React + TanStack Router + Tailwind（text-base 基準）
     routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
     routeTree.gen.ts ルート一覧（自動生成）
