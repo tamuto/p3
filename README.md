@@ -29,9 +29,19 @@
 
 ```bash
 pnpm install
+pnpm build                   # 画面（pcube serve で配信する dist/web）
 cp .env.example .env         # Codex の認証・パス対応（マシンごとの設定。プロジェクトには置かない）
-pnpm link --global           # `pcube` コマンドを使えるようにする（または `pnpm pcube ...`）
+pnpm link --global           # `pcube` / `p3` コマンドを使えるようにする（任意）
 ```
+
+グローバルに入れずに、p3 の場所を指定して pnpm で直接動かしてもよい。管理したいリポジトリ（やその作業ツリー）の中で:
+
+```bash
+pnpm -s --dir /path/to/p3 pcube whoami     # -s で pnpm 自身の出力を抑える（--json の出力は stdout だけに出る）
+```
+
+pnpm はスクリプトをパッケージの場所で動かすが、p3 は呼び出し元の場所（pnpm が渡す `INIT_CWD`）に戻ってから
+対象のプロジェクト・今の要望（作業ツリーのブランチ）・git のユーザーを判定する。
 
 ### プロジェクトの始め方
 

@@ -170,6 +170,10 @@ describe("要望の作業ツリー", () => {
     // 作業ツリーの .pcube/ はブランチ時点の写しのまま
     expect(readFileSync(join(wt, ".pcube", "requests", rid, "tasks", "T001.md"), "utf8")).toContain("status: todo");
     expect(existsSync(join(wt, ".pcube", "requests", rid, "tasks", "T004.md"))).toBe(false);
+
+    // `pnpm --dir <p3 の場所> pcube ...` で呼ばれたとき（pnpm がカレントを p3 の場所に移し、元の場所は INIT_CWD）
+    const viaPnpm = { ...ai, npm_lifecycle_event: "pcube", INIT_CWD: wt };
+    expect(pcube(fileURLToPath(new URL("..", import.meta.url)), ["whoami", "--json"], viaPnpm).json()).toEqual({ actor: "ai:claude", request: rid });
   });
 });
 

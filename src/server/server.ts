@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { apiRoutes } from "./api/routes.ts";
 import { openProject, PCUBE_ROOT } from "./context.ts";
@@ -34,5 +35,8 @@ export async function startServer(opts: ServeOptions) {
     console.log(`  repo     ${ws.repoRoot}`);
     console.log(`  engines  ${preflight.availableEngines().join(", ")} (default: ${preflight.defaultEngine})`);
     console.log(`  listen   http://${opts.host}:${opts.port}${opts.static ? "" : "  (api only)"}`);
+    if (opts.static && !existsSync(`${PCUBE_ROOT}dist/web/index.html`)) {
+      console.log(`  ⚠ 画面がビルドされていません。${PCUBE_ROOT} で \`pnpm build\` を実行してください`);
+    }
   });
 }

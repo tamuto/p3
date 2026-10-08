@@ -16,6 +16,7 @@
     "build": "vite build",
     "start": "pnpm demo && node bin/pcube.mjs serve --dir .pcube-demo",
     "pcube": "node bin/pcube.mjs",
+    "p3": "node bin/pcube.mjs",
     "demo": "tsx scripts/demo.ts",
     "demo:reset": "tsx scripts/demo.ts --force",
     "routes": "tsr generate",
