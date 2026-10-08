@@ -42,13 +42,6 @@ function BoardPage() {
     ctx.reload();
   }
 
-  /** 完了したタスクに人が「済み」を付ける / 外す */
-  async function toggleChecked(t: Task) {
-    await api.patchTask(t.ref, { checked: !t.checkedAt, rev: t.rev });
-    reload();
-    ctx.reload();
-  }
-
   if (!tasks.length) {
     return (
       <div className="mx-auto max-w-xl p-10">
@@ -105,13 +98,9 @@ function BoardPage() {
                       <div className="mt-1 flex items-start gap-2">
                         <p className="flex-1 leading-snug font-medium">{t.title}</p>
                         {s.done && (
-                          <button
-                            onClick={(e) => (e.stopPropagation(), void toggleChecked(t))}
-                            title={t.checkedAt ? "済み（クリックで外す）" : "完了（クリックで済みにする）"}
-                            className="mt-1 transition hover:scale-125"
-                          >
+                          <span className="mt-1" title={t.checkedAt ? "済み" : "完了（未確認）"}>
                             <DoneMark checked={!!t.checkedAt} />
-                          </button>
+                          </span>
                         )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1">

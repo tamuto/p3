@@ -184,18 +184,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               </div>
               <div>
                 <dt className="text-slate-500">完了にした</dt>
-                <dd className="flex items-center gap-1.5">
-                  {fmtTime(task.doneAt) || "—"}
-                  {task.doneAt && (
-                    <button
-                      onClick={() => void toggleChecked()}
-                      title={task.checkedAt ? `済み ${fmtTime(task.checkedAt)}（クリックで外す）` : "クリックで済みにする"}
-                      className="transition hover:scale-125"
-                    >
-                      <DoneMark checked={!!task.checkedAt} />
-                    </button>
-                  )}
-                </dd>
+                <dd>{fmtTime(task.doneAt) || "—"}</dd>
               </div>
             </dl>
           </div>
@@ -207,6 +196,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               <input className={`${inputCls} font-mono`} value={draft.areas} onChange={(e) => set("areas", e.target.value)} />
             </Field>
           </div>
+          {task.doneAt && (
+            <div className="flex items-center gap-3 rounded-lg bg-emerald-50 px-4 py-2.5 dark:bg-emerald-950/40">
+              <DoneMark checked={!!task.checkedAt} />
+              <span className="flex-1">{task.checkedAt ? `済み（${fmtTime(task.checkedAt)} に確認）` : "完了しています。成果物を確認したら済みにしてください"}</span>
+              <Button variant={task.checkedAt ? "ghost" : "primary"} onClick={() => void toggleChecked()}>
+                {task.checkedAt ? "済みを外す" : "済みにする"}
+              </Button>
+            </div>
+          )}
+
           <Field label="成果物（PR / MR の URL、ドキュメントのパス。1行に1つ）">
             <textarea rows={2} className={`${inputCls} font-mono`} value={draft.outputs} onChange={(e) => set("outputs", e.target.value)} />
           </Field>

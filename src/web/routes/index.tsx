@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { localToday } from "../../shared/dates.ts";
 import type { Milestone, RequestProgress, StatusDef, TaskMark } from "../../shared/types.ts";
 import { DoingMark, DoneMark, Flag, TodoMark } from "../components/Marks.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
+import { TaskDrawer } from "../components/TaskDrawer.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
-import { api } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
+import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { optionalString } from "../lib/search.ts";
 
 type Show = "open" | "closed" | "all";
@@ -18,9 +18,11 @@ type Show = "open" | "closed" | "all";
  *   要望の期限は ⚑、マイルストーンは ◆ と縦の破線、今日は縦の線
  */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string; task?: string } => ({
     show: s.show === "closed" || s.show === "all" ? s.show : undefined,
     tag: optionalString(s.tag),
+    /** 詳細を開いているタスク（<要望ID>/T003） */
+    task: optionalString(s.task),
   }),
   component: ProgressPage,
 });
@@ -40,7 +42,10 @@ const daysBetween = (a: string, b: string) => Math.round((t(b) - t(a)) / DAY);
 
 function ProgressPage() {
   const ctx = useAppCtx();
-  const { show = "open", tag } = Route.useSearch();
+  const { show = "open", tag, task } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const openTask = (ref: string) => void navigate({ search: (prev) => ({ ...prev, task: ref }) });
+  const closeTask = () => void navigate({ search: (prev) => ({ ...prev, task: undefined }) });
   const { statuses, milestones } = ctx.info.project;
   const today = localToday();
   const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
@@ -56,13 +61,15 @@ function ProgressPage() {
     .sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
 
   // 表示する期間: 過去の出来事・期限・マイルストーンが入り、今日の前後に余白がある範囲
-  const dates = [
-    today,
-    ...rows.flatMap((p) => [dateOf(p.request.createdAt), p.request.due, ...p.tasks.flatMap((x) => [x.startedAt && dateOf(x.startedAt), x.doneAt && dateOf(x.doneAt)])]),
-    ...milestones.map((m) => m.due),
-  ].filter((d): d is string => !!d);
-  const origin = addDays([addDays(today, -14), ...dates].sort()[0], -3);
-  const last = addDays([addDays(today, 21), ...dates].sort().at(-1)!, 7);
+  // 表示する期間: 最初に作業した日（無ければ今日）の前日から、期限・マイルストーン・今日の1週間後の遅い方の翌日まで
+  const isDate = (d: string | undefined): d is string => !!d;
+  const worked = rows.flatMap((p) => p.tasks.flatMap((x) => [x.startedAt && dateOf(x.startedAt), x.doneAt && dateOf(x.doneAt)])).filter(isDate);
+  const ends = [
+    ...rows.map((p) => p.request.due),
+    ...milestones.filter((m) => rows.some((p) => p.request.milestone === m.id)).map((m) => m.due),
+  ].filter(isDate);
+  const origin = addDays([today, ...worked].sort()[0], -1);
+  const last = addDays([addDays(today, 7), ...ends].sort().at(-1)!, 1);
   const span = daysBetween(origin, last) + 1;
   const days = Array.from({ length: span }, (_, i) => addDays(origin, i));
   const x = (d: string) => daysBetween(origin, d) * DAY_W;
@@ -135,7 +142,7 @@ function ProgressPage() {
             <div className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ width: LEFT_W }}>
               <div className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }} />
               {rows.map((p) => (
-                <RequestCell key={p.request.id} p={p} statuses={statuses} milestones={milestones} />
+                <RequestCell key={p.request.id} p={p} />
               ))}
             </div>
 
@@ -159,14 +166,31 @@ function ProgressPage() {
                 ))}
               <div className="absolute z-[2] w-0.5 bg-indigo-500" style={{ left: x(today) + DAY_W / 2 - 1, top: 0, bottom: 0 }} />
               {rows.map((p, i) => (
-                <RequestLane key={p.request.id} p={p} top={HEAD_H + i * ROW_H} today={today} x={x} statuses={statuses} />
+                <RequestLane key={p.request.id} p={p} top={HEAD_H + i * ROW_H} today={today} x={x} statuses={statuses} onOpen={openTask} />
               ))}
             </div>
           </div>
         </div>
       )}
+
+      {task && <ProgressTaskDrawer ctx={ctx} taskRef={task} onClose={closeTask} />}
     </div>
   );
+}
+
+/** 進捗の画面に重ねるタスク詳細（その要望のデータを読んで、要望の画面と同じドロワーを出す） */
+function ProgressTaskDrawer({ ctx, taskRef, onClose }: { ctx: ReturnType<typeof useAppCtx>; taskRef: string; onClose: () => void }) {
+  const [requestId, taskId] = taskRef.split("/");
+  return (
+    <RequestDataProvider requestId={requestId} fallback={null}>
+      <DrawerFor ctx={ctx} taskId={taskId} onClose={onClose} />
+    </RequestDataProvider>
+  );
+}
+
+function DrawerFor({ ctx, taskId, onClose }: { ctx: ReturnType<typeof useAppCtx>; taskId: string; onClose: () => void }) {
+  const data = useRequestData();
+  return <TaskDrawer ctx={ctx} data={data} id={taskId} onClose={onClose} />;
 }
 
 /** 凡例（記号だけ） */
@@ -231,67 +255,20 @@ function DaysHeader({ days, today, milestones, x }: { days: string[]; today: str
   );
 }
 
-function RequestCell({ p, statuses, milestones }: { p: RequestProgress; statuses: StatusDef[]; milestones: Milestone[] }) {
+function RequestCell({ p }: { p: RequestProgress }) {
   const r = p.request;
-  const c = count(p, statuses);
-  const m = milestones.find((x) => x.id === r.milestone);
   return (
     <Link
       to="/requests/$requestId"
       params={{ requestId: r.id }}
-      className="flex flex-col justify-center gap-0.5 border-b border-slate-100 px-4 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+      title={r.id}
+      className="flex items-center gap-2 border-b border-slate-200 px-4 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       style={{ height: ROW_H }}
     >
-      <div className="flex items-center gap-2 text-sm">
-        <span className="font-mono text-slate-400">{r.id}</span>
-        <RequestStatusBadge status={r.status} />
-        {m && <span className="text-violet-600 dark:text-violet-400">◆ {m.id}</span>}
-        <span className="ml-auto flex items-center gap-2 text-slate-500">
-          {c.checked > 0 && (
-            <span className="flex items-center gap-0.5">
-              <DoneMark checked /> {c.checked}
-            </span>
-          )}
-          {c.done > 0 && (
-            <span className="flex items-center gap-0.5">
-              <DoneMark checked={false} /> {c.done}
-            </span>
-          )}
-          {c.doing > 0 && (
-            <span className="flex items-center gap-0.5">
-              <DoingMark /> {c.doing}
-            </span>
-          )}
-          {c.todo > 0 && (
-            <span className="flex items-center gap-0.5">
-              <TodoMark /> {c.todo}
-            </span>
-          )}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="truncate font-medium">{r.title}</span>
-        {r.tags.map((x) => (
-          <span key={x} className="shrink-0 text-sm text-slate-400">
-            #{x}
-          </span>
-        ))}
-      </div>
+      <RequestStatusBadge status={r.status} />
+      <span className="truncate font-medium">{r.title}</span>
     </Link>
   );
-}
-
-/** 完了（済みでない）・済み・作業中・未着手の数 */
-function count(p: RequestProgress, statuses: StatusDef[]) {
-  const done = new Set(statuses.filter((s) => s.done).map((s) => s.id));
-  const first = statuses[0]?.id;
-  const c = { done: 0, checked: 0, doing: 0, todo: 0 };
-  for (const x of p.tasks) {
-    if (done.has(x.status)) x.checkedAt ? c.checked++ : c.done++;
-    else if (x.status === first) c.todo++;
-    else c.doing++;
-  }
-  return c;
 }
 
 function RequestLane({
@@ -300,15 +277,16 @@ function RequestLane({
   today,
   x,
   statuses,
+  onOpen,
 }: {
   p: RequestProgress;
   top: number;
   today: string;
   x: (d: string) => number;
   statuses: StatusDef[];
+  /** 印をクリックしたらタスクの詳細を開く（どの印でも同じ） */
+  onOpen: (ref: string) => void;
 }) {
-  const ctx = useAppCtx();
-  const [busy, setBusy] = useState<string | null>(null);
   const r = p.request;
   const done = new Set(statuses.filter((s) => s.done).map((s) => s.id));
   const first = statuses[0]?.id;
@@ -323,28 +301,12 @@ function RequestLane({
   }
   const todo = p.tasks.filter((x) => x.status === first);
 
-  // 要望の線: 作った日から、期限（無ければ今日・最後の出来事）まで
-  const start = dateOf(r.createdAt);
-  const end = [r.due ?? today, ...[...byDay.keys()]].sort().at(-1)!;
   const cy = top + ROW_H / 2;
-
-  async function toggle(task: TaskMark) {
-    setBusy(task.ref);
-    try {
-      await api.patchTask(task.ref, { checked: !task.checkedAt });
-      ctx.reload();
-    } finally {
-      setBusy(null);
-    }
-  }
 
   return (
     <>
-      <div className="absolute border-b border-slate-100 dark:border-slate-800" style={{ top, height: ROW_H, left: 0, right: 0 }} />
-      <div
-        className={cx("absolute z-[3] h-0.5 rounded", closed ? "bg-slate-200 dark:bg-slate-700" : "bg-slate-300 dark:bg-slate-600")}
-        style={{ top: cy - 1, left: x(start) + DAY_W / 2, width: Math.max(0, x(end) - x(start)) }}
-      />
+      {/* 行の区切り（左の一覧の線とそろえる） */}
+      <div className="absolute border-b border-slate-200 dark:border-slate-700" style={{ top, height: ROW_H, left: 0, right: 0 }} />
       {r.due && (
         <span
           className="absolute z-[4] -translate-x-1/2 -translate-y-full"
@@ -360,23 +322,11 @@ function RequestLane({
           className="absolute z-[5] flex flex-wrap content-center items-center justify-center gap-0.5"
           style={{ left: x(d), width: DAY_W, top, height: ROW_H }}
         >
-          {marks.map(({ task, kind }) =>
-            kind === "done" ? (
-              <button
-                key={task.ref}
-                disabled={busy === task.ref}
-                onClick={() => void toggle(task)}
-                title={`${task.id} ${task.title}\n${task.checkedAt ? "済み（クリックで外す）" : "完了（クリックで済みにする）"}`}
-                className="rounded-full transition hover:scale-125"
-              >
-                <DoneMark checked={!!task.checkedAt} />
-              </button>
-            ) : (
-              <button key={task.ref} onClick={() => ctx.open(task.ref)} title={`${task.id} ${task.title}（作業中）`} className="transition hover:scale-125">
-                <DoingMark />
-              </button>
-            ),
-          )}
+          {marks.map(({ task, kind }) => (
+            <button key={task.ref} onClick={() => onOpen(task.ref)} title={`${task.id} ${task.title}`} className="rounded-full transition hover:scale-125">
+              {kind === "done" ? <DoneMark checked={!!task.checkedAt} /> : <DoingMark />}
+            </button>
+          ))}
         </div>
       ))}
       {todo.length > 0 && (
@@ -386,7 +336,7 @@ function RequestLane({
           title={`未着手 ${todo.length}`}
         >
           {todo.map((task) => (
-            <button key={task.ref} onClick={() => ctx.open(task.ref)} title={`${task.id} ${task.title}（未着手）`} className="transition hover:scale-125">
+            <button key={task.ref} onClick={() => onOpen(task.ref)} title={`${task.id} ${task.title}`} className="transition hover:scale-125">
               <TodoMark />
             </button>
           ))}
