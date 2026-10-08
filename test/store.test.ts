@@ -61,7 +61,7 @@ describe("normalize", () => {
       {
         title: "t",
         start: new Date("2026-10-01T00:00:00Z"),
-        estimate: "1.5",
+        estimate: "1.5", // 見積りは持たない（古いファイルにあっても読まない）
         labels: "single",
         outputs: ["https://example.com/pull/1"],
         relations: [{ type: "depends_on", target: "T001" }, { type: "unknown", target: "T002" }, { type: "impacts" }, "garbage"],
@@ -69,7 +69,8 @@ describe("normalize", () => {
       "body",
       "T009",
     );
-    expect(t).toMatchObject({ id: "T009", request: "261009-abcde", ref: "261009-abcde/T009", start: "2026-10-01", estimate: 1.5 });
+    expect(t).toMatchObject({ id: "T009", request: "261009-abcde", ref: "261009-abcde/T009", start: "2026-10-01" });
+    expect(t).not.toHaveProperty("estimate");
     expect(t.labels).toEqual(["single"]);
     expect(t.outputs).toEqual(["https://example.com/pull/1"]);
     expect(t.relations).toEqual([{ type: "depends_on", target: "T001" }]);

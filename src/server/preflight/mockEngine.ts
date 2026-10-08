@@ -51,7 +51,6 @@ export class MockEngine implements PreflightEngine {
       key: `D${i + 1}`,
       title,
       description: `要望 ${request.id} より。\n\n## 完了条件\n- ${title} が動作すること\n- 既存機能に回帰がないこと`,
-      estimateDays: [1, 2, 1.5, 0.5, 3][i % 5],
       areas,
       dependsOn: i === 0 ? [] : [`D${i}`],
       relations: [],

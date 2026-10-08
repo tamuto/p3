@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   RELATION_TYPES,
@@ -7,7 +7,7 @@ import {
   type ProposedTask,
   type Request,
 } from "../../../../shared/types.ts";
-import { Badge, Button, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
+import { Badge, Button, buttonCls, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
 import { api } from "../../../lib/api.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
@@ -55,10 +55,9 @@ function RequestPanel({
   runId?: string;
   onRunChange: (runId: string) => void;
 }) {
-  const { request, runs, tasks } = data;
+  const { request, runs } = data;
   const runId = selectedRun ?? request.lastPreflight ?? null;
   const [run, setRun] = useState<PreflightRun>();
-  const [engine, setEngine] = useState(ctx.info.defaultEngine);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,7 +78,7 @@ function RequestPanel({
   async function start() {
     setError(null);
     try {
-      const r = await api.startPreflight(request.id, engine);
+      const r = await api.startPreflight(request.id);
       setRun(r);
       setRunId(r.id);
       ctx.reload();
@@ -111,13 +110,11 @@ function RequestPanel({
         <Button variant="primary" onClick={start} disabled={running}>
           {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
-        <select className="rounded-md bg-white px-2 py-1.5 ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-700" value={engine} onChange={(e) => setEngine(e.target.value as typeof engine)}>
-          {ctx.info.engines.map((en) => (
-            <option key={en} value={en}>
-              {en === "codex" ? "Codex (codex-workspace)" : "Mock (オフライン)"}
-            </option>
-          ))}
-        </select>
+        {ctx.info.defaultEngine === "mock" && (
+          <span className="text-sm text-amber-700 dark:text-amber-400" title="pcube 本体の .env に PCUBE_CODEX_AUTH_VOLUME などを設定すると Codex で評価します">
+            Codex が未設定のため、本文の箇条書きをそのままタスク案にする簡易評価（Mock）で実行します
+          </span>
+        )}
         {running && run && (
           <Button variant="ghost" onClick={() => api.cancelRun(request.id, run.id)}>
             中止
@@ -141,19 +138,6 @@ function RequestPanel({
 
       {run && <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} />}
 
-      {tasks.length > 0 && (
-        <Section title={`この要望のタスク (${tasks.length})`}>
-          <ul className="divide-y divide-slate-100 rounded-lg bg-white ring-1 ring-slate-200 dark:divide-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-            {tasks.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                <Id id={t.id} onClick={() => ctx.open(t.ref)} />
-                <span className="flex-1">{t.title}</span>
-                <Badge>{ctx.info.project.statuses.find((s) => s.id === t.status)?.label ?? t.status}</Badge>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
     </div>
   );
 }
@@ -338,7 +322,6 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
   const [error, setError] = useState<string | null>(null);
   const done = !!run.materialized?.length;
   const included = run.drafts.filter((d) => d.include);
-  const total = included.reduce((s, d) => s + d.estimateDays, 0);
 
   async function patch(d: ProposedTask, p: Partial<ProposedTask>) {
     const next = await api.patchDraft(request.id, run.id, d.key, p);
@@ -363,7 +346,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
 
   return (
     <Section
-      title={`タスク案 (${included.length}/${run.drafts.length} 件 · ${total} 人日)`}
+      title={`タスク案 (${included.length}/${run.drafts.length} 件を採用)`}
       aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
     >
       <div className="flex gap-3 overflow-x-auto pb-2">
@@ -382,15 +365,6 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
                   <input type="checkbox" checked={d.include} disabled={done} onChange={(e) => patch(d, { include: e.target.checked })} />
                   <span className="font-mono text-sm text-slate-500">{d.key}</span>
                   {d.dependsOn.length > 0 && <span className="text-sm text-slate-400">← {d.dependsOn.join(", ")}</span>}
-                  <input
-                    type="number"
-                    step="0.5"
-                    disabled={done}
-                    defaultValue={d.estimateDays}
-                    onBlur={(e) => Number(e.target.value) !== d.estimateDays && patch(d, { estimateDays: Number(e.target.value) })}
-                    className="ml-auto w-16 rounded bg-transparent px-1 text-right ring-1 ring-slate-200 dark:ring-slate-700"
-                  />
-                  <span className="text-sm text-slate-500">人日</span>
                 </div>
                 <textarea
                   rows={2}
@@ -422,11 +396,11 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
       </div>
       <div className="flex items-center gap-3 pt-2">
         {done ? (
-          <p className="text-emerald-700 dark:text-emerald-400">
-            ✓ タスク化済み:{" "}
-            {run.materialized!.map((id) => (
-              <Id key={id} id={id} onClick={() => ctx.open(`${request.id}/${id}`)} />
-            ))}
+          <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
+            ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
+            <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("ghost", "underline")}>
+              かんばんで見る
+            </Link>
           </p>
         ) : (
           <>

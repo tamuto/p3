@@ -48,7 +48,6 @@ export class PreflightStore {
         key: String(data.key ?? f.replace(/\.md$/, "")),
         title: String(data.title ?? ""),
         description: body.trim(),
-        estimateDays: Number(data.estimateDays ?? 1),
         areas: Array.isArray(data.areas) ? data.areas.map(String) : [],
         dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
         relations: normalizeRelations(data.relations),

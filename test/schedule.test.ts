@@ -23,11 +23,11 @@ const dep = (target: string) => ({ type: "depends_on" as const, target });
 describe("schedule", () => {
   const today = "2026-10-08";
 
-  it("日付が無ければ今日から見積り日数で置き、依存先の翌日から始める", () => {
-    const bars = schedule([task("A", { estimate: 2 }), task("B", { estimate: 1.5, relations: [dep("A")] })], today);
-    expect(bars.get("A")).toMatchObject({ start: "2026-10-08", end: "2026-10-09", inferred: true, conflict: false });
-    // 1.5 人日は2日に切り上げ
-    expect(bars.get("B")).toMatchObject({ start: "2026-10-10", end: "2026-10-11", inferred: true });
+  it("日付が無ければ今日から1日で置き、依存先の翌日から始める（見積りは持たない）", () => {
+    const bars = schedule([task("A"), task("B", { relations: [dep("A")] }), task("C", { relations: [dep("B")] })], today);
+    expect(bars.get("A")).toMatchObject({ start: "2026-10-08", end: "2026-10-08", inferred: true, conflict: false });
+    expect(bars.get("B")).toMatchObject({ start: "2026-10-09", end: "2026-10-09", inferred: true });
+    expect(bars.get("C")?.start).toBe("2026-10-10");
   });
 
   it("明示された日付を優先し、依存先より前に始まっていれば矛盾とする", () => {
@@ -39,13 +39,14 @@ describe("schedule", () => {
     expect(bars.get("B")?.conflict).toBe(true);
   });
 
-  it("期限だけなら期限から見積りを遡る", () => {
-    expect(schedule([task("A", { due: "2026-10-20", estimate: 3 })], today).get("A")).toMatchObject({ start: "2026-10-18", end: "2026-10-20" });
+  it("期限だけならその日1日、開始だけならその日1日", () => {
+    expect(schedule([task("A", { due: "2026-10-20" })], today).get("A")).toMatchObject({ start: "2026-10-20", end: "2026-10-20" });
+    expect(schedule([task("A", { start: "2026-10-12" })], today).get("A")).toMatchObject({ start: "2026-10-12", end: "2026-10-12" });
   });
 
   it("depends_on 以外の関係と、要望の外・存在しない依存先はスケジュールに効かない", () => {
     const bars = schedule(
-      [task("A", { estimate: 5 }), task("B", { relations: [{ type: "impacts", target: "A" }, dep("T404"), dep("261001-other/T001")] })],
+      [task("A", { start: "2026-10-20", due: "2026-10-25" }), task("B", { relations: [{ type: "impacts", target: "A" }, dep("T404"), dep("261001-other/T001")] })],
       today,
     );
     expect(bars.get("B")?.start).toBe(today);

@@ -63,12 +63,12 @@ describe("PreflightService（mock エンジン）", () => {
     const { ctx, req, existing } = await withRequest();
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
-    await ctx.preflight.updateDraft(req.id, id, "D2", { title: "ボタン（直した）", estimateDays: 0.5 });
+    await ctx.preflight.updateDraft(req.id, id, "D2", { title: "ボタン（直した）" });
 
     const tasks = await ctx.preflight.materialize(req.id, id, "human:a");
-    expect(tasks.map((t) => [t.id, t.title, t.estimate, t.request])).toEqual([
-      ["T001", "CSV を書き出す", 1, req.id],
-      ["T002", "ボタン（直した）", 0.5, req.id],
+    expect(tasks.map((t) => [t.id, t.title, t.request])).toEqual([
+      ["T001", "CSV を書き出す", req.id],
+      ["T002", "ボタン（直した）", req.id],
     ]);
     expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T001", origin: "preflight" }]);
     const r = ctx.ws.requests.get(req.id)!;
@@ -90,6 +90,18 @@ describe("PreflightService（mock エンジン）", () => {
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
     expect(ctx.ws.requests.get(req.id)?.workstream?.branch).toBe(`req/${req.id}`);
+  });
+
+  it("タスク化済みの要望で再評価しても、要望のステータスは変えない（進行中のまま）", async () => {
+    const { ctx, req } = await withRequest();
+    const first = await ctx.preflight.start(req.id);
+    await ctx.preflight.wait(req.id, first.id);
+    await ctx.preflight.materialize(req.id, first.id);
+    expect(ctx.ws.requests.get(req.id)?.status).toBe("active");
+    const again = await ctx.preflight.start(req.id);
+    expect(ctx.ws.requests.get(req.id)?.status).toBe("active");
+    await ctx.preflight.wait(req.id, again.id);
+    expect(ctx.ws.requests.get(req.id)).toMatchObject({ status: "active", lastPreflight: again.id });
   });
 
   it("タスクがある要望でも、追加のタスク化は続きの番号になる", async () => {

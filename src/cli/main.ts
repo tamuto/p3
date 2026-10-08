@@ -44,8 +44,8 @@ const HELP = `pcube — 要望ごとにフォルダを分けて管理するフ�
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
   show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
-  new <タイトル>                 --body 本文|- --area a --label l --estimate 人日 --start --due --status
-  set <T003> キー=値 ...         title status estimate start due progress labels areas outputs（空で消す）
+  new <タイトル>                 --body 本文|- --area a --label l --start --due --status
+  set <T003> キー=値 ...         title status start due progress labels areas outputs（空で消す）
   move <T003> <ステータス>        --output URL/パス（成果物を足す）
   link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
   unlink <T003> <種類> <相手>
@@ -81,7 +81,6 @@ const OPTIONS = {
   label: { type: "string", multiple: true },
   output: { type: "string", multiple: true },
   q: { type: "string", short: "q" },
-  estimate: { type: "string" },
   start: { type: "string" },
   due: { type: "string" },
   body: { type: "string" },
@@ -217,7 +216,7 @@ async function main(argv: string[]): Promise<number> {
       const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       return out.result(tasks, () =>
-        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, t.estimate !== undefined ? `${t.estimate}d` : "", deps(t)])) || "タスクはありません",
+        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, deps(t)])) || "タスクはありません",
       );
     }
 
@@ -260,7 +259,6 @@ async function main(argv: string[]): Promise<number> {
           labels: o.label ?? [],
           areas: o.area ?? [],
           outputs: o.output ?? [],
-          estimate: o.estimate !== undefined ? num(o.estimate, "estimate") : undefined,
           start: o.start && date(o.start),
           due: o.due && date(o.due),
           body: readBody(o.body),
@@ -494,9 +492,8 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
     if (a.impacts.length) lines.push("", "既存項目への影響:", ...a.impacts.map((i) => `  ${i.type} ${i.target} (${i.confidence})  ${i.reason}`));
   }
   if (run.drafts.length) {
-    const total = run.drafts.filter((d) => d.include).reduce((s, d) => s + d.estimateDays, 0);
-    lines.push("", `タスク案 (${total} 人日):`);
-    lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, `${d.estimateDays}d`, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));
+    lines.push("", `タスク案 (${run.drafts.filter((d) => d.include).length}/${run.drafts.length} 件を採用):`);
+    lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);
@@ -505,7 +502,7 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
 
 // --- 入力 -----------------------------------------------------------------
 
-const TASK_KEYS = ["title", "status", "estimate", "start", "due", "progress", "labels", "areas", "outputs"];
+const TASK_KEYS = ["title", "status", "start", "due", "progress", "labels", "areas", "outputs"];
 
 function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task> {
   const patch: Record<string, unknown> = {};
@@ -516,7 +513,7 @@ function parseTaskAssignments(ctx: PcubeContext, pairs: string[]): Partial<Task>
       patch[key] = key === "labels" || key === "areas" || key === "outputs" ? [] : undefined;
       continue;
     }
-    if (key === "estimate" || key === "progress") patch[key] = num(raw, key);
+    if (key === "progress") patch[key] = num(raw, key);
     else if (key === "start" || key === "due") patch[key] = date(raw);
     else if (key === "labels" || key === "areas" || key === "outputs") patch[key] = list(raw);
     else if (key === "status") {

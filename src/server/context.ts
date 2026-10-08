@@ -32,10 +32,11 @@ export async function openProject(dataDir: string): Promise<PcubeContext> {
   const ws = new Workspace(dataDir);
   await ws.load();
   const index = new ProjectIndex(ws);
-  const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { mock: new MockEngine() };
+  // エンジンは1つだけ。Codex が設定されていれば Codex、無ければ（または PCUBE_PREFLIGHT_ENGINE=mock なら）
+  // Codex を使わずに画面とファイルの流れを確かめるための Mock
   const codexCfg = codexConfigFromEnv();
-  if (codexCfg) engines.codex = new CodexWorkspaceEngine(codexCfg);
-  const defaultEngine = (process.env.PCUBE_PREFLIGHT_ENGINE as PreflightEngine["name"]) ?? (codexCfg ? "codex" : "mock");
-  const preflight = new PreflightService(ws, index, engines, defaultEngine);
+  const engine: PreflightEngine =
+    codexCfg && process.env.PCUBE_PREFLIGHT_ENGINE !== "mock" ? new CodexWorkspaceEngine(codexCfg) : new MockEngine();
+  const preflight = new PreflightService(ws, index, { [engine.name]: engine }, engine.name);
   return { ws, index, preflight };
 }

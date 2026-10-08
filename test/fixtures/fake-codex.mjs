@@ -31,10 +31,10 @@ function runTurn(id, text) {
     ],
   };
   writeFileSync(join(abs, "assessment.json"), scenario === "broken" ? "{ not json" : JSON.stringify(assessment));
-  writeFileSync(join(abs, "drafts", "D1.md"), "---\nkey: D1\ntitle: 下準備\nestimateDays: 1\ndependsOn: []\n---\n\n準備する\n");
+  writeFileSync(join(abs, "drafts", "D1.md"), "---\nkey: D1\ntitle: 下準備\ndependsOn: []\n---\n\n準備する\n");
   writeFileSync(
     join(abs, "drafts", "D2.md"),
-    `---\nkey: D2\ntitle: 本体\nestimateDays: 2\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n---\n\n作る\n`,
+    `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n---\n\n作る\n`,
   );
   notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   const changes = [`/workspace/${runDir}/assessment.json`, `/workspace/${runDir}/drafts/D1.md`, `/workspace/${runDir}/drafts/D2.md`];

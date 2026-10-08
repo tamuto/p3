@@ -146,14 +146,11 @@ export function progress(ctx: PcubeContext, today = localToday()): RequestProgre
       for (const t of tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
       const done = tasks.filter((t) => doneIds.has(t.status));
       const bars = [...schedule(tasks, today).values()];
-      const sum = (ts: Task[]) => ts.reduce((s, t) => s + (t.estimate ?? 0), 0);
       return {
         request,
         counts,
         total: tasks.length,
         done: done.length,
-        estimate: sum(tasks),
-        estimateDone: sum(done),
         start: bars.length ? bars.map((b) => b.start).sort()[0] : undefined,
         end: bars.length ? bars.map((b) => b.end).sort().at(-1) : undefined,
         conflicts: bars.filter((b) => b.conflict).length,

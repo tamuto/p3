@@ -17,7 +17,7 @@ const toDate = (t: number) => new Date(t).toISOString().slice(0, 10);
 /**
  * ガントチャート用のスケジュール計算。
  *  - start/due があればそれを使う
- *  - 無ければ depends_on の終了後（無ければ today）から estimate 日（最低1日）で前詰め
+ *  - 無ければ depends_on の終了後（無ければ today）から1日で前詰め（見積りは持たない。期間は日付で表す）
  * depends_on 以外の関係（impacts, relates_to 等）はスケジュール制約にしない。
  */
 export function schedule(tasks: Task[], today: string): Map<string, ScheduledBar> {
@@ -33,7 +33,7 @@ export function schedule(tasks: Task[], today: string): Map<string, ScheduledBar
     if (visiting.has(t.id)) return { id: t.id, start: today, end: today, inferred: true, conflict: true }; // 循環
     visiting.add(t.id);
     const depEnd = Math.max(toTime(today) - DAY, ...deps(t).map((d) => toTime(visit(byId.get(d)!).end)));
-    const dur = Math.max(1, Math.ceil(t.estimate ?? 1));
+    const dur = 1;
     let start: number;
     let end: number;
     if (t.start) {

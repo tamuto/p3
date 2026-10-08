@@ -8,6 +8,7 @@ import {
   type PreflightRun,
   type ProposedTask,
   type Relation,
+  type Request,
   type RelationType,
   type Task,
 } from "../../shared/types.ts";
@@ -75,11 +76,15 @@ export class PreflightService {
       join(runDir, "context.md"),
       `# Context for ${request.id}\n\n${context.map((c) => `- ${c.ref} ${c.title} (${c.score}) — ${c.reasons.join(" / ")}`).join("\n")}\n`,
     );
-    await this.ws.requests.update(requestId, { status: "preflight", lastPreflight: id }, { actor: opts.actor });
+    // ステータスを動かすのはタスク化する前の要望だけ。進行中・完了の要望で再評価しても状態は変えない
+    const before = request.status;
+    const early = before === "draft" || before === "preflight" || before === "reviewed";
+    await this.ws.requests.update(requestId, early ? { status: "preflight", lastPreflight: id } : { lastPreflight: id }, { actor: opts.actor });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
 
     const abort = new AbortController();
-    const done = this.execute(engine, run, runDir, abort.signal);
+    const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
+    const done = this.execute(engine, run, runDir, abort.signal, after);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -100,7 +105,13 @@ export class PreflightService {
     this.ws.emit({ type: "preflight-log", runId: run.id, entry });
   }
 
-  private async execute(engine: PreflightEngine, run: PreflightRun, runDir: string, signal: AbortSignal) {
+  private async execute(
+    engine: PreflightEngine,
+    run: PreflightRun,
+    runDir: string,
+    signal: AbortSignal,
+    after: (ok: boolean) => Request["status"],
+  ) {
     const repoRoot = this.ws.repoRoot;
     const runDirRel = relative(repoRoot, runDir);
     try {
@@ -132,8 +143,9 @@ export class PreflightService {
     } finally {
       run.finishedAt = nowIso();
       await this.ws.preflight.save(run);
-      // 失敗したら「評価中」のまま残さず下書きへ戻す
-      await this.ws.requests.update(run.requestId, { status: run.status === "completed" ? "reviewed" : "draft" });
+      // 失敗したら「評価中」のまま残さず元へ戻す
+      const status = after(run.status === "completed");
+      if (this.ws.requests.get(run.requestId)?.status !== status) await this.ws.requests.update(run.requestId, { status });
       // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
       this.active.delete(run.id);
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
@@ -184,7 +196,6 @@ export class PreflightService {
           labels: [],
           areas: d.areas,
           outputs: [],
-          estimate: d.estimateDays,
           relations: keepExisting(d.relations),
           body: `${d.description}\n\n> preflight: ${runId} / ${d.key}`,
         },

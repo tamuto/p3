@@ -59,9 +59,9 @@ async function seedDemo(dir: string) {
   );
   await ws.requests.update(store.id, { workstream: branch(store.id, "file-store") }, { actor: "seed" });
   const s = tasks(store.id);
-  await s({ title: "frontmatter パーサと書き出し", status: "done", areas: ["src/server/store"], estimate: 1, start: day(-18), due: day(-17), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/1"], body: "YAML frontmatter + Markdown 本文の読み書き。" });
-  await s({ title: "Markdown コレクションと楽観ロック", status: "done", areas: ["src/server/store"], estimate: 2, start: day(-16), due: day(-14), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/2"], relations: [rel("depends_on", "T001")], body: "rev による楽観ロック、tmp→rename の原子的書き込み、排他的な採番。" });
-  await s({ title: "ファイル監視で外部編集を取り込む", status: "done", areas: ["src/server/store/workspace.ts"], estimate: 2, start: day(-13), due: day(-11), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/3"], relations: [rel("depends_on", "T002")], body: "AI やエディタがファイルを直接変更したら SSE で画面に反映する。" });
+  await s({ title: "frontmatter パーサと書き出し", status: "done", areas: ["src/server/store"], start: day(-18), due: day(-17), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/1"], body: "YAML frontmatter + Markdown 本文の読み書き。" });
+  await s({ title: "Markdown コレクションと楽観ロック", status: "done", areas: ["src/server/store"], start: day(-16), due: day(-14), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/2"], relations: [rel("depends_on", "T001")], body: "rev による楽観ロック、tmp→rename の原子的書き込み、排他的な採番。" });
+  await s({ title: "ファイル監視で外部編集を取り込む", status: "done", areas: ["src/server/store/workspace.ts"], start: day(-13), due: day(-11), progress: 100, outputs: ["https://github.com/tamuto/pcube/pull/3"], relations: [rel("depends_on", "T002")], body: "AI やエディタがファイルを直接変更したら SSE で画面に反映する。" });
 
   // 2. 進行中の要望
   const views = await req(
@@ -75,10 +75,10 @@ async function seedDemo(dir: string) {
   );
   await ws.requests.update(views.id, { workstream: branch(views.id, "kanban-gantt") }, { actor: "seed" });
   const v = tasks(views.id);
-  await v({ title: "かんばんボード", status: "done", areas: ["src/web/routes/requests/$requestId/board.tsx"], estimate: 2, start: day(-6), due: day(-4), progress: 100, labels: ["ui"], outputs: ["https://github.com/tamuto/pcube/pull/4"], body: "ドラッグ&ドロップで列移動。" });
-  await v({ title: "依存ベースの自動スケジュール", status: "doing", areas: ["src/shared/schedule.ts"], estimate: 1.5, start: day(-1), progress: 40, labels: ["schedule"], body: "日付未設定のタスクを、depends_on と見積りから前詰めで配置する。" });
-  await v({ title: "ガントチャート表示", status: "todo", areas: ["src/web/routes/requests/$requestId/schedule.tsx"], estimate: 3, labels: ["ui", "schedule"], relations: [rel("depends_on", "T002"), rel("relates_to", "T001")], body: "依存の矢印と今日線を描く。" });
-  await v({ title: "スケジュールの日付をドラッグで変える", status: "todo", estimate: 1, labels: ["ui"], relations: [rel("depends_on", "T003")], body: "作業中に AI が追加したタスク。" });
+  await v({ title: "かんばんボード", status: "done", areas: ["src/web/routes/requests/$requestId/board.tsx"], start: day(-6), due: day(-4), progress: 100, labels: ["ui"], outputs: ["https://github.com/tamuto/pcube/pull/4"], body: "ドラッグ&ドロップで列移動。" });
+  await v({ title: "依存ベースの自動スケジュール", status: "doing", areas: ["src/shared/schedule.ts"], start: day(-1), progress: 40, labels: ["schedule"], body: "日付未設定のタスクを、depends_on と見積りから前詰めで配置する。" });
+  await v({ title: "ガントチャート表示", status: "todo", areas: ["src/web/routes/requests/$requestId/schedule.tsx"], labels: ["ui", "schedule"], relations: [rel("depends_on", "T002"), rel("relates_to", "T001")], body: "依存の矢印と今日線を描く。" });
+  await v({ title: "スケジュールの日付をドラッグで変える", status: "todo", labels: ["ui"], relations: [rel("depends_on", "T003")], body: "作業中に AI が追加したタスク。" });
 
   // 3. 進行中の要望（別の要望に影響する）
   const api = await req(
@@ -92,8 +92,8 @@ async function seedDemo(dir: string) {
   );
   await ws.requests.update(api.id, { workstream: branch(api.id, "ai-cli") }, { actor: "seed" });
   const a = tasks(api.id);
-  await a({ title: "自然文でタスクを特定する find", status: "doing", areas: ["src/cli", "src/server/intel"], estimate: 1, start: day(0), progress: 20, relations: [rel("depends_on", `${store.id}/T002`)], body: "参照の一致 → タイトル部分一致 → 内容類似 の順で候補を返す。" });
-  await a({ title: "競合時に終了コード 3 で知らせる", status: "todo", areas: ["src/cli"], estimate: 0.5, relations: [rel("depends_on", "T001")], body: "古い rev で更新しようとしたら拒否する。" });
+  await a({ title: "自然文でタスクを特定する find", status: "doing", areas: ["src/cli", "src/server/intel"], start: day(0), progress: 20, relations: [rel("depends_on", `${store.id}/T002`)], body: "参照の一致 → タイトル部分一致 → 内容類似 の順で候補を返す。" });
+  await a({ title: "競合時に終了コード 3 で知らせる", status: "todo", areas: ["src/cli"], relations: [rel("depends_on", "T001")], body: "古い rev で更新しようとしたら拒否する。" });
 
   // 4. Preflight を試すための下書き
   await req(

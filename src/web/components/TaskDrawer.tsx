@@ -6,12 +6,11 @@ import { api, ApiError } from "../lib/api.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 
-type Draft = Pick<Task, "title" | "status" | "estimate" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string; outputs: string };
+type Draft = Pick<Task, "title" | "status" | "start" | "due" | "progress" | "body"> & { labels: string; areas: string; outputs: string };
 
 const toDraft = (t: Task): Draft => ({
   title: t.title,
   status: t.status,
-  estimate: t.estimate,
   start: t.start,
   due: t.due,
   progress: t.progress,
@@ -90,7 +89,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     try {
       await api.patchTask(id, {
         ...draft!,
-        estimate: draft!.estimate ?? null,
         start: draft!.start || null,
         due: draft!.due || null,
         progress: draft!.progress ?? null,
@@ -168,9 +166,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label="見積り (人日)">
-              <input type="number" step="0.5" className={inputCls} value={draft.estimate ?? ""} onChange={(e) => set("estimate", num(e.target.value))} />
             </Field>
             <Field label="開始">
               <input type="date" className={inputCls} value={draft.start ?? ""} onChange={(e) => set("start", e.target.value)} />

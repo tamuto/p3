@@ -69,7 +69,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
   it("作成・一覧・更新・移動・関係・アーカイブ", async () => {
     const { root, rid } = await initialized();
     const r = ["--req", rid];
-    expect(pcube(root, ["new", "API の認証", "--area", "src/api", "--estimate", "2", ...r]).out).toContain(`${rid}/T001`);
+    expect(pcube(root, ["new", "API の認証", "--area", "src/api", ...r]).out).toContain(`${rid}/T001`);
     // 本文が - で始まっても受け取れる
     expect(pcube(root, ["new", "通知", "--body", "- 箇条書き", ...r]).code).toBe(0);
     expect(readFileSync(join(root, ".pcube", "requests", rid, "tasks", "T002.md"), "utf8")).toContain("- 箇条書き");

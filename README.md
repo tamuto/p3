@@ -127,7 +127,6 @@ status: done
 areas: [src/server/store/workspace.ts]
 outputs:
   - https://github.com/me/myapp/pull/42      # 成果物（PR / MR / ドキュメント）
-estimate: 2                                  # 人日
 relations:
   - type: depends_on
     target: T002                             # 同じ要望のタスク
@@ -164,7 +163,7 @@ AI やエディタがファイルを直接変更したら SSE で画面に反映
 - **影響範囲** — `depends_on` / `part_of` の逆向きと `impacts` を、要望をまたいで推移的に辿る
 - **循環検出** — `depends_on` を追加するときに拒否する
 - **文脈選定** — Preflight で Codex に渡す関連項目を、全件ではなくスコア上位に絞る（トークン節約）
-- **スケジュール** — 要望の中の `depends_on` を制約に、日付未設定のタスクを見積りから前詰めで配置（`src/shared/schedule.ts`）
+- **スケジュール** — 要望の中の `depends_on` を制約に、日付未設定のタスクを1日ずつ前詰めで配置（見積りは持たない。期間は開始・期限の日付で表す）（`src/shared/schedule.ts`）
 
 ## Preflight
 
@@ -192,10 +191,14 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 | `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`） |
 | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
 | `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
-| `PCUBE_PREFLIGHT_ENGINE` | 既定のエンジン（`codex` / `mock`） |
+| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Codex が設定されていても Mock で評価する |
 
-Codex を使えない環境では **Mock エンジン**（要望本文の箇条書きをタスク案にする単純なヒューリスティック）で
-同じ画面・ファイルの流れを確認できる。
+エンジンは1つだけで、選ぶものではない。Codex の認証が設定されていなければ **Mock**（要望本文の箇条書きを
+そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。Codex を使えない環境で画面とファイルの流れを
+確かめるためのもの。
+
+Preflight でステータスが動くのはタスク化する前の要望（下書き → 評価中 → 評価済み）だけで、
+進行中・完了の要望を再評価してもステータスは変わらない。
 
 ## 画面
 
@@ -204,7 +207,7 @@ Codex を使えない環境では **Mock エンジン**（要望本文の箇条�
 
 | URL | 画面 |
 | --- | --- |
-| `/` | 進捗。要望ごとの状況（列ごとの件数・見積り・期間）を横断して見る（`?show=closed\|all`） |
+| `/` | 進捗。要望ごとの完了率（完了 / 作業中 / 未着手のタスク数）と期間を横断して見る（`?show=closed\|all`） |
 | `/requests/new` | 新しい要望 |
 | `/requests/261009-k7m3x` | 要望の概要と Preflight（`?run=PF-...` で過去の評価） |
 | `/requests/261009-k7m3x/board` | 要望のかんばん（ドラッグで列を移動。完了カードに成果物のリンク） |

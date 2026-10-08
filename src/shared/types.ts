@@ -76,8 +76,6 @@ export interface Task {
   areas: string[];
   /** 成果物（PR / MR の URL、ドキュメントのパスなど） */
   outputs: string[];
-  /** 見積り（人日） */
-  estimate?: number;
   /** YYYY-MM-DD */
   start?: string;
   /** YYYY-MM-DD */
@@ -133,9 +131,6 @@ export interface RequestProgress {
   counts: Record<string, number>;
   total: number;
   done: number;
-  /** 見積り（人日）の合計と完了分 */
-  estimate: number;
-  estimateDone: number;
   /** スケジュール上の期間（タスクが無ければ無し） */
   start?: string;
   end?: string;
@@ -156,7 +151,6 @@ export interface ProposedTask {
   key: string;
   title: string;
   description: string;
-  estimateDays: number;
   areas: string[];
   /** 同じ run 内の他の key */
   dependsOn: string[];

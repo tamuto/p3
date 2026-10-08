@@ -32,7 +32,6 @@ const taskInput = z.object({
   labels: z.array(z.string()).optional(),
   areas: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
-  estimate: z.number().nonnegative().nullish(),
   start: date.nullish(),
   due: date.nullish(),
   progress: z.number().min(0).max(100).nullish(),
@@ -213,7 +212,7 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
     const patch = z
-      .object({ title: z.string(), description: z.string(), estimateDays: z.number(), include: z.boolean() })
+      .object({ title: z.string(), description: z.string(), include: z.boolean() })
       .partial()
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch));

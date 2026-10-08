@@ -30,11 +30,11 @@ describe("REST API", () => {
 
   it("タスクは要望の中に作り、null で項目を消し、T3 / 3 でも指せる", async () => {
     const { call, rid } = await setup();
-    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", estimate: 2 }, { "x-pcube-actor": "ai:claude" });
+    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", due: "2026-10-20" }, { "x-pcube-actor": "ai:claude" });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ id: "T001", ref: `${rid}/T001`, status: "todo", updatedBy: "ai:claude" });
-    const patched = await call("PATCH", `/requests/${rid}/tasks/1`, { estimate: null, outputs: ["https://example.com/pull/1"], rev: 1 });
-    expect(patched.body.estimate).toBeUndefined();
+    const patched = await call("PATCH", `/requests/${rid}/tasks/1`, { due: null, outputs: ["https://example.com/pull/1"], rev: 1 });
+    expect(patched.body.due).toBeUndefined();
     expect(patched.body.outputs).toEqual(["https://example.com/pull/1"]);
     expect((await call("GET", `/requests/${rid}/tasks/T1`)).body.task.title).toBe("A");
   });

@@ -121,10 +121,9 @@ function BoardPage() {
                           ))}
                         </ul>
                       )}
-                      {(t.estimate !== undefined || (t.progress ?? 0) > 0) && (
+                      {(t.progress ?? 0) > 0 && !s.done && (
                         <div className="mt-2 flex items-center gap-3 text-sm text-slate-500">
-                          {t.estimate !== undefined && <span>{t.estimate}人日</span>}
-                          {(t.progress ?? 0) > 0 && !s.done && (
+                          {(
                             <span className="ml-auto flex items-center gap-1.5">
                               <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                                 <span className="block h-full bg-indigo-500" style={{ width: `${t.progress}%` }} />

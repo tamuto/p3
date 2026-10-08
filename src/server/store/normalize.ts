@@ -33,7 +33,6 @@ export const normalizeTaskIn =
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
-    estimate: num(d.estimate),
     start: date(d.start),
     due: date(d.due),
     progress: num(d.progress),
@@ -47,7 +46,7 @@ export const normalizeTaskIn =
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "labels", "areas", "outputs",
-  "estimate", "start", "due", "progress", "relations", "rev", "createdAt", "updatedAt", "updatedBy",
+  "start", "due", "progress", "relations", "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {

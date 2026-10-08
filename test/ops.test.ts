@@ -8,8 +8,8 @@ async function setup() {
   const { ctx } = p;
   const A = (await newRequest(ctx, { title: "ガントチャート表示" })).id;
   const B = (await newRequest(ctx, { title: "認証の見直し", status: "draft" })).id;
-  await newTask(ctx, A, { title: "ガントの依存矢印", status: "doing", areas: ["src/web/routes"], estimate: 2 });
-  await newTask(ctx, A, { title: "かんばん", status: "done", estimate: 1, start: "2026-10-01", due: "2026-10-02" });
+  await newTask(ctx, A, { title: "ガントの依存矢印", status: "doing", areas: ["src/web/routes"] });
+  await newTask(ctx, A, { title: "かんばん", status: "done", start: "2026-10-01", due: "2026-10-02" });
   await newTask(ctx, A, { title: "スケジュール", relations: [{ type: "depends_on", target: "T001" }] });
   await newTask(ctx, B, { title: "トークンの扱い", areas: ["src/server/api"], body: "期限切れの扱い" });
   return { ...p, A, B };
@@ -87,11 +87,12 @@ describe("addRelation / removeRelation", () => {
 });
 
 describe("progress", () => {
-  it("要望ごとにステータス別の件数・見積り・期間を集計し、更新の新しい順に並べる", async () => {
+  it("要望ごとにステータス別の件数・期間を集計し、更新の新しい順に並べる", async () => {
     const { ctx, A, B } = await setup();
     const ps = progress(ctx, "2026-10-01");
     const a = ps.find((p) => p.request.id === A)!;
-    expect(a).toMatchObject({ total: 3, done: 1, counts: { todo: 1, doing: 1, done: 1 }, estimate: 3, estimateDone: 1, start: "2026-10-01" });
+    expect(a).toMatchObject({ total: 3, done: 1, counts: { todo: 1, doing: 1, done: 1 }, start: "2026-10-01" });
+    expect(a).not.toHaveProperty("estimate");
     expect(a.end! >= "2026-10-02").toBe(true);
     expect(ps.find((p) => p.request.id === B)).toMatchObject({ total: 1, done: 0 });
     expect(ps[0].request.id).toBe(B); // B のタスクが最後に作られた

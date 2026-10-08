@@ -49,7 +49,6 @@ export const ASSESSMENT_SPEC = `{
 export const DRAFT_SPEC = `---
 key: D2                # D1, D2 ... の連番
 title: タスク名
-estimateDays: 1.5      # 人日
 areas: [src/foo]       # 触る領域
 dependsOn: [D1]        # 同じ preflight 内で先に終わっている必要があるタスク案の key
 relations:             # 既存タスク/要望との関係（無ければ省略）
