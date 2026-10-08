@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Member, ProjectConfig, StatusDef } from "../../shared/types.ts";
-import type { AppCtx } from "../App.tsx";
+import type { AppCtx } from "../lib/appCtx.ts";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 

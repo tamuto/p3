@@ -11,17 +11,16 @@ const variants: Record<Variant, string> = {
   danger: "bg-rose-600 text-white hover:bg-rose-500",
 };
 
-export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
-  return (
-    <button
-      {...p}
-      className={cx(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-base font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-50",
-        variants[variant],
-        className,
-      )}
-    />
+/** ボタンの見た目（リンクをボタンとして見せるときにも使う） */
+export const buttonCls = (variant: Variant = "secondary", className?: string) =>
+  cx(
+    "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-base font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-50",
+    variants[variant],
+    className,
   );
+
+export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+  return <button {...p} className={buttonCls(variant, className)} />;
 }
 
 const tones = {

@@ -216,6 +216,21 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 Codex を使えない環境では **Mock エンジン**（要望本文の箇条書きをタスク案にする単純なヒューリスティック）で
 同じ画面・ファイルの流れを確認できる。
 
+## 画面
+
+`pcube serve` で開くローカルのビューア兼エディタ（React + TanStack Router + Tailwind CSS）。
+画面の状態は URL に載るので、URL を共有すれば同じ画面が開ける。
+
+| URL | 画面 |
+| --- | --- |
+| `/board` | かんばん（ドラッグで列を移動） |
+| `/schedule` | スケジュール（依存を考慮したガント） |
+| `/preflight` / `/preflight/new` | 要望の一覧 / 新しい要望 |
+| `/preflight/REQ-0001?run=PF-...` | 要望の詳細と Preflight の結果（`run` を省くと最新） |
+| `/settings` | プロジェクト設定 |
+
+どの画面でも `?task=TASK-0003` でタスク詳細を重ねて開き、`?stream=REQ-0002` で作業ツリー（要望）に絞る。
+
 ## AI エージェントから使う
 
 AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。プロジェクトの `AGENTS.md` / `CLAUDE.md` に書く例は
@@ -243,7 +258,8 @@ src/
     intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
     api/             REST + SSE、AI 向けマニフェスト
-  web/               React + Tailwind（text-base 基準）
+  web/               React + TanStack Router + Tailwind（text-base 基準）
+    router.tsx       ルート定義（URL と検索パラメータ）
     views/           かんばん・スケジュール・Preflight
     components/      タスク詳細ドロワーほか
 bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
@@ -251,4 +267,4 @@ docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / schedule / ops / preflight / api / cli）
 ```
 
-技術: TypeScript, React 19, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
+技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

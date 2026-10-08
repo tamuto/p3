@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { addDays, daysBetween, schedule } from "../../shared/schedule.ts";
 import { RELATION_TYPES, type RelationType, type Task } from "../../shared/types.ts";
-import type { AppCtx } from "../App.tsx";
+import type { AppCtx } from "../lib/appCtx.ts";
 import { cx, Id } from "../components/ui.tsx";
 import { streamColor } from "../lib/colors.ts";
 

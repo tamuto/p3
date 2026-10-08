@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { Link, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   RELATION_TYPES,
   type PreflightLogEntry,
@@ -8,8 +9,8 @@ import {
   type RequestStatus,
   type Task,
 } from "../../shared/types.ts";
-import type { AppCtx } from "../App.tsx";
-import { Badge, Button, cx, Empty, Field, Id, inputCls, Meter, scoreTone, Section, type Tone } from "../components/ui.tsx";
+import type { AppCtx } from "../lib/appCtx.ts";
+import { Badge, Button, buttonCls, cx, Empty, Field, Id, inputCls, Meter, scoreTone, Section, type Tone } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
 import { streamColor } from "../lib/colors.ts";
 import { useServerEvents } from "../lib/live.ts";
@@ -28,27 +29,28 @@ const VERDICT = {
   no_go: { label: "NO GO", tone: "rose" as Tone },
 };
 
-export function Preflight({ ctx, selected, onSelect }: { ctx: AppCtx; selected: string | null; onSelect: (id: string | null) => void }) {
-  const [creating, setCreating] = useState(false);
-  const current = ctx.requests.find((r) => r.id === selected);
-
+/** /preflight 配下の共通の枠: 左に要望の一覧、右に子ルート（説明 / 新規作成 / 要望の詳細） */
+export function PreflightLayout({ ctx, children }: { ctx: AppCtx; children: ReactNode }) {
+  const { requestId } = useParams({ strict: false });
   return (
     <div className="flex h-full">
       <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center justify-between px-4 py-3">
           <h2 className="font-semibold">要望</h2>
-          <Button variant="primary" onClick={() => (setCreating(true), onSelect(null))}>
+          <Link to="/preflight/new" search={(prev) => prev} className={buttonCls("primary")}>
             ＋ 新しい要望
-          </Button>
+          </Link>
         </div>
         <ul className="flex-1 overflow-y-auto">
           {[...ctx.requests].reverse().map((r) => (
             <li key={r.id}>
-              <button
-                onClick={() => (setCreating(false), onSelect(r.id))}
+              <Link
+                to="/preflight/$requestId"
+                params={{ requestId: r.id }}
+                search={(prev) => ({ stream: prev.stream })}
                 className={cx(
                   "flex w-full flex-col gap-1 border-l-4 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800",
-                  r.id === selected ? "bg-indigo-50/60 dark:bg-indigo-950/40" : "",
+                  r.id === requestId ? "bg-indigo-50/60 dark:bg-indigo-950/40" : "",
                 )}
                 style={{ borderLeftColor: r.status === "accepted" ? streamColor(r.id) : "transparent" }}
               >
@@ -57,32 +59,18 @@ export function Preflight({ ctx, selected, onSelect }: { ctx: AppCtx; selected: 
                   <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge>
                 </div>
                 <span className="leading-snug">{r.title}</span>
-              </button>
+              </Link>
             </li>
           ))}
         </ul>
       </aside>
 
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {creating ? (
-          <NewRequest
-            onCreated={(id) => {
-              setCreating(false);
-              ctx.reload();
-              onSelect(id);
-            }}
-          />
-        ) : current ? (
-          <RequestPanel key={current.id} ctx={ctx} request={current} />
-        ) : (
-          <Intro />
-        )}
-      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
 
-function Intro() {
+export function Intro() {
   const steps = [
     ["要望を書く", "やりたいことを自由に記述。1要望 = 1作業ツリー（ブランチ）になります。"],
     ["文脈を選ぶ", "インテリジェンス層が、内容・影響領域・関係グラフから関係しそうな過去/現在の仕事を絞り込みます。"],
@@ -108,7 +96,7 @@ function Intro() {
   );
 }
 
-function NewRequest({ onCreated }: { onCreated: (id: string) => void }) {
+export function NewRequest({ onCreated }: { onCreated: (id: string) => void }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [areas, setAreas] = useState("");
@@ -138,10 +126,21 @@ function NewRequest({ onCreated }: { onCreated: (id: string) => void }) {
   );
 }
 
-function RequestPanel({ ctx, request }: { ctx: AppCtx; request: Request }) {
+/** 要望の詳細。表示する preflight の run は URL（?run=）で選ぶ。無ければ最新 */
+export function RequestPanel({
+  ctx,
+  request,
+  runId: selectedRun,
+  onRunChange: setRunId,
+}: {
+  ctx: AppCtx;
+  request: Request;
+  runId?: string;
+  onRunChange: (runId: string) => void;
+}) {
   const [runs, setRuns] = useState<PreflightRun[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [runId, setRunId] = useState<string | null>(request.lastPreflight ?? null);
+  const runId = selectedRun ?? request.lastPreflight ?? null;
   const [run, setRun] = useState<PreflightRun>();
   const [engine, setEngine] = useState(ctx.info.defaultEngine);
   const [error, setError] = useState<string | null>(null);

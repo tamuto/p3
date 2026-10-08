@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Task } from "../../shared/types.ts";
-import type { AppCtx } from "../App.tsx";
+import type { AppCtx } from "../lib/appCtx.ts";
 import { Badge, cx, Id } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { streamColor } from "../lib/colors.ts";

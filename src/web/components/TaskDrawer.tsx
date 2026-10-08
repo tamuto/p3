@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task } from "../../shared/types.ts";
-import type { AppCtx } from "../App.tsx";
+import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 
