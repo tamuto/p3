@@ -8,8 +8,8 @@ import { useAppCtx } from "../lib/appCtx.ts";
  *   /                                   進捗（全要望の横断）
  *   /requests/new                       新しい要望
  *   /requests/$requestId                要望の概要と Preflight（?run=）
- *   /requests/$requestId/board          要望のかんばん
- *   /requests/$requestId/schedule       要望のスケジュール
+ *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
+ *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
  *   /settings                           プロジェクト設定
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
@@ -40,8 +40,10 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-6 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-        <Link to="/" className="flex items-baseline gap-2">
-          <span className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400">pcube</span>
+        <Link to="/" className="flex items-baseline gap-2" title="infodb p3">
+          <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+            P<sup className="ml-px text-[0.6em]">3</sup>
+          </span>
           <span className="font-medium">{ctx.info.project.name}</span>
         </Link>
         <nav className="flex gap-1">

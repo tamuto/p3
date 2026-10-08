@@ -99,6 +99,11 @@ describe("REST API", () => {
     expect((await call("PUT", "/project", { milestones: [] })).body.error).toContain("使用中のマイルストーン");
     expect((await call("PATCH", `/requests/${rid}`, { milestone: null, due: null })).body).not.toHaveProperty("milestone");
     expect((await call("PUT", "/project", { milestones: [] })).status).toBe(200);
+    // 作成のときから期限・マイルストーン・タグを付けられる
+    await call("PUT", "/project", { milestones: [{ id: "v2", title: "次" }] });
+    const created = await call("POST", "/requests", { title: "最初から", milestone: "v2", due: "2026-12-01", tags: ["ui"] });
+    expect(created.body).toMatchObject({ milestone: "v2", due: "2026-12-01", tags: ["ui"], status: "draft" });
+    expect((await call("POST", "/requests", { title: "x", milestone: "nope" })).status).toBe(400);
   });
 
   it("完了したタスクに人が「済み」を付け外しできる。完了前は 400", async () => {

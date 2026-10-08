@@ -125,7 +125,7 @@ export function apiRoutes(ctx: PcubeContext) {
   app.put("/project", async (c) => {
     const patch = projectPatch.parse(await c.req.json());
     if (patch.statuses) {
-      // 使われているステータスを消すと、そのタスクがかんばんから消えてしまう
+      // 使われているステータスを消すと、そのタスクがタスクボードから消えてしまう
       const ids = new Set(patch.statuses.map((s) => s.id));
       const orphan = ws.allTasks().filter((t) => !ids.has(t.status));
       if (orphan.length) {

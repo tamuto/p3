@@ -94,7 +94,7 @@ function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="かんばんの列（ステータス）">
+      <Section title="タスクボードの列（ステータス）">
         <p className="text-slate-500">
           id はタスクファイルの status に書かれる値です。使用中の列は消せません。タスクは AI か人が実施するので、
           「まだ動いていない / 作業中 / 完了（PR・MR・ドキュメントが出た）」程度の少ない列を勧めます。

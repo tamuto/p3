@@ -18,6 +18,11 @@ function NewRequest() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [areas, setAreas] = useState("");
+  const [due, setDue] = useState("");
+  const [milestone, setMilestone] = useState("");
+  const [tags, setTags] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-8">
       <h2 className="text-xl font-bold">新しい要望</h2>
@@ -31,12 +36,37 @@ function NewRequest() {
       <Field label="影響しそうな領域（任意・カンマ区切り。例: src/server/api, auth）">
         <input className={`${inputCls} font-mono`} value={areas} onChange={(e) => setAreas(e.target.value)} />
       </Field>
+      {/* 管理のための情報。Preflight（AI）には渡さない */}
+      <div className="flex flex-wrap items-start gap-4">
+        <Field label="期限（任意）">
+          <input type="date" className={`${inputCls} !w-44`} value={due} onChange={(e) => setDue(e.target.value)} />
+        </Field>
+        <Field label="マイルストーン（任意）">
+          <select className={`${inputCls} !w-56`} value={milestone} onChange={(e) => setMilestone(e.target.value)}>
+            <option value="">（なし）</option>
+            {ctx.info.project.milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.due ? `（${m.due}）` : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="タグ（任意・カンマ区切り）">
+          <input className={`${inputCls} !w-64`} value={tags} placeholder="feature, ui" onChange={(e) => setTags(e.target.value)} />
+        </Field>
+      </div>
+      {error && <p className="text-rose-600">{error}</p>}
       <Button
         variant="primary"
         disabled={!title.trim()}
         onClick={async () => {
-          const r = await api.createRequest({ title, body, areas: areas.split(",").map((s) => s.trim()).filter(Boolean) });
-          onCreated(r.id);
+          try {
+            const r = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: list(tags) });
+            onCreated(r.id);
+          } catch (e) {
+            setError((e as Error).message);
+          }
         }}
       >
         作成

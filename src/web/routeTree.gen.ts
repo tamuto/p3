@@ -15,6 +15,7 @@ import { Route as RequestsRequestIdRouteImport } from './routes/requests/$reques
 import { Route as RequestsNewRouteImport } from './routes/requests/new'
 import { Route as RequestsRequestIdIndexRouteImport } from './routes/requests/$requestId/index'
 import { Route as RequestsRequestIdBoardRouteImport } from './routes/requests/$requestId/board'
+import { Route as RequestsRequestIdDoneRouteImport } from './routes/requests/$requestId/done'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const RequestsRequestIdBoardRoute = RequestsRequestIdBoardRouteImport.update({
   path: '/board',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
+const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
+  id: '/done',
+  path: '/done',
+  getParentRoute: () => RequestsRequestIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesById {
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
+  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/requests/$requestId'
     | '/requests/new'
     | '/requests/$requestId/board'
+    | '/requests/$requestId/done'
     | '/requests/$requestId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/requests/new'
     | '/requests/$requestId/board'
+    | '/requests/$requestId/done'
     | '/requests/$requestId'
   id:
     | '__root__'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/requests/$requestId'
     | '/requests/new'
     | '/requests/$requestId/board'
+    | '/requests/$requestId/done'
     | '/requests/$requestId/'
   fileRoutesById: FileRoutesById
 }
@@ -148,16 +160,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdBoardRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
+    '/requests/$requestId/done': {
+      id: '/requests/$requestId/done'
+      path: '/done'
+      fullPath: '/requests/$requestId/done'
+      preLoaderRoute: typeof RequestsRequestIdDoneRouteImport
+      parentRoute: typeof RequestsRequestIdRoute
+    }
   }
 }
 
 interface RequestsRequestIdRouteChildren {
   RequestsRequestIdBoardRoute: typeof RequestsRequestIdBoardRoute
+  RequestsRequestIdDoneRoute: typeof RequestsRequestIdDoneRoute
   RequestsRequestIdIndexRoute: typeof RequestsRequestIdIndexRoute
 }
 
 const RequestsRequestIdRouteChildren: RequestsRequestIdRouteChildren = {
   RequestsRequestIdBoardRoute: RequestsRequestIdBoardRoute,
+  RequestsRequestIdDoneRoute: RequestsRequestIdDoneRoute,
   RequestsRequestIdIndexRoute: RequestsRequestIdIndexRoute,
 }
 
