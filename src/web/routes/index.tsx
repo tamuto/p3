@@ -33,6 +33,9 @@ const DAY_W = 30;
 const ROW_H = 52;
 const HEAD_H = 64;
 const LEFT_W = 380;
+/** 表示する期間の上限（今日の何日前から何日後まで）。範囲の外の印・期限・マイルストーンは端にまとめて出す */
+const MAX_PAST = 28;
+const MAX_AHEAD = 42;
 
 /** ISO 日時 → ローカルの日付 */
 const dateOf = (iso: string) => localToday(new Date(iso));
@@ -68,8 +71,10 @@ function ProgressPage() {
     ...rows.map((p) => p.request.due),
     ...milestones.filter((m) => rows.some((p) => p.request.milestone === m.id)).map((m) => m.due),
   ].filter(isDate);
-  const origin = addDays([today, ...worked].sort()[0], -1);
-  const last = addDays([addDays(today, 7), ...ends].sort().at(-1)!, 1);
+  const want = { from: addDays([today, ...worked].sort()[0], -1), to: addDays([addDays(today, 7), ...ends].sort().at(-1)!, 1) };
+  const origin = [want.from, addDays(today, -MAX_PAST)].sort().at(-1)!;
+  const last = [want.to, addDays(today, MAX_AHEAD)].sort()[0];
+  const range = { origin, last };
   const span = daysBetween(origin, last) + 1;
   const days = Array.from({ length: span }, (_, i) => addDays(origin, i));
   const x = (d: string) => daysBetween(origin, d) * DAY_W;
@@ -148,7 +153,7 @@ function ProgressPage() {
 
             {/* 右: スケジュール */}
             <div className="relative" style={{ width: span * DAY_W, height }}>
-              <DaysHeader days={days} today={today} milestones={milestones} x={x} />
+              <DaysHeader days={days} today={today} milestones={milestones} x={x} range={range} />
               {days.map((d, i) => {
                 const wd = new Date(t(d)).getUTCDay();
                 return wd === 0 || wd === 6 ? (
@@ -156,7 +161,7 @@ function ProgressPage() {
                 ) : null;
               })}
               {milestones
-                .filter((m) => m.due)
+                .filter((m) => m.due && m.due >= origin && m.due <= last)
                 .map((m) => (
                   <div
                     key={m.id}
@@ -166,7 +171,7 @@ function ProgressPage() {
                 ))}
               <div className="absolute z-[2] w-0.5 bg-indigo-500" style={{ left: x(today) + DAY_W / 2 - 1, top: 0, bottom: 0 }} />
               {rows.map((p, i) => (
-                <RequestLane key={p.request.id} p={p} top={HEAD_H + i * ROW_H} today={today} x={x} statuses={statuses} onOpen={openTask} />
+                <RequestLane key={p.request.id} p={p} top={HEAD_H + i * ROW_H} today={today} x={x} statuses={statuses} onOpen={openTask} range={range} />
               ))}
             </div>
           </div>
@@ -214,12 +219,26 @@ function Legend() {
   );
 }
 
-function DaysHeader({ days, today, milestones, x }: { days: string[]; today: string; milestones: Milestone[]; x: (d: string) => number }) {
+function DaysHeader({
+  days,
+  today,
+  milestones,
+  x,
+  range,
+}: {
+  days: string[];
+  today: string;
+  milestones: Milestone[];
+  x: (d: string) => number;
+  range: { origin: string; last: string };
+}) {
+  const after = milestones.filter((m) => m.due && m.due > range.last);
+  const before = milestones.filter((m) => m.due && m.due < range.origin);
   return (
     <div className="sticky top-0 z-20 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }}>
       {/* マイルストーン */}
       {milestones
-        .filter((m) => m.due)
+        .filter((m) => m.due && m.due >= range.origin && m.due <= range.last)
         .map((m) => (
           <span
             key={m.id}
@@ -230,6 +249,25 @@ function DaysHeader({ days, today, milestones, x }: { days: string[]; today: str
             ◆ {m.id}
           </span>
         ))}
+      {/* 表示期間の外のマイルストーンは端に */}
+      {after.length > 0 && (
+        <span className="absolute top-1 right-2 flex gap-2 text-sm whitespace-nowrap text-violet-600 dark:text-violet-400">
+          {after.map((m) => (
+            <span key={m.id} title={`${m.title}（${m.due}）`}>
+              ◆ {m.id} ▶
+            </span>
+          ))}
+        </span>
+      )}
+      {before.length > 0 && (
+        <span className="absolute top-1 left-2 flex gap-2 text-sm whitespace-nowrap text-slate-400">
+          {before.map((m) => (
+            <span key={m.id} title={`${m.title}（${m.due}）`}>
+              ◀ ◆ {m.id}
+            </span>
+          ))}
+        </span>
+      )}
       {/* 日付 */}
       <div className="absolute inset-x-0 bottom-0 flex">
         {days.map((d) => {
@@ -261,7 +299,7 @@ function RequestCell({ p }: { p: RequestProgress }) {
     <Link
       to="/requests/$requestId"
       params={{ requestId: r.id }}
-      title={r.id}
+      title={`${r.title}\n${r.id}`}
       className="flex items-center gap-2 border-b border-slate-200 px-4 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       style={{ height: ROW_H }}
     >
@@ -278,8 +316,10 @@ function RequestLane({
   x,
   statuses,
   onOpen,
+  range,
 }: {
   p: RequestProgress;
+  range: { origin: string; last: string };
   top: number;
   today: string;
   x: (d: string) => number;
@@ -300,6 +340,10 @@ function RequestLane({
     else if (!done.has(task.status) && task.status !== first) put(task.startedAt ? dateOf(task.startedAt) : today, task, "doing");
   }
   const todo = p.tasks.filter((x) => x.status === first);
+  // 表示期間より前の印は左端に件数でまとめる
+  const older = [...byDay].filter(([d]) => d < range.origin).flatMap(([, ms]) => ms);
+  for (const d of [...byDay.keys()]) if (d < range.origin) byDay.delete(d);
+  const overdue = !closed && !!r.due && r.due < today && todo.length + [...byDay.values()].flat().filter((m) => m.kind === "doing").length > 0;
 
   const cy = top + ROW_H / 2;
 
@@ -307,13 +351,29 @@ function RequestLane({
     <>
       {/* 行の区切り（左の一覧の線とそろえる） */}
       <div className="absolute border-b border-slate-200 dark:border-slate-700" style={{ top, height: ROW_H, left: 0, right: 0 }} />
-      {r.due && (
+      {older.length > 0 && (
         <span
-          className="absolute z-[4] -translate-x-1/2 -translate-y-full"
-          style={{ left: x(r.due) + DAY_W / 2 + 4, top: cy + 2 }}
+          className="absolute z-[5] flex items-center gap-0.5 rounded bg-white/80 px-1 text-sm text-slate-500 dark:bg-slate-900/80"
+          style={{ left: 2, top: cy - 10 }}
+          title={older.map((m) => `${m.task.id} ${m.task.title}`).join("\n")}
+        >
+          ◀ <DoneMark checked={older.every((m) => m.task.checkedAt)} /> {older.length}
+        </span>
+      )}
+      {r.due && r.due >= range.origin && r.due <= range.last && (
+        <span className="absolute z-[4] -translate-x-1/2 -translate-y-full" style={{ left: x(r.due) + DAY_W / 2 + 4, top: cy + 2 }} title={`期限 ${r.due}`}>
+          <Flag overdue={overdue} />
+        </span>
+      )}
+      {r.due && (r.due < range.origin || r.due > range.last) && (
+        <span
+          className="absolute z-[4] flex items-center gap-0.5 text-sm text-slate-500"
+          style={r.due > range.last ? { right: 6, top: cy - 10 } : { left: 2, top: cy - 26 }}
           title={`期限 ${r.due}`}
         >
-          <Flag overdue={!closed && r.due < today && todo.length + [...byDay.values()].flat().filter((m) => m.kind === "doing").length > 0} />
+          {r.due < range.origin && "◀"}
+          <Flag overdue={overdue} />
+          {r.due > range.last && "▶"}
         </span>
       )}
       {[...byDay].map(([d, marks]) => (
