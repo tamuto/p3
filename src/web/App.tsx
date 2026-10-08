@@ -7,8 +7,9 @@ import { useServerEvents } from "./lib/live.ts";
 import { Gantt } from "./views/Gantt.tsx";
 import { Kanban } from "./views/Kanban.tsx";
 import { Preflight } from "./views/Preflight.tsx";
+import { Settings } from "./views/Settings.tsx";
 
-export type View = "board" | "schedule" | "preflight";
+export type View = "board" | "schedule" | "preflight" | "settings";
 
 export interface AppCtx {
   info: ProjectInfo;
@@ -27,6 +28,7 @@ const VIEWS: { id: View; label: string; hint: string }[] = [
   { id: "preflight", label: "Preflight", hint: "要望の評価とタスク化" },
   { id: "board", label: "かんばん", hint: "ステータス別" },
   { id: "schedule", label: "スケジュール", hint: "依存を考慮したガント" },
+  { id: "settings", label: "設定", hint: "プロジェクト名・メンバー・ドキュメント" },
 ];
 
 export function App() {
@@ -113,7 +115,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        {view !== "preflight" && (
+        {(view === "board" || view === "schedule") && (
           <div className="ml-auto flex items-center gap-2">
             <span className="text-sm text-slate-500">作業ツリー</span>
             <select
@@ -139,10 +141,20 @@ export function App() {
         )}
       </header>
 
+      {!ctx.info.project.description && view !== "settings" && (
+        <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          プロジェクトの説明がまだありません。Preflight の前提になるので設定してください。
+          <button className="font-medium underline" onClick={() => setView("settings")}>
+            設定を開く
+          </button>
+        </div>
+      )}
+
       <main className="min-h-0 flex-1 overflow-auto">
         {view === "board" && <Kanban ctx={ctx} />}
         {view === "schedule" && <Gantt ctx={ctx} />}
         {view === "preflight" && <Preflight ctx={ctx} selected={requestId} onSelect={setRequestId} />}
+        {view === "settings" && <Settings ctx={ctx} />}
       </main>
 
       {taskId && <TaskDrawer ctx={ctx} id={taskId} onClose={() => setTaskId(null)} />}

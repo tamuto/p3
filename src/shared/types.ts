@@ -181,15 +181,36 @@ export interface PreflightLogEntry {
 // Project / graph
 // ---------------------------------------------------------------------------
 
+export interface Member {
+  /** 担当者・変更者として使う短い名前（assignee: tamuto, updatedBy: human:tamuto） */
+  id: string;
+  /** 表示名 */
+  name: string;
+  /** git の user.email と一致すれば、CLI の変更者を自動でこのメンバーにする */
+  email?: string;
+  /** 役割（自由記述: owner, developer, reviewer など） */
+  role?: string;
+  /** AI エージェントも担当者になれる（updatedBy: ai:<id>） */
+  kind: "human" | "ai";
+}
+
 export interface ProjectConfig {
   name: string;
+  /** 何を作っているプロジェクトか。Preflight の前提になる */
   description: string;
   /** 管理対象リポジトリのルート（data dir からの相対 or 絶対）。Codex の cwd になる */
   repo: string;
+  /** プロジェクトのドキュメント（リポジトリ相対のファイル/フォルダ）。Preflight で最初に読ませる */
+  docs: string[];
+  members: Member[];
   statuses: StatusDef[];
   /** ブランチ命名規則。{id} {slug} を置換 */
   branchPattern: string;
   worktreeDir: string;
+  preflight: {
+    /** プロジェクト固有の評価の観点・制約（例: 「外部 API の追加は要相談」） */
+    instructions: string;
+  };
 }
 
 export interface GraphEdge {

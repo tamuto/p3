@@ -164,7 +164,17 @@ export function TaskDrawer({ ctx, id, onClose }: { ctx: AppCtx; id: string; onCl
               </select>
             </Field>
             <Field label="担当">
-              <input className={inputCls} value={draft.assignee ?? ""} onChange={(e) => set("assignee", e.target.value)} />
+              <input className={inputCls} list="pcube-members" value={draft.assignee ?? ""} onChange={(e) => set("assignee", e.target.value)} />
+              <datalist id="pcube-members">
+                {ctx.info.project.members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </datalist>
+              {draft.assignee && ctx.info.project.members.length > 0 && !ctx.info.project.members.some((m) => m.id === draft.assignee) && (
+                <span className="text-sm text-amber-600">メンバーにいません</span>
+              )}
             </Field>
             <Field label="見積り (人日)">
               <input type="number" step="0.5" className={inputCls} value={draft.estimate ?? ""} onChange={(e) => set("estimate", num(e.target.value))} />

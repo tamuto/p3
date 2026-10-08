@@ -39,6 +39,7 @@ export interface ProjectInfo {
 
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
+  saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
   tasks: () => call<Task[]>("GET", "/tasks"),
   task: (id: string) => call<{ task: Task; graph: Neighborhood }>("GET", `/tasks/${id}`),
   createTask: (t: Partial<Task>) => call<Task>("POST", "/tasks", t),

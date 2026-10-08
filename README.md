@@ -21,17 +21,59 @@ cp .env.example .env         # Codex の認証・パス対応（マシンごと�
 pnpm link --global           # `pcube` コマンドを使えるようにする（または `pnpm pcube ...`）
 ```
 
-### プロジェクトで使う
+### プロジェクトの始め方
+
+管理したいリポジトリのルート（どの作業ツリーからでもよい）で `pcube init` を実行する。
+端末からなら対話式で、git の設定とリポジトリの中身から既定値を推測して聞く。
 
 ```bash
-cd ~/src/myapp               # 管理したいリポジトリのルート
-pcube init --name myapp      # .pcube/ を作る。project.yaml の description に何を作っているかを書く
+cd ~/src/myapp
+pcube init
+#   プロジェクト名 [myapp]:
+#   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
+#   ドキュメントのパス（カンマ区切り。Preflight で最初に読みます） [docs, README.md]:
+#   メンバー: Tamuto(mutomob)                    ← git の user.name / user.email から
+#   メンバーを追加（id:表示名:メール、空で終了）: hanako:花子:hanako@example.com
+#   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
+#   AGENTS.md に AI 向けの pcube の使い方を追記しますか (y/n) [y]:
+
+# AI やスクリプトからは引数で（--yes で質問しない）
+pcube init --yes --description "社内向けの経費精算アプリ" --docs docs,README.md \
+  --member tamuto:Tamuto:mutomob@gmail.com --member hanako:花子 --agents
+```
+
+作られるのは `.pcube/project.yaml` と空の `tasks/` `requests/`。`.pcube/` はリポジトリにコミットして共有する
+（同期の方針は [docs/architecture.md](docs/architecture.md)）。あとから変えるときは:
+
+```bash
+pcube config                                  # 設定を表示
+pcube config set description="..." docs=docs,README.md instructions="外部 SaaS の追加は要相談"
+pcube member add claude --name Claude --ai    # AI も担当者になれる
+pcube member rm hanako
+pcube whoami                                  # CLI での変更者（git の user.email が一致するメンバー）
+```
+
+ブラウザの「設定」画面（`pcube serve`）でも同じ項目を編集できる。`project.yaml` を直接編集してもよい
+（コメントは pcube が書き換えても残る）。
+
+| 設定 | 使われ方 |
+| --- | --- |
+| `name` / `description` | 画面の表示と、Preflight の前提（説明が空だと画面に警告を出す） |
+| `docs` | Preflight で Codex に最初に読ませるドキュメント（リポジトリ内のパス。複製はしない） |
+| `members` | 担当者の候補。`email` が git の user.email と一致すると CLI の変更者になる。`kind: ai` で AI |
+| `statuses` | かんばんの列。使用中の列は消せない |
+| `preflight.instructions` | プロジェクト固有の評価の観点・制約。Codex への指示に加わる |
+| `branchPattern` / `worktreeDir` | 要望ごとの作業ツリーのブランチ名と置き場所 |
+
+その後の流れ:
+
+```bash
 pcube new request "通知機能を追加したい" --area src/notify --body "- メール送信基盤
 - 通知設定画面"
 pcube preflight 1            # Codex で評価・細分化（完了まで待つ）
 pcube drafts 1               # 評価とタスク案を見る（.pcube/preflight/... のファイルを直接直してもよい）
 pcube accept 1 --skip T3     # タスク化
-pcube serve                  # http://localhost:4310 でかんばん・ガント・Preflight を見る
+pcube serve                  # http://localhost:4310 でかんばん・ガント・Preflight・設定を見る
 ```
 
 `pcube` は git のメインの作業ツリーの `.pcube/` を探して使う。要望ごとの作業ツリー（`git worktree`）の中で
@@ -50,7 +92,8 @@ pcube serve                  # http://localhost:4310 でかんばん・ガント
 | `pcube link\|unlink <ID> <種類> <相手>` | 関係の追加・削除（`depends_on` は循環チェックあり） |
 | `pcube archive <ID>` | `.archive/` へ移す |
 | `pcube preflight\|drafts\|accept <REQ>` | Preflight の実行・確認・タスク化 |
-| `pcube init` / `pcube serve` | 初期化 / ビューアの起動 |
+| `pcube init` / `pcube config` / `pcube member` / `pcube whoami` | 初期設定 / 設定 / メンバー / 変更者の確認 |
+| `pcube serve` | ビューアの起動 |
 
 ID は `TASK-0012` / `task-12` / `12`（要望を取るコマンドでは `12` は `REQ-0012`）のどれでもよい。
 `--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
@@ -65,7 +108,9 @@ pnpm typecheck
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 ```
 
-`.pcube/` が見つからなければ、pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`）で起動する。
+`pnpm dev` / `pnpm start` は pcube 自体の開発用で、`.pcube/` が見つからなければ pcube 自身の開発を題材にした
+デモデータ（`.pcube-demo/`、git 管理外）で起動する。`pnpm demo:reset` はこのデモデータを作り直すだけで、
+実際のプロジェクトの `.pcube/` には触れない。
 サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
 信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
 

@@ -91,7 +91,7 @@ export function Kanban({ ctx }: { ctx: AppCtx }) {
                       {(t.estimate !== undefined || t.assignee || (t.progress ?? 0) > 0) && (
                         <div className="mt-2 flex items-center gap-3 text-sm text-slate-500">
                           {t.estimate !== undefined && <span>{t.estimate}人日</span>}
-                          {t.assignee && <span>@{t.assignee}</span>}
+                          {t.assignee && <span title={t.assignee}>@{ctx.info.project.members.find((m) => m.id === t.assignee)?.name ?? t.assignee}</span>}
                           {(t.progress ?? 0) > 0 && !s.done && (
                             <span className="ml-auto flex items-center gap-1.5">
                               <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">

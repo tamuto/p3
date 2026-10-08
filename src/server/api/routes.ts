@@ -36,6 +36,33 @@ const requestInput = z.object({
   areas: z.array(z.string()).optional(),
   relations: z.array(relation).optional(),
 });
+const projectPatch = z
+  .object({
+    name: z.string().min(1),
+    description: z.string(),
+    docs: z.array(z.string().min(1)),
+    members: z.array(
+      z.object({
+        id: z.string().regex(/^[A-Za-z0-9._-]+$/, "id は英数字と . _ - のみ"),
+        name: z.string().min(1),
+        email: z.string().optional(),
+        role: z.string().optional(),
+        kind: z.enum(["human", "ai"]),
+      }),
+    ),
+    statuses: z.array(z.object({ id: z.string().regex(/^[a-z0-9_]+$/), label: z.string().min(1), done: z.boolean().optional() })).min(1),
+    branchPattern: z.string().includes("{id}"),
+    worktreeDir: z.string().min(1),
+    preflight: z.object({ instructions: z.string() }),
+  })
+  .partial()
+  .superRefine((p, ctx) => {
+    const dup = (xs: string[]) => xs.find((x, i) => xs.indexOf(x) !== i);
+    const m = p.members && dup(p.members.map((x) => x.id));
+    if (m) ctx.addIssue({ code: "custom", message: `メンバーの id が重複しています: ${m}` });
+    const st = p.statuses && dup(p.statuses.map((x) => x.id));
+    if (st) ctx.addIssue({ code: "custom", message: `ステータスの id が重複しています: ${st}` });
+  });
 const requestPatch = requestInput
   .partial()
   .extend({ status: z.enum(["draft", "preflight", "reviewed", "accepted", "rejected"]).optional(), rev: z.number().int().optional() });
@@ -75,6 +102,16 @@ export function apiRoutes(ctx: PcubeContext) {
       errors: Object.fromEntries([...ws.tasks.errors, ...ws.requests.errors]),
     }),
   );
+  app.put("/project", async (c) => {
+    const patch = projectPatch.parse(await c.req.json());
+    if (patch.statuses) {
+      // 使われているステータスを消すと、そのタスクがかんばんから消えてしまう
+      const ids = new Set(patch.statuses.map((s) => s.id));
+      const orphan = ws.tasks.list().filter((t) => !ids.has(t.status));
+      if (orphan.length) throw new Error(`使用中のステータスは消せません: ${[...new Set(orphan.map((t) => t.status))].join(", ")}（${orphan.map((t) => t.id).join(", ")}）`);
+    }
+    return c.json(await ws.saveProject(patch));
+  });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
 
   // --- tasks --------------------------------------------------------------

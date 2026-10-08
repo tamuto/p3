@@ -91,12 +91,27 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
         done: Boolean(s.done),
       }))
     : DEFAULT_STATUSES;
+  const members = Array.isArray(d.members)
+    ? (d.members as unknown[])
+        .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && typeof (m as Record<string, unknown>).id === "string")
+        .map((m) => ({
+          id: String(m.id),
+          name: str(m.name) ?? String(m.id),
+          email: str(m.email),
+          role: str(m.role),
+          kind: m.kind === "ai" ? ("ai" as const) : ("human" as const),
+        }))
+    : [];
+  const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
     repo: str(d.repo) ?? ".",
+    docs: strs(d.docs),
+    members,
     statuses,
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     worktreeDir: str(d.worktreeDir) ?? ".worktrees",
+    preflight: { instructions: str(preflight.instructions) ?? "" },
   };
 }

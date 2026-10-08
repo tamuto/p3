@@ -21,6 +21,7 @@ export class MockEngine implements PreflightEngine {
     const { request, context } = job;
     log({ kind: "info", text: "mock engine: Codex を使わずにヒューリスティックで評価します" });
     await sleep(400, signal);
+    for (const d of job.project.docs) log({ kind: "command", text: `$ ls ${d}` });
     log({ kind: "command", text: `$ rg -l "${request.title.slice(0, 20)}" .` });
     await sleep(400, signal);
     for (const c of context.slice(0, 3)) {

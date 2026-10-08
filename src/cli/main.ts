@@ -1,15 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { userInfo } from "node:os";
-import { basename, join, relative, resolve as resolvePath } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
-import YAML from "yaml";
-import { DEFAULT_STATUSES, RELATION_TYPES, relationTypes, type Relation, type RelationType, type Task } from "../shared/types.ts";
+import { RELATION_TYPES, relationTypes, type Relation, type RelationType, type Task } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
 import { addRelation, listTasks, normalizeId, removeRelation, resolve } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
 import { DATA_DIR_NAME, locateDataDir } from "../server/store/locate.ts";
+import { table } from "./format.ts";
+import { config, init, member, resolveActor, UsageError } from "./project.ts";
 
 /**
  * pcube CLI。人も AI エージェントも使う。
@@ -24,7 +23,13 @@ const HELP = `pcube — ファイルベースのタスク管理 CLI
 使い方: pcube <コマンド> [引数] [オプション]
 
 プロジェクト
-  init [--name 名前] [--repo ..]         .pcube/ を作る（リポジトリのルートで実行）
+  init                                  .pcube/ を作り初期設定する（端末では対話式）
+                                        --name --description --docs a,b --member id:名前:メール
+                                        --instructions 観点 --agents（AGENTS.md に追記） --yes
+  config [set キー=値 ...]               設定の表示・変更  name description docs branchPattern
+                                        worktreeDir instructions repo
+  member [ls | add <id> | rm <id>]      メンバー  --name 表示名 --email メール --role 役割 --ai
+  whoami                                CLI の変更者（git の user.email からメンバーを判定）
   serve [--port 4310] [--host 0.0.0.0]  ブラウザ用のビューアを起動
 
 参照
@@ -52,7 +57,7 @@ Preflight
 共通オプション
   --dir パス     データディレクトリ（既定: git のメインの作業ツリー → 上位へ辿って .pcube/ を探す）
   --json        JSON で出力（AI 向け）
-  --actor 名前   変更者（既定: $PCUBE_ACTOR または human:$USER）
+  --actor 名前   変更者（既定: $PCUBE_ACTOR → git の user.email が一致するメンバー → human:$USER）
   --rev 番号     楽観ロック。指定した rev でなければ更新しない（set / move）
 
 関係の種類: ${relationTypes.map((t) => `${t}(${RELATION_TYPES[t].label})`).join(" ")}
@@ -82,6 +87,15 @@ const OPTIONS = {
   skip: { type: "string" },
   name: { type: "string" },
   repo: { type: "string" },
+  description: { type: "string" },
+  docs: { type: "string" },
+  member: { type: "string", multiple: true },
+  instructions: { type: "string" },
+  agents: { type: "boolean" },
+  yes: { type: "boolean", short: "y" },
+  email: { type: "string" },
+  role: { type: "string" },
+  ai: { type: "boolean" },
   port: { type: "string" },
   host: { type: "string" },
 } as const;
@@ -104,7 +118,6 @@ function joinValues(argv: string[]): string[] {
   return out;
 }
 
-class UsageError extends Error {}
 
 async function main(argv: string[]): Promise<number> {
   const { values: o, positionals } = parse(argv);
@@ -114,9 +127,21 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   loadMachineEnv();
-  const actor = o.actor ?? process.env.PCUBE_ACTOR ?? `human:${process.env.USER ?? userInfo().username}`;
-
-  if (cmd === "init") return init(o);
+  if (cmd === "init") {
+    const text = await init({
+      cwd: process.cwd(),
+      dir: o.dir,
+      name: o.name,
+      description: o.description,
+      docs: o.docs,
+      members: o.member,
+      instructions: o.instructions,
+      agents: o.agents,
+      yes: o.yes,
+    });
+    console.log(text);
+    return 0;
+  }
 
   const dataDir = locateDataDir(process.cwd(), o.dir ?? process.env.PCUBE_DATA_DIR);
   if (!dataDir) throw new UsageError(`${DATA_DIR_NAME}/ が見つかりません。リポジトリのルートで \`pcube init\` してください`);
@@ -133,6 +158,13 @@ async function main(argv: string[]): Promise<number> {
 
   const ctx = await openProject(dataDir);
   const out = new Output(o.json ?? false);
+  const actor = resolveActor(ctx.ws, o.actor ?? process.env.PCUBE_ACTOR, process.cwd());
+  /** メンバー以外を担当にしたら警告だけ出す（メンバー未登録のプロジェクトでは何もしない） */
+  const checkAssignee = (a: string | undefined) => {
+    if (a && ctx.ws.project.members.length && !ctx.ws.member(a)) {
+      process.stderr.write(`警告: ${a} はメンバーにいません（pcube member add ${a}）\n`);
+    }
+  };
   const id = (raw: string | undefined, what = "ID") => {
     if (!raw) throw new UsageError(`${what} を指定してください`);
     const found = normalizeId(ctx, raw, what === "要望" ? "REQ" : "TASK");
@@ -142,6 +174,22 @@ async function main(argv: string[]): Promise<number> {
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
 
   switch (cmd) {
+    case "config": {
+      const r = await config(ctx.ws, args);
+      return out.result(r.data, () => r.text);
+    }
+
+    case "member":
+    case "members": {
+      const r = await member(ctx.ws, args, o);
+      return out.result(r.data, () => r.text);
+    }
+
+    case "whoami": {
+      const m = ctx.ws.member(actor);
+      return out.result({ actor, member: m ?? null }, () => `${actor}${m ? `  ${m.name}${m.role ? ` (${m.role})` : ""}` : "  （メンバー未登録）"}`);
+    }
+
     case "ls":
     case "list": {
       if (args[0] === "requests" || args[0] === "req") {
@@ -205,6 +253,7 @@ async function main(argv: string[]): Promise<number> {
       if (kind !== "task") throw new UsageError("new task か new request を指定してください");
       const status = o.status ?? ctx.ws.project.statuses[0]?.id ?? "backlog";
       checkStatus(ctx, status);
+      checkAssignee(o.assignee);
       const t = await ctx.ws.tasks.create(
         {
           title,
@@ -229,6 +278,7 @@ async function main(argv: string[]): Promise<number> {
       const patch = parseAssignments(ctx, target.startsWith("REQ") ? "request" : "task", args.slice(1), (raw) => id(raw, "要望"));
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
+      checkAssignee((patch as Partial<Task>).assignee);
       const col = target.startsWith("REQ") ? ctx.ws.requests : ctx.ws.tasks;
       const next = await col.update(target, patch as never, { expectedRev, actor });
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
@@ -300,29 +350,6 @@ async function main(argv: string[]): Promise<number> {
     default:
       throw new UsageError(`不明なコマンド: ${cmd}（pcube help）`);
   }
-}
-
-// --- init ----------------------------------------------------------------
-
-async function init(o: Opts): Promise<number> {
-  const dir = resolvePath(o.dir ?? DATA_DIR_NAME);
-  if (existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} は既に初期化されています`);
-  await mkdir(join(dir, "tasks"), { recursive: true });
-  await mkdir(join(dir, "requests"), { recursive: true });
-  const repo = o.repo ?? "..";
-  await writeFile(
-    join(dir, "project.yaml"),
-    YAML.stringify({
-      name: o.name ?? basename(resolvePath(dir, repo)),
-      description: "",
-      repo,
-      branchPattern: "req/{id}-{slug}",
-      worktreeDir: ".worktrees",
-      statuses: DEFAULT_STATUSES,
-    }),
-  );
-  console.log(`初期化しました: ${dir}\n  project.yaml の description に、何を作っているプロジェクトかを書いてください（Preflight の文脈になります）`);
-  return 0;
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -443,16 +470,6 @@ const deps = (t: Task) => {
 };
 
 const indent = (s: string) => s.split("\n").map((l) => `  ${l}`).join("\n");
-
-/** 表示幅（全角は2）を考慮して列を揃える */
-function table(rows: string[][]): string {
-  const width = (s: string) => [...s].reduce((w, ch) => w + (/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1), 0);
-  const cols = Math.max(0, ...rows.map((r) => r.length));
-  const max = Array.from({ length: cols - 1 }, (_, i) => Math.min(48, Math.max(...rows.map((r) => width(r[i] ?? "")))));
-  return rows
-    .map((r) => r.map((c, i) => (i < cols - 1 ? c + " ".repeat(Math.max(0, max[i] - width(c))) : c)).join("  ").trimEnd())
-    .join("\n");
-}
 
 main(process.argv.slice(2)).then(
   (code) => process.exit(code),

@@ -17,6 +17,7 @@
 - [x] ガント（依存から自動配置、矛盾の強調、依存/影響/関連の重ね表示）
 - [x] タスク詳細（編集、明示/暗黙の関係、影響範囲）
 - [x] AI 向け API（resolve / related / manifest、actor 記録）
+- [x] プロジェクトの初期設定（対話式 `pcube init`、`config` / `member` / `whoami`、画面の「設定」）。docs と観点を Preflight に渡す
 - [x] CLI（人と AI 共通。ファイルを直接操作するので認証不要）。git のメインの作業ツリーの `.pcube/` を使う
 
 ## Preflight
@@ -40,8 +41,9 @@
 - [ ] ★★★ `pcube sync`: データ専用ブランチ（orphan）を `.pcube/` に worktree として置き、pull → commit → push
 - [ ] ★★ 楽観ロックを frontmatter の `rev` からファイル内容のハッシュへ（別項目の変更で git のマージが衝突しないように）
 - [ ] ★★ `pcube export`: git を使わないメンバー向けの読み取り専用の静的 HTML
-- [ ] ★★ `project.yaml` に Preflight で最初に読むドキュメント（設計方針・用語集など）を列挙できるようにする
-- [ ] ★ `pcube init` でプロジェクトの AGENTS.md / CLAUDE.md に CLI の使い方を追記する
+
+- [ ] ★★ メンバーの稼働（休日・割り当て率）をスケジュールに反映する
+- [ ] ★ 担当者ごとのビュー（自分のタスク）と、`pcube ls --mine`
 
 ## 作業ツリー（要望単位の分離）
 

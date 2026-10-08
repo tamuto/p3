@@ -5,6 +5,7 @@ import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/typ
 import { MarkdownCollection } from "./collection.ts";
 import { normalizeProject, normalizeRequest, normalizeTask, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
 import { PreflightStore } from "./preflightStore.ts";
+import { writeProjectFile } from "./projectFile.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -38,6 +39,23 @@ export class Workspace {
   async load(): Promise<void> {
     await this.loadProject();
     await Promise.all([this.tasks.load(), this.requests.load()]);
+  }
+
+  /** プロジェクト設定を更新して project.yaml に書く（コメントは残す） */
+  async saveProject(patch: Partial<ProjectConfig>): Promise<ProjectConfig> {
+    await this.loadProject();
+    const next = { ...this.project, ...patch };
+    await writeProjectFile(join(this.dataDir, "project.yaml"), next);
+    await this.loadProject();
+    this.emit({ type: "changed", kind: "project" });
+    return this.project;
+  }
+
+  /** 担当者・変更者の表記（tamuto / human:tamuto / ai:claude）からメンバーを引く */
+  member(ref: string | undefined) {
+    if (!ref) return undefined;
+    const id = ref.replace(/^(human|ai):/, "");
+    return this.project.members.find((m) => m.id === id);
   }
 
   private async loadProject() {

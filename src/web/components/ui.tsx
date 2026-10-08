@@ -16,7 +16,7 @@ export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAtt
     <button
       {...p}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-base font-medium transition disabled:cursor-not-allowed",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-base font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-50",
         variants[variant],
         className,
       )}
