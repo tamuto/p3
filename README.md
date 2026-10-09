@@ -160,7 +160,7 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
     261009-k7m3x/                       要望のフォルダ（作成日 + 乱数5文字。タイトルが変わっても変わらない）
       request.md                        要望
       tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
-      tasks/.archive/                   アーカイブしたタスク
+      tasks/.archive/                   アーカイブしたタスク（その ID は新しいタスクに再利用しない）
       notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット

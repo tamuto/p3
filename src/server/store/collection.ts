@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 import { createExclusive, nowIso, writeFileAtomic } from "./fsutil.ts";
@@ -34,6 +34,8 @@ export interface Layout {
   path(id: string): string;
   /** ディスク上にある ID */
   scan(): Promise<string[]>;
+  /** 採番で使わない ID（アーカイブ済みなど。読み込みの対象ではない） */
+  reserved?(): Promise<string[]>;
   /** 新しい ID。attempt は衝突してやり直した回数 */
   nextId(existing: string[], attempt: number): string;
   /** アーカイブ: 移す元と先 */
@@ -113,7 +115,8 @@ export class MarkdownCollection<T extends Entity> {
 
   /** 作る。省いた項目は normalize の既定値になる */
   async create(input: Partial<Omit<T, "id" | "rev" | "createdAt" | "updatedAt">>, actor?: string): Promise<T> {
-    const existing = [...new Set([...this.items.keys(), ...(await this.layout.scan())])];
+    // アーカイブ済みの ID も使わない（アーカイブしたタスクへの関係が新しいタスクを指さないように）
+    const existing = [...new Set([...this.items.keys(), ...(await this.layout.scan()), ...((await this.layout.reserved?.()) ?? [])])];
     // 別のプロセス（CLI・AI）と同時に作っても、排他作成で衝突を検出して次の ID にする
     for (let attempt = 0; ; attempt++) {
       const id = this.layout.nextId(existing, attempt);
@@ -159,6 +162,8 @@ export class MarkdownCollection<T extends Entity> {
   async archive(id: string): Promise<void> {
     this.require(id);
     const { from, to } = this.layout.archive(id);
+    // 既にアーカイブに同じ ID があれば上書きしない（rename は黙って置き換えるので先に確かめる）
+    if (await access(to).then(() => true, () => false)) throw new Error(`${id} は既にアーカイブにあります（${to}）。上書きしません`);
     await mkdir(dirname(to), { recursive: true });
     await rename(from, to);
     this.items.delete(id);
@@ -167,13 +172,16 @@ export class MarkdownCollection<T extends Entity> {
 
 /** ディレクトリの中の "<ID>.md"（タスク）。ID は要望の中の連番 */
 export function fileLayout(dir: string, idPattern: RegExp, format: (n: number) => string): Layout {
+  /** ディレクトリの中の有効な名前の ID（中身は読まないので、壊れたファイルでも ID は予約される） */
+  const ids = async (d: string) =>
+    (await readdir(d).catch(() => [] as string[]))
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -3))
+      .filter((id) => idPattern.test(id));
   return {
     path: (id) => join(dir, `${id}.md`),
-    scan: async () =>
-      (await readdir(dir).catch(() => [] as string[]))
-        .filter((f) => f.endsWith(".md"))
-        .map((f) => f.slice(0, -3))
-        .filter((id) => idPattern.test(id)),
+    scan: () => ids(dir),
+    reserved: () => ids(join(dir, ".archive")),
     nextId: (existing, attempt) => {
       const nums = existing.map((id) => Number(/\d+/.exec(id)?.[0] ?? 0));
       return format((nums.length ? Math.max(...nums) : 0) + 1 + attempt);

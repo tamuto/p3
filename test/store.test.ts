@@ -205,6 +205,54 @@ describe("要望とタスク", () => {
     expect(ctx.ws.requests.get(r.id)).toBeUndefined();
   });
 
+  it("アーカイブ済みのタスクの ID は採番で使わない（最大番号・全部・読み直し後・壊れたファイル・T1000 以降）", async () => {
+    const { ctx, dataDir } = await makeProject();
+    const r = await newRequest(ctx);
+    const tasks = ctx.ws.tasksOf(r.id);
+    await newTask(ctx, r.id, { title: "A" });
+    const b = await newTask(ctx, r.id, { title: "B" });
+    await tasks.archive(b.id); // 最大番号をアーカイブ
+    expect((await newTask(ctx, r.id, { title: "C" })).id).toBe("T003");
+    // 全部アーカイブしても続きの番号
+    for (const t of tasks.list()) await tasks.archive(t.id);
+    expect(tasks.list()).toEqual([]);
+    expect((await newTask(ctx, r.id, { title: "D" })).id).toBe("T004");
+
+    // 読み直した後も同じ。アーカイブの中の壊れたファイルも名前が有効なら予約、無効な名前は無視、読み込みの対象にはしない
+    const archive = join(dataDir, "requests", r.id, "tasks", ".archive");
+    await writeFile(join(archive, "T009.md"), "---\n: broken\n---\n");
+    await writeFile(join(archive, "memo.md"), "x");
+    await writeFile(join(archive, "T99999.md.bak"), "x");
+    const ws = new Workspace(dataDir);
+    await ws.load();
+    expect(ws.tasksOf(r.id).list().map((t) => t.id)).toEqual(["T004"]);
+    expect((await ws.tasksOf(r.id).create({ title: "E" })).id).toBe("T010");
+
+    // T1000 以降も数として比べる
+    await writeFile(join(archive, "T1000.md"), "x");
+    expect((await ws.tasksOf(r.id).create({ title: "F" })).id).toBe("T1001");
+
+    // 同時に作っても重ならない（排他作成で次の番号へ）
+    const other = new Workspace(dataDir);
+    await other.load();
+    const made = await Promise.all([ws, other, ws, other].map((w, i) => w.tasksOf(r.id).create({ title: `G${i}` })));
+    expect(new Set(made.map((t) => t.id)).size).toBe(4);
+    expect(made.map((t) => t.id).every((id) => Number(id.slice(1)) > 1001)).toBe(true);
+  });
+
+  it("アーカイブに同じ ID があれば上書きせず、元のファイルを残す", async () => {
+    const { ctx, dataDir } = await makeProject();
+    const r = await newRequest(ctx);
+    const t = await newTask(ctx, r.id, { title: "A" });
+    const archive = join(dataDir, "requests", r.id, "tasks", ".archive");
+    await mkdir(archive, { recursive: true });
+    await writeFile(join(archive, "T001.md"), "前からあるアーカイブ");
+    await expect(ctx.ws.tasksOf(r.id).archive(t.id)).rejects.toThrow("上書きしません");
+    expect(await readFile(join(archive, "T001.md"), "utf8")).toBe("前からあるアーカイブ");
+    expect(existsSync(join(dataDir, "requests", r.id, "tasks", "T001.md"))).toBe(true);
+    expect(ctx.ws.tasksOf(r.id).get("T001")?.title).toBe("A");
+  });
+
   it("git pull などで要望のフォルダが増えても、読み直せば取り込める", async () => {
     const { ctx, dataDir } = await makeProject();
     const id = "261001-pulld";
