@@ -194,11 +194,12 @@ describe("pcube preflight / drafts / accept", () => {
     expect(pcube(root, ["drafts", rid]).out).toContain("D3");
 
     const accepted = pcube(root, ["accept", rid, "--skip", "d3", "--json"]).json();
-    expect(accepted.map((t: any) => [t.id, t.title])).toEqual([
+    expect(accepted).toMatchObject({ archived: [], kept: [] });
+    expect(accepted.tasks.map((t: any) => [t.id, t.title])).toEqual([
       ["T001", "送信基盤"],
       ["T002", "設定画面"],
     ]);
-    expect(accepted[1].relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
+    expect(accepted.tasks[1].relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
     expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
   });
 });
@@ -222,6 +223,69 @@ describe("pcube preflight --note / notes", () => {
     expect(second.err).toContain("を書き足しました");
     expect(second.out).toContain(`引き継ぎ: 前回 ${first.id} / メモ `);
     expect(pcube(root, ["notes", rid, "--json"]).json().notes.map((n: any) => n.pending)).toEqual([false, false]);
+  });
+});
+
+describe("置き換えられたタスク", () => {
+  /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を置き換えると書かれた状態を作る */
+  async function reassessed() {
+    const { root, rid } = await initialized();
+    pcube(root, ["preflight", rid, "--engine", "mock"]);
+    pcube(root, ["accept", rid]);
+    pcube(root, ["move", "T002", "doing", "--req", rid]);
+    const run = pcube(root, ["preflight", rid, "--engine", "mock", "--json"]).json();
+    const dir = join(root, ".pcube", "requests", rid, "preflight", run.id);
+    const d1 = join(dir, "drafts", "D1.md");
+    writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "relations:\n  - { type: supersedes, target: T001 }\n  - { type: supersedes, target: T002 }\ninclude: true"));
+    const runJson = JSON.parse(readFileSync(join(dir, "run.json"), "utf8"));
+    runJson.assessment.impacts = [{ target: `${rid}/T003`, type: "supersedes", reason: "評価での置き換え", confidence: 0.9 }];
+    writeFileSync(join(dir, "run.json"), JSON.stringify(runJson));
+    return { root, rid };
+  }
+
+  it("タスク化の前に候補を見せ、フラグが無ければ残して印を付け、着手すると警告する", async () => {
+    const { root, rid } = await reassessed();
+    expect(pcube(root, ["drafts", rid, "--json"]).json().supersedes.map((c: any) => [c.id, c.status])).toEqual([
+      ["T001", "todo"],
+      ["T002", "doing"],
+      ["T003", "todo"],
+    ]);
+    // D2・D3 を外しても D1 の置き換えと評価の置き換えは残る
+    const accepted = pcube(root, ["accept", rid, "--only", "D1"]);
+    expect(accepted.code, accepted.err).toBe(0);
+    expect(accepted.out).toContain("置き換えられるタスクを残しました");
+    const ls = pcube(root, ["ls", "--req", rid, "--json"]).json();
+    expect(ls.map((t: any) => [t.id, (t.superseded ?? []).map((m: any) => m.from)])).toEqual([
+      ["T001", [`${rid}/T004`]],
+      ["T002", [`${rid}/T004`]],
+      ["T003", [rid]], // 評価にだけあった置き換えは要望単位
+      ["T004", []],
+    ]);
+    expect(pcube(root, ["ls", "--req", rid]).out).toMatch(/T001 .*※置換 ← T004/);
+    expect(pcube(root, ["ls", "--all"]).out).toContain("※置換");
+    expect(pcube(root, ["show", "T003", "--req", rid]).out).toContain(`※ 置き換えられています: ${rid}（評価での置き換え）`);
+    expect(pcube(root, ["show", "T001", "--req", rid, "--json"]).json().superseded).toEqual([{ from: `${rid}/T004` }]);
+
+    // 着手は止めずに警告する。--json の stdout は JSON のまま、warnings で返す
+    const moved = pcube(root, ["move", "T001", "doing", "--req", rid, "--json"]);
+    expect(moved.code).toBe(0);
+    expect(moved.err).toContain("警告: ");
+    expect(moved.json()).toMatchObject({ status: "doing", warnings: [{ code: "superseded", target: `${rid}/T001`, from: [`${rid}/T004`] }] });
+    // 作業中のままの再指定や、置き換えられていないタスクでは出さない
+    expect(pcube(root, ["move", "T001", "doing", "--req", rid, "--json"]).json().warnings).toBeUndefined();
+    expect(pcube(root, ["move", "T004", "doing", "--req", rid]).err).not.toContain("警告");
+    expect(pcube(root, ["set", "T003", "status=doing", "--req", rid]).err).toContain("警告");
+  });
+
+  it("--archive-superseded で確定時点の候補をアーカイブする", async () => {
+    const { root, rid } = await reassessed();
+    const r = pcube(root, ["accept", rid, "--only", "d1", "--archive-superseded", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.json()).toMatchObject({ tasks: [{ id: "T004" }], archived: ["T001", "T002", "T003"], kept: [] });
+    expect(pcube(root, ["ls", "--req", rid, "--json"]).json().map((t: any) => t.id)).toEqual(["T004"]);
+    // 最大番号をアーカイブしても番号は再利用しない
+    pcube(root, ["archive", "T004", "--req", rid]);
+    expect(pcube(root, ["new", "次の作業", "--req", rid, "--json"]).json().id).toBe("T005");
   });
 });
 

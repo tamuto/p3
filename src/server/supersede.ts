@@ -52,3 +52,25 @@ export function supersedeCandidates(ws: Workspace, run: PreflightRun): Supersede
   }
   return [...found.values()].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 }
+
+/** 操作は続けたうえで知らせる注意（CLI は stderr と --json の warnings、API は warnings） */
+export interface Warning {
+  code: "superseded";
+  /** 対象のタスク（<要望ID>/T001） */
+  target: string;
+  /** 置き換えた側 */
+  from: string[];
+  message: string;
+}
+
+/**
+ * 置き換えられたタスクに着手したときの警告。状態が作業中に変わったときだけ出す（作業中のままの再指定では出さない）。
+ * 着手は止めない（置き換えが誤りのこともあるので、判断は人と AI に任せる）。
+ */
+export function startWarnings(ws: Workspace, ref: string, prevStatus: string, nextStatus: string | undefined): Warning[] {
+  if (nextStatus !== "doing" || prevStatus === "doing") return [];
+  const marks = supersededMarks(ws).get(ref);
+  if (!marks?.length) return [];
+  const from = marks.map((m) => m.from);
+  return [{ code: "superseded", target: ref, from, message: `${ref} は ${from.join(", ")} に置き換えられています。置き換え先を確かめてから進めてください` }];
+}

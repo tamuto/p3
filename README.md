@@ -113,6 +113,7 @@ pcube preflight k7m3x --note - --note-only < answer.md     # メモを書き足�
 pcube notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
                                        # 画面でも評価の下の「メモ」から書いて「保存して再実行」できる
 pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
+                                       # 再評価で古いタスクが置き換えられるなら表示して残す（--archive-superseded でアーカイブ）
 pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
 
