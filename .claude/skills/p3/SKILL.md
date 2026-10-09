@@ -1,6 +1,6 @@
 ---
 name: p3
-description: infodb p3（pcube）で、このリポジトリ自身の要望とタスクを管理する。ユーザーが要望の登録・Preflight・タスクの着手や完了・進捗の確認を頼んだとき、または要望 ID（261009-k7m3x の形）やタスク（T003）に触れたときに使う。
+description: infodb p3（pcube）で、このリポジトリ自身の要望とタスクを管理する。ユーザーが要望の登録・Preflight の結果の確認・タスクの着手や完了・進捗の確認を頼んだとき、または要望 ID（261009-k7m3x の形）やタスク（T003）に触れたときに使う。
 ---
 
 # p3 でこのプロジェクトを管理する（ドッグフーディング・試験運用）
@@ -24,14 +24,11 @@ PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマ
 ## 要望を登録する（ユーザーから新しい作業を頼まれたとき）
 
 1. `request new "<タイトル>" --body "<背景・やりたいこと・完了条件を箇条書きで>"`（任意で `--area src/web --tag ui --due YYYY-MM-DD --milestone <id>`）
-2. Preflight を頼まれたら `preflight <要望ID>`（実際の Codex では 3〜5 分。終わるまで待つ）→ `drafts <要望ID>` で評価とタスク案を読む
-3. 評価の要点（GO / 要確認 / NO GO、リスク、確認事項）とタスク案（D1, D2 ...）をユーザーに要約して見せる。
-   `drafts --json` の `supersedes` に **置き換えられる既存タスク** があれば、それも見せる
-4. **タスク化（`accept`）はユーザーの了承を得てから。** 外す案があれば `--skip D3`、一部だけなら `--only D1,D2`。
-   置き換えられるタスクをアーカイブするかもユーザーに確かめ、了承があれば `--archive-superseded`（無ければ残る）。
-   `accept --json` は `{ tasks, archived, kept }`
+2. 登録したら要望 ID をユーザーに伝えて終える。**Preflight（評価・細分化）とタスク化（`accept`）は人が行う。**
+   AI からは実行しない（勧めたり、実行してよいか尋ねたりもしない）。人がタスク化を終えたら、タスクを進める
 
-確認事項（questions）はタスクにしない。チャットでユーザーに聞く。
+人が行った Preflight の内容を聞かれたら、`drafts <要望ID>` で評価とタスク案を読んで答えてよい（読むだけ）。
+評価の確認事項（questions）への回答を頼まれたら、`preflight <要望ID> --note "..." --note-only` でメモとして残す（実行はしない）。
 
 ## タスクを進める
 
@@ -47,16 +44,23 @@ PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマ
 4. 作業し、テスト（`pnpm -s check`）を通してブランチにコミット・push したら、完了: `move T003 done --req <要望ID> --output https://github.com/tamuto/pcube/commit/<sha>`
    （成果物が複数あれば `--output` を繰り返す）
 5. 作業中に見つけた追加の作業は `new "<タイトル>" --req <要望ID> --body "..."` でタスクにする。依存は `link T004 depends_on T003 --req <要望ID>`
-6. 要望のタスクが揃って完了したら、PR を作るかユーザーに確認し、了承を得てから `gh pr create`（本文に要望 ID とタスクの一覧）。
-   作った PR の URL は最後のタスクの `--output` に足す。マージは人が行う
+6. 要望のタスクが全部完了したら（`ls --req <要望ID>` が全部 done、成果物と検証も済み）、要望を **対応済** にする:
+   `request set <要望ID> status=resolved --json`。未完了のタスクがあると拒否される（終わらせるか、不要ならユーザーの了承を得て
+   `archive`）。拒否をタスクを偽って完了にする・ファイルを直接書き換えるなどで回避しない
+7. PR を作るかユーザーに確認し、了承を得てから `gh pr create`（本文に要望 ID とタスクの一覧）。
+   作った PR の URL は最後のタスクの `--output` に足す。マージ・要望の完了済（`done`）は人が行う
+8. 対応済の後にタスクを足した・完了から戻したときは、要望は自動で進行中に戻る（`--json` の `reopened`）。
+   終えたらもう一度 6 で対応済にする
 
 ブランチを切り替えると、この CLI（p3 本体）もそのブランチのコードで動く。CLI を壊す変更の途中で
 CLI が動かなくなったら、`git stash` などで戻してから操作し、ユーザーに伝える。
 
 ## してはいけないこと
 
+- Preflight の実行（`preflight`）とタスク化（`accept`）をしない。どちらも人が行う
 - `check`（済み）を付けない。済みは人が成果物を確認して付ける
-- 要望のステータスを `done` / `rejected` にしない（人が決める）。タスク化で `active` になるのは自動
+- 要望のステータスを `done`（完了済）/ `rejected`（見送り）にしない（人が決める）。AI がするのは作業を終えたときの `resolved`（対応済）まで。
+  タスク化で `active` になるのは自動
 - タスクを要望をまたいで動かさない。別の要望の作業なら、その要望にタスクを足すか、新しい要望を提案する
 - データのフォルダ（`/mnt/assets/pcube`）や `~/.config/infodb-p3/` のファイルを直接書き換えない
 - 人への質問をタスクにしない

@@ -34,7 +34,7 @@ function RequestLayout() {
 const TABS = [
   { to: "/requests/$requestId", label: "概要・Preflight", exact: true },
   { to: "/requests/$requestId/board", label: "タスクボード", exact: false },
-  { to: "/requests/$requestId/done", label: "対応済み", exact: false },
+  { to: "/requests/$requestId/done", label: "対応済み", exact: false, hint: "人が「済み」にしたタスクの一覧（要望のステータスの「対応済」とは別）" },
 ] as const;
 
 function RequestFrame() {
@@ -67,6 +67,7 @@ function RequestFrame() {
           {TABS.map((t) => (
             <Link
               key={t.to}
+              title={"hint" in t ? t.hint : undefined}
               to={t.to}
               params={{ requestId: request.id }}
               activeOptions={{ exact: t.exact, includeSearch: false }}

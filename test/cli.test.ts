@@ -54,7 +54,10 @@ describe("pcube init", () => {
     expect(yaml).toMatch(/docs:\n {2}- docs\n {2}- README.md\n {2}- AGENTS.md/);
     expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);
-    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+    const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+    expect(agents).toContain("タスク管理（infodb p3）");
+    expect(agents).toContain("status=resolved"); // 作業を終えたら対応済にする
+    expect(agents).toContain("完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める");
     expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(1); // 2回目は拒む
     expect(pcube(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
   });
@@ -286,6 +289,31 @@ describe("置き換えられたタスク", () => {
     // 最大番号をアーカイブしても番号は再利用しない
     pcube(root, ["archive", "T004", "--req", rid]);
     expect(pcube(root, ["new", "次の作業", "--req", rid, "--json"]).json().id).toBe("T005");
+  });
+});
+
+describe("要望の対応済", () => {
+  it("全タスクを完了したら対応済にでき、未完了のタスクができたら進行中に戻す", async () => {
+    const { root, rid } = await initialized();
+    pcube(root, ["preflight", rid, "--engine", "mock"]);
+    pcube(root, ["accept", rid]);
+    const ng = pcube(root, ["request", "set", rid, "status=resolved"]);
+    expect(ng.code).toBe(1);
+    expect(ng.err).toContain("完了していないタスクがあります: T001(todo), T002(todo), T003(todo)");
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+
+    for (const t of ["T001", "T002", "T003"]) pcube(root, ["move", t, "done", "--req", rid]);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active"); // 自動では対応済にしない
+    const ok = pcube(root, ["request", "set", rid, "status=resolved", "--json"], { PCUBE_ACTOR: "ai:claude" });
+    expect(ok.code, ok.err).toBe(0);
+    expect(ok.json()).toMatchObject({ status: "resolved", updatedBy: "ai:claude" });
+    expect(pcube(root, ["request", "ls", "--status", "resolved", "--json"]).json().map((r: any) => r.id)).toEqual([rid]);
+    expect(pcube(root, ["progress"]).out).toContain("resolved"); // 既定の一覧に残る（確認待ち）
+
+    const back = pcube(root, ["move", "T002", "doing", "--req", rid, "--json"]);
+    expect(back.err).toContain("進行中に戻しました");
+    expect(back.json().reopened).toBe(rid);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
   });
 });
 

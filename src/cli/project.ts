@@ -72,6 +72,7 @@ export const AGENTS_SNIPPET = `
 - 変更するときは環境変数 \`PCUBE_ACTOR=ai:<エージェント名>\` を付ける
 - 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami\` で確かめる
 - 着手するときは \`p3 move T003 doing\`、終えたら \`p3 move T003 done --output <PR の URL など>\`
+- 要望のタスクを全部終えたら \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
 - 関係と影響範囲は \`p3 show T003 --json\` で確認し、\`p3 link T004 depends_on T003\` で張る
