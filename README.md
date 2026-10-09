@@ -136,15 +136,16 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 | `pcube progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも） |
 | `pcube milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
 | `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=done` `due=` `milestone=` `tags=`）・アーカイブ |
-| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望） |
+| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
 | `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
 | `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
 | `pcube set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
-| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す） |
+| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す）。置き換えられたタスクを作業中にすると警告（移動はする） |
 | `pcube check <T003> [--off]` | 完了したタスクを人が確認して「済み」にする / 外す |
 | `pcube link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
 | `pcube find <語句>` / `pcube impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
-| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行・確認・タスク化 |
+| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行（`--note` でメモを足して再評価）・確認・タスク化（`--archive-superseded` で置き換えられるタスクをアーカイブ） |
+| `pcube notes [<要望>]` | Preflight へのメモと、次に渡すもの |
 | `pcube init` / `pcube config` / `pcube whoami` | 初期設定 / 設定 / 変更者と今の要望 |
 | `pcube serve` | ビューアの起動 |
 

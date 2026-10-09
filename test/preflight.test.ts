@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_IMAGE, dockerCommand } from "@llmcs/codex-workspace";
+import { progress } from "../src/server/ops.ts";
 import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
 import { makeProject, makeRepo, newRequest, newTask, openTestProject, projectConfig, tempDir } from "./helpers.ts";
@@ -208,6 +210,49 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("### D2 本体（不採用 / 依存: D1）"); // 人が外した案
     expect(prompt).toContain("対象は CLI だけでよい");
     expect(prompt).toContain("（human:a, ");
+  });
+
+  it("再評価から置き換えまで: 前回とメモを引き継ぎ、置き換えられるタスクを選んでアーカイブし、番号は再利用しない", async () => {
+    // データはリポジトリの外。置き換えの参照は2回目の評価からだけ書かせる
+    const repo = await makeRepo();
+    const dataDir = tempDir("pcube-data-");
+    await mkdir(join(dataDir, "requests"));
+    await writeProjectFile(join(dataDir, "project.yaml"), projectConfig({ repo: repo.root }));
+    let supersede = "";
+    const codex = new CodexWorkspaceEngine({
+      pathMap: [],
+      ensureImage: false,
+      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
+    });
+    const ctx = await openTestProject(dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
+    const run = async () => {
+      const { id } = await ctx.preflight.start(req.id, { actor: "human:a" });
+      return (await ctx.preflight.wait(req.id, id))!;
+    };
+
+    const first = await run();
+    expect((await ctx.preflight.materialize(req.id, first.id)).tasks.map((t) => t.id)).toEqual(["T001", "T002"]);
+    const doneTask = await ctx.ws.tasksOf(req.id).update("T002", { status: "done", outputs: ["https://example.com/pull/1"] });
+
+    supersede = `${req.id}/T001`;
+    await ctx.preflight.addNote(req.id, "T001 は新しい方式にする", "human:a");
+    const second = await run();
+    expect(second).toMatchObject({ status: "completed", previous: first.id, notes: [expect.any(String)] });
+    const preview = await ctx.preflight.previewMaterialize(req.id, second.id);
+    expect(preview.candidates.map((c) => [c.id, c.reasons.map((r) => r.source)])).toEqual([["T001", ["impact", "draft"]]]); // 完了した T002 は候補にしない
+
+    const r = await ctx.preflight.materialize(req.id, second.id, "human:a", { archive: [{ id: "T001", rev: preview.candidates[0].rev }] });
+    expect(r).toMatchObject({ archived: ["T001"], kept: [] });
+    expect(r.tasks.map((t) => t.id)).toEqual(["T003", "T004"]);
+    // アーカイブしたタスクには印を付けず、進捗にも数えない。完了したタスクの成果物と rev は変わらない
+    expect(supersededMarks(ctx.ws).size).toBe(0);
+    expect(progress(ctx).find((p) => p.request.id === req.id)).toMatchObject({ total: 3, done: 1 });
+    expect(ctx.ws.tasksOf(req.id).get("T002")).toMatchObject({ rev: doneTask.rev, outputs: ["https://example.com/pull/1"] });
+
+    // 最大番号をアーカイブしても、次の番号は重ならない
+    await ctx.ws.tasksOf(req.id).archive("T004");
+    expect((await ctx.ws.tasksOf(req.id).create({ title: "追加" })).id).toBe("T005");
   });
 
   it("run ディレクトリの外の変更は警告としてログに残す", async () => {
