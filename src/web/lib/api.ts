@@ -79,11 +79,31 @@ export interface EngineStatus {
   name: "codex" | "mock";
   ok: boolean;
   detail: string;
+  /** Codex の認証（chatgpt / legacy / none） */
+  auth?: "chatgpt" | "legacy" | "none";
+  account?: string;
+}
+
+/** ChatGPT プランの接続（トークンは含まない） */
+export interface ChatGptState {
+  connected: boolean;
+  planAllowed: boolean;
+  email?: string;
+  expiresAt?: string;
+  registered: boolean;
+  pending?: { url: string; redirectUri: string; startedAt: string; expiresAt: string };
+  lastError?: string;
+  engine: EngineStatus;
 }
 
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
   engine: () => call<EngineStatus>("GET", "/engine"),
+  chatgpt: () => call<ChatGptState>("GET", "/chatgpt"),
+  chatgptLogin: () => call<{ url: string; redirectUri: string; expiresAt: string }>("POST", "/chatgpt/login", {}),
+  chatgptCancel: () => call("POST", "/chatgpt/cancel", {}),
+  chatgptPaste: (url: string) => call<ChatGptState>("POST", "/chatgpt/paste", { url }),
+  chatgptLogout: (forget = false) => call<{ revoked: boolean; message: string }>("POST", "/chatgpt/logout", { forget }),
   saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
 
   /** 要望の一覧と進捗 */

@@ -3,11 +3,13 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { chatgptCommand } from "../src/cli/chatgpt.ts";
+import { apiRoutes } from "../src/server/api/routes.ts";
+import { chatgptView } from "../src/web/lib/chatgpt.ts";
 import { ChatGptAccount, ChatGptAuthError } from "../src/server/chatgpt/account.ts";
 import { OPENAI_ENDPOINTS, PLAN_SCOPE, resetJwksCache, SCOPES, type OAuthDeps } from "../src/server/chatgpt/oauth.ts";
 import { loadConnection, saveConnection } from "../src/server/chatgpt/store.ts";
 import { loadUserConfig, saveUserConfig } from "../src/server/userConfig.ts";
-import { tempDir } from "./helpers.ts";
+import { makeProject, tempDir } from "./helpers.ts";
 
 const KID = "k1";
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -265,5 +267,91 @@ describe("Sign in with ChatGPT: 秘密を出さない・個人設定と分ける
     const c = (await loadConnection(file))!;
     await saveConnection({ ...c, tokens: undefined }, file);
     expect(await loadUserConfig(cfgPath)).toMatchObject({ projects: { p: { dir: "/data/p" } }, ui: { theme: "dark" } });
+  });
+});
+
+describe("ChatGPT の API（画面から）", () => {
+  async function setup() {
+    const f = fakeOAuth();
+    const p = await makeProject();
+    const account = new ChatGptAccount(file, f.deps);
+    const app = apiRoutes({ ...p.ctx, chatgpt: account });
+    /** addr: 接続元、origin: ページの Origin（undefined なら付けない） */
+    const call = async (method: string, path: string, opt: { body?: unknown; addr?: string; origin?: string | null } = {}) => {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      const origin = opt.origin === undefined ? "http://localhost:4310" : opt.origin;
+      if (origin) headers.origin = origin;
+      const res = await app.request(
+        path,
+        { method, headers, body: opt.body === undefined ? undefined : JSON.stringify(opt.body) },
+        { incoming: { socket: { remoteAddress: opt.addr ?? "127.0.0.1" } } },
+      );
+      const text = await res.text();
+      return { status: res.status, text, body: text ? (JSON.parse(text) as any) : undefined };
+    };
+    return { f, account, call, p };
+  }
+
+  it("このマシンからだけ。変更はローカルのページ（Origin）からだけ", async () => {
+    const { call } = await setup();
+    expect((await call("GET", "/chatgpt", { addr: "192.168.1.20" })).status).toBe(403);
+    expect((await call("GET", "/chatgpt", { addr: "::1" })).status).toBe(200);
+    expect((await call("POST", "/chatgpt/logout", { origin: null })).status).toBe(403); // Origin が無いだけでは通さない
+    expect((await call("POST", "/chatgpt/logout", { origin: "https://evil.example" })).status).toBe(403);
+    expect((await call("POST", "/chatgpt/logout", { origin: "http://rebind.example:4310" })).status).toBe(403);
+    expect((await call("POST", "/chatgpt/logout", { addr: "172.18.0.1" })).status).toBe(403); // docker -p で公開した serve
+    expect((await call("POST", "/chatgpt/logout", { origin: "http://localhost:5173" })).status).toBe(200); // Vite の開発サーバ
+  });
+
+  it("開始 → 待っている試行を読み直せる → コールバックで接続 → 状態にトークンを出さない → 解除", async () => {
+    const { f, call } = await setup();
+    const start = await call("POST", "/chatgpt/login");
+    expect(start.status).toBe(201);
+    expect((await call("POST", "/chatgpt/login")).status).toBe(400); // 同時に1つ
+    const pending = (await call("GET", "/chatgpt")).body;
+    expect(pending.pending).toMatchObject({ url: start.body.url, redirectUri: start.body.redirectUri });
+    expect(pending.engine).toHaveProperty("detail"); // Preflight の状態も一緒に返す
+
+    const auth = new URL(start.body.url).searchParams;
+    f.st.lastNonce = auth.get("nonce")!;
+    const cb = new URL(start.body.redirectUri);
+    cb.search = new URLSearchParams({ code: "c", state: auth.get("state")!, client_id: "oaiapp_1" }).toString();
+    expect((await fetch(cb)).status).toBe(200);
+    const done = await call("GET", "/chatgpt");
+    expect(done.body).toMatchObject({ connected: true, planAllowed: true, email: "a@example.com" });
+    expect(done.body.pending).toBeUndefined();
+    expect(done.text).not.toMatch(/at-1|rt-1|eyJ/);
+
+    const out = await call("POST", "/chatgpt/logout", { body: {} });
+    expect(out.body).toMatchObject({ revoked: true, status: { connected: false, registered: true } });
+  });
+
+  it("取消・貼り付け（待っていなければ 409）・プロジェクトの設定の保存とは別", async () => {
+    const { f, call, p } = await setup();
+    expect((await call("POST", "/chatgpt/paste", { body: { url: "http://127.0.0.1:1/auth/callback?code=x" } })).status).toBe(409);
+    const start = await call("POST", "/chatgpt/login");
+    const auth = new URL(start.body.url).searchParams;
+    f.st.lastNonce = auth.get("nonce")!;
+    const pasted = await call("POST", "/chatgpt/paste", { body: { url: `${start.body.redirectUri}?code=c&state=${auth.get("state")}&client_id=oaiapp_1` } });
+    expect(pasted.body).toMatchObject({ connected: true });
+
+    await call("POST", "/chatgpt/login");
+    await call("POST", "/chatgpt/cancel");
+    const after = (await call("GET", "/chatgpt")).body;
+    expect(after).toMatchObject({ lastError: expect.stringContaining("取り消しました"), connected: true }); // 取り消しても既存の接続は変えない
+    expect(after.pending).toBeUndefined();
+
+    const saved = await call("PUT", "/project", { body: { ...p.ctx.ws.project, description: "変えた" } });
+    expect(saved.status).toBe(200);
+    expect((await loadConnection(file))?.tokens?.accessToken).toBe("at-1");
+  });
+
+  it("画面の表示: 待っている / 接続済み / プラン未許可（接続成功と混同しない）/ 切れた / 未接続", () => {
+    const base = { connected: false, planAllowed: false, registered: false };
+    expect(chatgptView({ ...base, pending: { url: "u", redirectUri: "r", startedAt: "", expiresAt: "" } })).toBe("pending");
+    expect(chatgptView({ ...base, connected: true, planAllowed: true, registered: true })).toBe("connected");
+    expect(chatgptView({ ...base, connected: true, registered: true })).toBe("no_plan");
+    expect(chatgptView({ ...base, registered: true })).toBe("signin_again");
+    expect(chatgptView(base)).toBe("disconnected");
   });
 });

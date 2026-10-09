@@ -29,6 +29,8 @@ export const AI_MANIFEST = {
     { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補。何も変えない）" },
     { method: "POST", path: "/api/requests/:rid/preflight/:run/materialize", desc: "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}" },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },
+    { method: "GET", path: "/api/chatgpt", desc: "ChatGPT プランの接続の状態（トークンは返さない）。このマシンからだけ" },
+    { method: "POST", path: "/api/chatgpt/login|cancel|paste|logout", desc: "サインインの開始・取消・コールバックの URL の貼り付け・解除。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET", path: "/api/events", desc: "変更通知 (SSE)" },
   ],
 };

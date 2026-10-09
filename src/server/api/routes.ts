@@ -8,6 +8,7 @@ import { addRelation, listTasks, progress, removeRelation, resolve } from "../op
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
+import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
 /**
@@ -133,6 +134,7 @@ export function apiRoutes(ctx: PcubeContext) {
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
   app.get("/engine", async (c) => c.json(await preflight.engineStatus()));
+  if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, ws, preflight));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));

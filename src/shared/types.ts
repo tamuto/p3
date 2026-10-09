@@ -321,6 +321,6 @@ export interface Neighborhood {
 }
 
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project" | "chatgpt"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
