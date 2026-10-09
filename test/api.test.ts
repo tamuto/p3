@@ -149,7 +149,7 @@ describe("REST API", () => {
     expect((await call("GET", `/requests/${rid}/preflight/${started.body.id}`)).body.status).toBe("completed");
     await call("PATCH", `/requests/${rid}/preflight/${started.body.id}/drafts/D2`, { include: false });
     const tasks = await call("POST", `/requests/${rid}/preflight/${started.body.id}/materialize`);
-    expect(tasks.body.map((t: any) => [t.id, t.title])).toEqual([["T001", "CSV"]]);
+    expect(tasks.body.tasks.map((t: any) => [t.id, t.title])).toEqual([["T001", "CSV"]]);
     const detail = await call("GET", `/requests/${rid}`);
     expect(detail.body.request.status).toBe("active");
     expect(detail.body.tasks).toHaveLength(1);

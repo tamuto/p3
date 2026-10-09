@@ -68,7 +68,7 @@ describe("PreflightService（mock エンジン）", () => {
     await ctx.preflight.wait(req.id, id);
     await ctx.preflight.updateDraft(req.id, id, "D2", { title: "ボタン（直した）" });
 
-    const tasks = await ctx.preflight.materialize(req.id, id, "human:a");
+    const { tasks } = await ctx.preflight.materialize(req.id, id, "human:a");
     expect(tasks.map((t) => [t.id, t.title, t.request])).toEqual([
       ["T001", "CSV を書き出す", req.id],
       ["T002", "ボタン（直した）", req.id],
@@ -88,7 +88,7 @@ describe("PreflightService（mock エンジン）", () => {
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
     await ctx.preflight.updateDraft(req.id, id, "D1", { include: false });
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks.map((t) => [t.id, t.title])).toEqual([["T001", "受ける"]]);
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
@@ -112,7 +112,7 @@ describe("PreflightService（mock エンジン）", () => {
     await newTask(ctx, req.id, { title: "先に AI が作ったタスク" });
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks.map((t) => t.id)).toEqual(["T002", "T003"]);
     expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T002", origin: "preflight" }]);
   });
@@ -180,7 +180,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("drafts/D1.md");
 
     // タスク化: 存在しない相手への関係・影響は捨てる
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks[1].relations).toEqual(
       expect.arrayContaining([
         { type: "relates_to", target: existing.ref, origin: "preflight" },

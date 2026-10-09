@@ -444,7 +444,7 @@ async function main(argv: string[]): Promise<number> {
         const include = (only ? only.includes(d.key) : d.include) && !skip.includes(d.key);
         if (include !== d.include) await ctx.preflight.updateDraft(rid, run.id, d.key, { include });
       }
-      const created = await ctx.preflight.materialize(rid, run.id, actor);
+      const { tasks: created } = await ctx.preflight.materialize(rid, run.id, actor);
       return out.result(created, () => `タスク化 (${rid} / ${run.id}):\n${table(created.map((t) => [t.id, t.title, deps(t)]))}`);
     }
 
