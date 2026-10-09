@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { selectCarryover } from "../src/server/preflight/carryover.ts";
 import type { PreflightEngine } from "../src/server/preflight/engine.ts";
 import { MockEngine } from "../src/server/preflight/mockEngine.ts";
 import { makeRepo, newRequest, openTestProject } from "./helpers.ts";
@@ -28,9 +29,14 @@ async function setup() {
 }
 
 describe("Preflight へのメモ", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("1件1ファイルで書き足し、書いた人と日時を残す。古い順に読む", async () => {
     const { ctx, req, dataDir } = await setup();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-10T00:00:00.000Z"));
     const a = await ctx.ws.notes.add(req.id, "  対象は CLI だけ  ", "human:a");
+    vi.setSystemTime(new Date("2026-10-10T00:00:01.000Z"));
     const b = await ctx.ws.notes.add(req.id, "Web は不要", "ai:claude");
     expect(a).toMatchObject({ body: "対象は CLI だけ", createdBy: "human:a" });
     expect(a.id).toMatch(/^N-\d{8}-\d{6}-[0-9a-f]{4}$/);
@@ -40,6 +46,29 @@ describe("Preflight へのメモ", () => {
     expect(notes.map((n) => n.id)).toEqual([a.id, b.id]);
     expect(invalid).toEqual([]);
     await expect(ctx.ws.notes.add(req.id, "  \n ")).rejects.toThrow("空");
+  });
+
+  it("同じ作成日時のメモは ID の順（ID は作った順を表さない）", async () => {
+    const { ctx, req } = await setup();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-10T00:00:00.000Z"));
+    const made = [];
+    for (let i = 0; i < 5; i++) made.push((await ctx.ws.notes.add(req.id, `メモ ${i}`)).id);
+    const { notes } = await ctx.ws.notes.list(req.id);
+    expect(notes.map((n) => n.id)).toEqual([...made].sort());
+  });
+
+  it("同じ開始日時の run は ID の大きい方を新しいとし、直近として引き継ぐ", async () => {
+    const { ctx, req } = await setup();
+    const run = (id: string, status: "completed" | "failed") => ({
+      id, requestId: req.id, engine: "mock" as const, status, startedAt: "2026-10-10T00:00:00.000Z", context: [], log: [], drafts: [],
+      assessment: status === "completed" ? { summary: "", verdict: "go" as const, validity: { score: 0, reasons: [] }, feasibility: { score: 0, reasons: [] }, risks: [], questions: [], areas: [], impacts: [] } : undefined,
+    });
+    await ctx.ws.preflight.save(run("PF-20261010-000000-aaaa", "completed"));
+    await ctx.ws.preflight.save(run("PF-20261010-000000-ffff", "failed"));
+    expect((await ctx.ws.preflight.list(req.id)).map((r) => r.id)).toEqual(["PF-20261010-000000-ffff", "PF-20261010-000000-aaaa"]);
+    // 直近（ID の大きい方）が失敗なら、同じ日時の成功 run に戻らない
+    expect((await selectCarryover(ctx.ws, req.id)).previous).toBeUndefined();
   });
 
   it("読めないメモは理由を返し、Preflight のログにも残す", async () => {

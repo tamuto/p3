@@ -6,6 +6,7 @@ import { api } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
+import { byCheckedDesc } from "../../../lib/order.ts";
 
 /**
  * 対応済みの一覧: 人が「済み」にしたタスク（タスクボードからは消える）。新しい順。
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/requests/$requestId/done")({
 function DonePage() {
   const ctx = useAppCtx();
   const { tasks, reload } = useRequestData();
-  const items = tasks.filter((t) => t.checkedAt).sort((a, b) => b.checkedAt!.localeCompare(a.checkedAt!));
+  const items = tasks.filter((t) => t.checkedAt).sort(byCheckedDesc);
 
   if (!items.length) {
     return (
