@@ -133,7 +133,10 @@ export async function removeRelation(
   return next;
 }
 
-/** 要望ごとの進捗。進捗の画面と `pcube progress` で使う */
+/**
+ * 要望ごとの進捗。進捗の画面と `pcube progress` で使う。
+ * 並び: 最終更新（要望自身と、アーカイブしていないタスクの updatedAt の最大）の新しい順。同じ日時なら要望 ID の順。
+ */
 export function progress(ctx: PcubeContext): RequestProgress[] {
   return ctx.ws.requests
     .list()
@@ -151,6 +154,8 @@ export function progress(ctx: PcubeContext): RequestProgress[] {
         updatedAt: [request.updatedAt, ...tasks.map((t) => t.updatedAt)].sort().at(-1)!,
       };
     })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || byId(a.request.id, b.request.id));
 }
 
+/** ID の順（数を含む部分は数として比べる: T2 < T10） */
+const byId = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
