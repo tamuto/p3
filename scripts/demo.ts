@@ -37,7 +37,7 @@ async function seedDemo(dir: string) {
       name: "p3 (demo)",
       description: "ファイルベースのプロジェクト管理ツール pcube 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
       repo: "..",
-      docs: ["README.md", "docs", "TODO.md"],
+      docs: ["README.md", "docs"],
       milestones: [
         { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
         { id: "v0.2", title: "要望単位の運用", due: day(12) },

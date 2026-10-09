@@ -23,7 +23,7 @@
 - 人も AI も同じ **CLI**（`pcube`）で操作する。ファイルを直接読み書きするので認証が要らない
 - ブラウザはローカルのビューア兼エディタ（`pcube serve`）。データはすべてローカルで完結する
 
-> 現在はプロトタイプ。設計の方針は [docs/architecture.md](docs/architecture.md)、到達点と今後は [TODO.md](TODO.md) を参照。
+> 現在はプロトタイプ。設計の方針は [docs/architecture.md](docs/architecture.md) を参照。
 
 ## はじめかた
 
