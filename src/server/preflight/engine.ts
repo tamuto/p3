@@ -38,6 +38,10 @@ export interface EngineStatus {
   ok: boolean;
   /** 人が読む説明（使えないならその理由） */
   detail: string;
+  /** Codex の認証（chatgpt: Sign in with ChatGPT / legacy: 旧来の auth.json / none: 未接続） */
+  auth?: "chatgpt" | "legacy" | "none";
+  /** ChatGPT プランのアカウント（email） */
+  account?: string;
 }
 
 export interface PreflightEngine {

@@ -298,22 +298,28 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
 - 存在しない要望・タスクへの関係はタスク化のときに捨てる
-- 使用量の上限に当たっている場合は頼まずに失敗させる
+- 旧来の認証では、使用量の上限に当たっている場合は頼まずに失敗させる。ChatGPT プランには使用量を読む公式の API が無いので、
+  上限に当たったら「Usage limit reached」として失敗させ、Manage usage（https://chatgpt.com/settings/usage）を案内する
 - 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
   Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
 
 | 環境変数 | 内容 |
 | --- | --- |
-| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | Codex の `auth.json`（Docker ボリューム内 / ホストのファイル）。どちらかがあれば Codex エンジンが有効 |
+| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル）。ChatGPT に接続していなければこちらを使う |
+| `PCUBE_CODEX_AUTH` | `legacy` にすると、ChatGPT に接続していても旧来の `auth.json` を使う |
 | `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`）。リポジトリとデータのフォルダの両方に使う |
 | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
 | `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
-| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Codex が設定されていても Mock で評価する |
+| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-エンジンは1つだけで、選ぶものではない。Codex の認証が設定されていなければ **Mock**（要望本文の箇条書きを
-そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。再評価ではメモの箇条書きを案に足し、
+既定のエンジンは Codex で、認証は次の順に選ぶ: `PCUBE_CODEX_AUTH=legacy` と旧来の設定 → 旧来の `auth.json` /
+ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE`）だけ → 旧来の `auth.json` /
+どれも無い → 使えない（画面と CLI でサインインを案内する。**認証が無いときに Mock に切り替えない**）。
+
+**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`PCUBE_PREFLIGHT_ENGINE=mock` か `--engine mock` で
+明示したときだけ使う。再評価ではメモの箇条書きを案に足し、
 前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
 

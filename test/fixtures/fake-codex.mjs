@@ -64,6 +64,11 @@ for await (const line of createInterface({ input: process.stdin })) {
         ordinaryUsageAllowed: scenario !== "usage",
       });
       break;
+    case "initialize":
+      // 名乗りと、環境変数で渡された access token（ChatGPT プラン）を記録する
+      appendFileSync(log, `${JSON.stringify({ clientInfo: m.params?.clientInfo, accessToken: process.env.ACCESS_TOKEN ?? null })}\n`);
+      reply({});
+      break;
     case "thread/start":
       reply({ thread: { id: "t1" }, model: "fake-model" });
       break;

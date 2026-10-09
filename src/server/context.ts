@@ -35,11 +35,12 @@ export async function openProject(dataDir: string, opts: { repoRoot?: string } =
   const ws = new Workspace(dataDir, opts.repoRoot);
   await ws.load();
   const index = new ProjectIndex(ws);
-  // エンジンは1つだけ。Codex が設定されていれば Codex、無ければ（または PCUBE_PREFLIGHT_ENGINE=mock なら）
-  // Codex を使わずに画面とファイルの流れを確かめるための Mock
-  const codexCfg = codexConfigFromEnv();
-  const engine: PreflightEngine =
-    codexCfg && process.env.PCUBE_PREFLIGHT_ENGINE !== "mock" ? new CodexWorkspaceEngine(codexCfg) : new MockEngine();
-  const preflight = new PreflightService(ws, index, { [engine.name]: engine }, engine.name);
+  // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
+  // Mock は PCUBE_PREFLIGHT_ENGINE=mock か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
+  const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = {
+    codex: new CodexWorkspaceEngine(codexConfigFromEnv()),
+    mock: new MockEngine(),
+  };
+  const preflight = new PreflightService(ws, index, engines, process.env.PCUBE_PREFLIGHT_ENGINE === "mock" ? "mock" : "codex");
   return { ws, index, preflight };
 }
