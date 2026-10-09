@@ -70,6 +70,9 @@ Preflight
 ```
 
 - `config.yaml` とは別のファイルにするので、プロジェクトや画面の設定を保存しても接続は消えず、その逆も起きない。
+- Preflight のログとエラー（`run.json`）に残す前に、トークンらしいものを伏せる（`src/server/redact.ts`）。Codex は API の認証エラーで
+  キーの一部（先頭 8 文字と末尾 3 文字。例 `Incorrect API key provided: eyJhbGci***xyz`）を見せるので、それと JWT・Bearer の値・
+  渡したトークンそのものを `[伏せました]` にする
 - CLI の `--json`、API、ログ、エラーには、トークンを出さない（状態として出すのはアカウントの email、プラン利用の可否、期限、ホスト ID・client ID の有無）。
 - **接続の解除**（`p3 chatgpt logout`）: refresh token を revoke してから、`tokens` を消す。ホスト ID・client ID・アカウントは残す
   （次のサインインで同じ登録を使う。公式: サインアウトしても登録したクライアントは消えない）。revoke が通らなかったら

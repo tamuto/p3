@@ -8,6 +8,7 @@ import { progress } from "../src/server/ops.ts";
 import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
 import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";
 import { saveConnection } from "../src/server/chatgpt/store.ts";
+import { redact } from "../src/server/redact.ts";
 import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
@@ -408,6 +409,29 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
     expect(JSON.stringify(run)).not.toContain("at-secret"); // run の記録にトークンを残さない
   });
 
+  it("Codex のエラーがトークンの一部や全部を含んでも、ログとエラーには残さない", async () => {
+    const repo = await makeRepo();
+    const codex = new CodexWorkspaceEngine({
+      account: await account(),
+      pathMap: [],
+      ensureImage: false,
+      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", "FAKE_SCENARIO=unauthorized", process.execPath, FAKE_CODEX],
+    });
+    const ctx = await openTestProject(repo.dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft" });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("401 Unauthorized");
+    expect(run.error).toContain("[伏せました]");
+    const saved = readFileSync(join(ctx.ws.preflight.runDir(req.id, id), "run.json"), "utf8");
+    for (const text of [JSON.stringify(run), saved]) {
+      expect(text).not.toContain("at-secret");
+      expect(text).not.toContain("at-secre"); // 先頭 8 文字
+      expect(text).not.toMatch(/\*\*\*ret/); // 末尾 3 文字
+    }
+  });
+
   it("期限切れで更新できなければ失敗させ、Mock に落とさない", async () => {
     const repo = await makeRepo();
     const codex = new CodexWorkspaceEngine({
@@ -423,5 +447,15 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
     const { id } = await ctx.preflight.start(req.id);
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run).toMatchObject({ status: "failed", engine: "codex", error: expect.stringContaining("サインインし直してください") });
+  });
+});
+
+describe("トークンらしいものを伏せる", () => {
+  it("Codex が一部を見せるキー・JWT・Bearer の値・渡した値を伏せ、ほかは変えない", () => {
+    expect(redact("Incorrect API key provided: dummy-to***-123. You can find…")).toBe("Incorrect API key provided: [伏せました]. You can find…");
+    expect(redact("id=eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1In0.c2lnbmF0dXJl end")).toBe("id=[伏せました] end");
+    expect(redact("Authorization: Bearer abc.def-ghi")).toBe("Authorization: Bearer [伏せました]");
+    expect(redact("token is opaque-value-123", ["opaque-value-123"])).toBe("token is [伏せました]");
+    expect(redact("通常のログ: rg -l foo (exit 0) / 5h窓 10%")).toBe("通常のログ: rg -l foo (exit 0) / 5h窓 10%");
   });
 });

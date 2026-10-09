@@ -14,6 +14,7 @@ import {
 } from "@llmcs/codex-workspace";
 import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
 import { APP_NAME } from "../chatgpt/oauth.ts";
+import { redact } from "../redact.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -196,6 +197,25 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       }
       log({ kind: "info", text: `ChatGPT プラン（${auth.email ?? "サインイン済み"}）で動かします` });
     }
+    // 渡したトークンそのものも、ログとエラーに残さない
+    const secret = env?.[ACCESS_TOKEN_ENV];
+    const raw = log;
+    log = (e) => raw({ ...e, text: redact(e.text, [secret]) });
+    try {
+      return await this.runWith(job, auth, env, log, signal);
+    } catch (e) {
+      if (e instanceof Error) e.message = redact(e.message, [secret]);
+      throw e;
+    }
+  }
+
+  private async runWith(
+    job: PreflightJob,
+    auth: Exclude<CodexAuth, { mode: "none" }>,
+    env: Record<string, string> | undefined,
+    log: Log,
+    signal: AbortSignal,
+  ): Promise<EngineOutcome> {
     const workspace = this.hostPath(job.repoRoot);
     const data = this.hostPath(job.dataDir);
     log({ kind: "info", text: `codex-workspace: ${CONTAINER_WORKSPACE} <= ${workspace}, ${CONTAINER_DATA} <= ${data}` });

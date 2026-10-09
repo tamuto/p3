@@ -19,6 +19,7 @@ import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { supersedeCandidates } from "../supersede.ts";
+import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
 
@@ -136,7 +137,8 @@ export class PreflightService {
   }
 
   private log(run: PreflightRun, e: Omit<PreflightLogEntry, "at">) {
-    const entry = { ...e, at: nowIso() };
+    // トークンらしいもの（Codex のエラーが一部を見せるキーなど）は残さない
+    const entry = { ...e, text: redact(e.text), at: nowIso() };
     run.log.push(entry);
     this.ws.emit({ type: "preflight-log", runId: run.id, entry });
   }
@@ -178,7 +180,7 @@ export class PreflightService {
       run.status = "completed";
     } catch (e) {
       run.status = "failed";
-      run.error = (e as Error).message;
+      run.error = redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
       run.finishedAt = nowIso();
