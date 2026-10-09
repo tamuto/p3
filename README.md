@@ -111,6 +111,7 @@ pcube drafts k7m3x                     # 評価とタスク案（D1, D2 ...）�
 pcube preflight k7m3x --note "対象は CLI だけ。Web は不要"   # 確認事項に答えて再評価（前回の結果とメモを引き継ぐ）
 pcube preflight k7m3x --note - --note-only < answer.md     # メモを書き足すだけ（次の Preflight に渡す）
 pcube notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
+                                       # 画面でも評価の下の「メモ」から書いて「保存して再実行」できる
 pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
 pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```

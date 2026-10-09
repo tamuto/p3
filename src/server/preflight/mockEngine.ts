@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { PreflightAssessment, ProposedTask } from "../../shared/types.ts";
 import { stringifyFrontmatter } from "../store/frontmatter.ts";
 import { writeFileAtomic } from "../store/fsutil.ts";
@@ -46,13 +46,13 @@ export class MockEngine implements PreflightEngine {
     await this.sleep(400, signal);
     for (const c of context.slice(0, 3)) {
       const [rid, tid] = c.ref.split("/");
-      log({ kind: "command", text: `$ cat ${job.dataDir}/requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
+      log({ kind: "command", text: `$ cat requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
       await this.sleep(250, signal);
     }
 
     const notes = job.carryover?.notes ?? [];
     const previous = job.carryover?.previous;
-    if (previous) log({ kind: "command", text: `$ cat ${join(job.runDir, "carryover.md")}` });
+    if (previous) log({ kind: "command", text: `$ cat ${relative(job.dataDir, join(job.runDir, "carryover.md"))}` });
     const bullets = [...new Set([request.body, ...notes.map((n) => n.body)].flatMap(bulletsOf))].slice(0, 8);
     const rejected = new Set(previous?.drafts.filter((d) => !d.include).map((d) => d.title));
     const items = bullets.length ? bullets : [`${request.title} の設計`, `${request.title} の実装`, `${request.title} のテスト`];
@@ -94,7 +94,7 @@ export class MockEngine implements PreflightEngine {
     for (const d of drafts) {
       const { description, ...meta } = d;
       await writeFileAtomic(join(job.runDir, "drafts", `${d.key}.md`), stringifyFrontmatter(meta, description));
-      log({ kind: "info", text: `✎ ${join(job.runDir, "drafts", `${d.key}.md`)}` });
+      log({ kind: "info", text: `✎ ${relative(job.dataDir, join(job.runDir, "drafts", `${d.key}.md`))}` });
       await this.sleep(150, signal);
     }
     log({ kind: "message", text: assessment.summary });
