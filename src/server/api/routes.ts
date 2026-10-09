@@ -6,6 +6,7 @@ import { REQUEST_STATUSES, relationTypes, type Relation, type ServerEvent, type 
 import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
+import { startWarnings, supersededMarks } from "../supersede.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
 /**
@@ -92,7 +93,7 @@ export function apiRoutes(ctx: PcubeContext) {
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     if (err instanceof ConflictError) {
-      const current = c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
+      const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
       return c.json({ error: err.message, current }, 409);
     }
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
@@ -152,6 +153,10 @@ export function apiRoutes(ctx: PcubeContext) {
       tasks: ws.tasksOf(id).list(),
       runs: await preflight.list(id),
       graph: index.neighborhood(id),
+      // 置き換えられたタスクの印（T001 → 置き換えた側）
+      superseded: Object.fromEntries(
+        [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
+      ),
     });
   });
   app.patch("/requests/:rid", async (c) => {
@@ -176,7 +181,7 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
-    return c.json({ task, graph: index.neighborhood(task.ref) });
+    return c.json({ task, graph: index.neighborhood(task.ref), superseded: supersededMarks(ws).get(task.ref) ?? [] });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
     const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
@@ -188,9 +193,11 @@ export function apiRoutes(ctx: PcubeContext) {
       if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
       next.checkedAt = checked ? new Date().toISOString() : undefined;
     }
+    // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
+    const warnings = startWarnings(ws, `${id}/${tid(c)}`, col.require(tid(c)).status, next.status);
     const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     changed("task", id, t.ref);
-    return c.json(t);
+    return c.json(warnings.length ? { ...t, warnings } : t);
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     const id = rid(c);
@@ -265,9 +272,13 @@ export function apiRoutes(ctx: PcubeContext) {
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch));
   });
-  app.post("/requests/:rid/preflight/:run/materialize", async (c) =>
-    c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c)), 201),
-  );
+  app.get("/requests/:rid/preflight/:run/materialize", async (c) => c.json(await preflight.previewMaterialize(rid(c), c.req.param("run"))));
+  app.post("/requests/:rid/preflight/:run/materialize", async (c) => {
+    const body = z
+      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional() })
+      .parse(await c.req.json().catch(() => ({})));
+    return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c), { archive: body.archive }), 201);
+  });
 
   // --- intelligence ------------------------------------------------------
   app.get("/tasks", (c) => {

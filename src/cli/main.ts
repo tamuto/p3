@@ -3,11 +3,12 @@ import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
+import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
 import { loadUserConfig } from "../server/userConfig.ts";
 import { table } from "./format.ts";
@@ -65,6 +66,7 @@ Preflight
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
   drafts [<要望>]               最新の評価とタスク案  --run PF-...
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
+                               置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
 
 共通オプション
   --project 名前 操作するプロジェクト（既定: 今いるリポジトリに登録したもの → 登録が1つならそれ）
@@ -112,6 +114,7 @@ const OPTIONS = {
   instructions: { type: "string" },
   agents: { type: "boolean" },
   "note-only": { type: "boolean" },
+  "archive-superseded": { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   port: { type: "string" },
   host: { type: "string" },
@@ -279,8 +282,10 @@ async function main(argv: string[]): Promise<number> {
     case "list": {
       const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
-      return out.result(tasks, () =>
-        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, deps(t)])) || "タスクはありません",
+      const marks = supersededMarks(ctx.ws);
+      const items = tasks.map((t) => (marks.has(t.ref) ? { ...t, superseded: marks.get(t.ref) } : t));
+      return out.result(items, () =>
+        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, [deps(t), replacedBy(t, marks)].filter(Boolean).join("  ")])) || "タスクはありません",
       );
     }
 
@@ -292,7 +297,10 @@ async function main(argv: string[]): Promise<number> {
       const item = ctx.ws.requireTask(ref);
       const graph = ctx.index.neighborhood(ref);
       const file = relative(cwd, split(ref).col.path(item.id));
-      return out.result({ item, graph, file }, () => formatEntity(ctx, item, graph, file));
+      const superseded = supersededMarks(ctx.ws).get(ref) ?? [];
+      return out.result({ item, graph, file, superseded }, () =>
+        [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, graph, file)].join(""),
+      );
     }
 
     case "find":
@@ -336,8 +344,10 @@ async function main(argv: string[]): Promise<number> {
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       const { col, tid } = split(ref);
+      const warnings = startWarnings(ctx.ws, ref, col.require(tid).status, patch.status);
       const next = await col.update(tid, patch, { expectedRev, actor });
-      return out.result(next, () => `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
+      warn(warnings);
+      return out.result(warnings.length ? { ...next, warnings } : next, () => `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
 
     case "move": {
@@ -349,8 +359,10 @@ async function main(argv: string[]): Promise<number> {
       const cur = col.require(tid);
       const patch: Partial<Task> = { status };
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
+      const warnings = startWarnings(ctx.ws, ref, cur.status, status);
       const next = await col.update(tid, patch, { expectedRev, actor });
-      return out.result(next, () => `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`);
+      warn(warnings);
+      return out.result(warnings.length ? { ...next, warnings } : next, () => `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`);
     }
 
     case "check": {
@@ -431,7 +443,16 @@ async function main(argv: string[]): Promise<number> {
     case "drafts": {
       const rid = requestArg(args[0]);
       const run = await pickRun(ctx, rid, o.run);
-      return out.result(run, () => formatRun(ctx, rid, run));
+      // タスク化の前なら、置き換えられる既存タスクも見せる
+      const supersedes = run.materialized?.length ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
+      return out.result({ ...run, supersedes }, () =>
+        [
+          formatRun(ctx, rid, run),
+          supersedes.length
+            ? `\n置き換えられる既存タスク（accept では残す。--archive-superseded でアーカイブ）:\n${table(supersedes.map((c) => [c.id, c.status, c.title]))}`
+            : "",
+        ].join("\n"),
+      );
     }
 
     case "accept": {
@@ -444,8 +465,21 @@ async function main(argv: string[]): Promise<number> {
         const include = (only ? only.includes(d.key) : d.include) && !skip.includes(d.key);
         if (include !== d.include) await ctx.preflight.updateDraft(rid, run.id, d.key, { include });
       }
-      const created = await ctx.preflight.materialize(rid, run.id, actor);
-      return out.result(created, () => `タスク化 (${rid} / ${run.id}):\n${table(created.map((t) => [t.id, t.title, deps(t)]))}`);
+      // 置き換えられるタスクは --archive-superseded のときだけ、確定時点の候補（プレビューと同じ rev）をアーカイブする
+      const { candidates } = await ctx.preflight.previewMaterialize(rid, run.id);
+      const archive = o["archive-superseded"] ? candidates.map((c) => ({ id: c.id, rev: c.rev })) : [];
+      const r = await ctx.preflight.materialize(rid, run.id, actor, { archive });
+      return out.result(r, () =>
+        [
+          `タスク化 (${rid} / ${run.id}):\n${table(r.tasks.map((t) => [t.id, t.title, deps(t)]))}`,
+          r.archived.length ? `\n置き換えられたタスクをアーカイブしました: ${r.archived.join(", ")}` : "",
+          r.kept.length
+            ? `\n置き換えられるタスクを残しました（着手前に確かめ、不要なら p3 archive <T> か accept --archive-superseded）:\n${table(
+                r.kept.map((c) => [c.id, c.status, c.title, c.reasons.map((x) => (x.source === "draft" ? `案 ${x.draft}` : "評価")).join(",")]),
+              )}`
+            : "",
+        ].join("\n"),
+      );
     }
 
     default:
@@ -707,6 +741,17 @@ function readBody(v: string | undefined): string {
 }
 
 /** 依存先（同じ要望なら T003、別の要望なら絶対参照） */
+/** 置き換えられたタスクの印（同じ要望の中は T005 と短く） */
+const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
+  const m = marks.get(t.ref);
+  return m?.length ? `※置換 ← ${m.map((x) => (x.from.startsWith(`${t.request}/`) ? x.from.slice(t.request.length + 1) : x.from)).join(",")}` : "";
+};
+
+/** 警告は stderr に出す（--json の stdout を汚さない。JSON では warnings フィールドで返す） */
+const warn = (warnings: Warning[]) => {
+  for (const w of warnings) process.stderr.write(`警告: ${w.message}\n`);
+};
+
 const deps = (t: Task) => {
   const d = t.relations.filter((r) => r.type === "depends_on").map((r) => (absRef(r.target, t.request)?.startsWith(`${t.request}/`) ? r.target : (absRef(r.target, t.request) ?? r.target)));
   return d.length ? `← ${d.join(",")}` : "";

@@ -5,6 +5,7 @@ import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
+import { markText, warningText } from "../../../lib/supersede.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/requests/$requestId/board")({
 
 function BoardPage() {
   const ctx = useAppCtx();
-  const { request, tasks, reload } = useRequestData();
+  const { request, tasks, reload, superseded } = useRequestData();
   const [dragId, setDragId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const doneIds = new Set(tasks.filter((t) => t.status === "done").map((t) => t.id));
@@ -34,8 +35,10 @@ function BoardPage() {
 
   async function patch(t: Task, p: { status?: TaskStatus; checked?: boolean }) {
     try {
-      await api.patchTask(t.ref, { ...p, rev: t.rev });
-      setError(null);
+      const res = await api.patchTask(t.ref, { ...p, rev: t.rev });
+      // 置き換えられたタスクを作業中にしたときは、移したうえで知らせる
+      const w = warningText(res);
+      setError(w ? `警告: ${w}` : null);
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? `${t.id} は他で更新されました。最新を読み込みました。` : String(e));
     }
@@ -75,6 +78,7 @@ function BoardPage() {
             done={s === "done"}
             tasks={tasks}
             doneIds={doneIds}
+            replaced={markText(superseded[t.id], request.id)}
             dragging={dragId === t.id}
             onDragStart={() => setDragId(t.id)}
             onOpen={() => ctx.open(t.ref)}
@@ -150,6 +154,7 @@ function Card({
   done,
   tasks,
   doneIds,
+  replaced,
   dragging,
   onDragStart,
   onOpen,
@@ -159,6 +164,8 @@ function Card({
   done: boolean;
   tasks: Task[];
   doneIds: Set<string>;
+  /** 置き換えられていれば印の文言 */
+  replaced: string;
   dragging: boolean;
   onDragStart: () => void;
   onOpen: () => void;
@@ -183,8 +190,13 @@ function Card({
         {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
       </div>
       <p className="mt-1 leading-snug font-medium">{t.title}</p>
-      {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0) && (
+      {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0 || replaced) && (
         <div className="mt-2 flex flex-wrap gap-1">
+          {replaced && !done && (
+            <Badge tone="rose" title="新しいタスクに置き換えられています。着手する前に確かめてください">
+              {replaced}
+            </Badge>
+          )}
           {blocking.length > 0 && !done && (
             <Badge tone="amber" title={blocking.map((b) => b.target).join(", ")}>
               待ち {blocking.length}

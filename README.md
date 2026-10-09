@@ -113,6 +113,7 @@ pcube preflight k7m3x --note - --note-only < answer.md     # メモを書き足�
 pcube notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
                                        # 画面でも評価の下の「メモ」から書いて「保存して再実行」できる
 pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
+                                       # 再評価で古いタスクが置き換えられるなら表示して残す（--archive-superseded でアーカイブ）
 pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
 
@@ -135,15 +136,16 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 | `pcube progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも） |
 | `pcube milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
 | `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=done` `due=` `milestone=` `tags=`）・アーカイブ |
-| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望） |
+| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
 | `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
 | `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
 | `pcube set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
-| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す） |
+| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す）。置き換えられたタスクを作業中にすると警告（移動はする） |
 | `pcube check <T003> [--off]` | 完了したタスクを人が確認して「済み」にする / 外す |
 | `pcube link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
 | `pcube find <語句>` / `pcube impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
-| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行・確認・タスク化 |
+| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行（`--note` でメモを足して再評価）・確認・タスク化（`--archive-superseded` で置き換えられるタスクをアーカイブ） |
+| `pcube notes [<要望>]` | Preflight へのメモと、次に渡すもの |
 | `pcube init` / `pcube config` / `pcube whoami` | 初期設定 / 設定 / 変更者と今の要望 |
 | `pcube serve` | ビューアの起動 |
 
@@ -160,7 +162,7 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
     261009-k7m3x/                       要望のフォルダ（作成日 + 乱数5文字。タイトルが変わっても変わらない）
       request.md                        要望
       tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
-      tasks/.archive/                   アーカイブしたタスク
+      tasks/.archive/                   アーカイブしたタスク（その ID は新しいタスクに再利用しない）
       notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット
@@ -279,6 +281,11 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 | `/settings` | プロジェクト設定（マイルストーン・列・ドキュメントなど） |
 
 要望の中のページでは `?task=T003` でタスク詳細を重ねて開く。
+
+再評価のタスク化では、置き換えられる既存タスクをタスク案の下に出す。チェックしたものだけをタスク化と一緒に
+アーカイブし、チェックしなければ残す（作業中のタスクには印を付ける。アーカイブしても作業そのものは止まらない）。
+残した置き換えられたタスクには、タスクボードのカードに「置き換え ← T005」（評価での置き換えなら「← 要望」）、
+タスク詳細に置き換えた側を出す。作業中にすると移したうえで警告を出す（状態は 未着手 / 作業中 / 完了 のまま）。
 
 進捗のスケジュールの記号:
 

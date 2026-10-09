@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_IMAGE, dockerCommand } from "@llmcs/codex-workspace";
+import { progress } from "../src/server/ops.ts";
 import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
 import { makeProject, makeRepo, newRequest, newTask, openTestProject, projectConfig, tempDir } from "./helpers.ts";
@@ -68,7 +70,7 @@ describe("PreflightService（mock エンジン）", () => {
     await ctx.preflight.wait(req.id, id);
     await ctx.preflight.updateDraft(req.id, id, "D2", { title: "ボタン（直した）" });
 
-    const tasks = await ctx.preflight.materialize(req.id, id, "human:a");
+    const { tasks } = await ctx.preflight.materialize(req.id, id, "human:a");
     expect(tasks.map((t) => [t.id, t.title, t.request])).toEqual([
       ["T001", "CSV を書き出す", req.id],
       ["T002", "ボタン（直した）", req.id],
@@ -88,7 +90,7 @@ describe("PreflightService（mock エンジン）", () => {
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
     await ctx.preflight.updateDraft(req.id, id, "D1", { include: false });
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks.map((t) => [t.id, t.title])).toEqual([["T001", "受ける"]]);
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
@@ -112,7 +114,7 @@ describe("PreflightService（mock エンジン）", () => {
     await newTask(ctx, req.id, { title: "先に AI が作ったタスク" });
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks.map((t) => t.id)).toEqual(["T002", "T003"]);
     expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T002", origin: "preflight" }]);
   });
@@ -180,7 +182,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("drafts/D1.md");
 
     // タスク化: 存在しない相手への関係・影響は捨てる
-    const tasks = await ctx.preflight.materialize(req.id, id);
+    const { tasks } = await ctx.preflight.materialize(req.id, id);
     expect(tasks[1].relations).toEqual(
       expect.arrayContaining([
         { type: "relates_to", target: existing.ref, origin: "preflight" },
@@ -208,6 +210,49 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("### D2 本体（不採用 / 依存: D1）"); // 人が外した案
     expect(prompt).toContain("対象は CLI だけでよい");
     expect(prompt).toContain("（human:a, ");
+  });
+
+  it("再評価から置き換えまで: 前回とメモを引き継ぎ、置き換えられるタスクを選んでアーカイブし、番号は再利用しない", async () => {
+    // データはリポジトリの外。置き換えの参照は2回目の評価からだけ書かせる
+    const repo = await makeRepo();
+    const dataDir = tempDir("pcube-data-");
+    await mkdir(join(dataDir, "requests"));
+    await writeProjectFile(join(dataDir, "project.yaml"), projectConfig({ repo: repo.root }));
+    let supersede = "";
+    const codex = new CodexWorkspaceEngine({
+      pathMap: [],
+      ensureImage: false,
+      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
+    });
+    const ctx = await openTestProject(dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
+    const run = async () => {
+      const { id } = await ctx.preflight.start(req.id, { actor: "human:a" });
+      return (await ctx.preflight.wait(req.id, id))!;
+    };
+
+    const first = await run();
+    expect((await ctx.preflight.materialize(req.id, first.id)).tasks.map((t) => t.id)).toEqual(["T001", "T002"]);
+    const doneTask = await ctx.ws.tasksOf(req.id).update("T002", { status: "done", outputs: ["https://example.com/pull/1"] });
+
+    supersede = `${req.id}/T001`;
+    await ctx.preflight.addNote(req.id, "T001 は新しい方式にする", "human:a");
+    const second = await run();
+    expect(second).toMatchObject({ status: "completed", previous: first.id, notes: [expect.any(String)] });
+    const preview = await ctx.preflight.previewMaterialize(req.id, second.id);
+    expect(preview.candidates.map((c) => [c.id, c.reasons.map((r) => r.source)])).toEqual([["T001", ["impact", "draft"]]]); // 完了した T002 は候補にしない
+
+    const r = await ctx.preflight.materialize(req.id, second.id, "human:a", { archive: [{ id: "T001", rev: preview.candidates[0].rev }] });
+    expect(r).toMatchObject({ archived: ["T001"], kept: [] });
+    expect(r.tasks.map((t) => t.id)).toEqual(["T003", "T004"]);
+    // アーカイブしたタスクには印を付けず、進捗にも数えない。完了したタスクの成果物と rev は変わらない
+    expect(supersededMarks(ctx.ws).size).toBe(0);
+    expect(progress(ctx).find((p) => p.request.id === req.id)).toMatchObject({ total: 3, done: 1 });
+    expect(ctx.ws.tasksOf(req.id).get("T002")).toMatchObject({ rev: doneTask.rev, outputs: ["https://example.com/pull/1"] });
+
+    // 最大番号をアーカイブしても、次の番号は重ならない
+    await ctx.ws.tasksOf(req.id).archive("T004");
+    expect((await ctx.ws.tasksOf(req.id).create({ title: "追加" })).id).toBe("T005");
   });
 
   it("run ディレクトリの外の変更は警告としてログに残す", async () => {

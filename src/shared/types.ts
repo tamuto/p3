@@ -201,12 +201,45 @@ export interface PreflightRun {
   threadId?: string;
   /** タスク化済みなら作成されたタスク ID */
   materialized?: string[];
+  /**
+   * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らず、同じタスクを二度アーカイブしないための記録。
+   *   created: 作った案とタスク（D1 → T004）、archive: アーカイブに選んだ置き換えられるタスク、archived: アーカイブ済み
+   */
+  materialization?: { created: Record<string, string>; archive: string[]; archived: string[]; done: boolean };
   /** 実行した人 */
   startedBy?: string;
   /** 結果を引き継いだ前回の run（無ければ最初から評価した） */
   previous?: string;
   /** 渡したメモの ID。内容は run ディレクトリの carryover.md に固定して残す */
   notes?: string[];
+}
+
+/** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */
+export interface SupersededMark {
+  from: string;
+  note?: string;
+}
+
+/** タスク化のときに知らせる、置き換えられる既存タスク（同じ要望の未完了のもの） */
+export interface SupersedeCandidate {
+  /** T001 */
+  id: string;
+  /** <要望ID>/T001 */
+  ref: string;
+  title: string;
+  status: TaskStatus;
+  rev: number;
+  /** どこに置き換えが書かれていたか（評価の影響 / 採用したタスク案） */
+  reasons: { source: "impact" | "draft"; draft?: string; note?: string }[];
+}
+
+/** タスク化の結果 */
+export interface MaterializeResult {
+  tasks: Task[];
+  /** アーカイブした置き換えられたタスク（T001） */
+  archived: string[];
+  /** 置き換えられるが残したタスク */
+  kept: SupersedeCandidate[];
 }
 
 /**

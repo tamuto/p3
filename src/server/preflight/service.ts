@@ -10,12 +10,15 @@ import {
   type Relation,
   type Request,
   type RelationType,
+  type MaterializeResult,
   type Task,
 } from "../../shared/types.ts";
-import { absRef, relRef } from "../../shared/refs.ts";
+import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
 import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
+import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
+import { supersedeCandidates } from "../supersede.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
 
@@ -199,19 +202,58 @@ export class PreflightService {
     return next;
   }
 
+  /** タスク化の前に見せるもの: 採用する案と、置き換えられる既存タスク（ファイルは変えない） */
+  async previewMaterialize(requestId: string, runId: string) {
+    const run = await this.ws.preflight.get(requestId, runId);
+    if (!run) throw new NotFoundError(runId);
+    return {
+      include: run.drafts.filter((d) => d.include).map((d) => d.key),
+      candidates: supersedeCandidates(this.ws, run),
+      materialized: run.materialized ?? [],
+    };
+  }
+
   /**
    * タスク化: 採用されたタスク案を、要望のフォルダの tasks/T00x.md として書き出し、関係を張る。
    *   - 同じ run 内の dependsOn → depends_on（要望の中なので相対参照 T00x）
-   *   - 案が持つ既存項目への関係 → 存在するものだけ（origin: preflight）
+   *   - 案が持つ既存項目への関係 → 存在するものだけ（origin: preflight）。置き換え（supersedes）もここで各タスクに残る
    *   - 評価の impacts → 要望側の relations に記録（作業ツリー単位の影響として扱う）
+   *   - archive: 置き換えられるタスク（previewMaterialize の候補）のうちアーカイブするもの。既定はどれも残す。
+   *     確定の時点で候補を読み直し、候補でない・rev が変わったものがあれば何も変えずに失敗する
+   *
+   * 古いタスクを先に外さないよう、新しいタスクと関係を保存してからアーカイブする。途中経過は run.json の
+   * materialization に残し、途中で失敗したら同じ呼び出しでやり直せる（作った案は作り直さず、アーカイブも重ねない）。
    */
-  async materialize(requestId: string, runId: string, actor = "preflight"): Promise<Task[]> {
+  async materialize(
+    requestId: string,
+    runId: string,
+    actor = "preflight",
+    opts: { archive?: { id: string; rev?: number }[] } = {},
+  ): Promise<MaterializeResult> {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
-    if (run.materialized?.length) throw new Error(`既にタスク化済みです: ${run.materialized.join(", ")}`);
+    const resuming = run.materialization && !run.materialization.done;
+    if (!resuming && run.materialized?.length) throw new Error(`既にタスク化済みです: ${run.materialized.join(", ")}`);
     const request = this.ws.requests.require(requestId);
     const tasks = this.ws.tasksOf(requestId);
-    const drafts = run.drafts.filter((d) => d.include);
+    const drafts = resuming ? run.drafts.filter((d) => d.key in run.materialization!.created || d.include) : run.drafts.filter((d) => d.include);
+    if (!drafts.length) throw new Error("採用したタスク案がありません");
+
+    const candidates = supersedeCandidates(this.ws, run);
+    if (!resuming) {
+      const chosen: string[] = [];
+      for (const sel of opts.archive ?? []) {
+        const id = normalizeTaskId(sel.id) ?? sel.id;
+        const c = candidates.find((x) => x.id === id);
+        if (!c) throw new Error(`${id} は置き換えられるタスクの候補ではありません（もう一度確認してください）`);
+        if (sel.rev !== undefined && sel.rev !== c.rev) throw new ConflictError(`${requestId}/${id}`, sel.rev, c.rev);
+        if (!chosen.includes(id)) chosen.push(id);
+      }
+      run.materialization = { created: {}, archive: chosen, archived: [], done: false };
+      await this.ws.preflight.save(run);
+    }
+    const state = run.materialization!;
+
     const keyToId = new Map<string, string>();
     const created: Task[] = [];
     // Codex が書いた参照を、存在するものだけ、ファイルに書く形（相対/絶対）にそろえる
@@ -226,30 +268,39 @@ export class PreflightService {
       });
 
     for (const d of drafts) {
-      const t = await tasks.create(
-        {
-          title: d.title,
-          status: "todo",
-          labels: [],
-          areas: d.areas,
-          outputs: [],
-          relations: keepExisting(d.relations),
-          body: `${d.description}\n\n> preflight: ${runId} / ${d.key}`,
-        },
-        actor,
-      );
+      const marker = `> preflight: ${runId} / ${d.key}`;
+      // やり直しでは、前回作ったタスク（本文の印で分かる）を使う
+      const made = tasks.get(state.created[d.key] ?? "") ?? tasks.list().find((t) => t.body.includes(marker));
+      const t =
+        made ??
+        (await tasks.create(
+          {
+            title: d.title,
+            status: "todo",
+            labels: [],
+            areas: d.areas,
+            outputs: [],
+            relations: keepExisting(d.relations),
+            body: `${d.description}\n\n${marker}`,
+          },
+          actor,
+        ));
+      if (state.created[d.key] !== t.id) {
+        state.created[d.key] = t.id;
+        await this.ws.preflight.save(run);
+      }
       keyToId.set(d.key, t.id);
       created.push(t);
     }
     // 依存は全タスクの ID が決まってから張る
     for (const d of drafts) {
+      const id = keyToId.get(d.key)!;
+      const cur = tasks.require(id);
       const deps: Relation[] = d.dependsOn
         .map((k) => keyToId.get(k))
-        .filter((id): id is string => !!id)
+        .filter((t): t is string => !!t && !cur.relations.some((r) => r.type === "depends_on" && r.target === t))
         .map((target) => ({ type: "depends_on", target, origin: "preflight" }));
       if (deps.length) {
-        const id = keyToId.get(d.key)!;
-        const cur = tasks.require(id);
         const t = await tasks.update(id, { relations: [...cur.relations, ...deps] }, { actor });
         created[created.findIndex((c) => c.id === id)] = t;
       }
@@ -276,10 +327,21 @@ export class PreflightService {
     );
     run.materialized = created.map((t) => t.id);
     await this.ws.preflight.save(run);
+
+    // 新しいタスクと関係を保存してから、選んだ置き換えられるタスクをアーカイブする
+    for (const id of state.archive) {
+      if (state.archived.includes(id)) continue;
+      if (tasks.get(id)) await tasks.archive(id);
+      state.archived.push(id);
+      await this.ws.preflight.save(run);
+    }
+    state.done = true;
+    await this.ws.preflight.save(run);
+
     this.index.invalidate();
     this.ws.emit({ type: "changed", kind: "task", request: requestId });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
-    return created;
+    return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
   }
 }
 

@@ -4,12 +4,13 @@
 //   FAKE_REPO     作業場所（コンテナの /workspace に当たる）
 //   FAKE_DATA     データディレクトリ（コンテナの /data に当たる）
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
+//   FAKE_SUPERSEDE 置き換えられるタスクの参照（<要望ID>/T001）。評価の影響と D2 の関係に supersedes として書く
 //   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く）
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const { FAKE_REPO: repo, FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_TARGET: target = "" } = process.env;
+const { FAKE_REPO: repo, FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_TARGET: target = "", FAKE_SUPERSEDE: supersede = "" } = process.env;
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 
@@ -30,13 +31,14 @@ function runTurn(id, text) {
       { target, type: "impacts", reason: "同じ領域", confidence: 0.8 },
       { target, type: "bogus", reason: "不正な種類は捨てられる" },
       { target: "261001-nopee/T009", type: "impacts", reason: "存在しない相手はタスク化で捨てられる" },
+      ...(supersede ? [{ target: supersede, type: "supersedes", reason: "新しい方式に置き換える", confidence: 0.9 }] : []),
     ],
   };
   writeFileSync(join(abs, "assessment.json"), scenario === "broken" ? "{ not json" : JSON.stringify(assessment));
   writeFileSync(join(abs, "drafts", "D1.md"), "---\nkey: D1\ntitle: 下準備\ndependsOn: []\n---\n\n準備する\n");
   writeFileSync(
     join(abs, "drafts", "D2.md"),
-    `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n---\n\n作る\n`,
+    `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n${supersede ? `  - { type: supersedes, target: ${supersede} }\n` : ""}---\n\n作る\n`,
   );
   notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];

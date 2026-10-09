@@ -25,8 +25,11 @@ PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマ
 
 1. `request new "<タイトル>" --body "<背景・やりたいこと・完了条件を箇条書きで>"`（任意で `--area src/web --tag ui --due YYYY-MM-DD --milestone <id>`）
 2. Preflight を頼まれたら `preflight <要望ID>`（実際の Codex では 3〜5 分。終わるまで待つ）→ `drafts <要望ID>` で評価とタスク案を読む
-3. 評価の要点（GO / 要確認 / NO GO、リスク、確認事項）とタスク案（D1, D2 ...）をユーザーに要約して見せる
-4. **タスク化（`accept`）はユーザーの了承を得てから。** 外す案があれば `--skip D3`、一部だけなら `--only D1,D2`
+3. 評価の要点（GO / 要確認 / NO GO、リスク、確認事項）とタスク案（D1, D2 ...）をユーザーに要約して見せる。
+   `drafts --json` の `supersedes` に **置き換えられる既存タスク** があれば、それも見せる
+4. **タスク化（`accept`）はユーザーの了承を得てから。** 外す案があれば `--skip D3`、一部だけなら `--only D1,D2`。
+   置き換えられるタスクをアーカイブするかもユーザーに確かめ、了承があれば `--archive-superseded`（無ければ残る）。
+   `accept --json` は `{ tasks, archived, kept }`
 
 確認事項（questions）はタスクにしない。チャットでユーザーに聞く。
 
@@ -37,7 +40,9 @@ PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマ
 
 1. ブランチに入る: 無ければ最新の main から作る（`git switch main && git pull --ff-only && git switch -c <branch>`）、あれば `git switch <branch>`。
    作業ツリー（git worktree）は作らない（作業ツリーでは依存の `link:../llmcs/...` が解決できない）
-2. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --json` で中身と依存（depends_on）を読む。依存が完了していないタスクから始めない
+2. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --json` で中身と依存（depends_on）を読む。依存が完了していないタスクから始めない。
+   **置き換えられたタスク**（`ls` の `※置換`、`--json` の `superseded`）からは始めない。残っていれば扱いをユーザーに確かめる
+   （不要ならユーザーの了承を得て `archive`）。`move` が警告（`warnings`）を返したら、作業を止めてユーザーに伝える
 3. 着手: `move T003 doing --req <要望ID>`
 4. 作業し、テスト（`pnpm -s check`）を通してブランチにコミット・push したら、完了: `move T003 done --req <要望ID> --output https://github.com/tamuto/pcube/commit/<sha>`
    （成果物が複数あれば `--output` を繰り返す）
