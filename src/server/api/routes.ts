@@ -2,10 +2,11 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { REQUEST_STATUSES, relationTypes, type Relation, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
+import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
 import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
+import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
@@ -153,6 +154,8 @@ export function apiRoutes(ctx: PcubeContext) {
       tasks: ws.tasksOf(id).list(),
       runs: await preflight.list(id),
       graph: index.neighborhood(id),
+      // 対応済なのに未完了のタスクがある（外部の直接編集など）
+      issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
       // 置き換えられたタスクの印（T001 → 置き換えた側）
       superseded: Object.fromEntries(
         [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
@@ -162,6 +165,7 @@ export function apiRoutes(ctx: PcubeContext) {
   app.patch("/requests/:rid", async (c) => {
     const { rev, ...patch } = requestPatch.parse(await c.req.json());
     checkMilestone(patch.milestone);
+    await checkStatusChange(ws, rid(c), patch.status as Request["status"] | undefined);
     const r = await ws.requests.update(rid(c), unnull(patch) as never, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     changed("request", r.id);
     return c.json(r);
@@ -176,8 +180,11 @@ export function apiRoutes(ctx: PcubeContext) {
     const id = rid(c);
     const b = unnull(taskInput.parse(await c.req.json()));
     const t = await ws.tasksOf(id).create({ ...b, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    // 対応済の要望に未完了のタスクを足したら進行中に戻す
+    const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
-    return c.json(t, 201);
+    if (reopened) changed("request", id);
+    return c.json(reopened ? { ...t, reopened } : t, 201);
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
@@ -196,8 +203,10 @@ export function apiRoutes(ctx: PcubeContext) {
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
     const warnings = startWarnings(ws, `${id}/${tid(c)}`, col.require(tid(c)).status, next.status);
     const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
-    return c.json(warnings.length ? { ...t, warnings } : t);
+    if (reopened) changed("request", id);
+    return c.json({ ...t, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     const id = rid(c);

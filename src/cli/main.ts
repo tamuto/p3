@@ -8,6 +8,7 @@ import { loadMachineEnv, openProject, type PcubeContext } from "../server/contex
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
+import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../server/requestStatus.ts";
 import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
 import { loadUserConfig } from "../server/userConfig.ts";
@@ -335,7 +336,8 @@ async function main(argv: string[]): Promise<number> {
         },
         actor,
       );
-      return out.result(t, () => `作成: ${t.ref}  ${t.title}`);
+      const reopened = await reopened_(ctx, rid, actor);
+      return out.result(reopened ? { ...t, reopened } : t, () => `作成: ${t.ref}  ${t.title}`);
     }
 
     case "set": {
@@ -347,7 +349,10 @@ async function main(argv: string[]): Promise<number> {
       const warnings = startWarnings(ctx.ws, ref, col.require(tid).status, patch.status);
       const next = await col.update(tid, patch, { expectedRev, actor });
       warn(warnings);
-      return out.result(warnings.length ? { ...next, warnings } : next, () => `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
+      const reopened = await reopened_(ctx, next.request, actor);
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
+        `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`,
+      );
     }
 
     case "move": {
@@ -362,7 +367,10 @@ async function main(argv: string[]): Promise<number> {
       const warnings = startWarnings(ctx.ws, ref, cur.status, status);
       const next = await col.update(tid, patch, { expectedRev, actor });
       warn(warnings);
-      return out.result(warnings.length ? { ...next, warnings } : next, () => `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`);
+      const reopened = await reopened_(ctx, next.request, actor);
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
+        `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`,
+      );
     }
 
     case "check": {
@@ -529,9 +537,11 @@ async function requestCommand(
       const r = ctx.ws.requests.require(rid);
       const graph = ctx.index.neighborhood(rid);
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
-      return out.result({ item: r, tasks: ctx.ws.tasksOf(rid).list(), graph, file }, () => {
+      const issue = resolvedIssue(ctx.ws, r);
+      return out.result({ item: r, tasks: ctx.ws.tasksOf(rid).list(), graph, file, ...(issue ? { issue } : {}) }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
         return [
+          issue ? `※ ${issue}\n` : "",
           formatEntity(ctx, r, graph, file),
           "",
           `タスク (${tasks.length}):`,
@@ -561,6 +571,7 @@ async function requestCommand(
       }
       if (o.body !== undefined) patch.body = readBody(o.body);
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
+      await checkStatusChange(ctx.ws, rid, patch.status);
       const next = await ctx.ws.requests.update(rid, patch, { expectedRev, actor });
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
@@ -746,6 +757,13 @@ const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
   const m = marks.get(t.ref);
   return m?.length ? `※置換 ← ${m.map((x) => (x.from.startsWith(`${t.request}/`) ? x.from.slice(t.request.length + 1) : x.from)).join(",")}` : "";
 };
+
+/** タスクを変えた後: 対応済の要望に未完了のタスクができたら進行中に戻し、そう知らせる。戻した要望の ID を返す */
+async function reopened_(ctx: PcubeContext, rid: string, actor: string): Promise<string | undefined> {
+  if (!(await reopenIfNeeded(ctx.ws, rid, actor))) return undefined;
+  process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
+  return rid;
+}
 
 /** 警告は stderr に出す（--json の stdout を汚さない。JSON では warnings フィールドで返す） */
 const warn = (warnings: Warning[]) => {

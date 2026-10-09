@@ -7,6 +7,7 @@ const STATUS: Record<RequestStatus, { label: string; tone: string; hint: string 
   preflight: { label: "評価中", tone: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300", hint: "Preflight を実行中" },
   reviewed: { label: "開始前", tone: "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300", hint: "評価が済み、タスク化の前" },
   active: { label: "進行中", tone: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300", hint: "タスク化して作業中" },
+  resolved: { label: "対応済", tone: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-800", hint: "作業は全部終わり、人の確認待ち（確認したら完了済にする）" },
   done: { label: "完了済", tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", hint: "要望が完了" },
   rejected: { label: "見送り", tone: "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300", hint: "やらないことにした" },
 };

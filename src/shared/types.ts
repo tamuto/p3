@@ -93,8 +93,12 @@ export interface Task {
 // 要望 — 作業の単位。1要望 = 1フォルダ = 1作業ツリー（ブランチ）
 // ---------------------------------------------------------------------------
 
-export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "done" | "rejected";
-export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "done", "rejected"];
+/**
+ * 要望のステータス。resolved（対応済）は AI など作業する側が「全タスクを終えた」と示すもので、人の確認待ち。
+ * done（完了済）・rejected（見送り）は人が決める。
+ */
+export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "resolved" | "done" | "rejected";
+export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "resolved", "done", "rejected"];
 
 export interface Workstream {
   branch: string;

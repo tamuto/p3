@@ -183,9 +183,12 @@ export class PreflightService {
     } finally {
       run.finishedAt = nowIso();
       await this.ws.preflight.save(run);
-      // 失敗したら「評価中」のまま残さず元へ戻す
+      // 評価中にした要望だけ、終わったら評価済み（失敗なら元）へ戻す。実行中に人や AI が変えたステータス
+      // （進行中に戻した・完了済にしたなど）や、評価中にしていない要望（進行中・対応済など）は上書きしない
       const status = after(run.status === "completed");
-      if (this.ws.requests.get(run.requestId)?.status !== status) await this.ws.requests.update(run.requestId, { status });
+      if (this.ws.requests.get(run.requestId)?.status === "preflight" && status !== "preflight") {
+        await this.ws.requests.update(run.requestId, { status });
+      }
       // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
       this.active.delete(run.id);
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });

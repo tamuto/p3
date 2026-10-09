@@ -289,6 +289,31 @@ describe("置き換えられたタスク", () => {
   });
 });
 
+describe("要望の対応済", () => {
+  it("全タスクを完了したら対応済にでき、未完了のタスクができたら進行中に戻す", async () => {
+    const { root, rid } = await initialized();
+    pcube(root, ["preflight", rid, "--engine", "mock"]);
+    pcube(root, ["accept", rid]);
+    const ng = pcube(root, ["request", "set", rid, "status=resolved"]);
+    expect(ng.code).toBe(1);
+    expect(ng.err).toContain("完了していないタスクがあります: T001(todo), T002(todo), T003(todo)");
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+
+    for (const t of ["T001", "T002", "T003"]) pcube(root, ["move", t, "done", "--req", rid]);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active"); // 自動では対応済にしない
+    const ok = pcube(root, ["request", "set", rid, "status=resolved", "--json"], { PCUBE_ACTOR: "ai:claude" });
+    expect(ok.code, ok.err).toBe(0);
+    expect(ok.json()).toMatchObject({ status: "resolved", updatedBy: "ai:claude" });
+    expect(pcube(root, ["request", "ls", "--status", "resolved", "--json"]).json().map((r: any) => r.id)).toEqual([rid]);
+    expect(pcube(root, ["progress"]).out).toContain("resolved"); // 既定の一覧に残る（確認待ち）
+
+    const back = pcube(root, ["move", "T002", "doing", "--req", rid, "--json"]);
+    expect(back.err).toContain("進行中に戻しました");
+    expect(back.json().reopened).toBe(rid);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+  });
+});
+
 describe("pcube milestone と要望の管理項目", () => {
   it("マイルストーンを作り、要望に期限・マイルストーン・タグを付け、進捗をマイルストーンごとにまとめる", async () => {
     const { root, rid } = await initialized();
