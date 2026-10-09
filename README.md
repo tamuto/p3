@@ -263,6 +263,24 @@ ID の順は数を含む部分を数として比べる（T2 < T10）。要望・
 
 ## Preflight
 
+### ChatGPT プランで動かす（Sign in with ChatGPT）
+
+Preflight の Codex は、各自の ChatGPT アカウント（プラン）で動かす。サインインは P3 が行う（Codex の初期設定のサインインは要らない）。
+
+```bash
+p3 chatgpt login        # ブラウザで ChatGPT にサインインし、プランの利用に同意する（127.0.0.1:1455 で待つ）
+p3 chatgpt login --paste  # ブラウザがコールバックに届かない環境: 「接続できません」の画面のアドレスバーの URL を貼る
+p3 chatgpt status       # 接続の状態（アカウント・プラン利用の可否・期限）
+p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う）。--forget でこのマシンの登録ごと消す
+```
+
+- 接続はこのマシン・この人のもので、どのプロジェクトにも属さない（`~/.config/infodb-p3/chatgpt.json`、0600）。
+  トークンは CLI の出力・画面・ログに出さない。個人設定（`config.yaml`）とは別のファイルなので、互いの保存で消えない
+- トークンは使うときに更新する（期限の 35 分前を過ぎていたら。refresh token は毎回入れ替わる）。更新できなくなったら
+  サインインし直してもらう。解除しても、このマシンの登録（ホスト ID・発行された client ID）とアカウントは残し、次のサインインで使う
+- DevContainer では、VS Code が待ち受けのポートを転送するので、ホストのブラウザからのコールバックが届く。
+  詳しい設計は [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md)
+
 ```
 要望を書く ─▶ 文脈選定 ─▶ Codex が評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
              (intel)      (codex-workspace)         (drafts/D*.md)              (tasks/T*.md + 関係 + ブランチ)
