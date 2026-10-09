@@ -228,6 +228,8 @@ describe("project.yaml", () => {
     expect(text).toContain("name: new");
     expect(text).toContain("instructions: 観点");
     expect(text).not.toContain("statuses"); // 列の設定は無くなったので消す
+    expect(text.indexOf("name:")).toBeLessThan(text.indexOf("docs:")); // 後から足した項目も決まった順
+    expect(text.indexOf("repo:")).toBeLessThan(text.indexOf("docs:"));
     expect(normalizeProject((await import("yaml")).parse(text)).docs).toEqual(["docs"]);
   });
 

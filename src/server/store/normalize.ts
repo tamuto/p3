@@ -82,7 +82,7 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
   return {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
-    repo: str(d.repo) ?? ".",
+    repo: str(d.repo) ?? "", // 空なら個人設定のリポジトリ（無ければデータのフォルダ）
     docs: strs(d.docs),
     milestones: Array.isArray(d.milestones)
       ? (d.milestones as unknown[])

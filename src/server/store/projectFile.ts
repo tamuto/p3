@@ -36,5 +36,13 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
     if (value === undefined) doc.delete(key);
     else doc.set(key, doc.createNode(value));
   }
+  // 後から足した項目も決まった順に並べる（コメントは項目に付いているので一緒に動く）
+  if (YAML.isMap(doc.contents)) {
+    const rank = (k: unknown) => {
+      const i = ORDER.indexOf(String(YAML.isScalar(k) ? k.value : k) as keyof ProjectConfig);
+      return i < 0 ? ORDER.length : i;
+    };
+    doc.contents.items.sort((x, y) => rank(x.key) - rank(y.key));
+  }
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
 }

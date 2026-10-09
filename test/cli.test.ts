@@ -105,7 +105,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(pcube(root, ["impact", "1", "--json", ...r]).json()).toEqual([`${rid}/T002`]);
 
     expect(pcube(root, ["archive", "2", ...r]).code).toBe(0);
-    expect(pcube(root, ["show", "T2", ...r]).code).toBe(1);
+    expect(pcube(root, ["show", "T2", ...r]).code).toBe(2); // アーカイブしたら見つからない
   });
 
   it("move --output で成果物（PR の URL など）を足す。全要望の一覧と進捗", async () => {
@@ -138,6 +138,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(conflict.err).toContain("競合");
     expect(pcube(root, ["move", "1", "done", "--rev", "2", ...r]).code).toBe(0);
     expect(pcube(root, ["move", "99", "done", ...r]).code).toBe(2);
+    expect(pcube(root, ["show", "T099", ...r]).code).toBe(2); // show は語句でも探す。何も当たらなければ 2
     expect(pcube(root, ["nope"]).code).toBe(1);
     expect(pcube(root, ["set", "1", "color=red", ...r]).err).toContain("変更できるキー");
     const noReq = pcube(root, ["new", "どこに？"]);

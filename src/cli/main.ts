@@ -596,7 +596,7 @@ function ambiguous(out: Output, ctx: PcubeContext, query: string, current?: stri
   out.result(r, () =>
     r.candidates.length ? `候補が複数あります:\n${table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title]))}` : `見つかりません: ${query}`,
   );
-  return 1;
+  return r.candidates.length ? 1 : 2; // 候補が複数なら使い方の誤り（1）、何も無ければ見つからない（2）
 }
 
 async function pickRun(ctx: PcubeContext, rid: string, runId?: string) {

@@ -246,7 +246,7 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
   const text = [
     `name           ${p.name}`,
     `description    ${p.description || "（なし）"}`,
-    `repo           ${p.repo}  (${ws.repoRoot})`,
+    `repo           ${ws.repoRoot}${p.repo ? `  (project.yaml: ${p.repo})` : "  (個人設定)"}`,
     `docs           ${p.docs.join(", ") || "（なし）"}`,
     `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
