@@ -198,7 +198,7 @@ export class PreflightService {
       const t = await tasks.create(
         {
           title: d.title,
-          status: this.ws.project.statuses[0]?.id ?? "todo",
+          status: "todo",
           labels: [],
           areas: d.areas,
           outputs: [],

@@ -45,22 +45,16 @@ export interface Relation {
 // タスク
 // ---------------------------------------------------------------------------
 
-export interface StatusDef {
-  id: string;
-  label: string;
-  /** 完了扱いの列 */
-  done?: boolean;
-}
-
 /**
- * タスクは AI か人が実施する。人から見て必要なのは「まだ動いていない / AI が処理中 / 処理が終わった」だけ。
- * 終わったもの（PR・MR・ドキュメント）のレビューは成果物の側で行うので、タスクとしては完了でよい。
+ * タスクの状態は3つで固定（設定では変えない）。タスクは AI か人が実施し、人から見て必要なのは
+ * 「まだ動いていない / 処理中 / 処理が終わった（PR・MR・ドキュメントが出た）」だけ。成果物のレビューは成果物の側で行う。
+ * 保留や取りやめの状態は持たない: AI が進めた作業は、マージしないなら完了のまま（成果物の側で閉じる）、
+ * 手を付けないなら未着手のままでよい。
  */
-export const DEFAULT_STATUSES: StatusDef[] = [
-  { id: "todo", label: "未着手" },
-  { id: "doing", label: "作業中" },
-  { id: "done", label: "完了", done: true },
-];
+export const TASK_STATUSES = ["todo", "doing", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = { todo: "未着手", doing: "作業中", done: "完了" };
+export const isTaskStatus = (s: unknown): s is TaskStatus => (TASK_STATUSES as readonly unknown[]).includes(s);
 
 export interface Task {
   /** 要望の中での ID（T001） */
@@ -70,7 +64,7 @@ export interface Task {
   /** プロジェクト全体で一意な参照（<要望ID>/T001。ファイルには書かない） */
   ref: string;
   title: string;
-  status: string;
+  status: TaskStatus;
   labels: string[];
   /** 影響するコード領域（例: "src/server/store"）。暗黙の関連の根拠になる */
   areas: string[];
@@ -140,7 +134,7 @@ export interface RequestProgress {
   request: Request;
   tasks: TaskMark[];
   /** ステータスごとのタスク数 */
-  counts: Record<string, number>;
+  counts: Record<TaskStatus, number>;
   total: number;
   done: number;
   /** 最後に変更された日時（要望かタスク） */
@@ -237,7 +231,6 @@ export interface ProjectConfig {
   repo: string;
   /** プロジェクトのドキュメント（リポジトリ相対のファイル/フォルダ）。Preflight で最初に読ませる */
   docs: string[];
-  statuses: StatusDef[];
   /** マイルストーン（リリース）。複数の要望をまとめる */
   milestones: Milestone[];
   /** ブランチ命名規則。{id} {slug} を置換 */

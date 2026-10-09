@@ -77,14 +77,11 @@ describe("REST API", () => {
     expect(del.body.relations).toEqual([]);
   });
 
-  it("プロジェクト設定: 使用中のステータスは消せず、重複を拒む", async () => {
+  it("プロジェクト設定を保存できる。タスクのステータスは 未着手 / 作業中 / 完了 だけ", async () => {
     const { call, ctx, rid } = await setup();
-    await newTask(ctx, rid, { title: "A", status: "doing" });
-    const orphan = await call("PUT", "/project", { statuses: [{ id: "todo", label: "未着手" }] });
-    expect(orphan.status).toBe(400);
-    expect(orphan.body.error).toContain("doing");
-    const dup = await call("PUT", "/project", { statuses: [{ id: "doing", label: "a" }, { id: "doing", label: "b" }] });
-    expect(dup.status).toBe(400);
+    const t = await newTask(ctx, rid, { title: "A" });
+    expect((await call("PATCH", `/requests/${rid}/tasks/${t.id}`, { status: "hold" })).status).toBe(400);
+    expect((await call("PATCH", `/requests/${rid}/tasks/${t.id}`, { status: "doing" })).body.status).toBe("doing");
     const ok = await call("PUT", "/project", { name: "新しい名前", docs: ["docs"] });
     expect(ok.body).toMatchObject({ name: "新しい名前", docs: ["docs"] });
   });
@@ -99,6 +96,11 @@ describe("REST API", () => {
     expect((await call("PUT", "/project", { milestones: [] })).body.error).toContain("使用中のマイルストーン");
     expect((await call("PATCH", `/requests/${rid}`, { milestone: null, due: null })).body).not.toHaveProperty("milestone");
     expect((await call("PUT", "/project", { milestones: [] })).status).toBe(200);
+    // 作成のときから期限・マイルストーン・タグを付けられる
+    await call("PUT", "/project", { milestones: [{ id: "v2", title: "次" }] });
+    const created = await call("POST", "/requests", { title: "最初から", milestone: "v2", due: "2026-12-01", tags: ["ui"] });
+    expect(created.body).toMatchObject({ milestone: "v2", due: "2026-12-01", tags: ["ui"], status: "draft" });
+    expect((await call("POST", "/requests", { title: "x", milestone: "nope" })).status).toBe(400);
   });
 
   it("完了したタスクに人が「済み」を付け外しできる。完了前は 400", async () => {

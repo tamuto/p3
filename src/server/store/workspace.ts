@@ -2,7 +2,7 @@ import { readFile, watch } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
-import type { ProjectConfig, Request, ServerEvent, StatusDef, Task } from "../../shared/types.ts";
+import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError } from "./collection.ts";
 import { newRequestId } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
@@ -13,18 +13,17 @@ type Listener = (e: ServerEvent) => void;
 
 /**
  * ステータスを変えた日時を記録する（予定ではなく事実）。
- *   最初の列（未着手）以外にした → startedAt（未着手に戻したら消す）
- *   完了扱いの列にした          → doneAt（完了から戻したら消す）
+ *   未着手以外にした → startedAt（未着手に戻したら消す）
+ *   完了にした       → doneAt（完了から戻したら消す）
  *   完了から戻した              → 人の「済み」（checkedAt）も消す
  */
-export function stampStatus(prev: Task | undefined, next: Task, statuses: StatusDef[]): Task {
+export function stampStatus(prev: Task | undefined, next: Task): Task {
   if (prev && prev.status === next.status) return next;
   const now = next.updatedAt;
-  const done = statuses.some((s) => s.done && s.id === next.status);
-  const first = statuses[0]?.id;
+  const done = next.status === "done";
   return {
     ...next,
-    startedAt: next.status === first ? undefined : (prev?.startedAt ?? next.startedAt ?? now),
+    startedAt: next.status === "todo" ? undefined : (prev?.startedAt ?? next.startedAt ?? now),
     doneAt: done ? now : undefined,
     checkedAt: done ? next.checkedAt : undefined,
   };
@@ -48,7 +47,11 @@ export class Workspace {
   private listeners = new Set<Listener>();
   private abort = new AbortController();
 
-  constructor(readonly dataDir: string) {
+  /** repoOverride: 個人設定にある手元のリポジトリの場所（project.yaml の repo より優先） */
+  constructor(
+    readonly dataDir: string,
+    private readonly repoOverride?: string,
+  ) {
     this.requests = new MarkdownCollection<Request>({
       layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
       normalize: normalizeRequest,
@@ -63,6 +66,7 @@ export class Workspace {
 
   /** 管理対象リポジトリの絶対パス（Codex の cwd） */
   get repoRoot(): string {
+    if (this.repoOverride) return this.repoOverride;
     return isAbsolute(this.project.repo) ? this.project.repo : resolve(this.dataDir, this.project.repo);
   }
 
@@ -82,7 +86,7 @@ export class Workspace {
         normalize: normalizeTaskIn(requestId),
         keyOrder: TASK_KEY_ORDER,
         derived: ["request", "ref"],
-        beforeWrite: (prev, next) => stampStatus(prev, next, this.project.statuses),
+        beforeWrite: (prev, next) => stampStatus(prev, next),
       });
       this.taskCollections.set(requestId, col);
     }

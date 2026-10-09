@@ -4,7 +4,7 @@ import type { ProjectConfig } from "../../shared/types.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
 const ORDER: (keyof ProjectConfig)[] = [
-  "name", "description", "repo", "docs", "statuses", "milestones", "branchPattern", "worktreeDir", "preflight",
+  "name", "description", "repo", "docs", "milestones", "branchPattern", "worktreeDir", "preflight",
 ];
 
 /** project.yaml に書く形。既定値のままの項目や空の項目は省き、人が読み書きしやすく保つ */
@@ -12,9 +12,8 @@ function toPlain(cfg: ProjectConfig): Record<string, unknown> {
   return {
     name: cfg.name,
     description: cfg.description || undefined,
-    repo: cfg.repo,
+    repo: cfg.repo || undefined,
     docs: cfg.docs.length ? cfg.docs : undefined,
-    statuses: cfg.statuses.map((s) => (s.done ? { id: s.id, label: s.label, done: true } : { id: s.id, label: s.label })),
     milestones: cfg.milestones.length
       ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
       : undefined,
@@ -31,10 +30,19 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
   const text = await readFile(path, "utf8").catch(() => "");
   const doc = text.trim() ? YAML.parseDocument(text) : new YAML.Document({});
   const plain = toPlain(cfg);
+  doc.delete("statuses"); // 以前は列を設定できた。今は未着手 / 作業中 / 完了で固定
   for (const key of ORDER) {
     const value = plain[key];
     if (value === undefined) doc.delete(key);
     else doc.set(key, doc.createNode(value));
+  }
+  // 後から足した項目も決まった順に並べる（コメントは項目に付いているので一緒に動く）
+  if (YAML.isMap(doc.contents)) {
+    const rank = (k: unknown) => {
+      const i = ORDER.indexOf(String(YAML.isScalar(k) ? k.value : k) as keyof ProjectConfig);
+      return i < 0 ? ORDER.length : i;
+    };
+    doc.contents.items.sort((x, y) => rank(x.key) - rank(y.key));
   }
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
 }

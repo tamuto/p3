@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { localToday } from "../../shared/dates.ts";
-import type { RequestProgress, StatusDef, TaskMark } from "../../shared/types.ts";
+import type { RequestProgress, TaskMark } from "../../shared/types.ts";
 import { Hint, Picker } from "../components/Hint.tsx";
 import { DoingMark, DoneMark, Flag, TodoMark } from "../components/Marks.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
@@ -50,7 +50,7 @@ function ProgressPage() {
   const navigate = Route.useNavigate();
   const openTask = useCallback((ref: string) => void navigate({ search: (prev) => ({ ...prev, task: ref }) }), [navigate]);
   const closeTask = () => void navigate({ search: (prev) => ({ ...prev, task: undefined }) });
-  const { statuses, milestones } = ctx.info.project;
+  const { milestones } = ctx.info.project;
   const today = localToday();
   const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
 
@@ -276,7 +276,6 @@ function ProgressPage() {
                   x={x}
                   px={px}
                   zoom={zoom}
-                  statuses={statuses}
                   inView={inView}
                   onOpen={openTask}
                 />
@@ -351,7 +350,6 @@ function RequestLane({
   x,
   px,
   zoom,
-  statuses,
   inView,
   onOpen,
 }: {
@@ -361,29 +359,25 @@ function RequestLane({
   x: (d: string) => number;
   px: number;
   zoom: Zoom;
-  statuses: StatusDef[];
   inView: (left: number, width?: number) => boolean;
   /** 印をクリックしたらタスクの詳細を開く（どの印でも同じ。まとまっていれば一覧から選ぶ） */
   onOpen: (ref: string) => void;
 }) {
   const r = p.request;
   const closed = CLOSED.has(r.status);
-  const first = statuses[0]?.id;
   const [picker, setPicker] = useState<{ anchor: DOMRect; items: TaskMark[] } | null>(null);
 
   // 印を、ズームのまとまり（日 / 週 / 月）ごと・種類ごとにまとめる
   const groups = useMemo(() => {
-    const done = new Set(statuses.filter((s) => s.done).map((s) => s.id));
     const marks: { date: string; kind: MarkKind; item: TaskMark }[] = [];
     for (const task of p.tasks) {
-      if (done.has(task.status) && task.doneAt) marks.push({ date: dateOf(task.doneAt), kind: task.checkedAt ? "checked" : "done", item: task });
-      else if (!done.has(task.status) && task.status !== first) marks.push({ date: task.startedAt ? dateOf(task.startedAt) : today, kind: "doing", item: task });
+      if (task.status === "done" && task.doneAt) marks.push({ date: dateOf(task.doneAt), kind: task.checkedAt ? "checked" : "done", item: task });
+      else if (task.status === "doing") marks.push({ date: task.startedAt ? dateOf(task.startedAt) : today, kind: "doing", item: task });
     }
     return groupMarks(marks, zoom);
-  }, [p.tasks, zoom, today, first, statuses]);
-  const isDone = (m: TaskMark) => statuses.some((s) => s.done && s.id === m.status);
-  const todo = p.tasks.filter((m) => m.status === first);
-  const overdue = !closed && !!r.due && r.due < today && p.tasks.some((m) => !isDone(m));
+  }, [p.tasks, zoom, today]);
+  const todo = p.tasks.filter((m) => m.status === "todo");
+  const overdue = !closed && !!r.due && r.due < today && p.tasks.some((m) => m.status !== "done");
   const cy = top + ROW_H / 2;
   const icon = (kind: string) => (kind === "doing" ? <DoingMark /> : <DoneMark checked={kind === "checked"} />);
 
@@ -453,7 +447,7 @@ function RequestLane({
             key: m.ref,
             label: (
               <>
-                {icon(isDone(m) ? (m.checkedAt ? "checked" : "done") : "doing")}
+                {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : "doing")}
                 <span className="font-mono text-sm text-slate-500">{m.id}</span>
                 <span className="truncate">{m.title}</span>
               </>

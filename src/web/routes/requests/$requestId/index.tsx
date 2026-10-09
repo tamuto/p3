@@ -1,12 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  REQUEST_STATUSES,
   RELATION_TYPES,
+  type RequestStatus,
   type PreflightLogEntry,
   type PreflightRun,
   type ProposedTask,
   type Request,
 } from "../../../../shared/types.ts";
+import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
 import { api, type EngineStatus } from "../../../lib/api.ts";
 import { absRef } from "../../../../shared/refs.ts";
@@ -409,7 +412,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
             ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
             <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("ghost", "underline")}>
-              かんばんで見る
+              タスクボードで見る
             </Link>
           </p>
         ) : (
@@ -427,13 +430,16 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
 }
 
 /** 要望の管理項目（期限・マイルストーン・タグ）。変えるとすぐ保存する */
+/** 要望の管理情報（タイトル・ステータス・期限・マイルストーン・タグ）。期限〜タグは Preflight には渡さない */
 function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   const { request } = data;
+  const [title, setTitle] = useState(request.title);
   const [tags, setTags] = useState(request.tags.join(", "));
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => setTitle(request.title), [request.title]);
   useEffect(() => setTags(request.tags.join(", ")), [request.tags]);
 
-  async function save(patch: { due?: string | null; milestone?: string | null; tags?: string[] }) {
+  async function save(patch: { title?: string; status?: RequestStatus; due?: string | null; milestone?: string | null; tags?: string[] }) {
     try {
       await api.patchRequest(request.id, { ...patch, rev: request.rev } as never);
       setError(null);
@@ -446,36 +452,59 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
 
   const tagList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
-    <section className="flex flex-wrap items-end gap-4">
-      <Field label="期限">
-        <input type="date" className={`${inputCls} !w-44`} value={request.due ?? ""} onChange={(e) => void save({ due: e.target.value || null })} />
-      </Field>
-      <Field label="マイルストーン">
-        <select className={`${inputCls} !w-56`} value={request.milestone ?? ""} onChange={(e) => void save({ milestone: e.target.value || null })}>
-          <option value="">（なし）</option>
-          {ctx.info.project.milestones.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.title}
-              {m.due ? `（${m.due}）` : ""}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="タグ（カンマ区切り）">
+    <section className="space-y-4">
+      <Field label="タイトル">
         <input
-          className={`${inputCls} !w-64`}
-          value={tags}
-          placeholder="feature, ui"
-          onChange={(e) => setTags(e.target.value)}
-          onBlur={() => tagList(tags).join() !== request.tags.join() && void save({ tags: tagList(tags) })}
+          className={`${inputCls} text-lg font-semibold`}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            if (!title.trim()) return setTitle(request.title);
+            if (title.trim() !== request.title) void save({ title: title.trim() });
+          }}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         />
       </Field>
-      {ctx.info.project.milestones.length === 0 && (
-        <Link to="/settings" className={buttonCls("ghost", "text-sm underline")}>
-          マイルストーンを設定で作る
-        </Link>
-      )}
-      {error && <p className="w-full text-rose-600">{error}</p>}
+      <div className="flex flex-wrap items-start gap-4">
+        <Field label="ステータス">
+          <select className={`${inputCls} !w-36`} value={request.status} onChange={(e) => void save({ status: e.target.value as RequestStatus })}>
+            {REQUEST_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {REQUEST_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="期限">
+          <input type="date" className={`${inputCls} !w-44`} value={request.due ?? ""} onChange={(e) => void save({ due: e.target.value || null })} />
+        </Field>
+        <Field label="マイルストーン">
+          <select className={`${inputCls} !w-56`} value={request.milestone ?? ""} onChange={(e) => void save({ milestone: e.target.value || null })}>
+            <option value="">（なし）</option>
+            {ctx.info.project.milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.due ? `（${m.due}）` : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="タグ（カンマ区切り）">
+          <input
+            className={`${inputCls} !w-64`}
+            value={tags}
+            placeholder="feature, ui"
+            onChange={(e) => setTags(e.target.value)}
+            onBlur={() => tagList(tags).join() !== request.tags.join() && void save({ tags: tagList(tags) })}
+          />
+        </Field>
+        {ctx.info.project.milestones.length === 0 && (
+          <Link to="/settings" className={buttonCls("ghost", "mt-7 text-sm underline")}>
+            マイルストーンを設定で作る
+          </Link>
+        )}
+      </div>
+      {error && <p className="text-rose-600">{error}</p>}
     </section>
   );
 }

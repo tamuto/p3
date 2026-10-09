@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import type { Milestone, ProjectConfig, StatusDef } from "../../shared/types.ts";
+import type { Milestone, ProjectConfig } from "../../shared/types.ts";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
@@ -30,7 +30,6 @@ function SettingsPage() {
     setMsg(null);
   };
   /** その列にあるタスクの数（全要望） */
-  const used = (id: string) => ctx.requests.reduce((n, p) => n + (p.counts[id] ?? 0), 0);
 
   async function save() {
     try {
@@ -48,14 +47,6 @@ function SettingsPage() {
   const inMilestone = (id: string) => ctx.requests.filter((p) => p.request.milestone === id).length;
   const updateMilestone = (i: number, patch: Partial<Milestone>) =>
     set("milestones", draft.milestones.map((m, j) => (j === i ? { ...m, ...patch } : m)));
-  const updateStatus = (i: number, patch: Partial<StatusDef>) =>
-    set("statuses", draft.statuses.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-  const moveStatus = (i: number, d: -1 | 1) => {
-    const list = [...draft.statuses];
-    [list[i], list[i + d]] = [list[i + d], list[i]];
-    set("statuses", list);
-  };
-
   return (
     <div className="mx-auto max-w-4xl space-y-10 p-8 pb-24">
       <header className="flex items-center gap-4">
@@ -91,36 +82,6 @@ function SettingsPage() {
             </div>
           ))}
           <Button onClick={() => set("docs", [...draft.docs, ""])}>＋ パスを追加</Button>
-        </div>
-      </Section>
-
-      <Section title="かんばんの列（ステータス）">
-        <p className="text-slate-500">
-          id はタスクファイルの status に書かれる値です。使用中の列は消せません。タスクは AI か人が実施するので、
-          「まだ動いていない / 作業中 / 完了（PR・MR・ドキュメントが出た）」程度の少ない列を勧めます。
-        </p>
-        <div className="space-y-2">
-          {draft.statuses.map((s, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input className={`${inputCls} !w-44 font-mono`} value={s.id} onChange={(e) => updateStatus(i, { id: e.target.value })} />
-              <input className={inputCls} value={s.label} onChange={(e) => updateStatus(i, { label: e.target.value })} />
-              <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                <input type="checkbox" checked={!!s.done} onChange={(e) => updateStatus(i, { done: e.target.checked })} />
-                完了扱い
-              </label>
-              <span className="w-16 shrink-0 text-right text-sm text-slate-400">{used(s.id)} 件</span>
-              <Button variant="ghost" disabled={i === 0} onClick={() => moveStatus(i, -1)}>
-                ↑
-              </Button>
-              <Button variant="ghost" disabled={i === draft.statuses.length - 1} onClick={() => moveStatus(i, 1)}>
-                ↓
-              </Button>
-              <Button variant="ghost" disabled={used(s.id) > 0} onClick={() => set("statuses", draft.statuses.filter((_, j) => j !== i))}>
-                削除
-              </Button>
-            </div>
-          ))}
-          <Button onClick={() => set("statuses", [...draft.statuses, { id: "", label: "" }])}>＋ 列を追加</Button>
         </div>
       </Section>
 

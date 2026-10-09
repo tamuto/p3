@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import type { Task } from "../../../../shared/types.ts";
-import { DoneMark } from "../../../components/Marks.tsx";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, type ReactNode } from "react";
+import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
+import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
+import { Outputs } from "../../../components/Outputs.tsx";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
@@ -9,8 +10,15 @@ import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
 
 /**
- * 要望のかんばん。列は少なくてよい（既定: 未着手 / 作業中 / 完了）。
- * 完了は「AI の処理が終わり、成果物（PR・MR・ドキュメント）が出た」状態で、レビューは成果物の側で行う。
+ * 要望のタスクボード（V 字）。
+ *
+ *   ┌ 未着手 ──────┐ ┌ 完了 ────────┐
+ *   │              │ │（済みは消える）│
+ *   └──────┐       │ │       ┌──────┘
+ *          └ 作業中 ┴─┴───────┘
+ *
+ * 未着手から下りて作業中、上がって完了。完了に人が「済み」を付けると消えるので、画面に残るのは要対応のものだけ。
+ * 済みのタスクは「対応済み」のタブで一覧する。
  */
 export const Route = createFileRoute("/requests/$requestId/board")({
   component: BoardPage,
@@ -18,29 +26,26 @@ export const Route = createFileRoute("/requests/$requestId/board")({
 
 function BoardPage() {
   const ctx = useAppCtx();
-  const { tasks, reload } = useRequestData();
-  const { statuses } = ctx.info.project;
+  const { request, tasks, reload } = useRequestData();
   const [dragId, setDragId] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const doneIds = new Set(tasks.filter((t) => statuses.find((s) => s.id === t.status)?.done).map((t) => t.id));
+  const doneIds = new Set(tasks.filter((t) => t.status === "done").map((t) => t.id));
+  const checked = tasks.filter((t) => t.status === "done" && t.checkedAt).length;
 
-  // 同じ要望の中の依存だけを見る（別の要望への依存はタスク詳細で確認する）
-  const blockedBy = (t: Task) => t.relations.filter((r) => r.type === "depends_on" && !r.target.includes("/") && !doneIds.has(r.target));
-  const dependents = (id: string) => tasks.filter((t) => t.relations.some((r) => r.type === "depends_on" && r.target === id)).length;
-
-  async function move(id: string, status: string) {
-    const t = tasks.find((x) => x.id === id);
-    if (!t || t.status === status) return;
+  async function patch(t: Task, p: { status?: TaskStatus; checked?: boolean }) {
     try {
-      await api.patchTask(t.ref, { status, rev: t.rev });
+      await api.patchTask(t.ref, { ...p, rev: t.rev });
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 409 ? `${id} は他で更新されました。最新を読み込みました。` : String(e));
+      setError(e instanceof ApiError && e.status === 409 ? `${t.id} は他で更新されました。最新を読み込みました。` : String(e));
     }
     reload();
     ctx.reload();
   }
+  const move = (id: string, status: TaskStatus) => {
+    const t = tasks.find((x) => x.id === id);
+    if (t && t.status !== status) void patch(t, { status });
+  };
 
   if (!tasks.length) {
     return (
@@ -50,99 +55,165 @@ function BoardPage() {
     );
   }
 
+  const pane = (s: TaskStatus, aside?: ReactNode) => {
+    // 完了は、人が済みにしたものを出さない（対応済みのタブで見る）
+    const items = tasks.filter((t) => t.status === s && !t.checkedAt);
+    return (
+      <Pane
+        status={s}
+        count={items.length}
+        aside={aside}
+        onDrop={() => {
+          if (dragId) move(dragId, s);
+          setDragId(null);
+        }}
+      >
+        {items.map((t) => (
+          <Card
+            key={t.id}
+            task={t}
+            done={s === "done"}
+            tasks={tasks}
+            doneIds={doneIds}
+            dragging={dragId === t.id}
+            onDragStart={() => setDragId(t.id)}
+            onOpen={() => ctx.open(t.ref)}
+            onCheck={() => void patch(t, { checked: true })}
+          />
+        ))}
+      </Pane>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
       {error && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{error}</div>}
-      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto p-5">
-        {statuses.map((s) => {
-          const col = tasks.filter((t) => t.status === s.id);
-          return (
-            <div
-              key={s.id}
-              onDragOver={(e) => (e.preventDefault(), setOver(s.id))}
-              onDragLeave={() => setOver(null)}
-              onDrop={() => {
-                if (dragId) void move(dragId, s.id);
-                setDragId(null);
-                setOver(null);
-              }}
-              className={cx(
-                "flex w-80 shrink-0 flex-col rounded-lg bg-slate-100 dark:bg-slate-900",
-                over === s.id && "ring-2 ring-indigo-400",
-              )}
-            >
-              <div className="flex items-center justify-between px-3 py-2.5">
-                <span className="font-semibold">{s.label}</span>
-                <span className="text-sm text-slate-500">{col.length}</span>
-              </div>
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3">
-                {col.map((t) => {
-                  const blocking = blockedBy(t);
-                  const deps = dependents(t.id);
-                  const aiRels = t.relations.filter((r) => r.origin === "ai" || r.origin === "preflight").length;
-                  return (
-                    <article
-                      key={t.id}
-                      draggable
-                      onDragStart={() => setDragId(t.id)}
-                      onClick={() => ctx.open(t.ref)}
-                      className={cx(
-                        "cursor-pointer rounded-md bg-white p-3 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-800 dark:ring-slate-700",
-                        dragId === t.id && "opacity-50",
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <Id id={t.id} />
-                        {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
-                      </div>
-                      <div className="mt-1 flex items-start gap-2">
-                        <p className="flex-1 leading-snug font-medium">{t.title}</p>
-                        {s.done && (
-                          <span className="mt-1" title={t.checkedAt ? "済み" : "完了（未確認）"}>
-                            <DoneMark checked={!!t.checkedAt} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {blocking.length > 0 && !s.done && (
-                          <Badge tone="amber" title={blocking.map((b) => b.target).join(", ")}>
-                            待ち {blocking.length}
-                          </Badge>
-                        )}
-                        {deps > 0 && <Badge tone="violet" title="このタスクに依存しているタスク数">後続 {deps}</Badge>}
-                        {aiRels > 0 && <Badge tone="indigo" title="AI / preflight が張った関係">AI関係 {aiRels}</Badge>}
-                        {t.labels.map((l) => (
-                          <Badge key={l}>{l}</Badge>
-                        ))}
-                      </div>
-                      {t.outputs.length > 0 && (
-                        <ul className="mt-2 space-y-0.5">
-                          {t.outputs.map((o) => (
-                            <li key={o} className="truncate text-sm">
-                              {/^https?:/.test(o) ? (
-                                <a href={o} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-indigo-600 hover:underline dark:text-indigo-400">
-                                  ↗ {o.replace(/^https?:\/\/(www\.)?/, "")}
-                                </a>
-                              ) : (
-                                <span className="font-mono text-slate-500">{o}</span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {(t.doneAt || t.startedAt) && (
-                        <p className="mt-2 text-sm text-slate-400" title="ステータスを変えたときに記録された日時">
-                          {t.doneAt ? `完了 ${fmtTime(t.doneAt)}` : `作業中にした ${fmtTime(t.startedAt)}`}
-                        </p>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-4 p-5">
+        <div className="grid min-h-0 grid-cols-2 gap-4">
+          {pane("todo")}
+          {pane(
+            "done",
+            checked > 0 ? (
+              <Link
+                to="/requests/$requestId/done"
+                params={{ requestId: request.id }}
+                className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
+                title="済みにしたタスクの一覧"
+              >
+                済み {checked} 件 →
+              </Link>
+            ) : null,
+          )}
+        </div>
+        {pane("doing")}
       </div>
     </div>
+  );
+}
+
+const MARK: Record<TaskStatus, ReactNode> = { todo: <TodoMark />, doing: <DoingMark />, done: <DoneMark checked={false} /> };
+
+function Pane({
+  status,
+  count,
+  aside,
+  onDrop,
+  children,
+}: {
+  status: TaskStatus;
+  count: number;
+  aside?: ReactNode;
+  onDrop: () => void;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <section
+      onDragOver={(e) => (e.preventDefault(), setOver(true))}
+      onDragLeave={() => setOver(false)}
+      onDrop={() => (setOver(false), onDrop())}
+      className={cx("flex min-h-0 min-w-0 flex-col rounded-lg bg-slate-100 dark:bg-slate-900", over && "ring-2 ring-indigo-400")}
+    >
+      <header className="flex items-center gap-2 px-3 py-2.5">
+        {MARK[status]}
+        <span className="font-semibold">{TASK_STATUS_LABEL[status]}</span>
+        <span className="text-sm text-slate-500">{count}</span>
+        <span className="ml-auto">{aside}</span>
+      </header>
+      <div className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-2 overflow-y-auto px-2 pb-3">{children}</div>
+    </section>
+  );
+}
+
+function Card({
+  task: t,
+  done,
+  tasks,
+  doneIds,
+  dragging,
+  onDragStart,
+  onOpen,
+  onCheck,
+}: {
+  task: Task;
+  done: boolean;
+  tasks: Task[];
+  doneIds: Set<string>;
+  dragging: boolean;
+  onDragStart: () => void;
+  onOpen: () => void;
+  onCheck: () => void;
+}) {
+  // 同じ要望の中の依存だけを見る（別の要望への依存はタスク詳細で確認する）
+  const blocking = t.relations.filter((r) => r.type === "depends_on" && !r.target.includes("/") && !doneIds.has(r.target));
+  const deps = tasks.filter((x) => x.relations.some((r) => r.type === "depends_on" && r.target === t.id)).length;
+  const aiRels = t.relations.filter((r) => r.origin === "ai" || r.origin === "preflight").length;
+  return (
+    <article
+      draggable
+      onDragStart={onDragStart}
+      onClick={onOpen}
+      className={cx(
+        "cursor-pointer rounded-md bg-white p-3 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-800 dark:ring-slate-700",
+        dragging && "opacity-50",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Id id={t.id} />
+        {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
+      </div>
+      <p className="mt-1 leading-snug font-medium">{t.title}</p>
+      {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0) && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {blocking.length > 0 && !done && (
+            <Badge tone="amber" title={blocking.map((b) => b.target).join(", ")}>
+              待ち {blocking.length}
+            </Badge>
+          )}
+          {deps > 0 && <Badge tone="violet" title="このタスクに依存しているタスク数">後続 {deps}</Badge>}
+          {aiRels > 0 && <Badge tone="indigo" title="AI / preflight が張った関係">AI関係 {aiRels}</Badge>}
+          {t.labels.map((l) => (
+            <Badge key={l}>{l}</Badge>
+          ))}
+        </div>
+      )}
+      {t.outputs.length > 0 && <Outputs outputs={t.outputs} />}
+      <div className="mt-2 flex items-center gap-2">
+        {(t.doneAt || t.startedAt) && (
+          <span className="text-sm text-slate-400" title="ステータスを変えたときに記録された日時">
+            {t.doneAt ? `完了 ${fmtTime(t.doneAt)}` : `作業中にした ${fmtTime(t.startedAt)}`}
+          </span>
+        )}
+        {done && (
+          <button
+            onClick={(e) => (e.stopPropagation(), onCheck())}
+            title="成果物を確認したら済みにする（このボードから消え、対応済みの一覧に移る）"
+            className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:ring-emerald-800 dark:hover:bg-emerald-950"
+          >
+            ✓ 済み
+          </button>
+        )}
+      </div>
+    </article>
   );
 }

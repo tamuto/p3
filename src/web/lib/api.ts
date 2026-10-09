@@ -67,7 +67,7 @@ export const api = {
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),
   request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
-  createRequest: (r: { title: string; body: string; areas: string[] }) => call<Request>("POST", "/requests", r),
+  createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[] }) => call<Request>("POST", "/requests", r),
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) => call<Request>("PATCH", `/requests/${rid}`, patch),
 
   task: (ref: string) => call<{ task: Task; graph: Neighborhood }>("GET", taskPath(ref)),

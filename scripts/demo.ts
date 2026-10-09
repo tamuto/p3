@@ -5,7 +5,7 @@
  *   pnpm demo:reset   作り直す
  *
  * 題材は pcube 自身の開発。要望を作り、実際に Preflight（Mock エンジン）を走らせてタスク化し、
- * 作業を進めた状態まで作る。だから評価・タスク案・かんばん・進捗の画面がそのまま確かめられる。
+ * 作業を進めた状態まで作る。だから評価・タスク案・タスクボード・進捗の画面がそのまま確かめられる。
  * データディレクトリは pcube リポジトリ内に置き（git 管理外）、repo: ".." でリポジトリルートを指す。
  */
 import { existsSync } from "node:fs";
@@ -19,7 +19,7 @@ import { PreflightService } from "../src/server/preflight/service.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 import { localToday } from "../src/shared/dates.ts";
-import { DEFAULT_STATUSES, type Request } from "../src/shared/types.ts";
+import type { Request } from "../src/shared/types.ts";
 
 const DEMO_DIR = fileURLToPath(new URL("../.pcube-demo", import.meta.url));
 
@@ -34,11 +34,10 @@ async function seedDemo(dir: string) {
   await writeFile(
     join(dir, "project.yaml"),
     YAML.stringify({
-      name: "pcube (demo)",
+      name: "p3 (demo)",
       description: "ファイルベースのプロジェクト管理ツール pcube 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
       repo: "..",
-      docs: ["README.md", "docs", "TODO.md"],
-      statuses: DEFAULT_STATUSES,
+      docs: ["README.md", "docs"],
       milestones: [
         { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
         { id: "v0.2", title: "要望単位の運用", due: day(12) },
@@ -121,14 +120,14 @@ async function seedDemo(dir: string) {
   // v0.2: 進行中
   const views = await request(
     {
-      title: "要望ごとのかんばんと進捗の画面",
+      title: "要望ごとのタスクボードと進捗の画面",
       milestone: "v0.2",
       tags: ["ui"],
       due: day(5),
       areas: ["src/web/routes"],
-      body: `要望ごとにかんばんで運用し、要望を横断して進捗を見たい。
+      body: `要望ごとにタスクボードで運用し、要望を横断して進捗を見たい。
 
-- かんばんボード（ドラッグで列を移動）
+- タスクボード（ドラッグで列を移動）
 - 進捗の画面（要望ごとの完了率）
 - タスク詳細のドロワー
 - マイルストーンごとのまとめ表示`,
@@ -178,7 +177,7 @@ async function seedDemo(dir: string) {
   // v0.3: 評価済み（タスク案のレビュー待ち）
   const mcp = await request(
     {
-      title: "pcube を MCP サーバとして公開する",
+      title: "p3 を MCP サーバとして公開する",
       milestone: "v0.3",
       tags: ["ai"],
       areas: ["src/cli"],

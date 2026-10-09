@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_STATUSES, type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
+import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
 import type { PcubeContext } from "../src/server/context.ts";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import type { PreflightEngine } from "../src/server/preflight/engine.ts";
@@ -34,7 +34,6 @@ export function projectConfig(patch: Partial<ProjectConfig> = {}): ProjectConfig
     description: "テスト用のプロジェクト",
     repo: "..",
     docs: [],
-    statuses: DEFAULT_STATUSES,
     milestones: [],
     branchPattern: "req/{id}-{slug}",
     worktreeDir: ".worktrees",

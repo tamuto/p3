@@ -2,15 +2,16 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import { userInfo } from "node:os";
-import { basename, join, relative } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { REQUEST_ID } from "../shared/refs.ts";
-import { DEFAULT_STATUSES, type ProjectConfig } from "../shared/types.ts";
+import type { ProjectConfig } from "../shared/types.ts";
 import type { PcubeContext } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
-import { DATA_DIR_NAME } from "../server/store/locate.ts";
+import { mainWorktree } from "../server/store/locate.ts";
 import { writeProjectFile } from "../server/store/projectFile.ts";
 import type { Workspace } from "../server/store/workspace.ts";
+import { loadUserConfig, PROJECT_NAME, saveUserConfig, userConfigPath } from "../server/userConfig.ts";
 
 /** プロジェクトの初期設定・設定変更、変更者と「今の要望」の判定（CLI） */
 
@@ -62,19 +63,24 @@ export function currentRequest(ctx: PcubeContext, explicit: string | undefined, 
 
 const DOC_CANDIDATES = ["docs", "doc", "README.md", "ARCHITECTURE.md", "DESIGN.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
 
-export const AGENTS_SNIPPET = `
-## タスク管理（pcube）
+const AGENTS_MARK = "タスク管理（infodb p3）";
 
-- 作業の単位は要望（\`.pcube/requests/<要望ID>/\`）。タスクは \`pcube\` CLI で操作し、\`--json\` で結果を読むこと
+export const AGENTS_SNIPPET = `
+## ${AGENTS_MARK}
+
+- 作業の単位は要望。タスクは \`p3\` CLI で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）
 - 変更するときは環境変数 \`PCUBE_ACTOR=ai:<エージェント名>\` を付ける
-- 要望の作業ツリーの中では要望の指定を省ける（それ以外では \`--req <要望ID>\`）
-- 着手するときは \`pcube move T003 doing\`、終えたら \`pcube move T003 done --output <PR の URL など>\`
-- 作業中に新しく必要になった作業は \`pcube new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
-- 関係と影響範囲は \`pcube show T003 --json\` で確認し、\`pcube link T004 depends_on T003\` で張る
+- 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami\` で確かめる
+- 着手するときは \`p3 move T003 doing\`、終えたら \`p3 move T003 done --output <PR の URL など>\`
+- 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
+- 関係と影響範囲は \`p3 show T003 --json\` で確認し、\`p3 link T004 depends_on T003\` で張る
 `;
 
 export interface InitOptions {
   cwd: string;
+  /** 個人設定に登録する名前（既定: リポジトリのフォルダ名） */
+  project?: string;
+  /** データを置くフォルダ（必須。端末では聞く） */
   dir?: string;
   name?: string;
   description?: string;
@@ -85,17 +91,16 @@ export interface InitOptions {
 }
 
 /**
- * pcube init。リポジトリのルートに .pcube/ を作り、プロジェクトの初期設定を書く。
+ * p3 init。管理したいリポジトリの中で実行する。
+ *   - データを置くフォルダ（場所は自由。リポジトリの外を勧める）に project.yaml と requests/ を作る
+ *   - 既に作られたフォルダ（他の人が作って共有したもの）を指したら、作らずに参加だけする
+ *   - どちらの場合も個人設定に「プロジェクト名 → フォルダ・手元のリポジトリ」を登録する。以後はリポジトリの中なら指定が要らない
  * 端末から実行すると対話式で聞き、--yes か非対話（AI・スクリプト）なら引数と推測した既定値で作る。
  */
 export async function init(o: InitOptions): Promise<string> {
   const root = repoRoot(o.cwd);
-  const dir = o.dir ? join(o.cwd, o.dir) : join(root, DATA_DIR_NAME);
-  if (existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} は既に初期化されています（変更は pcube config）`);
-
-  // 既定値: git とリポジトリの中身から推測する
-  const docsFound = DOC_CANDIDATES.filter((d) => existsSync(join(root, d)));
-  const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
+  const inRepo = !!mainWorktree(o.cwd);
+  const user = await loadUserConfig();
 
   const interactive = !o.yes && process.stdin.isTTY && process.stdout.isTTY;
   const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
@@ -106,20 +111,43 @@ export async function init(o: InitOptions): Promise<string> {
   };
 
   try {
-    if (rl) console.log(`pcube のプロジェクトを作ります: ${dir}\n（Enter で [ ] 内の既定値）\n`);
-    const name = await ask("プロジェクト名", o.name ?? basename(root));
+    if (rl) console.log(`p3 のプロジェクトを作ります（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
+    const key = await ask("プロジェクト名（切り替えに使う短い名前）", o.project ?? slugifyName(basename(root)) ?? "project");
+    if (!PROJECT_NAME.test(key)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${key}`);
+    const dirRaw = o.dir ?? (await ask("データを置くフォルダ（リポジトリの外を勧めます）", ""));
+    if (!dirRaw) throw new UsageError("データを置くフォルダを指定してください。例: p3 init --project pcube --dir /mnt/assets/pcube");
+    const dir = resolve(o.cwd, dirRaw);
+
+    const registered = user.projects[key];
+    if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
+    const register = async () => {
+      user.projects[key] = { dir, repos: inRepo ? { ...registered?.repos, main: root } : (registered?.repos ?? {}) };
+      await saveUserConfig(user);
+    };
+
+    // 既に作られたフォルダなら参加だけ
+    if (existsSync(join(dir, "project.yaml"))) {
+      if (registered && (!inRepo || registered.repos.main === root)) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config）`);
+      await register();
+      return [`参加しました: ${key} → ${dir}`, inRepo ? `  リポジトリ  ${root}` : "", "", "次に: p3 request ls  /  p3 serve"].filter((l, i) => l || i > 1).join("\n");
+    }
+
+    // 既定値: git とリポジトリの中身から推測する
+    const docsFound = DOC_CANDIDATES.filter((d) => existsSync(join(root, d)));
+    const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
+    const name = o.name ?? key;
     const description = await ask("何を作っているプロジェクトか（Preflight の前提になります）", o.description ?? "");
     const docs = splitList(await ask("ドキュメントのパス（カンマ区切り。Preflight で最初に読みます）", o.docs ?? docsFound.join(", ")));
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
     const addAgents =
-      o.agents ?? (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} に AI 向けの pcube の使い方を追記しますか (y/n)`, agentsFile ? "y" : "n")) : false);
+      o.agents ?? (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} に AI 向けの p3 の使い方を追記しますか (y/n)`, agentsFile ? "y" : "n")) : false);
 
     const cfg: ProjectConfig = {
       name,
       description,
-      repo: relative(dir, root) || ".",
+      // 手元のリポジトリの場所は個人設定に持つ。共有するデータには、リポジトリの中に置く（.pcube/）ときの相対パスだけ書く
+      repo: dir.startsWith(`${root}/`) ? relative(dir, root) : "",
       docs,
-      statuses: DEFAULT_STATUSES,
       milestones: [],
       branchPattern: "req/{id}-{slug}",
       worktreeDir: ".worktrees",
@@ -127,19 +155,21 @@ export async function init(o: InitOptions): Promise<string> {
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
+    await register();
 
     const target = join(root, agentsFile ?? "AGENTS.md");
-    if (addAgents && !(existsSync(target) && readFileSync(target, "utf8").includes("タスク管理（pcube）"))) {
+    if (addAgents && !(existsSync(target) && readFileSync(target, "utf8").includes(AGENTS_MARK))) {
       await appendFile(target, AGENTS_SNIPPET);
     }
     return [
-      `初期化しました: ${relative(o.cwd, dir) || "."}/project.yaml`,
-      `  プロジェクト  ${cfg.name}`,
+      `作りました: ${key} → ${dir}`,
+      inRepo ? `  リポジトリ    ${root}` : "",
       `  ドキュメント  ${cfg.docs.join(", ") || "（なし）"}`,
+      `  個人設定      ${userConfigPath()} に登録しました`,
       addAgents ? `  AI 向けの使い方を ${relative(o.cwd, target)} に追記しました` : "",
       "",
-      "次に: pcube request new \"<やりたいこと>\" --body \"...\"  →  pcube preflight <要望ID>  →  pcube serve",
-      cfg.description ? "" : "※ description が空です。pcube config set description=\"...\" で設定してください（Preflight の精度に効きます）",
+      "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
+      cfg.description ? "" : "※ description が空です。p3 config set description=\"...\" で設定してください（Preflight の精度に効きます）",
     ]
       .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))
       .join("\n")
@@ -148,6 +178,47 @@ export async function init(o: InitOptions): Promise<string> {
     rl?.close();
   }
 }
+
+/** p3 project [ls | add <名前> <フォルダ> | rm <名前>]: 個人設定のプロジェクトの一覧・登録・登録解除（データは消さない） */
+export async function projectCommand(
+  cwd: string,
+  args: string[],
+  o: { repo?: string },
+  current: string | undefined,
+): Promise<{ data: unknown; text: string }> {
+  const user = await loadUserConfig();
+  const [sub = "ls", name, dirRaw] = args;
+  if (sub === "ls") {
+    const rows = Object.entries(user.projects).map(([n, p]) => ({ name: n, ...p, current: n === current }));
+    const w = Math.max(4, ...rows.map((r) => r.name.length));
+    return {
+      data: rows,
+      text: rows.length
+        ? rows.map((r) => `${r.current ? "*" : " "} ${r.name.padEnd(w)}  ${r.dir}${r.repos.main ? `  （リポジトリ ${r.repos.main}）` : ""}`).join("\n")
+        : "登録済みのプロジェクトはありません。管理したいリポジトリの中で p3 init --project <名前> --dir <フォルダ>",
+    };
+  }
+  if (sub === "add") {
+    if (!name || !dirRaw) throw new UsageError("p3 project add <名前> <フォルダ> [--repo <リポジトリ>]");
+    if (!PROJECT_NAME.test(name)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${name}`);
+    const dir = resolve(cwd, dirRaw);
+    if (!existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} はまだ p3 のプロジェクトではありません。作るときは管理したいリポジトリの中で p3 init`);
+    if (user.projects[name] && user.projects[name].dir !== dir) throw new UsageError(`「${name}」は別のフォルダで登録済みです: ${user.projects[name].dir}`);
+    const repo = o.repo ? resolve(cwd, o.repo) : mainWorktree(cwd);
+    user.projects[name] = { dir, repos: repo ? { ...user.projects[name]?.repos, main: repo } : (user.projects[name]?.repos ?? {}) };
+    await saveUserConfig(user);
+    return { data: { name, ...user.projects[name] }, text: `登録しました: ${name} → ${dir}${repo ? `（リポジトリ ${repo}）` : ""}` };
+  }
+  if (sub === "rm") {
+    if (!name || !user.projects[name]) throw new UsageError(`登録されていません: ${name ?? ""}`);
+    delete user.projects[name];
+    await saveUserConfig(user);
+    return { data: { name }, text: `登録を外しました: ${name}（データのフォルダはそのまま）` };
+  }
+  throw new UsageError("p3 project [ls | add <名前> <フォルダ> | rm <名前>]");
+}
+
+const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 
 const CONFIG_KEYS = ["name", "description", "docs", "branchPattern", "worktreeDir", "instructions", "repo"] as const;
 
@@ -175,9 +246,8 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
   const text = [
     `name           ${p.name}`,
     `description    ${p.description || "（なし）"}`,
-    `repo           ${p.repo}  (${ws.repoRoot})`,
+    `repo           ${ws.repoRoot}${p.repo ? `  (project.yaml: ${p.repo})` : "  (個人設定)"}`,
     `docs           ${p.docs.join(", ") || "（なし）"}`,
-    `statuses       ${p.statuses.map((s) => `${s.id}${s.done ? "(完了)" : ""}`).join(" → ")}`,
     `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `worktreeDir    ${p.worktreeDir}`,

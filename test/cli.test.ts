@@ -3,17 +3,23 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
 
 const BIN = fileURLToPath(new URL("../bin/pcube.mjs", import.meta.url));
+
+/** 個人設定（~/.config/infodb-p3）はテストごとに分ける */
+let CONFIG_HOME = "";
+beforeEach(() => {
+  CONFIG_HOME = tempDir("p3-config-");
+});
 
 /** CLI を別プロセスで動かす。マシンの .env にある Codex の設定などは効かないようにする */
 function pcube(cwd: string, args: string[], env: Record<string, string> = {}) {
   const r = spawnSync(process.execPath, [BIN, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, PCUBE_CODEX_AUTH_VOLUME: "", PCUBE_CODEX_AUTH_FILE: "", PCUBE_DATA_DIR: "", PCUBE_ACTOR: "", PCUBE_REQUEST: "", ...env },
+    env: { ...process.env, PCUBE_CODEX_AUTH_VOLUME: "", PCUBE_CODEX_AUTH_FILE: "", PCUBE_DATA_DIR: "", PCUBE_ACTOR: "", PCUBE_REQUEST: "", XDG_CONFIG_HOME: CONFIG_HOME, ...env },
   });
   return { code: r.status, out: r.stdout, err: r.stderr, json: () => JSON.parse(r.stdout) };
 }
@@ -30,26 +36,27 @@ async function repo() {
 /** 初期化して要望を1つ作る */
 async function initialized() {
   const root = await repo();
-  const r = pcube(root, ["init", "--yes", "--description", "在庫管理"]);
+  const r = pcube(root, ["init", "--yes", "--description", "在庫管理", "--dir", ".pcube"]);
   expect(r.code, r.err).toBe(0);
   const req = pcube(root, ["request", "new", "通知機能", "--body", "- 送信基盤\n- 設定画面\n- 再送", "--json"]).json();
   return { root, rid: req.id as string };
 }
 
 describe("pcube init", () => {
-  it("リポジトリのルートに .pcube/requests/ を作り、リポジトリの中身から既定値を推測する", async () => {
+  it("指定したフォルダにデータを作り、リポジトリの中身から既定値を推測する", async () => {
     const root = await repo();
     await mkdir(join(root, "src"));
-    const r = pcube(join(root, "src"), ["init", "--yes", "--agents"]);
+    const r = pcube(join(root, "src"), ["init", "--yes", "--agents", "--dir", join(root, ".pcube")]);
     expect(r.code, r.err).toBe(0);
     const yaml = readFileSync(join(root, ".pcube", "project.yaml"), "utf8");
-    expect(yaml).toContain(`name: ${root.split("/").at(-1)}`);
+    expect(yaml).toContain(`name: ${root.split("/").at(-1)!.toLowerCase()}`);
     expect(yaml).toContain("repo: ..");
     expect(yaml).toMatch(/docs:\n {2}- docs\n {2}- README.md\n {2}- AGENTS.md/);
-    expect(yaml).toContain("id: doing");
+    expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);
-    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（pcube）");
-    expect(pcube(root, ["init", "--yes"]).code).toBe(1); // 2回目は拒む
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+    expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(1); // 2回目は拒む
+    expect(pcube(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
   });
 });
 
@@ -98,7 +105,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(pcube(root, ["impact", "1", "--json", ...r]).json()).toEqual([`${rid}/T002`]);
 
     expect(pcube(root, ["archive", "2", ...r]).code).toBe(0);
-    expect(pcube(root, ["show", "T2", ...r]).code).toBe(1);
+    expect(pcube(root, ["show", "T2", ...r]).code).toBe(2); // アーカイブしたら見つからない
   });
 
   it("move --output で成果物（PR の URL など）を足す。全要望の一覧と進捗", async () => {
@@ -131,6 +138,7 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(conflict.err).toContain("競合");
     expect(pcube(root, ["move", "1", "done", "--rev", "2", ...r]).code).toBe(0);
     expect(pcube(root, ["move", "99", "done", ...r]).code).toBe(2);
+    expect(pcube(root, ["show", "T099", ...r]).code).toBe(2); // show は語句でも探す。何も当たらなければ 2
     expect(pcube(root, ["nope"]).code).toBe(1);
     expect(pcube(root, ["set", "1", "color=red", ...r]).err).toContain("変更できるキー");
     const noReq = pcube(root, ["new", "どこに？"]);
@@ -138,11 +146,11 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     expect(noReq.err).toContain("要望を指定");
   });
 
-  it(".pcube/ が無ければ init を案内する", async () => {
+  it("プロジェクトが無ければ init を案内する", async () => {
     const root = await repo();
     const r = pcube(root, ["ls"]);
     expect(r.code).toBe(1);
-    expect(r.err).toContain("pcube init");
+    expect(r.err).toContain("p3 init --project");
   });
 });
 
@@ -161,7 +169,7 @@ describe("要望の作業ツリー", () => {
 
     // AI が作業ツリーで作業している想定
     const ai = { PCUBE_ACTOR: "ai:claude" };
-    expect(pcube(wt, ["whoami", "--json"], ai).json()).toEqual({ actor: "ai:claude", request: rid });
+    expect(pcube(wt, ["whoami", "--json"], ai).json()).toMatchObject({ actor: "ai:claude", request: rid });
     expect(pcube(wt, ["move", "T1", "doing"], ai).code).toBe(0);
     const added = pcube(wt, ["new", "作業中に見つかった追加の作業", "--json"], ai).json();
     expect(added.ref).toBe(`${rid}/T004`);
@@ -170,6 +178,10 @@ describe("要望の作業ツリー", () => {
     // 作業ツリーの .pcube/ はブランチ時点の写しのまま
     expect(readFileSync(join(wt, ".pcube", "requests", rid, "tasks", "T001.md"), "utf8")).toContain("status: todo");
     expect(existsSync(join(wt, ".pcube", "requests", rid, "tasks", "T004.md"))).toBe(false);
+
+    // `pnpm --dir <p3 の場所> pcube ...` で呼ばれたとき（pnpm がカレントを p3 の場所に移し、元の場所は INIT_CWD）
+    const viaPnpm = { ...ai, npm_lifecycle_event: "pcube", INIT_CWD: wt };
+    expect(pcube(fileURLToPath(new URL("..", import.meta.url)), ["whoami", "--json"], viaPnpm).json()).toMatchObject({ actor: "ai:claude", request: rid });
   });
 });
 
@@ -221,5 +233,77 @@ describe("pcube config", () => {
       docs: ["docs", "README.md"],
       preflight: { instructions: "個人情報に注意" },
     });
+  });
+});
+
+describe("個人設定のプロジェクト（データはリポジトリの外）", () => {
+  it("init で外のフォルダに作って登録し、以後はリポジトリの中・作業ツリー・プロジェクト名で決まる", async () => {
+    const app = await repo();
+    const pcubeData = join(tempDir("p3-assets-"), "pcube");
+    const r = pcube(join(app, "docs"), ["init", "--yes", "--project", "pcube", "--dir", pcubeData]);
+    expect(r.code, r.err).toBe(0);
+    expect(existsSync(join(pcubeData, "project.yaml"))).toBe(true);
+    expect(existsSync(join(app, ".pcube"))).toBe(false);
+    expect(readFileSync(join(pcubeData, "project.yaml"), "utf8")).not.toContain("repo:"); // 手元の場所は共有するデータに書かない
+    const cfg = readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8");
+    expect(cfg).toContain(`dir: ${pcubeData}`);
+    expect(cfg).toContain(`main: ${app}`);
+
+    // 2つめのプロジェクト
+    const other = await repo();
+    const otherData = join(tempDir("p3-some-"), "other");
+    expect(pcube(other, ["init", "--yes", "--project", "other", "--dir", otherData]).code).toBe(0);
+
+    // リポジトリの中なら、そのプロジェクト
+    expect(pcube(join(app, "docs"), ["whoami", "--json"]).json()).toMatchObject({ project: "pcube", dataDir: pcubeData, repo: app });
+    expect(pcube(other, ["whoami", "--json"]).json()).toMatchObject({ project: "other", dataDir: otherData });
+    // データのフォルダの中でも
+    expect(pcube(pcubeData, ["whoami", "--json"]).json().project).toBe("pcube");
+    // 関係ない場所では決まらず、選び方を案内する。--project で選べる
+    const nowhere = tempDir();
+    const ng = pcube(nowhere, ["ls"]);
+    expect(ng.code).toBe(1);
+    expect(ng.err).toContain("p3 --project <名前>");
+    expect(ng.err).toContain(pcubeData);
+    expect(pcube(nowhere, ["whoami", "--json", "--project", "other"]).json().project).toBe("other");
+    expect(pcube(nowhere, ["whoami", "--project", "nope"]).err).toContain("登録されていません");
+
+    // 要望を作り、要望の作業ツリーの中からでも決まる（作業ツリーはリポジトリの外に置いてもよい）
+    const rid = pcube(app, ["request", "new", "通知", "--json"]).json().id as string;
+    expect(existsSync(join(pcubeData, "requests", rid, "request.md"))).toBe(true);
+    git(app, "add", "-A");
+    git(app, "commit", "-qm", "x");
+    const wt = join(tempDir("p3-wt-"), rid);
+    git(app, "worktree", "add", "-q", wt, "-b", `req/${rid}`);
+    expect(pcube(wt, ["whoami", "--json"]).json()).toMatchObject({ project: "pcube", request: rid });
+
+    // 一覧（今いる場所のプロジェクトに *）・登録を外す
+    expect(pcube(app, ["project"]).out).toMatch(/^\* pcube/m);
+    expect(pcube(nowhere, ["project", "rm", "other"]).code).toBe(0);
+    // 登録が1つだけなら、どこからでもそれ
+    expect(pcube(nowhere, ["whoami", "--json"]).json().project).toBe("pcube");
+  });
+
+  it("既にあるデータのフォルダを指すと、作らずに参加だけする（別の人・別のマシンの想定）", async () => {
+    const data = join(tempDir("p3-assets-"), "shared");
+    const first = await repo();
+    expect(pcube(first, ["init", "--yes", "--project", "shared", "--dir", data, "--description", "共有"]).code).toBe(0);
+    const before = readFileSync(join(data, "project.yaml"), "utf8");
+
+    // 別の人: 個人設定は空、リポジトリは別の場所に clone した
+    CONFIG_HOME = tempDir("p3-config-");
+    const clone = await repo();
+    const r = pcube(clone, ["init", "--yes", "--project", "shared", "--dir", data]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain("参加しました");
+    expect(readFileSync(join(data, "project.yaml"), "utf8")).toBe(before);
+    // 手元のリポジトリは個人設定のものを使う
+    expect(pcube(clone, ["whoami", "--json"]).json()).toMatchObject({ project: "shared", repo: clone });
+
+    // init せずに登録だけ（リポジトリを指定）
+    CONFIG_HOME = tempDir("p3-config-");
+    expect(pcube(tempDir(), ["project", "add", "shared", data, "--repo", clone]).code).toBe(0);
+    expect(pcube(clone, ["whoami", "--json"]).json().project).toBe("shared");
+    expect(pcube(tempDir(), ["project", "add", "x", tempDir()]).err).toContain("まだ p3 のプロジェクトではありません");
   });
 });
