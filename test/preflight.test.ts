@@ -2,9 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CodexWorkspaceEngine, codexConfigFromEnv } from "../src/server/preflight/codexEngine.ts";
+import { mkdir } from "node:fs/promises";
+import { DEFAULT_IMAGE, dockerCommand } from "@llmcs/codex-workspace";
+import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
-import { makeProject, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
+import { makeProject, makeRepo, newRequest, newTask, openTestProject, projectConfig, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 
@@ -116,28 +119,37 @@ describe("PreflightService（mock エンジン）", () => {
 });
 
 describe("CodexWorkspaceEngine（偽の app-server）", () => {
-  function engine(repo: string, logFile: string, scenario = "", target = "") {
+  function engine(repo: string, data: string, logFile: string, scenario = "", target = "") {
     return new CodexWorkspaceEngine({
-      pathMap: [[repo, "/host/repo"]],
+      pathMap: [
+        [repo, "/host/repo"],
+        [data, "/host/data"],
+      ],
       ensureImage: false,
-      command: (workspace) => {
-        expect(workspace).toBe("/host/repo"); // Docker デーモンから見たパスに変換されている
-        return ["env", `FAKE_REPO=${repo}`, `FAKE_LOG=${logFile}`, `FAKE_SCENARIO=${scenario}`, `FAKE_TARGET=${target}`, process.execPath, FAKE_CODEX];
+      command: (workspace, hostData) => {
+        // Docker デーモンから見たパスに変換されている（データディレクトリがリポジトリの中なら、その下）
+        expect(workspace).toBe("/host/repo");
+        expect(hostData).toBe(data.startsWith(`${repo}/`) ? `/host/repo${data.slice(repo.length)}` : "/host/data");
+        return ["env", `FAKE_REPO=${repo}`, `FAKE_DATA=${data}`, `FAKE_LOG=${logFile}`, `FAKE_SCENARIO=${scenario}`, `FAKE_TARGET=${target}`, process.execPath, FAKE_CODEX];
       },
     });
   }
 
-  async function setup(scenario = "") {
-    const repo = await makeRepo({
-      docs: ["docs/design.md", "README.md"],
-      preflight: { instructions: "外部 SaaS の追加は要相談" },
-    });
+  /** outside: データディレクトリをリポジトリの外に置く（project.yaml の repo は絶対パス） */
+  async function setup(scenario = "", { outside = false } = {}) {
+    const config = { docs: ["docs/design.md", "README.md"], preflight: { instructions: "外部 SaaS の追加は要相談" } };
+    const repo = await makeRepo(config);
+    if (outside) {
+      repo.dataDir = tempDir("pcube-data-");
+      await mkdir(join(repo.dataDir, "requests"));
+      await writeProjectFile(join(repo.dataDir, "project.yaml"), projectConfig({ ...config, repo: repo.root }));
+    }
     const logFile = join(tempDir(), "codex.jsonl");
     // 既存のタスクは engine を作る前に用意する（偽サーバが参照として書く）
     const pre = await openTestProject(repo.dataDir);
     const past = await newRequest(pre, { title: "過去", status: "done" });
     const existing = await newTask(pre, past.id, { title: "既存", areas: ["src/a"] });
-    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, logFile, scenario, existing.ref) });
+    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) });
     const req = await newRequest(ctx, { title: "x", status: "draft", areas: ["src/a"], body: "本文" });
     const sent = () => readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     return { ctx, req, existing, sent };
@@ -160,7 +172,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const thread = messages.find((m) => m.method === "thread/start").params;
     expect(thread).toMatchObject({ cwd: "/workspace", sandbox: "danger-full-access", approvalPolicy: "never" });
     expect(thread.developerInstructions).toContain("外部 SaaS の追加は要相談");
-    expect(thread.developerInstructions).toContain(`.pcube/requests/${req.id}/preflight/${id}/`);
+    expect(thread.developerInstructions).toContain(`/data/requests/${req.id}/preflight/${id}/`);
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
     expect(prompt).toContain("## 最初に読むドキュメント");
     expect(prompt).toContain("- docs/design.md");
@@ -204,14 +216,23 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(run.error).toContain("assessment.json");
   });
 
-  it("データディレクトリがリポジトリの外にあれば始めない", async () => {
-    const dataDir = (await makeRepo({ repo: "../../somewhere-else" })).dataDir;
-    const ctx = await openTestProject(dataDir, { codex: engine("/nowhere", "/dev/null") });
-    const req = await newRequest(ctx, { title: "x", status: "draft" });
+  it("データディレクトリがリポジトリの外にあっても、/data に書かせて取り込む", async () => {
+    const { ctx, req, sent } = await setup("stray", { outside: true });
     const { id } = await ctx.preflight.start(req.id);
-    const run = await ctx.preflight.wait(req.id, id);
-    expect(run?.status).toBe("failed");
-    expect(run?.error).toContain("リポジトリの外");
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run).toMatchObject({ status: "completed" });
+    expect(run.drafts.map((d) => d.key)).toEqual(["D1", "D2"]);
+    const prompt = sent().find((m) => m.method === "turn/start").params.input[0].text;
+    expect(prompt).toContain(`/data/requests/${req.id}/preflight/${id}/assessment.json`);
+    // run ディレクトリの中は想定内、リポジトリの変更だけを警告する
+    expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: src/main.ts")]);
+  });
+
+  it("codex-workspace の docker run にデータディレクトリのマウントを足す", () => {
+    const command = withDataMount(dockerCommand("/host/repo", { authVolume: "vol" }), "/host/repo", "/host/data");
+    const mounts = command.flatMap((a, i) => (command[i - 1] === "--mount" ? [a] : []));
+    expect(mounts).toEqual(expect.arrayContaining(["type=bind,src=/host/repo,dst=/workspace", "type=bind,src=/host/data,dst=/data"]));
+    expect(command.indexOf("type=bind,src=/host/data,dst=/data")).toBeLessThan(command.indexOf(DEFAULT_IMAGE));
   });
 
   it("認証の設定が無ければ Codex エンジンを有効にしない。パス対応を読む", () => {

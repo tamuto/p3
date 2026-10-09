@@ -44,7 +44,7 @@ export class MockEngine implements PreflightEngine {
     await this.sleep(400, signal);
     for (const c of context.slice(0, 3)) {
       const [rid, tid] = c.ref.split("/");
-      log({ kind: "command", text: `$ cat ${job.dataDirRel}/requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
+      log({ kind: "command", text: `$ cat ${job.dataDir}/requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
       await this.sleep(250, signal);
     }
 
@@ -91,10 +91,10 @@ export class MockEngine implements PreflightEngine {
     for (const d of drafts) {
       const { description, ...meta } = d;
       await writeFileAtomic(join(job.runDir, "drafts", `${d.key}.md`), stringifyFrontmatter(meta, description));
-      log({ kind: "info", text: `✎ ${job.runDirRel}/drafts/${d.key}.md` });
+      log({ kind: "info", text: `✎ ${join(job.runDir, "drafts", `${d.key}.md`)}` });
       await this.sleep(150, signal);
     }
     log({ kind: "message", text: assessment.summary });
-    return { changed: [`${job.runDirRel}/assessment.json`, ...drafts.map((d) => `${job.runDirRel}/drafts/${d.key}.md`)] };
+    return { changed: [join(job.runDir, "assessment.json"), ...drafts.map((d) => join(job.runDir, "drafts", `${d.key}.md`))] };
   }
 }

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
   RELATION_TYPES,
@@ -119,7 +119,6 @@ export class PreflightService {
     after: (ok: boolean) => Request["status"],
   ) {
     const repoRoot = this.ws.repoRoot;
-    const runDirRel = relative(repoRoot, runDir);
     try {
       this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
       const outcome = await engine.run(
@@ -128,16 +127,19 @@ export class PreflightService {
           request: this.ws.requests.require(run.requestId),
           context: run.context,
           repoRoot,
+          dataDir: this.ws.dataDir,
           runDir,
-          runDirRel,
-          dataDirRel: relative(repoRoot, this.ws.dataDir),
         },
         (e) => this.log(run, e),
         signal,
       );
       // 書いてよい範囲の外が変更されていないか確かめる
-      const stray = outcome.changed.filter((p) => !p.startsWith(`${runDirRel}/`));
-      for (const p of stray) this.log(run, { kind: "error", text: `想定外の変更: ${p}（確認して必要なら元に戻してください）` });
+      const stray = outcome.changed.filter((p) => !p.startsWith(`${runDir}/`));
+      for (const p of stray) {
+        const inRepo = relative(repoRoot, p);
+        const shown = inRepo.startsWith("..") || isAbsolute(inRepo) ? p : inRepo;
+        this.log(run, { kind: "error", text: `想定外の変更: ${shown}（確認して必要なら元に戻してください）` });
+      }
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"));
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
