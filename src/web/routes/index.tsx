@@ -9,10 +9,10 @@ import { TaskDrawer } from "../components/TaskDrawer.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
+import { CLOSED_STATUSES, matchesShow, parseShow, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
 import { addDays, bucketStart, daysBetween, groupMarks, PX_PER_DAY, ticks, timeRange, visibleRows, ZOOMS, type Zoom } from "../lib/timeline.ts";
 
-type Show = "open" | "closed" | "all";
 
 /**
  * 進捗: 左に要望、右にスケジュール。
@@ -22,7 +22,7 @@ type Show = "open" | "closed" | "all";
  */
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string; task?: string; zoom?: Zoom } => ({
-    show: s.show === "closed" || s.show === "all" ? s.show : undefined,
+    show: parseShow(s.show),
     tag: optionalString(s.tag),
     /** 詳細を開いているタスク（<要望ID>/T003） */
     task: optionalString(s.task),
@@ -31,7 +31,6 @@ export const Route = createFileRoute("/")({
   component: ProgressPage,
 });
 
-const CLOSED = new Set(["done", "rejected"]);
 const ROW_H = 52;
 const HEAD_H = 64;
 const LEFT_W = 380;
@@ -54,14 +53,14 @@ function ProgressPage() {
   const today = localToday();
   const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
 
-  // マイルストーンの順 → 期限の順。完了・見送りは既定で隠す
+  // マイルストーンの順 → 期限の順。完了・見送りは既定で隠す（対応済は確認待ちなので出す）
   const rows = useMemo(() => {
     const order = (p: RequestProgress) => {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
     return ctx.requests
-      .filter((p) => show === "all" || (show === "closed") === CLOSED.has(p.request.status))
+      .filter((p) => matchesShow(p.request.status, show))
       .filter((p) => !tag || p.request.tags.includes(tag))
       .sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
   }, [ctx.requests, milestones, show, tag]);
@@ -148,13 +147,7 @@ function ProgressPage() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
         <h1 className="text-lg font-bold">進捗</h1>
         <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
-          {(
-            [
-              ["open", "進行中"],
-              ["closed", "完了・見送り"],
-              ["all", "すべて"],
-            ] as const
-          ).map(([v, label]) => (
+          {SHOW_OPTIONS.map(([v, label]) => (
             <Link
               key={v}
               to="/"
@@ -205,7 +198,7 @@ function ProgressPage() {
       {!hasRows ? (
         <div className="p-10">
           <Empty>
-            {show === "open" ? "進行中の要望はありません。" : "該当する要望はありません。"}
+            {show === "open" ? "未完了の要望はありません。" : "該当する要望はありません。"}
             <Link to="/requests/new" className={buttonCls("ghost", "ml-2 underline")}>
               新しい要望を作る
             </Link>
@@ -364,7 +357,7 @@ function RequestLane({
   onOpen: (ref: string) => void;
 }) {
   const r = p.request;
-  const closed = CLOSED.has(r.status);
+  const closed = CLOSED_STATUSES.has(r.status);
   const [picker, setPicker] = useState<{ anchor: DOMRect; items: TaskMark[] } | null>(null);
 
   // 印を、ズームのまとまり（日 / 週 / 月）ごと・種類ごとにまとめる

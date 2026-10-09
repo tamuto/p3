@@ -681,6 +681,17 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </Link>
         )}
       </div>
+      {data.issue && (
+        <p className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {data.issue}
+          <Button onClick={() => void save({ status: "active" })}>進行中に戻す</Button>
+        </p>
+      )}
+      {request.status === "resolved" && !data.issue && (
+        <p className="text-sm text-sky-700 dark:text-sky-300">
+          作業は全部終わっています。成果物を確かめたら、ステータスを「完了済」にしてください。
+        </p>
+      )}
       {error && <p className="text-rose-600">{error}</p>}
     </section>
   );

@@ -57,6 +57,8 @@ export interface RequestDetail {
   graph: Neighborhood;
   /** 置き換えられたタスクの印（T001 → 置き換えた側） */
   superseded: Record<string, SupersededMark[]>;
+  /** 対応済なのに未完了のタスクがある（外部の直接編集など）ときの知らせ */
+  issue: string | null;
 }
 
 /** 着手などで添えられる警告（操作は行われている） */
