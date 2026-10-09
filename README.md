@@ -108,6 +108,9 @@ pcube request new "通知機能を追加したい" --area src/notify --milestone
 - 通知設定画面"                        # → 261009-k7m3x（作成日-乱数。ID の一部 k7m3x でも指せる）
 pcube preflight k7m3x                  # Codex で評価・細分化（完了まで待つ）
 pcube drafts k7m3x                     # 評価とタスク案（D1, D2 ...）を見る。ファイルを直接直してもよい
+pcube preflight k7m3x --note "対象は CLI だけ。Web は不要"   # 確認事項に答えて再評価（前回の結果とメモを引き継ぐ）
+pcube preflight k7m3x --note - --note-only < answer.md     # メモを書き足すだけ（次の Preflight に渡す）
+pcube notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
 pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
 pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
@@ -239,6 +242,8 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
 - 存在しない要望・タスクへの関係はタスク化のときに捨てる
 - 使用量の上限に当たっている場合は頼まずに失敗させる
+- 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
+  Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
 
 | 環境変数 | 内容 |
 | --- | --- |
@@ -251,7 +256,8 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
 エンジンは1つだけで、選ぶものではない。Codex の認証が設定されていなければ **Mock**（要望本文の箇条書きを
-そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。Codex を使えない環境で画面とファイルの流れを
+そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。再評価ではメモの箇条書きを案に足し、
+前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
 
 Preflight でステータスが動くのはタスク化する前の要望（下書き → 評価中 → 開始前）だけで、

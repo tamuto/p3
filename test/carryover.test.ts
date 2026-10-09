@@ -115,6 +115,21 @@ describe("前回の結果とメモの引き継ぎ", () => {
     expect((await preflight()).notes).toBeUndefined();
   });
 
+  it("Mock でもメモの箇条書きを案に足し、前回不採用の案は不採用のまま、確認事項は答えられたものとする", async () => {
+    const { ctx, req, preflight } = await setup();
+    const r1 = await preflight();
+    expect(r1.assessment?.verdict).toBe("clarify"); // 本文が短い
+    await ctx.preflight.updateDraft(req.id, r1.id, "D1", { include: false });
+    await ctx.ws.notes.add(req.id, "回答です。\n- CSV も出す");
+    const r2 = await preflight();
+    expect(r2.drafts.map((d) => [d.title, d.include])).toEqual([
+      ["作る", false],
+      ["CSV も出す", true],
+    ]);
+    expect(r2.assessment).toMatchObject({ verdict: "go", questions: [] });
+    expect(r2.assessment?.summary).toContain(`前回 ${r1.id} を引き継ぎ、メモ 1 件を反映しました`);
+  });
+
   it("前回の記録が無い・古い形式の run.json でも動く", async () => {
     const { ctx, req, preflight } = await setup();
     const r1 = await preflight();

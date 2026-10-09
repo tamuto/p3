@@ -13,6 +13,8 @@ const wait = (ms: number, signal: AbortSignal) =>
 /**
  * Codex を使わずに preflight のファイル契約を再現するエンジン（オフライン開発・UI 確認用）。
  * 要望本文の箇条書きをタスク案にし、関連項目から影響を推定するだけの単純なヒューリスティック。
+ * 再評価では、メモの箇条書きをタスク案に足し、前回不採用にした案（同じ題）は不採用のままにする。
+ * メモがあれば確認事項は答えられたものとして扱う（意味は解釈しない）。
  */
 export class MockEngine implements PreflightEngine {
   readonly name = "mock" as const;
@@ -48,11 +50,11 @@ export class MockEngine implements PreflightEngine {
       await this.sleep(250, signal);
     }
 
-    const bullets = request.body
-      .split("\n")
-      .map((l) => /^\s*(?:[-*]|\d+\.)\s+(.+)/.exec(l)?.[1]?.trim())
-      .filter((s): s is string => !!s)
-      .slice(0, 8);
+    const notes = job.carryover?.notes ?? [];
+    const previous = job.carryover?.previous;
+    if (previous) log({ kind: "command", text: `$ cat ${join(job.runDir, "carryover.md")}` });
+    const bullets = [...new Set([request.body, ...notes.map((n) => n.body)].flatMap(bulletsOf))].slice(0, 8);
+    const rejected = new Set(previous?.drafts.filter((d) => !d.include).map((d) => d.title));
     const items = bullets.length ? bullets : [`${request.title} の設計`, `${request.title} の実装`, `${request.title} のテスト`];
     const areas = request.areas.length ? request.areas : ["src"];
     const drafts: ProposedTask[] = items.map((title, i) => ({
@@ -62,7 +64,7 @@ export class MockEngine implements PreflightEngine {
       areas,
       dependsOn: i === 0 ? [] : [`D${i}`],
       relations: [],
-      include: true,
+      include: !rejected.has(title),
     }));
 
     const impacts = context
@@ -75,14 +77,15 @@ export class MockEngine implements PreflightEngine {
         confidence: Math.min(0.9, c.score),
       }));
 
-    const clarity = Math.min(100, 40 + request.body.length / 8);
+    const clarity = Math.min(100, 40 + (request.body.length + notes.reduce((n, x) => n + x.body.length, 0)) / 8);
+    const carried = [previous && `前回 ${previous.id} を引き継ぎ`, notes.length && `メモ ${notes.length} 件を反映`].filter(Boolean).join("、");
     const assessment: PreflightAssessment = {
-      summary: `「${request.title}」を ${drafts.length} 件のタスクに分割しました。関連する既存項目が ${impacts.length} 件あります。（mock による推定）`,
-      verdict: clarity < 55 ? "clarify" : "go",
+      summary: `「${request.title}」を ${drafts.length} 件のタスクに分割しました。関連する既存項目が ${impacts.length} 件あります。${carried ? `${carried}しました。` : ""}（mock による推定）`,
+      verdict: clarity < 55 && !notes.length ? "clarify" : "go",
       validity: { score: Math.round(clarity), reasons: ["mock: 本文の具体性から推定"] },
       feasibility: { score: impacts.length > 2 ? 60 : 80, reasons: ["mock: 既存項目との重なりから推定"] },
       risks: impacts.length ? [`${impacts.map((i) => i.target).join(", ")} と影響範囲が重なる`] : [],
-      questions: clarity < 55 ? ["完了条件をより具体的にしてください"] : [],
+      questions: clarity < 55 && !notes.length ? ["完了条件をより具体的にしてください"] : [],
       areas,
       impacts,
     };
@@ -97,4 +100,11 @@ export class MockEngine implements PreflightEngine {
     log({ kind: "message", text: assessment.summary });
     return { changed: [join(job.runDir, "assessment.json"), ...drafts.map((d) => join(job.runDir, "drafts", `${d.key}.md`))] };
   }
+}
+
+function bulletsOf(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => /^\s*(?:[-*]|\d+\.)\s+(.+)/.exec(l)?.[1]?.trim())
+    .filter((s): s is string => !!s);
 }

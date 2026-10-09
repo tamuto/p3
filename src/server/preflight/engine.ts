@@ -1,4 +1,4 @@
-import type { PreflightLogEntry, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
+import type { PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
@@ -10,6 +10,13 @@ export interface PreflightJob {
   dataDir: string;
   /** run ディレクトリ（ローカル絶対パス。データディレクトリの中） */
   runDir: string;
+  /** 前回の結果とその後のメモ（無ければ最初からの評価） */
+  carryover?: {
+    /** run ディレクトリの carryover.md と同じ内容。エンジンに資料として渡す */
+    text: string;
+    previous?: PreflightRun;
+    notes: PreflightNote[];
+  };
 }
 
 export interface EngineOutcome {

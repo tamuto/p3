@@ -17,7 +17,7 @@ import type { ProjectIndex } from "../intel/index.ts";
 import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
-import type { PreflightEngine } from "./engine.ts";
+import type { PreflightEngine, PreflightJob } from "./engine.ts";
 
 export class PreflightService {
   private active = new Map<string, { run: PreflightRun; abort: AbortController; done: Promise<void> }>();
@@ -45,6 +45,20 @@ export class PreflightService {
 
   async get(requestId: string, runId: string) {
     return this.active.get(runId)?.run ?? (await this.ws.preflight.get(requestId, runId));
+  }
+
+  /** 次の Preflight に引き継ぐもの（画面・CLI で実行前に見せる） */
+  carryover(requestId: string) {
+    this.ws.requests.require(requestId);
+    return selectCarryover(this.ws, requestId);
+  }
+
+  /** Preflight へのメモを書き足す */
+  async addNote(requestId: string, body: string, actor?: string) {
+    this.ws.requests.require(requestId);
+    const note = await this.ws.notes.add(requestId, body, actor);
+    this.ws.emit({ type: "changed", kind: "note", request: requestId });
+    return note;
   }
 
   async start(requestId: string, opts: { engine?: PreflightEngine["name"]; actor?: string } = {}): Promise<PreflightRun> {
@@ -84,6 +98,7 @@ export class PreflightService {
     const runDir = this.ws.preflight.runDir(requestId, id);
     await this.ws.preflight.save(run);
     if (carryover) await writeFileAtomic(join(runDir, "carryover.md"), carryover);
+    const carried = carryover ? { text: carryover, previous: carry.previous, notes: carry.notes } : undefined;
     if (carry.previous) this.log(run, { kind: "info", text: `前回 ${carry.previous.id} の結果を引き継ぎます` });
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
@@ -102,7 +117,7 @@ export class PreflightService {
 
     const abort = new AbortController();
     const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
-    const done = this.execute(engine, run, runDir, abort.signal, after);
+    const done = this.execute(engine, run, runDir, carried, abort.signal, after);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -127,6 +142,7 @@ export class PreflightService {
     engine: PreflightEngine,
     run: PreflightRun,
     runDir: string,
+    carryover: PreflightJob["carryover"],
     signal: AbortSignal,
     after: (ok: boolean) => Request["status"],
   ) {
@@ -141,6 +157,7 @@ export class PreflightService {
           repoRoot,
           dataDir: this.ws.dataDir,
           runDir,
+          carryover,
         },
         (e) => this.log(run, e),
         signal,

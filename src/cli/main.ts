@@ -60,6 +60,9 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
 
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
+                               前回の結果とまだ渡していないメモを引き継ぐ
+                               --note 本文|-  メモ（確認事項への回答・方針の変更）を書き足してから実行  --note-only 書くだけ
+  notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
   drafts [<要望>]               最新の評価とタスク案  --run PF-...
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
 
@@ -108,6 +111,7 @@ const OPTIONS = {
   docs: { type: "string" },
   instructions: { type: "string" },
   agents: { type: "boolean" },
+  "note-only": { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   port: { type: "string" },
   host: { type: "string" },
@@ -388,16 +392,40 @@ async function main(argv: string[]): Promise<number> {
     case "preflight": {
       const rid = requestArg(args[0]);
       const engine = o.engine as "codex" | "mock" | undefined;
+      if (o["note-only"] && o.note === undefined) throw new UsageError("--note-only には --note でメモを渡してください");
+      if (o["note-only"] && engine) throw new UsageError("--note-only は実行しないので --engine は使えません");
+      const note = o.note === undefined ? undefined : await ctx.preflight.addNote(rid, readBody(o.note), actor);
+      if (o["note-only"]) return out.result(note, () => `メモ ${note!.id} を書き足しました（次の Preflight に渡します）`);
+      if (note && !out.json) process.stderr.write(`メモ ${note.id} を書き足しました\n`);
       const off = ctx.ws.on((e) => {
         if (e.type === "preflight-log" && !out.json) process.stderr.write(`${e.entry.at.slice(11, 19)} ${e.entry.text}\n`);
       });
-      const started = await ctx.preflight.start(rid, { engine, actor });
+      const started = await ctx.preflight.start(rid, { engine, actor }).catch((e: Error) => {
+        off();
+        // メモは残っているので、書き直さずに p3 preflight だけで再実行できる
+        throw note ? new Error(`${e.message}（メモ ${note.id} は保存済みです。p3 preflight ${rid} で再実行できます）`) : e;
+      });
       if (!out.json) process.stderr.write(`preflight ${started.id} (${started.engine})\n`);
       const run = await ctx.preflight.wait(rid, started.id);
       off();
       if (!run) throw new Error("preflight の結果が読めません");
       out.result(run, () => formatRun(ctx, rid, run));
       return run.status === "completed" ? 0 : 1;
+    }
+
+    case "notes": {
+      const rid = requestArg(args[0]);
+      const { notes, invalid } = await ctx.ws.notes.list(rid);
+      const carry = await ctx.preflight.carryover(rid);
+      const pending = new Set(carry.notes.map((n) => n.id));
+      const items = notes.map((n) => ({ ...n, pending: pending.has(n.id) }));
+      return out.result({ notes: items, invalid, previous: carry.previous?.id ?? null, previousSkipped: carry.previousSkipped ?? null }, () =>
+        [
+          `次の Preflight: ${carry.previous ? `前回 ${carry.previous.id} を引き継ぐ` : carry.previousSkipped ? `前回を引き継がない（${carry.previousSkipped}）` : "前回なし"}・メモ ${carry.notes.length} 件を渡す`,
+          ...items.map((n) => `\n${n.pending ? "[未]" : "[済]"} ${n.id}  ${n.createdBy ?? ""}  ${n.createdAt.slice(0, 16).replace("T", " ")}\n${indent(n.body)}`),
+          ...invalid.map((i) => `\n[読めない] ${i.file}: ${i.error}`),
+        ].join("\n"),
+      );
     }
 
     case "drafts": {
@@ -607,7 +635,10 @@ async function pickRun(ctx: PcubeContext, rid: string, runId?: string) {
 }
 
 function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeof pickRun>>): string {
-  const lines = [`${rid} / ${run.id}  ${run.engine}  ${run.status}`];
+  const lines = [`${rid} / ${run.id}  ${run.engine}  ${run.status}${run.startedBy ? `  ${run.startedBy}` : ""}`];
+  if (run.previous || run.notes?.length) {
+    lines.push(`引き継ぎ: ${run.previous ? `前回 ${run.previous}` : "前回なし"}${run.notes?.length ? ` / メモ ${run.notes.join(", ")}` : ""}`);
+  }
   if (run.error) lines.push(`エラー: ${run.error}`);
   const a = run.assessment;
   if (a) {
