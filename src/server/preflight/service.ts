@@ -16,6 +16,7 @@ import { absRef, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
 import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
 import type { Workspace } from "../store/workspace.ts";
+import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine } from "./engine.ts";
 
 export class PreflightService {
@@ -64,18 +65,29 @@ export class PreflightService {
       exclude: [request.id],
       limit: 10,
     });
+    // 前回の結果とその後のメモ。開始の時点で選んで固定する（実行中に足されたメモは次回に回る）
+    const carry = await selectCarryover(this.ws, requestId);
+    const carryover = renderCarryover(carry);
     const run: PreflightRun = {
       id,
       requestId,
       engine: engine.name,
       status: "running",
       startedAt: nowIso(),
+      startedBy: opts.actor,
+      previous: carry.previous?.id,
+      notes: carry.notes.length ? carry.notes.map((n) => n.id) : undefined,
       context,
       log: [],
       drafts: [],
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
     await this.ws.preflight.save(run);
+    if (carryover) await writeFileAtomic(join(runDir, "carryover.md"), carryover);
+    if (carry.previous) this.log(run, { kind: "info", text: `前回 ${carry.previous.id} の結果を引き継ぎます` });
+    else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
+    if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
+    for (const n of carry.invalidNotes) this.log(run, { kind: "error", text: `読めないメモを除きました: ${n.file}（${n.error}）` });
     // 要望のスナップショットと文脈をファイルとして残す（後から「何を根拠に判断したか」を辿れる）
     await writeFileAtomic(join(runDir, "request.md"), `# ${request.id} ${request.title}\n\n${request.body}`);
     await writeFileAtomic(

@@ -157,12 +157,14 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
       request.md                        要望
       tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
       tasks/.archive/                   アーカイブしたタスク
+      notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット
         context.md                      インテリジェンス層が選んだ関連項目と理由
+        carryover.md                    引き継いだ前回の評価・タスク案と、渡したメモ（開始時点で固定）
         assessment.json                 評価（Codex が書く）
         drafts/D1.md, D2.md ...         タスク案（Codex が書く。1案1ファイル。人が直してもよい）
-        run.json                        実行メタデータ・ログ・タスク化の結果
+        run.json                        実行メタデータ・ログ・タスク化の結果・実行者・引き継いだ run とメモ
     .archive/                           アーカイブした要望（フォルダごと）
 ```
 

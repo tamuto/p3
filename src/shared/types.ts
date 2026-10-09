@@ -201,6 +201,25 @@ export interface PreflightRun {
   threadId?: string;
   /** タスク化済みなら作成されたタスク ID */
   materialized?: string[];
+  /** 実行した人 */
+  startedBy?: string;
+  /** 結果を引き継いだ前回の run（無ければ最初から評価した） */
+  previous?: string;
+  /** 渡したメモの ID。内容は run ディレクトリの carryover.md に固定して残す */
+  notes?: string[];
+}
+
+/**
+ * Preflight へのメモ: 確認事項への回答や方針の変更。要望のフォルダの notes/<ID>.md に1件1ファイルで書き足す。
+ * まだ渡していないメモは、次の Preflight に前回の結果と一緒に渡す。
+ */
+export interface PreflightNote {
+  /** N-20261009-123456-ab12 */
+  id: string;
+  requestId: string;
+  createdAt: string;
+  createdBy?: string;
+  body: string;
 }
 
 export interface PreflightLogEntry {
@@ -265,6 +284,6 @@ export interface Neighborhood {
 }
 
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "project"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
