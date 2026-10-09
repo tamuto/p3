@@ -32,12 +32,21 @@ PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマ
 
 ## タスクを進める
 
-1. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --json` で中身と依存（depends_on）を読む。依存が完了していないタスクから始めない
-2. 着手: `move T003 doing --req <要望ID>`
-3. 作業する。プロトタイプの間は今のブランチ（feat/prototype）で作業し、作業ツリーは作らない
-4. テスト（`pnpm -s check`）を通してコミットしたら、完了: `move T003 done --req <要望ID> --output https://github.com/tamuto/pcube/commit/<sha>`
-   （PR を作ったら PR の URL。成果物が複数あれば `--output` を繰り返す）
+作業は **要望ごとのブランチ** で行う。ブランチ名はタスク化のときに要望に割り当てられる
+（`request show <要望ID> --json` の `item.workstream.branch`。例: `req/261009-k7m3x`）。
+
+1. ブランチに入る: 無ければ最新の main から作る（`git switch main && git pull --ff-only && git switch -c <branch>`）、あれば `git switch <branch>`。
+   作業ツリー（git worktree）は作らない（作業ツリーでは依存の `link:../llmcs/...` が解決できない）
+2. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --json` で中身と依存（depends_on）を読む。依存が完了していないタスクから始めない
+3. 着手: `move T003 doing --req <要望ID>`
+4. 作業し、テスト（`pnpm -s check`）を通してブランチにコミット・push したら、完了: `move T003 done --req <要望ID> --output https://github.com/tamuto/pcube/commit/<sha>`
+   （成果物が複数あれば `--output` を繰り返す）
 5. 作業中に見つけた追加の作業は `new "<タイトル>" --req <要望ID> --body "..."` でタスクにする。依存は `link T004 depends_on T003 --req <要望ID>`
+6. 要望のタスクが揃って完了したら、PR を作るかユーザーに確認し、了承を得てから `gh pr create`（本文に要望 ID とタスクの一覧）。
+   作った PR の URL は最後のタスクの `--output` に足す。マージは人が行う
+
+ブランチを切り替えると、この CLI（p3 本体）もそのブランチのコードで動く。CLI を壊す変更の途中で
+CLI が動かなくなったら、`git stash` などで戻してから操作し、ユーザーに伝える。
 
 ## してはいけないこと
 
