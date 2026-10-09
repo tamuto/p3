@@ -47,7 +47,11 @@ export class Workspace {
   private listeners = new Set<Listener>();
   private abort = new AbortController();
 
-  constructor(readonly dataDir: string) {
+  /** repoOverride: 個人設定にある手元のリポジトリの場所（project.yaml の repo より優先） */
+  constructor(
+    readonly dataDir: string,
+    private readonly repoOverride?: string,
+  ) {
     this.requests = new MarkdownCollection<Request>({
       layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
       normalize: normalizeRequest,
@@ -62,6 +66,7 @@ export class Workspace {
 
   /** 管理対象リポジトリの絶対パス（Codex の cwd） */
   get repoRoot(): string {
+    if (this.repoOverride) return this.repoOverride;
     return isAbsolute(this.project.repo) ? this.project.repo : resolve(this.dataDir, this.project.repo);
   }
 

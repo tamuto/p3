@@ -8,14 +8,16 @@ import { loadMachineEnv, openProject, type PcubeContext } from "../server/contex
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
-import { DATA_DIR_NAME, locateDataDir } from "../server/store/locate.ts";
+import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
+import { loadUserConfig } from "../server/userConfig.ts";
 import { table } from "./format.ts";
-import { config, currentRequest, init, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
 
 /**
  * pcube CLI。人も AI エージェントも使う。
  *
- * サーバを経由せず、データディレクトリ（.pcube/）のファイルを直接読み書きする。
+ * サーバを経由せず、プロジェクトのデータのフォルダのファイルを直接読み書きする。
+ * 操作するプロジェクトは --project、今いる場所（登録したリポジトリの中か）、個人設定から決める（store/locate.ts）。
  * だから認証は要らず、サーバが動いていれば変更は監視経由でそのまま画面に反映される。
  * AI は `--json` で機械可読な出力を得て、`PCUBE_ACTOR=ai:<name>` で変更者を名乗る。
  *
@@ -23,17 +25,18 @@ import { config, currentRequest, init, resolveActor, UsageError } from "./projec
  * または要望の作業ツリー（ブランチ req/<要望ID>-...）から決まる。
  */
 
-const HELP = `pcube — 要望ごとにフォルダを分けて管理するファイルベースのタスク管理
+const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理するファイルベースのタスク管理
 
-使い方: pcube <コマンド> [引数] [オプション]
+使い方: p3 <コマンド> [引数] [オプション]   （pcube でも同じ）
 
 プロジェクト
-  init                         .pcube/ を作り初期設定する（端末では対話式）
-                               --name --description --docs a,b --instructions 観点 --agents --yes
+  init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する
+                               --project 名前 --dir フォルダ --description --docs a,b --instructions 観点 --agents --yes
+  project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
-  whoami                       変更者と今の要望
+  whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動
 
 要望
@@ -61,7 +64,8 @@ Preflight
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
 
 共通オプション
-  --dir パス     データディレクトリ（既定: git のメインの作業ツリー → 上位へ辿って .pcube/ を探す）
+  --project 名前 操作するプロジェクト（既定: 今いるリポジトリに登録したもの → 登録が1つならそれ）
+  --dir パス     データのフォルダを直接指す
   --req 要望     今の要望（既定: $PCUBE_REQUEST → 要望の作業ツリー）。ID の一部（k7m3x）でもよい
   --json        JSON で出力（AI 向け）
   --actor 名前   変更者（既定: $PCUBE_ACTOR → human:<git の user.name>）
@@ -72,6 +76,7 @@ Preflight
 
 const OPTIONS = {
   dir: { type: "string" },
+  project: { type: "string" },
   req: { type: "string" },
   request: { type: "string" },
   json: { type: "boolean" },
@@ -134,20 +139,43 @@ async function main(argv: string[]): Promise<number> {
   }
   loadMachineEnv();
   const cwd = process.cwd();
+  const out = new Output(o.json ?? false);
 
   if (cmd === "init") {
     console.log(
-      await init({ cwd, dir: o.dir, name: o.name, description: o.description, docs: o.docs, instructions: o.instructions, agents: o.agents, yes: o.yes }),
+      await init({
+        cwd,
+        project: o.project,
+        dir: o.dir,
+        name: o.name,
+        description: o.description,
+        docs: o.docs,
+        instructions: o.instructions,
+        agents: o.agents,
+        yes: o.yes,
+      }),
     );
     return 0;
   }
 
-  const dataDir = locateDataDir(cwd, o.dir ?? process.env.PCUBE_DATA_DIR);
-  if (!dataDir) throw new UsageError(`${DATA_DIR_NAME}/ が見つかりません。リポジトリのルートで \`pcube init\` してください`);
+  const user = await loadUserConfig();
+  if (cmd === "project") {
+    let current: string | undefined;
+    try {
+      current = resolveProject({ cwd, dir: o.dir, project: o.project, user }).name;
+    } catch {
+      // 決まらなくても一覧は出す
+    }
+    const r = await projectCommand(cwd, args, o, current);
+    return out.result(r.data, () => r.text);
+  }
+
+  const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
 
   if (cmd === "serve") {
     await startServer({
-      dataDir,
+      dataDir: target.dataDir,
+      repoRoot: target.repoRoot,
       port: Number(o.port ?? process.env.PCUBE_PORT ?? 4310),
       host: o.host ?? process.env.PCUBE_HOST ?? "0.0.0.0",
       static: true,
@@ -155,8 +183,7 @@ async function main(argv: string[]): Promise<number> {
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(dataDir);
-  const out = new Output(o.json ?? false);
+  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot });
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
@@ -191,8 +218,13 @@ async function main(argv: string[]): Promise<number> {
     }
 
     case "whoami":
-      return out.result({ actor, request: current ?? null }, () =>
-        [`変更者  ${actor}`, `要望    ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`].join("\n"),
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, repo: ctx.ws.repoRoot, actor, request: current ?? null }, () =>
+        [
+          `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
+          `リポジトリ    ${ctx.ws.repoRoot}`,
+          `変更者        ${actor}`,
+          `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
+        ].join("\n"),
       );
 
     case "progress": {
@@ -662,6 +694,10 @@ main(process.argv.slice(2)).then(
     if (e instanceof ConflictError) {
       process.stderr.write(`競合: ${e.message}。最新を取得してやり直してください\n`);
       process.exit(3);
+    }
+    if (e instanceof ProjectNotResolvedError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(1);
     }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);

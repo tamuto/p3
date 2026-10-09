@@ -27,9 +27,12 @@ export interface PcubeContext {
   preflight: PreflightService;
 }
 
-/** サーバと CLI が共有する組み立て。どちらもデータディレクトリのファイルを直接読み書きする */
-export async function openProject(dataDir: string): Promise<PcubeContext> {
-  const ws = new Workspace(dataDir);
+/**
+ * サーバと CLI が共有する組み立て。どちらもデータのフォルダのファイルを直接読み書きする。
+ * repoRoot: 手元のリポジトリ（個人設定）。省くと project.yaml の repo
+ */
+export async function openProject(dataDir: string, opts: { repoRoot?: string } = {}): Promise<PcubeContext> {
+  const ws = new Workspace(dataDir, opts.repoRoot);
   await ws.load();
   const index = new ProjectIndex(ws);
   // エンジンは1つだけ。Codex が設定されていれば Codex、無ければ（または PCUBE_PREFLIGHT_ENGINE=mock なら）

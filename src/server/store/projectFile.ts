@@ -12,7 +12,7 @@ function toPlain(cfg: ProjectConfig): Record<string, unknown> {
   return {
     name: cfg.name,
     description: cfg.description || undefined,
-    repo: cfg.repo,
+    repo: cfg.repo || undefined,
     docs: cfg.docs.length ? cfg.docs : undefined,
     milestones: cfg.milestones.length
       ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
