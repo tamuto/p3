@@ -8,10 +8,12 @@ import {
   type PreflightRun,
   type ProposedTask,
   type Request,
+  type SupersedeCandidate,
 } from "../../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api, type EngineStatus, type NotesInfo } from "../../../lib/api.ts";
+import { api, ApiError, type EngineStatus, type NotesInfo } from "../../../lib/api.ts";
+import { archiveSelection } from "../../../lib/supersede.ts";
 import { nextRunLabel, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
@@ -460,8 +462,16 @@ function levels(drafts: ProposedTask[]) {
 function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Request; run: PreflightRun; onChanged: (r: PreflightRun) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const done = !!run.materialized?.length;
+  const done = !!run.materialized?.length && run.materialization?.done !== false;
   const included = run.drafts.filter((d) => d.include);
+  // 置き換えられる既存タスク。採否を変えたら・外で変わったら読み直す。アーカイブは選んだものだけ（既定は残す）
+  const [candidates, setCandidates] = useState<SupersedeCandidate[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const includeKey = run.drafts.map((d) => `${d.key}:${d.include}`).join(",");
+  useEffect(() => {
+    if (done) return setCandidates([]);
+    void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates), () => setCandidates([]));
+  }, [request.id, run.id, includeKey, done, ctx.tick]);
 
   async function patch(d: ProposedTask, p: Partial<ProposedTask>) {
     const next = await api.patchDraft(request.id, run.id, d.key, p);
@@ -472,11 +482,17 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
     setBusy(true);
     setError(null);
     try {
-      await api.materialize(request.id, run.id);
+      await api.materialize(request.id, run.id, archiveSelection(candidates, selected));
       onChanged(await api.run(request.id, run.id));
       ctx.reload();
     } catch (e) {
-      setError((e as Error).message);
+      // 確定の時点で候補が変わっていたら、読み直してもう一度選んでもらう
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください"
+          : (e as Error).message,
+      );
+      void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates));
     } finally {
       setBusy(false);
     }
@@ -534,10 +550,44 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           </div>
         ))}
       </div>
+      {!done && candidates.length > 0 && (
+        <div className="space-y-2 rounded-lg bg-amber-50 p-4 dark:bg-amber-950/40">
+          <p className="font-medium">置き換えられる既存タスク（チェックしたものをタスク化と一緒にアーカイブします。チェックしなければ残します）</p>
+          <ul className="space-y-1.5">
+            {candidates.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-2">
+                <input
+                  type="checkbox"
+                  aria-label={`${c.id} をアーカイブ`}
+                  checked={selected.has(c.id)}
+                  onChange={(e) => {
+                    const next = new Set(selected);
+                    if (e.target.checked) next.add(c.id);
+                    else next.delete(c.id);
+                    setSelected(next);
+                  }}
+                />
+                <Id id={c.id} onClick={() => ctx.open(c.ref)} />
+                <span>{c.title}</span>
+                {c.status === "doing" && (
+                  <Badge tone="amber" title="アーカイブしても、進めている作業そのものは止まりません">
+                    作業中
+                  </Badge>
+                )}
+                <span className="text-sm text-slate-500">
+                  {c.reasons.map((r) => (r.source === "draft" ? `案 ${r.draft}` : "評価")).join(" · ")}
+                  {c.reasons[0]?.note ? ` — ${c.reasons[0].note}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex items-center gap-3 pt-2">
         {done ? (
           <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
             ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
+            {run.materialization?.archived.length ? `（置き換えられた ${run.materialization.archived.join(", ")} をアーカイブ）` : ""}
             <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("ghost", "underline")}>
               タスクボードで見る
             </Link>
@@ -545,7 +595,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
         ) : (
           <>
             <Button variant="primary" disabled={busy || !included.length} onClick={materialize}>
-              {included.length} 件をタスク化
+              {included.length} 件をタスク化{selected.size && candidates.some((c) => selected.has(c.id)) ? `（${archiveSelection(candidates, selected).length} 件をアーカイブ）` : ""}
             </Button>
             <span className="text-slate-500">依存関係・影響関係も一緒に登録され、作業ツリー（ブランチ）が割り当てられます。</span>
           </>

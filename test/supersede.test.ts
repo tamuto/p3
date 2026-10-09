@@ -2,9 +2,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { apiRoutes } from "../src/server/api/routes.ts";
 import { ConflictError } from "../src/server/store/collection.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
-import type { PreflightAssessment } from "../src/shared/types.ts";
+import type { PreflightAssessment, SupersedeCandidate } from "../src/shared/types.ts";
+import { archiveSelection, markText, warningText } from "../src/web/lib/supersede.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /**
@@ -116,5 +118,71 @@ describe("置き換えられるタスクの判定", () => {
     expect(r.tasks.map((t) => t.id)).toEqual(["T005"]);
     expect(r.archived).toEqual(["T001", "T002"]);
     expect(ctx.ws.tasksOf(req.id).list().map((t) => t.id)).toEqual(["T003", "T004", "T005"]);
+  });
+});
+
+describe("置き換えの API", () => {
+  async function withApi() {
+    const p = await setup();
+    const app = apiRoutes(p.ctx);
+    const call = async (method: string, path: string, body?: unknown) => {
+      const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    return { ...p, call, base: `/requests/${p.req.id}/preflight/${p.runId}/materialize` };
+  }
+
+  it("確認は何も変えず、選んだものだけアーカイブし、印と着手の警告を返す", async () => {
+    const { call, base, req } = await withApi();
+    const preview = await call("GET", base);
+    expect(preview.body.candidates.map((c: any) => c.id)).toEqual(["T001", "T002"]);
+    expect((await call("GET", `/requests/${req.id}`)).body.tasks).toHaveLength(4);
+
+    const r = await call("POST", base, { archive: [{ id: "T002", rev: preview.body.candidates[1].rev }] });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ tasks: [{ id: "T005" }], archived: ["T002"], kept: [{ id: "T001" }] });
+
+    const detail = (await call("GET", `/requests/${req.id}`)).body;
+    expect(Object.keys(detail.superseded).sort()).toEqual(["T001", "T004"]); // 完了済みにも印は出る（画面では出さない）。アーカイブした T002 には出さない
+    expect((await call("GET", `/requests/${req.id}/tasks/T001`)).body.superseded.map((m: any) => m.from)).toEqual([req.id, `${req.id}/T005`]);
+    const moved = await call("PATCH", `/requests/${req.id}/tasks/T001`, { status: "doing" });
+    expect(moved.status).toBe(200);
+    expect(moved.body).toMatchObject({ status: "doing", warnings: [{ code: "superseded" }] });
+    expect((await call("PATCH", `/requests/${req.id}/tasks/T005`, { status: "doing" })).body.warnings).toBeUndefined();
+  });
+
+  it("全部選ぶ・何も選ばない・候補外・変わった rev", async () => {
+    const all = await withApi();
+    const cs = (await all.call("GET", all.base)).body.candidates;
+    expect((await all.call("POST", all.base, { archive: cs.map((c: any) => ({ id: c.id, rev: c.rev })) })).body.archived).toEqual(["T001", "T002"]);
+
+    const none = await withApi();
+    expect((await none.call("POST", none.base, {})).body).toMatchObject({ archived: [], kept: [{ id: "T001" }, { id: "T002" }] });
+
+    const bad = await withApi();
+    expect((await bad.call("POST", bad.base, { archive: [{ id: "T003" }] })).status).toBe(400);
+    await bad.ctx.ws.tasksOf(bad.req.id).update("T001", { title: "変わった" });
+    const conflict = await bad.call("POST", bad.base, { archive: [{ id: "T001", rev: 1 }] });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.current).toMatchObject({ id: "T001", title: "変わった" });
+  });
+});
+
+describe("画面の置き換えの表示と選択", () => {
+  const cand = (id: string, rev: number): SupersedeCandidate => ({ id, ref: `r/${id}`, title: id, status: "todo", rev, reasons: [] });
+
+  it("印の文言は同じ要望の中を短く、要望単位は「要望」", () => {
+    expect(markText([{ from: "r" }, { from: "r/T005" }, { from: "x/T001" }], "r")).toBe("置き換え ← 要望, T005, x/T001");
+    expect(markText(undefined, "r")).toBe("");
+  });
+
+  it("送るのは今の候補にある選択だけで、候補として見た rev をつける", () => {
+    expect(archiveSelection([cand("T001", 3), cand("T002", 1)], new Set(["T002", "T009"]))).toEqual([{ id: "T002", rev: 1 }]);
+    expect(archiveSelection([], new Set(["T001"]))).toEqual([]);
+  });
+
+  it("応答の警告を文言にする", () => {
+    expect(warningText({ warnings: [{ message: "a" }, { message: "b" }] })).toBe("a / b");
+    expect(warningText({})).toBe("");
   });
 });

@@ -1,5 +1,6 @@
 import type {
   Neighborhood,
+  MaterializeResult,
   PreflightNote,
   PreflightRun,
   ProjectConfig,
@@ -7,6 +8,8 @@ import type {
   Relation,
   Request,
   RequestProgress,
+  SupersedeCandidate,
+  SupersededMark,
   Task,
 } from "../../shared/types.ts";
 
@@ -52,7 +55,12 @@ export interface RequestDetail {
   tasks: Task[];
   runs: PreflightRun[];
   graph: Neighborhood;
+  /** 置き換えられたタスクの印（T001 → 置き換えた側） */
+  superseded: Record<string, SupersededMark[]>;
 }
+
+/** 着手などで添えられる警告（操作は行われている） */
+export type WithWarnings<T> = T & { warnings?: { code: string; target: string; from: string[]; message: string }[] };
 
 /** メモの一覧と、次の Preflight が引き継ぐもの */
 export interface NotesInfo {
@@ -82,10 +90,11 @@ export const api = {
   createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[] }) => call<Request>("POST", "/requests", r),
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) => call<Request>("PATCH", `/requests/${rid}`, patch),
 
-  task: (ref: string) => call<{ task: Task; graph: Neighborhood }>("GET", taskPath(ref)),
+  task: (ref: string) => call<{ task: Task; graph: Neighborhood; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** checked: 完了したタスクに人が「済み」を付ける / 外す */
-  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) => call<Task>("PATCH", taskPath(ref), patch),
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) =>
+    call<WithWarnings<Task>>("PATCH", taskPath(ref), patch),
   addRelation: (ref: string, r: Relation) => call<Task>("POST", relPath(ref), r),
   removeRelation: (ref: string, r: Pick<Relation, "type" | "target">) =>
     call<Task>("DELETE", `${relPath(ref)}?type=${r.type}&target=${encodeURIComponent(r.target)}`),
@@ -98,5 +107,10 @@ export const api = {
   cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
-  materialize: (rid: string, runId: string) => call<Task[]>("POST", `/requests/${rid}/preflight/${runId}/materialize`, {}),
+  /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */
+  previewMaterialize: (rid: string, runId: string) =>
+    call<{ include: string[]; candidates: SupersedeCandidate[]; materialized: string[] }>("GET", `/requests/${rid}/preflight/${runId}/materialize`),
+  /** archive: アーカイブする置き換えられるタスク（候補として見た rev つき） */
+  materialize: (rid: string, runId: string, archive: { id: string; rev: number }[] = []) =>
+    call<MaterializeResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { archive }),
 };

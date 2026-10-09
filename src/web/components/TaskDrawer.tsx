@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
+import { markFrom, warningText } from "../lib/supersede.ts";
 import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
@@ -30,6 +31,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
   const [graph, setGraph] = useState<Neighborhood>();
+  const [superseded, setSuperseded] = useState<SupersededMark[]>([]);
   const [draft, setDraft] = useState<Draft>();
   const [dirty, setDirty] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     const r = await api.task(id);
     setTask(r.task);
     setGraph(r.graph);
+    setSuperseded(r.superseded);
     if (!dirty) setDraft(toDraft(r.task));
   };
 
@@ -49,6 +52,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     void api.task(id).then((r) => {
       setTask(r.task);
       setGraph(r.graph);
+      setSuperseded(r.superseded);
       setDraft(toDraft(r.task));
     });
   }, [id]);
@@ -59,6 +63,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     void api.task(id).then((r) => {
       if (r.task.rev !== task.rev && dirty) setMsg(`他で更新されました (rev ${r.task.rev}${r.task.updatedBy ? ` by ${r.task.updatedBy}` : ""})`);
       setGraph(r.graph);
+      setSuperseded(r.superseded);
       if (!dirty) {
         setTask(r.task);
         setDraft(toDraft(r.task));
@@ -86,7 +91,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
   async function save() {
     try {
-      await api.patchTask(id, {
+      const res = await api.patchTask(id, {
         ...draft!,
         labels: split(draft!.labels),
         areas: split(draft!.areas),
@@ -94,7 +99,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         rev: task!.rev,
       });
       setDirty(false);
-      setMsg(null);
+      // 置き換えられたタスクを作業中にしたときは、保存したうえで知らせる
+      const w = warningText(res);
+      setMsg(w ? `警告: ${w}` : null);
       await load();
       data.reload();
       ctx.reload();
@@ -159,6 +166,25 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </div>
         </div>
         {msg && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{msg}</div>}
+        {superseded.length > 0 && task.status !== "done" && (
+          <div className="bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            このタスクは置き換えられています:{" "}
+            {superseded.map((m, i) => (
+              <span key={m.from}>
+                {i > 0 && " / "}
+                {m.from === rid ? (
+                  "要望の再評価"
+                ) : (
+                  <button className="font-mono underline" onClick={() => open(m.from)}>
+                    {markFrom(m, rid)}
+                  </button>
+                )}
+                {m.note ? `（${m.note}）` : ""}
+              </span>
+            ))}
+            。着手する前に確かめ、不要ならアーカイブしてください。
+          </div>
+        )}
 
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           <input className={`${inputCls} text-lg font-semibold`} value={draft.title} onChange={(e) => set("title", e.target.value)} />

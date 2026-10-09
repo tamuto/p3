@@ -13,7 +13,8 @@ export function supersededMarks(ws: Workspace): Map<string, SupersededMark[]> {
   const marks = new Map<string, SupersededMark[]>();
   const add = (from: string, base: string, target: string, note?: string) => {
     const ref = absRef(target, base);
-    if (!ref || !parseRef(ref)?.task || ref === from) return;
+    // 今あるタスクだけ（アーカイブしたタスクには印を付けない）
+    if (!ref || !parseRef(ref)?.task || ref === from || !ws.task(ref)) return;
     const list = marks.get(ref) ?? [];
     if (!list.some((m) => m.from === from)) list.push({ from, note });
     marks.set(ref, list);
@@ -72,5 +73,6 @@ export function startWarnings(ws: Workspace, ref: string, prevStatus: string, ne
   const marks = supersededMarks(ws).get(ref);
   if (!marks?.length) return [];
   const from = marks.map((m) => m.from);
-  return [{ code: "superseded", target: ref, from, message: `${ref} は ${from.join(", ")} に置き換えられています。置き換え先を確かめてから進めてください` }];
+  const by = from.map((f) => (f.includes("/") ? f : `要望 ${f} の再評価`)).join(", ");
+  return [{ code: "superseded", target: ref, from, message: `${ref} は ${by} で置き換えられています。置き換え先を確かめてから進めてください` }];
 }
