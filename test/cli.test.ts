@@ -54,7 +54,10 @@ describe("pcube init", () => {
     expect(yaml).toMatch(/docs:\n {2}- docs\n {2}- README.md\n {2}- AGENTS.md/);
     expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);
-    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+    const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+    expect(agents).toContain("タスク管理（infodb p3）");
+    expect(agents).toContain("status=resolved"); // 作業を終えたら対応済にする
+    expect(agents).toContain("完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める");
     expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(1); // 2回目は拒む
     expect(pcube(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
   });
