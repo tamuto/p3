@@ -226,7 +226,8 @@ AI やエディタがファイルを直接変更したら SSE で画面に反映
 
 Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
 （`@llmcs/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
-コンテナには管理対象リポジトリだけを `/workspace` としてマウントする。途中経過は SSE で画面に流れる。
+コンテナには管理対象リポジトリを `/workspace`、データのフォルダを `/data` としてマウントする（データのフォルダは
+リポジトリの外にあってよい）。途中経過は SSE で画面に流れる。
 
 依存は今は手元の llmcs を `link:../llmcs/codex-workspace-ts` で参照している。llmcs 側にタグ
 （`codex-workspace-ts-v0.1.0`）が打たれたら `github:tamuto/llmcs#codex-workspace-ts-v0.1.0&path:/codex-workspace-ts`
@@ -240,7 +241,7 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 | 環境変数 | 内容 |
 | --- | --- |
 | `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | Codex の `auth.json`（Docker ボリューム内 / ホストのファイル）。どちらかがあれば Codex エンジンが有効 |
-| `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`） |
+| `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`）。リポジトリとデータのフォルダの両方に使う |
 | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
 | `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
 | `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Codex が設定されていても Mock で評価する |
