@@ -2,19 +2,21 @@
 // preflight の指示文から run ディレクトリを読み取って、assessment.json と drafts/*.md を書く。
 //   FAKE_TARGET   既存のタスクの参照（<要望ID>/T001）。影響・関係の相手にする
 //   FAKE_REPO     作業場所（コンテナの /workspace に当たる）
+//   FAKE_DATA     データディレクトリ（コンテナの /data に当たる）
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
 //   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く）
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const { FAKE_REPO: repo, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_TARGET: target = "" } = process.env;
+const { FAKE_REPO: repo, FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_TARGET: target = "" } = process.env;
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 
 function runTurn(id, text) {
-  const runDir = /([^\s`]+)\/assessment\.json/.exec(text)?.[1];
-  const abs = join(repo, runDir);
+  // run ディレクトリはコンテナの中のパス（/data/requests/.../preflight/PF-...）で伝えられる
+  const runDir = /(\/data\/[^\s`]+)\/assessment\.json/.exec(text)?.[1];
+  const abs = join(data, runDir.slice("/data".length));
   mkdirSync(join(abs, "drafts"), { recursive: true });
   const assessment = {
     summary: "偽の評価",
@@ -37,7 +39,7 @@ function runTurn(id, text) {
     `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n---\n\n作る\n`,
   );
   notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
-  const changes = [`/workspace/${runDir}/assessment.json`, `/workspace/${runDir}/drafts/D1.md`, `/workspace/${runDir}/drafts/D2.md`];
+  const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];
   if (scenario === "stray") changes.push("/workspace/src/main.ts");
   notify("item/completed", { item: { type: "fileChange", id: "p1", changes: changes.map((path) => ({ path, kind: "add" })) } });
   notify("item/completed", { item: { type: "agentMessage", id: "m1", text: "書きました" } });

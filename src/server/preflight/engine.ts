@@ -6,16 +6,14 @@ export interface PreflightJob {
   context: RelatedItem[];
   /** 管理対象リポジトリのルート（ローカルパス） */
   repoRoot: string;
-  /** run ディレクトリ（ローカル絶対パス） */
+  /** データディレクトリ（ローカル絶対パス）。リポジトリの外にあってもよい */
+  dataDir: string;
+  /** run ディレクトリ（ローカル絶対パス。データディレクトリの中） */
   runDir: string;
-  /** run ディレクトリのリポジトリルートからの相対パス（Codex に伝える） */
-  runDirRel: string;
-  /** データディレクトリのリポジトリルートからの相対パス */
-  dataDirRel: string;
 }
 
 export interface EngineOutcome {
-  /** エンジンが書き換えたファイル（リポジトリルートからの相対） */
+  /** エンジンが書き換えたファイル（ローカル絶対パス） */
   changed: string[];
   usage?: Record<string, unknown>;
   threadModel?: string;
