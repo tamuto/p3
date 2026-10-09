@@ -1,5 +1,6 @@
 import type {
   Neighborhood,
+  PreflightNote,
   PreflightRun,
   ProjectConfig,
   ProposedTask,
@@ -53,6 +54,17 @@ export interface RequestDetail {
   graph: Neighborhood;
 }
 
+/** メモの一覧と、次の Preflight が引き継ぐもの */
+export interface NotesInfo {
+  /** pending: まだ渡していない（次の Preflight に渡す） */
+  notes: (PreflightNote & { pending: boolean })[];
+  invalid: { file: string; error: string }[];
+  /** 次の Preflight が引き継ぐ前回の run */
+  previous: string | null;
+  /** 前回を引き継がない理由 */
+  previousSkipped: string | null;
+}
+
 export interface EngineStatus {
   name: "codex" | "mock";
   ok: boolean;
@@ -78,7 +90,10 @@ export const api = {
   removeRelation: (ref: string, r: Pick<Relation, "type" | "target">) =>
     call<Task>("DELETE", `${relPath(ref)}?type=${r.type}&target=${encodeURIComponent(r.target)}`),
 
-  startPreflight: (rid: string, engine?: string) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, { engine }),
+  /** note: メモを書き足してから実行する。始められなければ ApiError の body.note に保存したメモが入る */
+  startPreflight: (rid: string, opts: { engine?: string; note?: string } = {}) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, opts),
+  notes: (rid: string) => call<NotesInfo>("GET", `/requests/${rid}/notes`),
+  addNote: (rid: string, body: string) => call<PreflightNote>("POST", `/requests/${rid}/notes`, { body }),
   run: (rid: string, runId: string) => call<PreflightRun>("GET", `/requests/${rid}/preflight/${runId}`),
   cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>

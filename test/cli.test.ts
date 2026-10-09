@@ -203,6 +203,28 @@ describe("pcube preflight / drafts / accept", () => {
   });
 });
 
+describe("pcube preflight --note / notes", () => {
+  it("メモだけ書き足し、一覧で渡すものを確かめ、次の Preflight で引き継ぐ", async () => {
+    const { root, rid } = await initialized();
+    expect(pcube(root, ["preflight", rid, "--note-only"]).err).toContain("--note");
+    expect(pcube(root, ["preflight", rid, "--note", " ", "--note-only"]).err).toContain("空");
+    const first = pcube(root, ["preflight", rid, "--engine", "mock", "--json"]).json();
+
+    const note = pcube(root, ["preflight", rid, "--note", "- 再送は不要", "--note-only", "--json"], { PCUBE_ACTOR: "human:a" });
+    expect(note.code, note.err).toBe(0);
+    expect(note.json()).toMatchObject({ body: "- 再送は不要", createdBy: "human:a" });
+    const notes = pcube(root, ["notes", rid, "--json"]).json();
+    expect(notes).toMatchObject({ previous: first.id, notes: [{ id: note.json().id, pending: true }] });
+    expect(pcube(root, ["notes", rid]).out).toContain(`前回 ${first.id} を引き継ぐ・メモ 1 件を渡す`);
+
+    const second = pcube(root, ["preflight", rid, "--engine", "mock", "--note", "設定画面は後回し"]);
+    expect(second.code, second.err).toBe(0);
+    expect(second.err).toContain("を書き足しました");
+    expect(second.out).toContain(`引き継ぎ: 前回 ${first.id} / メモ `);
+    expect(pcube(root, ["notes", rid, "--json"]).json().notes.map((n: any) => n.pending)).toEqual([false, false]);
+  });
+});
+
 describe("pcube milestone と要望の管理項目", () => {
   it("マイルストーンを作り、要望に期限・マイルストーン・タグを付け、進捗をマイルストーンごとにまとめる", async () => {
     const { root, rid } = await initialized();

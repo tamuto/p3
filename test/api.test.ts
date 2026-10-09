@@ -39,6 +39,27 @@ describe("REST API", () => {
     expect((await call("GET", `/requests/${rid}/tasks/T1`)).body.task.title).toBe("A");
   });
 
+  it("メモを書き足して Preflight を実行する。実行できなくてもメモは残し、その ID を返す", async () => {
+    const { call, rid, ctx } = await setup();
+    const note = await call("POST", `/requests/${rid}/notes`, { body: "Web は不要" }, { "x-pcube-actor": "human:a" });
+    expect(note.status).toBe(201);
+    expect(note.body).toMatchObject({ body: "Web は不要", createdBy: "human:a" });
+    expect((await call("POST", `/requests/${rid}/notes`, { body: " " })).status).toBe(400);
+    expect((await call("GET", `/requests/${rid}/notes`)).body).toMatchObject({ notes: [{ id: note.body.id, pending: true }], previous: null });
+
+    const started = await call("POST", `/requests/${rid}/preflight`, { engine: "mock", note: "CLI だけ" });
+    expect(started.status).toBe(202);
+    expect(started.body.notes).toHaveLength(2);
+    // 実行中にもう一度: 始められないが、メモは保存済みで ID が返る
+    const busy = await call("POST", `/requests/${rid}/preflight`, { engine: "mock", note: "追加" });
+    expect(busy.status).toBe(400);
+    expect(busy.body).toMatchObject({ error: expect.stringContaining("実行中"), note: { body: "追加" } });
+    await ctx.preflight.wait(rid, started.body.id);
+    const listed = (await call("GET", `/requests/${rid}/notes`)).body;
+    expect(listed.previous).toBe(started.body.id);
+    expect(listed.notes.map((n: any) => n.pending)).toEqual([false, false, true]);
+  });
+
   it("古い rev での更新は 409 と最新状態を返す", async () => {
     const { call, rid } = await setup();
     await call("POST", `/requests/${rid}/tasks`, { title: "A" });

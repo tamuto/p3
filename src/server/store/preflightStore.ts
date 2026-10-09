@@ -69,6 +69,6 @@ export class PreflightStore {
   async list(requestId: string): Promise<PreflightRun[]> {
     const ids = await readdir(join(this.requestsDir, requestId, "preflight")).catch(() => [] as string[]);
     const runs = await Promise.all(ids.filter((i) => i.startsWith("PF-")).map((i) => this.get(requestId, i)));
-    return runs.filter((r): r is PreflightRun => !!r).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return runs.filter((r): r is PreflightRun => !!r).sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
   }
 }

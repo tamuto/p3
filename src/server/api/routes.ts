@@ -15,6 +15,7 @@ import { AI_MANIFEST } from "./manifest.ts";
  *   /requests/:rid                         要望の詳細
  *   /requests/:rid/tasks[/:tid]            要望のタスク
  *   /requests/:rid/preflight[/:run]        Preflight
+ *   /requests/:rid/notes                   Preflight へのメモ
  */
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -218,8 +219,34 @@ export function apiRoutes(ctx: PcubeContext) {
 
   // --- preflight ----------------------------------------------------------
   app.post("/requests/:rid/preflight", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { engine?: "codex" | "mock" };
-    return c.json(await preflight.start(rid(c), { engine: body.engine, actor: actorOf(c) }), 202);
+    const body = z
+      .object({ engine: z.enum(["codex", "mock"]).optional(), note: z.string().optional() })
+      .parse(await c.req.json().catch(() => ({})));
+    const id = rid(c);
+    const actor = actorOf(c);
+    // メモを書き足してから実行する。実行を始められなくてもメモは残し、その ID を返す（再試行で書き直さない）
+    const note = body.note?.trim() ? await preflight.addNote(id, body.note, actor) : undefined;
+    try {
+      return c.json(await preflight.start(id, { engine: body.engine, actor }), 202);
+    } catch (e) {
+      if (!note) throw e;
+      return c.json({ error: (e as Error).message, note }, 400);
+    }
+  });
+  app.get("/requests/:rid/notes", async (c) => {
+    const id = rid(c);
+    const [{ notes, invalid }, carry] = await Promise.all([ws.notes.list(id), preflight.carryover(id)]);
+    const pending = new Set(carry.notes.map((n) => n.id));
+    return c.json({
+      notes: notes.map((n) => ({ ...n, pending: pending.has(n.id) })),
+      invalid,
+      previous: carry.previous?.id ?? null,
+      previousSkipped: carry.previousSkipped ?? null,
+    });
+  });
+  app.post("/requests/:rid/notes", async (c) => {
+    const { body } = z.object({ body: z.string() }).parse(await c.req.json());
+    return c.json(await preflight.addNote(rid(c), body, actorOf(c)), 201);
   });
   app.get("/requests/:rid/preflight", async (c) => c.json(await preflight.list(rid(c))));
   app.get("/requests/:rid/preflight/:run", async (c) => {

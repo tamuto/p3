@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   REQUEST_STATUSES,
   RELATION_TYPES,
@@ -11,7 +11,8 @@ import {
 } from "../../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api, type EngineStatus } from "../../../lib/api.ts";
+import { api, type EngineStatus, type NotesInfo } from "../../../lib/api.ts";
+import { nextRunLabel, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
@@ -83,19 +84,23 @@ function RequestPanel({
     }
   });
 
+  function started(r: PreflightRun) {
+    setRun(r);
+    setRunId(r.id);
+    ctx.reload();
+  }
+
   async function start() {
     setError(null);
     try {
-      const r = await api.startPreflight(request.id);
-      setRun(r);
-      setRunId(r.id);
-      ctx.reload();
+      started(await api.startPreflight(request.id));
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
   const running = run?.status === "running";
+  const notes = <Notes ctx={ctx} request={request} canRun={!running && engine?.ok !== false} onStarted={started} />;
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
@@ -149,13 +154,35 @@ function RequestPanel({
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
 
-      {run && <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} />}
+      {run?.assessment ? (
+        <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} />
+      ) : (
+        <>
+          {notes}
+          {run && <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} />}
+        </>
+      )}
 
     </div>
   );
 }
 
-function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Request; run: PreflightRun; onChanged: (r: PreflightRun) => void }) {
+function RunView({
+  ctx,
+  request,
+  run,
+  onChanged,
+  onOpenRun,
+  notes,
+}: {
+  ctx: AppCtx;
+  request: Request;
+  run: PreflightRun;
+  onChanged: (r: PreflightRun) => void;
+  onOpenRun: (runId: string) => void;
+  /** メモの入力（評価の確認事項のすぐ下に出す） */
+  notes?: ReactNode;
+}) {
   const a = run.assessment;
   const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length ? 4 : run.status === "completed" ? 3 : 2;
   const steps = ["文脈選定", "評価・細分化", "レビュー", "タスク化"];
@@ -184,6 +211,22 @@ function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reque
           </li>
         ))}
       </ol>
+
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        {run.previous ? (
+          <>
+            前回{" "}
+            <button className="font-mono underline" onClick={() => onOpenRun(run.previous!)}>
+              {run.previous}
+            </button>{" "}
+            の結果を引き継いだ再評価
+          </>
+        ) : (
+          "前回の結果は引き継いでいない評価"
+        )}
+        {run.notes?.length ? ` · メモ ${run.notes.length} 件を渡した（${run.notes.join(", ")}）` : ""}
+        {run.startedBy ? ` · 実行: ${run.startedBy}` : ""}
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Section title={`文脈として選ばれた項目 (${run.context.length})`}>
@@ -251,6 +294,8 @@ function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reque
             </div>
           </Section>
 
+          {notes}
+
           {a.impacts.length > 0 && (
             <Section title="既存項目への影響（タスク化時に要望の関係として記録）">
               <ul className="space-y-1.5">
@@ -270,6 +315,88 @@ function RunView({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reque
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Preflight へのメモ（確認事項への回答・方針の変更）。保存すると次の Preflight に前回の結果と一緒に渡す。
+ * 引き継ぎ元はいつも直近の run（過去の run を表示していても変わらない）なので、それを先に見せる。
+ */
+function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Request; canRun: boolean; onStarted: (r: PreflightRun) => void }) {
+  const [info, setInfo] = useState<NotesInfo>();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    void api.notes(request.id).then(setInfo);
+  }, [request.id, ctx.tick]);
+
+  async function submit(run: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const r = await submitNote(api, request.id, text, run);
+      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）
+      setText("");
+      if (r.kind === "started") onStarted(r.run);
+      else if (r.kind === "not-started") setMessage({ error: true, text: `メモ ${r.note.id} は保存しましたが、Preflight を始められませんでした: ${r.error}` });
+      else setMessage({ error: false, text: `メモ ${r.note.id} を保存しました。次の Preflight に渡します` });
+      setInfo(await api.notes(request.id));
+    } catch (e) {
+      setMessage({ error: true, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/notes/*.md</span>}>
+      <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+        {info && (
+          <>
+            {info.notes.length > 0 && (
+              <ul className="space-y-2">
+                {info.notes.map((n) => (
+                  <li key={n.id} className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                      <Badge tone={n.pending ? "amber" : "slate"}>{n.pending ? "次に渡す" : "渡し済み"}</Badge>
+                      <span className="font-mono">{n.id}</span>
+                      <span>{n.createdBy ?? "不明"}</span>
+                      <span>{n.createdAt.slice(0, 16).replace("T", " ")}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap">{n.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {info.invalid.map((i) => (
+              <p key={i.file} className="text-sm text-rose-600">
+                読めないメモ（渡しません）: {i.file} — {i.error}
+              </p>
+            ))}
+            <p className="text-sm text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>
+          </>
+        )}
+        <textarea
+          rows={3}
+          className={inputCls}
+          value={text}
+          placeholder="確認事項への回答や、方針の変更を書きます（例: 対象は CLI だけ。Web は不要）"
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" disabled={busy || !canRun || !text.trim()} onClick={() => void submit(true)}>
+            保存して再実行
+          </Button>
+          <Button disabled={busy || !text.trim()} onClick={() => void submit(false)}>
+            メモだけ保存
+          </Button>
+          {message && <span className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>{message.text}</span>}
+        </div>
+      </div>
+    </Section>
   );
 }
 

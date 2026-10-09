@@ -190,6 +190,26 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(ctx.ws.requests.get(req.id)?.relations.map((r) => r.target)).toEqual([existing.ref]);
   });
 
+  it("再評価では前回の評価・タスク案とその後のメモをプロンプトに含める", async () => {
+    const { ctx, req, sent } = await setup();
+    const first = await ctx.preflight.start(req.id);
+    await ctx.preflight.wait(req.id, first.id);
+    const turns = () => sent().filter((m) => m.method === "turn/start").map((m) => m.params.input[0].text as string);
+    expect(turns()[0]).not.toContain("前回からの引き継ぎ");
+
+    await ctx.preflight.updateDraft(req.id, first.id, "D2", { include: false });
+    await ctx.preflight.addNote(req.id, "対象は CLI だけでよい", "human:a");
+    const second = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, second.id))!;
+    expect(run).toMatchObject({ status: "completed", previous: first.id, notes: [expect.any(String)] });
+    const prompt = turns()[1];
+    expect(prompt).toContain(`## 前回からの引き継ぎ（/data/requests/${req.id}/preflight/${second.id}/carryover.md`);
+    expect(prompt).toContain("偽の評価"); // 前回の評価の要約
+    expect(prompt).toContain("### D2 本体（不採用 / 依存: D1）"); // 人が外した案
+    expect(prompt).toContain("対象は CLI だけでよい");
+    expect(prompt).toContain("（human:a, ");
+  });
+
   it("run ディレクトリの外の変更は警告としてログに残す", async () => {
     const { ctx, req } = await setup("stray");
     const { id } = await ctx.preflight.start(req.id);

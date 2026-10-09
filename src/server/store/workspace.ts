@@ -6,6 +6,7 @@ import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/typ
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError } from "./collection.ts";
 import { newRequestId } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
+import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 
@@ -35,7 +36,8 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  *   <data>/project.yaml
  *   <data>/requests/<要望ID>/request.md
  *   <data>/requests/<要望ID>/tasks/T001.md
- *   <data>/requests/<要望ID>/preflight/PF-.../{run.json, assessment.json, drafts/D1.md}
+ *   <data>/requests/<要望ID>/preflight/PF-.../{run.json, assessment.json, carryover.md, drafts/D1.md}
+ *   <data>/requests/<要望ID>/notes/N-....md   Preflight へのメモ
  *
  * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */
@@ -43,6 +45,7 @@ export class Workspace {
   project!: ProjectConfig;
   readonly requests: MarkdownCollection<Request>;
   readonly preflight: PreflightStore;
+  readonly notes: NoteStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private abort = new AbortController();
@@ -58,6 +61,7 @@ export class Workspace {
       keyOrder: REQUEST_KEY_ORDER,
     });
     this.preflight = new PreflightStore(this.requestsDir);
+    this.notes = new NoteStore(this.requestsDir);
   }
 
   get requestsDir() {
@@ -194,6 +198,8 @@ export class Workspace {
       this.emit({ type: "changed", kind: "task", request: rid, ref: `${rid}/${id}` });
     } else if (kind === "preflight") {
       this.emit({ type: "changed", kind: "preflight", request: rid });
+    } else if (kind === "notes") {
+      this.emit({ type: "changed", kind: "note", request: rid });
     }
   }
 
