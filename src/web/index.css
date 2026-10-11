@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: は html の class "dark" で切り替える（個人設定のテーマ。system のときは OS に合わせて付け外しする。lib/theme.ts） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;

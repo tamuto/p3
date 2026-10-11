@@ -12,7 +12,7 @@ import { resolveRequestId } from "../server/ops.ts";
 import { mainWorktree } from "../server/store/locate.ts";
 import { writeProjectFile } from "../server/store/projectFile.ts";
 import type { Workspace } from "../server/store/workspace.ts";
-import { loadUserConfig, PROJECT_NAME, saveUserConfig, userConfigPath } from "../server/userConfig.ts";
+import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../server/userConfig.ts";
 
 /** プロジェクトの初期設定・設定変更、変更者と「今の要望」の判定（CLI） */
 
@@ -165,10 +165,13 @@ export async function init(o: InitOptions): Promise<string> {
 
     const registered = user.projects[key];
     if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
-    const register = async () => {
-      user.projects[key] = { dir, repos: inRepo ? { ...registered?.repos, main: root } : (registered?.repos ?? {}) };
-      await saveUserConfig(user);
-    };
+    // 最新の個人設定の上で、このプロジェクトの登録だけを書く（聞いている間にほかで変わっていても消さない）
+    const register = () =>
+      updateUserConfig((doc, now) => {
+        const prev = now.projects[key];
+        if (prev && prev.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${prev.dir}`);
+        setProjectNode(doc, key, { dir, repos: inRepo ? { ...prev?.repos, main: root } : (prev?.repos ?? {}) });
+      });
 
     const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
     const askAgents = async () =>
@@ -257,16 +260,22 @@ export async function projectCommand(
     if (!PROJECT_NAME.test(name)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${name}`);
     const dir = resolvePath(cwd, dirRaw);
     if (!existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} はまだ p3 のプロジェクトではありません。作るときは管理したいリポジトリの中で p3 init`);
-    if (user.projects[name] && user.projects[name].dir !== dir) throw new UsageError(`「${name}」は別のフォルダで登録済みです: ${user.projects[name].dir}`);
     const repo = o.repo ? resolvePath(cwd, o.repo) : mainWorktree(cwd);
-    user.projects[name] = { dir, repos: repo ? { ...user.projects[name]?.repos, main: repo } : (user.projects[name]?.repos ?? {}) };
-    await saveUserConfig(user);
-    return { data: { name, ...user.projects[name] }, text: `登録しました: ${name} → ${dir}${repo ? `（リポジトリ ${repo}）` : ""}` };
+    const saved = await updateUserConfig((doc, now) => {
+      const prev = now.projects[name];
+      if (prev && prev.dir !== dir) throw new UsageError(`「${name}」は別のフォルダで登録済みです: ${prev.dir}`);
+      const next = { dir, repos: repo ? { ...prev?.repos, main: repo } : (prev?.repos ?? {}) };
+      setProjectNode(doc, name, next);
+      return next;
+    });
+    return { data: { name, ...saved }, text: `登録しました: ${name} → ${dir}${repo ? `（リポジトリ ${repo}）` : ""}` };
   }
   if (sub === "rm") {
-    if (!name || !user.projects[name]) throw new UsageError(`登録されていません: ${name ?? ""}`);
-    delete user.projects[name];
-    await saveUserConfig(user);
+    if (!name) throw new UsageError("p3 project rm <名前>");
+    await updateUserConfig((doc, now) => {
+      if (!now.projects[name]) throw new UsageError(`登録されていません: ${name}`);
+      setProjectNode(doc, name, null);
+    });
     return { data: { name }, text: `登録を外しました: ${name}（データのフォルダはそのまま）` };
   }
   throw new UsageError("p3 project [ls | add <名前> <フォルダ> | rm <名前>]");

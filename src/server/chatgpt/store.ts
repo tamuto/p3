@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, readFile, rename, rm, stat, unlink } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { withFileLock } from "../store/fsutil.ts";
 import { userConfigPath } from "../userConfig.ts";
 import type { TokenSet } from "./oauth.ts";
 
@@ -69,30 +70,6 @@ export async function connectionMtime(file = connectionPath()): Promise<number> 
  * 同じマシンの CLI・serve・並行する Preflight で、トークンの更新を1つずつ行う（refresh token は使うと入れ替わるため）。
  * lock を取れなければ少し待つ。古い lock（staleMs より前）は落ちたプロセスのものとして取り直す。
  */
-export async function withLock<T>(fn: () => Promise<T>, file = connectionPath(), opts = { timeoutMs: 30_000, staleMs: 60_000 }): Promise<T> {
-  const lock = lockPath(file);
-  await mkdir(dirname(lock), { recursive: true, mode: 0o700 });
-  const until = Date.now() + opts.timeoutMs;
-  for (;;) {
-    try {
-      const fh = await open(lock, "wx", 0o600);
-      await fh.writeFile(String(process.pid));
-      await fh.close();
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      const st = await stat(lock).catch(() => undefined);
-      if (st && Date.now() - st.mtimeMs > opts.staleMs) {
-        await unlink(lock).catch(() => {});
-        continue;
-      }
-      if (Date.now() > until) throw new Error("ChatGPT の接続の更新を待ちきれませんでした（別のプロセスが更新中です）");
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  try {
-    return await fn();
-  } finally {
-    await unlink(lock).catch(() => {});
-  }
+export function withLock<T>(fn: () => Promise<T>, file = connectionPath(), opts = { timeoutMs: 30_000, staleMs: 60_000 }): Promise<T> {
+  return withFileLock(lockPath(file), fn, { ...opts, busyMessage: "ChatGPT の接続の更新を待ちきれませんでした（別のプロセスが更新中です）" });
 }

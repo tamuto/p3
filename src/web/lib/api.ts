@@ -11,6 +11,7 @@ import type {
   SupersedeCandidate,
   SupersededMark,
   Task,
+  Theme,
 } from "../../shared/types.ts";
 
 export class ApiError extends Error {
@@ -99,6 +100,9 @@ export interface ChatGptState {
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
   engine: () => call<EngineStatus>("GET", "/engine"),
+  /** 画面のテーマ（個人設定の ui.theme。全プロジェクト共通） */
+  userTheme: () => call<{ theme: Theme }>("GET", "/user-theme"),
+  saveUserTheme: (theme: Theme) => call<{ theme: Theme }>("PUT", "/user-theme", { theme }),
   chatgpt: () => call<ChatGptState>("GET", "/chatgpt"),
   chatgptLogin: () => call<{ url: string; redirectUri: string; expiresAt: string }>("POST", "/chatgpt/login", {}),
   chatgptCancel: () => call("POST", "/chatgpt/cancel", {}),

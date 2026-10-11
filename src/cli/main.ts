@@ -12,8 +12,9 @@ import { ConflictError, NotFoundError } from "../server/store/collection.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../server/requestStatus.ts";
 import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
-import { loadUserConfig } from "../server/userConfig.ts";
+import { loadUserConfig, UserConfigError } from "../server/userConfig.ts";
 import { codexCommand } from "./codex.ts";
+import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
@@ -40,6 +41,7 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                --project 名前 --dir フォルダ --description --docs a,b --instructions 観点 --agents --yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
+  user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
@@ -192,6 +194,12 @@ async function main(argv: string[]): Promise<number> {
     const r = await codexCommand(args);
     out.result(r.data, () => r.text);
     return r.code ?? 0;
+  }
+
+  // 個人設定（このマシン・この人）。プロジェクトが決まらなくても使える
+  if (cmd === "user-config") {
+    const r = await userConfigCommand(args);
+    return out.result(r.data, () => r.text);
   }
 
   const user = await loadUserConfig();
@@ -821,6 +829,10 @@ main(process.argv.slice(2)).then(
     if (e instanceof ConflictError) {
       process.stderr.write(`競合: ${e.message}。最新を取得してやり直してください\n`);
       process.exit(3);
+    }
+    if (e instanceof UserConfigError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(1);
     }
     if (e instanceof SettingsError) {
       process.stderr.write(`設定: ${e.message}\n`);
