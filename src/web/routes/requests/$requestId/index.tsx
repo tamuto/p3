@@ -20,6 +20,7 @@ import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
 import { useServerEvents } from "../../../lib/live.ts";
 import { optionalString } from "../../../lib/search.ts";
+import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -123,20 +124,22 @@ function RequestPanel({
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 p-8">
+    // 横幅を広く使う（上限 1536px）。狭い画面では左右の余白を縮める
+    <div className="mx-auto w-full max-w-screen-2xl space-y-8 px-4 py-6 sm:px-6 lg:p-8">
       <RequestMeta ctx={ctx} data={data} />
 
       <section className="space-y-3">
         {request.areas.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {request.areas.map((a) => (
-              <Badge key={a} className="font-mono">
-                {a}
+              <Badge key={a} className="max-w-full font-mono">
+                {/* 長いパスも全文を見せる（Badge は折り返さないので、中で折り返す） */}
+                <span className="min-w-0 whitespace-normal break-all">{a}</span>
               </Badge>
             ))}
           </div>
         )}
-        <pre className="font-sans whitespace-pre-wrap rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+        <pre className="font-sans whitespace-pre-wrap break-words rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
           {request.body || "（本文なし）"}
         </pre>
       </section>
@@ -203,29 +206,31 @@ function RunView({
   notes: ReactNode;
 }) {
   const a = run.assessment;
-  const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length ? 4 : run.status === "completed" ? 3 : 2;
-  const steps = ["文脈選定", "評価・細分化", "レビュー", "タスク化"];
+  const steps = preflightSteps(run);
 
   return (
     <div className="space-y-8">
-      <ol className="flex items-center gap-2">
-        {steps.map((s, i) => (
-          <li key={s} className="flex flex-1 items-center gap-2">
+      <ol className="flex items-center gap-2" aria-label="Preflight の工程">
+        {steps.map((st, i) => (
+          <li key={st.label} className="flex flex-1 items-center gap-2" aria-current={st.current ? "step" : undefined}>
             <span
               className={cx(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-                i + 1 < step || (i + 1 === step && step === 4)
+                st.state === "done"
                   ? "bg-emerald-500 text-white"
-                  : i + 1 === step
-                    ? run.status === "failed"
-                      ? "bg-rose-500 text-white"
-                      : "bg-indigo-600 text-white"
-                    : "bg-slate-200 text-slate-500 dark:bg-slate-800",
+                  : st.state === "failed"
+                    ? "bg-rose-500 text-white"
+                    : st.state === "current"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-200 text-slate-500 dark:bg-slate-800",
               )}
             >
               {i + 1}
             </span>
-            <span className={cx("whitespace-nowrap", i + 1 === step ? "font-semibold" : "text-slate-500")}>{s}</span>
+            {/* 狭い画面では今の工程の名前だけを出す（4つの名前は入らない） */}
+            <span className={cx("whitespace-nowrap", st.current ? "font-semibold" : "hidden text-slate-500 md:inline")}>
+              {st.label}
+            </span>
             {i < steps.length - 1 && <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />}
           </li>
         ))}
@@ -263,7 +268,7 @@ function RunView({
                       <Id id={c.ref} onClick={() => ctx.open(c.ref)} />
                       <span className="truncate">{c.title}</span>
                     </div>
-                    <p className="text-sm text-slate-500">{c.reasons.join(" / ")}</p>
+                    <p className="text-sm break-words text-slate-500">{c.reasons.join(" / ")}</p>
                   </div>
                 </li>
               ))}
@@ -278,11 +283,11 @@ function RunView({
       {a && (
           <Section title="評価">
             <div className="space-y-4 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-              <div className="flex items-start gap-3">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-3">
                 <Badge tone={VERDICT[a.verdict].tone} className="text-base font-semibold">
                   {VERDICT[a.verdict].label}
                 </Badge>
-                <p className="flex-1">{a.summary}</p>
+                <p className="min-w-0 flex-1 break-words">{a.summary}</p>
               </div>
               <div className="grid gap-6 sm:grid-cols-2">
                 {(
@@ -297,7 +302,7 @@ function RunView({
                       <span className="font-mono">{s.score}</span>
                     </div>
                     <Meter value={s.score} tone={scoreTone(s.score)} />
-                    <ul className="list-disc space-y-0.5 pl-5 text-slate-600 dark:text-slate-400">
+                    <ul className="list-disc space-y-0.5 pl-5 break-words text-slate-600 dark:text-slate-400">
                       {s.reasons.map((r) => (
                         <li key={r}>{r}</li>
                       ))}
@@ -498,7 +503,7 @@ function ListBlock({ title, items, tone, action }: { title: string; items: strin
       ) : (
         <ul className="mt-1 space-y-1">
           {items.map((r) => (
-            <li key={r} className={cx("rounded px-2 py-1", tone === "rose" ? "bg-rose-50 dark:bg-rose-950/50" : "bg-amber-50 dark:bg-amber-950/50")}>
+            <li key={r} className={cx("rounded px-2 py-1 break-words", tone === "rose" ? "bg-rose-50 dark:bg-rose-950/50" : "bg-amber-50 dark:bg-amber-950/50")}>
               {r}
             </li>
           ))}
@@ -518,7 +523,7 @@ function LogView({ log, running }: { log: PreflightLogEntry[]; running: boolean 
     <Section title="実行ログ" aside={running ? <span className="animate-pulse text-sm text-indigo-500">● live</span> : null}>
       <div ref={ref} className="h-72 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-sm leading-relaxed dark:ring-1 dark:ring-slate-800">
         {log.map((l, i) => (
-          <div key={i} className={cx("whitespace-pre-wrap", color[l.kind])}>
+          <div key={i} className={cx("whitespace-pre-wrap break-words", color[l.kind])}>
             <span className="mr-2 text-slate-600">{l.at.slice(11, 19)}</span>
             {l.text}
           </div>
@@ -590,11 +595,12 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
   return (
     <Section
       title={`タスク案 (${included.length}/${run.drafts.length} 件を採用)`}
-      aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
+      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
     >
+      {/* 段（依存の深さ）ごとの列。広い画面では列を広げ（最大 28rem）、入りきらなければこの中だけ横にスクロールする */}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {levels(run.drafts).map((lv, i) => (
-          <div key={i} className="flex w-72 shrink-0 flex-col gap-2">
+          <div key={i} className="flex max-w-md min-w-72 flex-1 shrink-0 flex-col gap-2">
             <span className="text-sm text-slate-500">段階 {i + 1}</span>
             {lv.map((d) => (
               <div
@@ -618,7 +624,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
                 />
                 <details>
                   <summary className="cursor-pointer text-sm text-slate-500">内容</summary>
-                  <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600 dark:text-slate-400">{d.description}</p>
+                  <p className="mt-1 text-sm whitespace-pre-wrap break-words text-slate-600 dark:text-slate-400">{d.description}</p>
                 </details>
                 <div className="flex flex-wrap gap-1">
                   {d.areas.map((a) => (
