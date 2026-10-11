@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { RELATION_TYPES, relationRole, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { markFrom, warningText } from "../lib/supersede.ts";
@@ -244,7 +244,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {graph.outgoing.map((e) => (
                 <li key={`o-${e.type}-${e.to}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="indigo">{RELATION_TYPES[e.type as RelationType]?.label ?? e.type}</Badge>
+                  <Badge tone="indigo">{relationRole(e.type, "out")}</Badge>
                   <Id id={short(e.to)} onClick={() => open(e.to)} />
                   <span className="truncate">{title(e.to)}</span>
                   <Origin e={e} />
@@ -257,7 +257,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               ))}
               {graph.incoming.map((e) => (
                 <li key={`i-${e.type}-${e.from}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="violet">{RELATION_TYPES[e.type as RelationType]?.inverse ?? e.type}</Badge>
+                  <Badge tone="violet">{relationRole(e.type, "in")}</Badge>
                   <Id id={short(e.from)} onClick={() => open(e.from)} />
                   <span className="truncate">{title(e.from)}</span>
                   <Origin e={e} />
@@ -265,10 +265,15 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               ))}
             </ul>
             <div className="flex gap-2 pt-1">
-              <select className={`${inputCls} !w-40 shrink-0`} value={relType} onChange={(e) => setRelType(e.target.value as RelationType)}>
+              <select
+                className={`${inputCls} !w-40 shrink-0`}
+                value={relType}
+                title={RELATION_TYPES[relType].verb}
+                onChange={(e) => setRelType(e.target.value as RelationType)}
+              >
                 {relationTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {RELATION_TYPES[t].label}
+                  <option key={t} value={t} title={RELATION_TYPES[t].verb}>
+                    {RELATION_TYPES[t].verb.split("（")[0]}
                   </option>
                 ))}
               </select>
@@ -299,6 +304,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 追加
               </Button>
             </div>
+            <p className="text-sm text-slate-500">
+              {RELATION_TYPES[relType].verb}。このタスクには「{RELATION_TYPES[relType].label} {relTarget || "相手"}」、相手には「{RELATION_TYPES[relType].inverse} {short(id)}」と出ます。
+            </p>
           </Section>
 
           <Section title="関係しそう（暗黙: 領域・内容の近さ）">

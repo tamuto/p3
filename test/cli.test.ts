@@ -104,6 +104,10 @@ describe("pcube のタスク操作（--req で要望を指定）", () => {
     const show = pcube(root, ["show", "T1", "--json", ...r]).json();
     expect(show.graph.incoming).toEqual([expect.objectContaining({ from: `${rid}/T002`, type: "depends_on" })]);
     expect(show.graph.impactScope).toEqual([`${rid}/T002`]);
+    // 「相手の役割 + 相手」で見せる: T002 → depends_on → T001 なら、T001 には「依存元 T002」、T002 には「依存先 T001」
+    expect(pcube(root, ["show", "T1", ...r]).out).toMatch(/← 依存元 +T002/);
+    expect(pcube(root, ["show", "T2", ...r]).out).toMatch(/→ 依存先 +T001/);
+    expect(pcube(root, ["help"]).out).toContain("depends_on    依存する（相手が先に終わっている必要がある）  →「依存先」/ 逆「依存元」");
     expect(pcube(root, ["find", "通知", "--json", ...r]).json().candidates.map((c: any) => c.ref)).toContain(`${rid}/T002`);
     expect(pcube(root, ["impact", "1", "--json", ...r]).json()).toEqual([`${rid}/T002`]);
 
