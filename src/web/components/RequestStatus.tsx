@@ -15,10 +15,10 @@ const STATUS: Record<RequestStatus, { label: string; tone: string; hint: string 
 export const REQUEST_STATUS_LABEL = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.label])) as Record<RequestStatus, string>;
 
 /** 要望のステータス（固定幅。一覧でタイトルの開始位置がそろう） */
-export function RequestStatusBadge({ status }: { status: RequestStatus }) {
+export function RequestStatusBadge({ status, size = "md" }: { status: RequestStatus; size?: "sm" | "md" }) {
   const s = STATUS[status];
   return (
-    <span title={s.hint} className={cx("inline-flex w-14 shrink-0 justify-center rounded py-0.5 text-sm", s.tone)}>
+    <span title={s.hint} className={cx("inline-flex shrink-0 justify-center rounded", size === "sm" ? "w-11 text-xs leading-4" : "w-14 py-0.5 text-sm", s.tone)}>
       {s.label}
     </span>
   );

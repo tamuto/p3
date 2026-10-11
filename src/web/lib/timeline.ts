@@ -116,3 +116,28 @@ export function visibleRows(scrollTop: number, viewHeight: number, headH: number
   const last = Math.min(count, Math.ceil((scrollTop + viewHeight - headH) / rowH) + overscan);
   return { first, last };
 }
+
+/**
+ * 左の要望の一覧の幅。広い画面（スケジュールの枠の幅が NARROW_BELOW 以上）は 380px のまま。
+ * 狭い画面（スマートフォン）では枠の幅の 36%（112〜380px）に縮め、右のスケジュールに残りを使う。
+ * 測る前（幅 0）は広い画面として扱う（見える幅は 0 になるだけで、負にはならない）。
+ */
+export const WIDE_LEFT_W = 380;
+export const NARROW_BELOW = 640;
+export const NARROW_LEFT_MIN = 112;
+export function leftWidth(viewWidth: number): number {
+  if (!(viewWidth > 0) || viewWidth >= NARROW_BELOW) return WIDE_LEFT_W;
+  return Math.min(WIDE_LEFT_W, Math.max(NARROW_LEFT_MIN, Math.round(viewWidth * 0.36)));
+}
+
+/** 右のスケジュールが見える幅（負にしない） */
+export const scheduleSpan = (viewWidth: number) => Math.max(0, viewWidth - leftWidth(viewWidth));
+
+/** 日付 d を、スケジュールの見える幅の at の位置（0 左端 / 0.5 中央）に置くための横スクロール量 */
+export function scrollLeftFor(d: string, from: string, px: number, viewWidth: number, at: number): number {
+  return Math.max(0, daysBetween(from, d) * px - scheduleSpan(viewWidth) * at);
+}
+
+/** 横スクロール量から、スケジュールの見える幅の中央にある日付（ズームを変えても中央に保つため） */
+export const centerDate = (scrollLeft: number, from: string, px: number, viewWidth: number) =>
+  addDays(from, Math.floor((scrollLeft + scheduleSpan(viewWidth) / 2) / px));
