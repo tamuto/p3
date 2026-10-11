@@ -9,7 +9,7 @@ import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
-import { userThemeRoutes } from "./userThemeRoutes.ts";
+import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
@@ -141,6 +141,8 @@ export function apiRoutes(ctx: PcubeContext) {
   if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, ws, preflight));
   /** 個人設定のテーマ（このマシンのすべてのプロジェクトで共通。ほかの個人設定は扱わない） */
   app.route("/user-theme", userThemeRoutes(() => ws.emit({ type: "changed", kind: "user" })));
+  /** 最初の描画の前に読むスクリプト（index.html の先頭）。テーマだけを埋め込み、キャッシュさせない */
+  app.route("/user-theme.js", userThemeScriptRoute());
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));

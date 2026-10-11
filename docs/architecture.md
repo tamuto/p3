@@ -58,6 +58,11 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   `ui.theme`）だけを変えて書く（`updateUserConfig`）。init・project add / rm・テーマの保存が同じ経路を通るので、
   CLI と serve が同時に書いても消し合わない。壊れた YAML・読めないファイルは書かずにエラーにする（無いのとは区別する）。
   ChatGPT の接続（`chatgpt.json`）は別のファイル・別のロックのまま
+- 画面のテーマ（`ui.theme`）の反映: index.html の先頭（CSS より前）で `/api/user-theme.js` を同期で読み、
+  html 要素に `data-theme`・class `dark`・`color-scheme` を付ける（Tailwind の `dark:` は class `dark` を見る
+  `@custom-variant`。OS のメディアクエリでは切り替えない）。応答はテーマだけを埋め込み `no-store`。その後は画面の
+  `web/lib/theme.ts` が持ち、`system` の間だけ `prefers-color-scheme` の変化を購読する。保存先は個人設定だけで、
+  localStorage は使わない。ほかのプロセスでの変更は読み直しで反映する
 - マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`PCUBE_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
