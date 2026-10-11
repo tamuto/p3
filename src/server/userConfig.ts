@@ -10,17 +10,20 @@ import { writeFileAtomic } from "./store/fsutil.ts";
  *   ~/.config/infodb-p3/config.yaml
  *
  *   projects:
- *     pcube:                       # プロジェクト名 → データを置くフォルダ（場所は自由）
- *       dir: /mnt/assets/pcube
+ *     myapp:                       # プロジェクト名 → データを置くフォルダ（場所は自由）
+ *       dir: /home/me/p3-data/myapp
  *       repos:                     # 手元のリポジトリの場所（マシンごとに違うのでプロジェクトのデータには書かない）
- *         main: /workspaces/pcube
+ *         main: /home/me/src/myapp
  *     other:
- *       dir: /somefolder/other
+ *       dir: /home/me/p3-data/other
  *   ui:
  *     theme: system                # 画面の表示（system / light / dark）
+ *   codex: { ... }                 # マシンごとの設定（Codex・Preflight・serve。→ machineSettings.ts）
+ *   preflight: { ... }
+ *   serve: { ... }
  *
  * 操作するプロジェクトは、ここに登録した内容と「今いる場所」から決める（環境変数では切り替えない）。
- * いずれは Codex のログイン（ChatGPT アカウント）などもここで扱う。
+ * ChatGPT の接続（トークン）はここに置かない（同じフォルダの chatgpt.json）。
  */
 export interface UserProject {
   /** データを置くフォルダ（project.yaml と requests/ がある場所） */
@@ -34,7 +37,12 @@ export type Theme = "system" | "light" | "dark";
 export interface UserConfig {
   projects: Record<string, UserProject>;
   ui: { theme: Theme };
+  /** マシンごとの設定。書かれたままの値（読むときに machineSettings.ts で確かめる）。保存では書き換えない */
+  settings: Partial<Record<SettingsSection, Record<string, unknown>>>;
 }
+
+export const SETTINGS_SECTIONS = ["codex", "preflight", "serve"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -62,10 +70,15 @@ export function normalizeUserConfig(d: Record<string, unknown>): UserConfig {
   }
   const ui = (d.ui ?? {}) as Record<string, unknown>;
   const theme: Theme = ui.theme === "light" || ui.theme === "dark" ? ui.theme : "system";
-  return { projects, ui: { theme } };
+  const settings: UserConfig["settings"] = {};
+  for (const s of SETTINGS_SECTIONS) {
+    const v = d[s];
+    if (v && typeof v === "object" && !Array.isArray(v)) settings[s] = v as Record<string, unknown>;
+  }
+  return { projects, ui: { theme }, settings };
 }
 
-/** 個人設定を書く。人が書いたコメントは残す */
+/** 個人設定を書く。人が書いたコメントと、ここで扱わない項目（codex・preflight・serve など）は残す */
 export async function saveUserConfig(cfg: UserConfig, path = userConfigPath()): Promise<void> {
   const text = await readFile(path, "utf8").catch(() => "");
   const doc = text.trim() ? YAML.parseDocument(text) : new YAML.Document({});

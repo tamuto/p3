@@ -1,7 +1,7 @@
 # infodb p3（P³）
 
-> 正式名称は **infodb p3**。将来は `pnpx @infodb/p3` で CLI を起動する想定。
-> プロトタイプの間は、コマンド名・データのフォルダ・環境変数に旧名 `pcube`（`pcube` / `.pcube/` / `PCUBE_*`）を使っている。
+> 正式名称は **infodb p3**。`pnpx @infodb/p3` で CLI を起動する。
+> 旧名 `pcube` の名残として、`pcube` コマンド（`p3` と同じ）・`.pcube/`・環境変数の `PCUBE_*` を使っている。
 
 ファイルベースのプロジェクト管理ツール。作業の単位は **要望** で、要望ごとにフォルダを作り、
 そこから生まれたタスクや評価の記録をすべてその下に置く。
@@ -27,17 +27,58 @@
 
 ## はじめかた
 
+### 必要なもの
+
+| もの | 何に使う |
+| --- | --- |
+| Node.js 22 以上 | P3 本体（CLI と `p3 serve`） |
+| pnpm（`pnpx`）か npm（`npx`） | P3 を入れずに動かす。`pnpm add -g @infodb/p3` / `npm i -g @infodb/p3` で `p3` コマンドにしてもよい |
+| Docker（`docker version` が通ること） | Preflight の Codex を、リポジトリとデータのフォルダだけを見せたコンテナの中で動かす。DevContainer の中なら、ホストの Docker デーモンに繋がること |
+| Git | 管理したいリポジトリと、要望ごとのブランチ |
+| ChatGPT のアカウント（プラン） | Preflight の Codex をその人のアカウントで動かす |
+
+Codex を手元に入れる必要はない（コンテナのイメージに入れる）。画面はビルド済みのものが入っているので、ビルドも要らない。
+
+### 最初の手順
+
+管理したいリポジトリの中で:
+
+```bash
+pnpx @infodb/p3 init --agents      # データを置くフォルダを決めて個人設定に登録する。AI 向けの指示とスキルも置く
+pnpx @infodb/p3 chatgpt login      # Preflight に使う ChatGPT プランに接続する（ブラウザが開く）
+pnpx @infodb/p3 codex update       # Codex のイメージを作る（初回は数分。しなくても最初の Preflight の前に作る）
+pnpx @infodb/p3 serve              # http://localhost:4310 を開き、要望を書いて Preflight → タスク化
+```
+
+以下の例では `p3` と書く（`pnpx @infodb/p3` と同じ）。マシンごとの設定（パスの対応など）は「Preflight」の
+「マシンごとの設定」を参照。
+
+### DevContainer の中で使うとき
+
+P3 をコンテナの中で動かし、Docker はホストのデーモンを使う（docker-outside-of-docker）とき:
+
+- **パスの対応:** Codex のコンテナはホストのデーモンが作るので、マウントするパスはホストから見たものでなければならない。
+  リポジトリとデータのフォルダが、コンテナの中とホストでどこに当たるかを個人設定の `codex.pathMap` に書く
+  （例: コンテナの `/workspaces` がホストの `<開いたフォルダの親>` なら `/workspaces: <そのホストのパス>`）。
+  データのフォルダもホストから見える（バインドマウントされた）場所に置く
+- **サインインのコールバック（1455）:** `p3 chatgpt login` は 127.0.0.1:1455 で待ち、VS Code がそのポートをホストへ転送するので、
+  ホストのブラウザから届く。1455 が使えずに別のポートで待ったときや、転送先のポートが変わったとき、転送されない環境
+  （SSH・別のコンテナ）では、ブラウザが「接続できません」になる。そのときは `p3 chatgpt login --paste` で、その画面の
+  アドレスバーの URL を貼る
+- **画面（4310）:** `p3 serve` のポートも転送して、ホストのブラウザで開く。サインインと解除は、転送された localhost の画面か CLI から行う
+
+### P3 を開発するとき（このリポジトリから動かす）
+
 ```bash
 pnpm install
-pnpm build                   # 画面（pcube serve で配信する dist/web）
-cp .env.example .env         # Codex の認証・パス対応（マシンごとの設定。プロジェクトには置かない）
-pnpm link --global           # `pcube` / `p3` コマンドを使えるようにする（任意）
+pnpm build                   # 画面（p3 serve で配信する dist/web）
+pnpm link --global           # `pcube` / `p3` コマンドをこのチェックアウトで使う（任意）
 ```
 
 グローバルに入れずに、p3 の場所を指定して pnpm で直接動かしてもよい。管理したいリポジトリ（やその作業ツリー）の中で:
 
 ```bash
-pnpm -s --dir /path/to/p3 pcube whoami     # -s で pnpm 自身の出力を抑える（--json の出力は stdout だけに出る）
+pnpm -s --dir /path/to/p3 p3 whoami     # -s で pnpm 自身の出力を抑える（--json の出力は stdout だけに出る）
 ```
 
 pnpm はスクリプトをパッケージの場所で動かすが、p3 は呼び出し元の場所（pnpm が渡す `INIT_CWD`）に戻ってから
@@ -47,20 +88,20 @@ pnpm はスクリプトをパッケージの場所で動かすが、p3 は呼び
 
 管理したいリポジトリの中（どの作業ツリー・サブフォルダからでもよい）で `p3 init` を実行し、
 プロジェクト名と **データを置くフォルダ** を決める。データのフォルダの場所は自由で、リポジトリの外を勧める
-（例: `/mnt/assets/pcube`）。端末からなら対話式で、リポジトリの中身から既定値を推測して聞く。
+（例: `~/p3-data/myapp`。チームで共有するなら同期するフォルダ）。端末からなら対話式で、リポジトリの中身から既定値を推測して聞く。
 
 ```bash
 cd ~/src/myapp
 p3 init
 #   プロジェクト名（切り替えに使う短い名前） [myapp]:
-#   データを置くフォルダ（リポジトリの外を勧めます）: /mnt/assets/myapp
+#   データを置くフォルダ（リポジトリの外を勧めます）: ~/p3-data/myapp
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
 #   ドキュメントのパス（カンマ区切り。Preflight で最初に読みます） [docs, README.md]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 #   AGENTS.md に AI 向けの p3 の使い方を追記しますか (y/n) [y]:
 
 # AI やスクリプトからは引数で（--yes で質問しない）
-p3 init --yes --project myapp --dir /mnt/assets/myapp --description "社内向けの経費精算アプリ" --docs docs,README.md
+p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ" --docs docs,README.md
 ```
 
 データのフォルダには `project.yaml` と空の `requests/` が作られる。既に作られたフォルダ（他の人が作って共有したもの）を
@@ -71,12 +112,12 @@ p3 init --yes --project myapp --dir /mnt/assets/myapp --description "社内向�
 
 ```yaml
 projects:
-  pcube:
-    dir: /mnt/assets/pcube
+  myapp:
+    dir: /home/me/p3-data/myapp
     repos:
-      main: /workspaces/pcube
+      main: /home/me/src/myapp
   other:
-    dir: /somefolder/other
+    dir: /home/me/p3-data/other
 ```
 
 **操作するプロジェクトは環境変数ではなく、今いる場所と個人設定から決まる。**
@@ -156,7 +197,7 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 ## データの持ち方
 
 ```
-<データのフォルダ>/                     （例: /mnt/assets/pcube。リポジトリの中なら .pcube/）
+<データのフォルダ>/                     （例: ~/p3-data/myapp。リポジトリの中なら .pcube/）
   project.yaml                          プロジェクト設定
   requests/
     261009-k7m3x/                       要望のフォルダ（作成日 + 乱数5文字。タイトルが変わっても変わらない）
@@ -294,8 +335,8 @@ p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う�
 - 設定画面の「Continue with ChatGPT」でも同じことができる（serve が待ち受ける。待っている間は取消と、届かなかったときの URL の貼り付け）。
   この操作と状態の表示は **P3 を動かしているマシンのローカルの画面からだけ** 受け付ける（serve は既定で 0.0.0.0 で待つので、
   LAN の別のマシンからのサインイン・解除を断る。`docker run -p` で公開した serve の画面からはできないので CLI を使う）
-- DevContainer では、VS Code が待ち受けのポートを転送するので、ホストのブラウザからのコールバックが届く。
-  詳しい設計は [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md)
+- DevContainer では、VS Code が待ち受けのポートを転送するので、ホストのブラウザからのコールバックが届く
+  （届かないときは「はじめかた」の「DevContainer の中で使うとき」）。詳しい設計は [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md)
 
 ```
 要望を書く ─▶ 文脈選定 ─▶ Codex が評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
@@ -303,13 +344,22 @@ p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う�
 ```
 
 Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
-（`@llmcs/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
+（npm の `@infodb/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
 コンテナには管理対象リポジトリを `/workspace`、データのフォルダを `/data` としてマウントする（データのフォルダは
 リポジトリの外にあってよい）。途中経過は SSE で画面に流れる。
 
-依存は今は手元の llmcs を `link:../llmcs/codex-workspace-ts` で参照している。llmcs 側にタグ
-（`codex-workspace-ts-v0.1.0`）が打たれたら `github:tamuto/llmcs#codex-workspace-ts-v0.1.0&path:/codex-workspace-ts`
-へ切り替える（サブディレクトリの git 依存を扱えるので、パッケージマネージャは pnpm）。
+Codex のイメージ（`llmcs-codex-workspace:local`）は、無いか作ってから1日より古ければ、Preflight の前に作り直す
+（そのときの最新の Codex が入る）。新しい Codex をすぐ使いたいとき・最初の Preflight の前に作っておきたいときは
+`p3 codex update` で今すぐ作り直せる（入った版を表示する。Docker があればよく、プロジェクトの登録やサインインは要らない）。
+
+```bash
+p3 codex update
+#   Codex のイメージ llmcs-codex-workspace:local を作り直しています（…）   ← 進み具合は stderr
+#   Codex を更新しました: codex-cli 0.162.1（変わらず。これが最新）
+#     イメージ llmcs-codex-workspace:local（2026-10-11 15:54:06 作成）
+```
+
+Docker が無い・デーモンに繋がらない・作れない（ネットワークなど）・版を読めないときは、次にすることを出して終了コード 1。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
 
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
@@ -319,22 +369,57 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 - 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
   Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
 
-| 環境変数 | 内容 |
-| --- | --- |
-| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル）。ChatGPT に接続していなければこちらを使う |
-| `PCUBE_CODEX_AUTH` | `legacy` にすると、ChatGPT に接続していても旧来の `auth.json` を使う |
-| `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`）。リポジトリとデータのフォルダの両方に使う |
-| `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
-| `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
-| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
+### マシンごとの設定
+
+Codex の認証・パスの対応などはマシン（と人）ごとに違うので、プロジェクトのデータには置かない。
+**個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下）に書くか、環境変数で渡す。
+`.env` は読まない（P3 のパッケージの中にも、プロジェクトの中にも置かない）。
+
+```yaml
+# ~/.config/infodb-p3/config.yaml（projects・ui と同じファイル。必要な項目だけ書く）
+codex:
+  pathMap:                         # DevContainer のとき: このマシンのパス → Docker デーモンから見たパス
+    /workspaces: /home/me/workspaces
+  # auth: legacy                   # ChatGPT に接続していても旧来の auth.json を使う（既定 auto）
+  # authVolume: codex-state        # 旧来: auth.json を入れた Docker ボリューム
+  # authFile: /home/me/.codex/auth.json   # 旧来: ホストの auth.json（authVolume とどちらか）
+  # model: gpt-5.5
+  # effort: medium
+  # ensureImage: false             # Preflight の前のイメージの作り直し（1日ごと）を止める
+# preflight:
+#   engine: mock                   # 明示したときだけ Mock で評価する
+# serve:
+#   host: 127.0.0.1
+#   port: 4310
+```
+
+値は項目ごとに **CLI の明示（`--port` / `--host` / `--engine`）→ 環境変数 → 個人設定 → 既定値** の順で決まる。
+環境変数を空にすると（`PCUBE_CODEX_MODEL=`）、個人設定の値を使わずに既定値に戻す。読めない値（`ensureImage: maybe`、
+`=` の無いパスの対応など）は、どこの何を直すかを出して止まる。ChatGPT のトークンはここに置かない（`chatgpt.json`）。
+
+| 個人設定 | 環境変数 | 内容 |
+| --- | --- | --- |
+| `codex.auth` | `PCUBE_CODEX_AUTH` | `auto`（既定。ChatGPT に接続していれば ChatGPT、無ければ旧来）/ `legacy`（接続していても旧来の `auth.json`） |
+| `codex.authVolume` / `codex.authFile` | `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル） |
+| `codex.pathMap` | `PCUBE_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker デーモンから見たパス。リポジトリとデータのフォルダの両方に使う |
+| `codex.model` / `codex.effort` | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
+| `codex.ensureImage` | `PCUBE_CODEX_ENSURE_IMAGE`（`0` / `1`） | `false` でイメージの自動更新確認をしない |
+| `preflight.engine` | `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
+| `serve.host` / `serve.port` | `PCUBE_HOST` / `PCUBE_PORT` | `p3 serve` の待ち受け（既定 `0.0.0.0` / `4310`） |
+
+`PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
+
+**これまでの `.env` からの移し方:** P3 は前の版まで、P3 の置き場所の `.env` を読んでいた。今は読まないので、その中の値を
+上の表に従って個人設定に書き写す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
+接続に変えたりはしない。書き写したら `.env` は消してよい。
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-既定のエンジンは Codex で、認証は次の順に選ぶ: `PCUBE_CODEX_AUTH=legacy` と旧来の設定 → 旧来の `auth.json` /
-ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE`）だけ → 旧来の `auth.json` /
+既定のエンジンは Codex で、認証は次の順に選ぶ: `codex.auth: legacy` と旧来の設定 → 旧来の `auth.json` /
+ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`codex.authVolume` / `codex.authFile`）だけ → 旧来の `auth.json` /
 どれも無い → 使えない（画面と CLI でサインインを案内する。**認証が無いときに Mock に切り替えない**）。
 
-**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`PCUBE_PREFLIGHT_ENGINE=mock` か `--engine mock` で
+**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`preflight.engine: mock`（`PCUBE_PREFLIGHT_ENGINE=mock`）か `--engine mock` で
 明示したときだけ使う。再評価ではメモの箇条書きを案に足し、
 前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
@@ -400,8 +485,20 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 
 ## AI エージェントから使う
 
-AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。`pcube init --agents` でプロジェクトの
-`AGENTS.md` / `CLAUDE.md` に使い方を追記できる（内容は [docs/architecture.md](docs/architecture.md) を参照）。
+AI にも CLI を使わせる（API ごとの認証を持たせずに済む）。管理したいリポジトリで `p3 init --agents` を実行すると:
+
+- `AGENTS.md`（無ければ `CLAUDE.md`、どちらも無ければ `AGENTS.md` を作る）に、短い使い方を追記する
+  （内容は [docs/architecture.md](docs/architecture.md) の「AI エージェントへの指示」。見出しがあれば重ねない）
+- `.claude/skills/p3/SKILL.md` に、手順の詳しい版のスキルを置く（パッケージに同梱した `skills/p3/SKILL.md` の写し）
+
+新しくプロジェクトを作るときにも、既にあるプロジェクトに参加するときにも使える（端末からなら聞かれる。非対話では `--agents`
+を付けたときだけ）。どちらにも「Preflight とタスク化は人が行う」「AI は作業を終えたら対応済にし、完了済・見送り・済みは人が決める」
+などの同じ役割を書いてある。置いたファイルはリポジトリに入れて共有する。
+
+**P3 を新しくしたとき:** 既に置いたスキルは、内容が違っても上書きしない（手で直した分を消さないため）。`p3 init --agents` を
+もう一度実行すると「最新です」か「同梱の版と違う」かを出すので、違えば表示された同梱の原本と見比べて手で更新する。
+`AGENTS.md` / `CLAUDE.md` の追記も、見出し（`タスク管理（infodb p3）`）があれば足さないので、新しい内容は
+docs/architecture.md の版と見比べて手で直す。
 
 - 要望の作業ツリーの中で作業すれば、要望を指定せずに `pcube move` / `pcube new` が使える
 - 作業中に新しく必要になった作業は、AI がそのままタスクとして足す（可視化される）
@@ -418,6 +515,7 @@ pnpm typecheck
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm check                   # 型検査 + テスト + ビルド
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
+pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update も）
 ```
 
 `pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
@@ -426,11 +524,32 @@ pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 済ませるので、マイルストーン・期限・タグを含めて各画面をそのまま確かめられる。
 `pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
 サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
-信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
+信頼できないネットワークでは `serve.host: 127.0.0.1`（`PCUBE_HOST=127.0.0.1`）に絞ること。
 
 テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
 Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
-CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシンの `.env` の Codex 設定は効かないようにしている。
+CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `PCUBE_*` の環境変数は効かないようにしている。
+
+### npm で配る中身
+
+`@infodb/p3` として npm に公開する（公開そのものは人が行う）。TypeScript のソースを `tsx` でそのまま動かし、
+画面だけをビルドして同梱する。
+
+| 何を | どうする |
+| --- | --- |
+| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
+| 同梱しないもの | `.env`・個人設定・デモデータ（`.pcube-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
+| 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
+| Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
+| 公開前のビルド | `prepack` で `pnpm build`（`npm pack` / `npm publish` の前に画面を作る）。利用者が入れるときにはビルドも Docker の操作もしない |
+| bin | `p3` と `pcube`（同じもの）。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
+
+```bash
+pnpm -s check                       # 型検査・テスト・画面のビルド
+pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
+```
+
+公開の手順とチェックリストは [docs/publishing.md](docs/publishing.md)。
 
 ## 構成
 
@@ -454,4 +573,4 @@ docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / ops / preflight / api / cli）
 ```
 
-技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
+技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@infodb/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

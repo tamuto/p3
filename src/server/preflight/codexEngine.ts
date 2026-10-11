@@ -9,12 +9,13 @@ import {
   UsageLimitError,
   WorkspaceSession,
   dockerCommand,
-  ensureImage,
   type WorkspaceEvent,
-} from "@llmcs/codex-workspace";
+} from "@infodb/codex-workspace";
 import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
 import { APP_NAME } from "../chatgpt/oauth.ts";
+import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
+import { ensureCodexImage } from "./codexImage.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -39,7 +40,7 @@ export interface CodexWorkspaceConfig {
   /** 旧来: Codex の初期設定でサインインした auth.json（Docker ボリューム / ホストのファイル） */
   authVolume?: string;
   authFile?: string;
-  /** PCUBE_CODEX_AUTH=legacy: ChatGPT に接続していても旧来の auth.json を使う */
+  /** codex.auth: legacy（PCUBE_CODEX_AUTH=legacy）: ChatGPT に接続していても旧来の auth.json を使う */
   forceLegacy?: boolean;
   /** Sign in with ChatGPT の接続（既定は個人設定の chatgpt.json） */
   account?: ChatGptAccount;
@@ -52,18 +53,16 @@ export interface CodexWorkspaceConfig {
   command?: (workspace: string, data: string, auth: CodexAuth["mode"]) => string[];
 }
 
-export function codexConfigFromEnv(): CodexWorkspaceConfig {
+/** マシンごとの設定（環境変数と個人設定。→ machineSettings.ts）から */
+export function codexConfig({ codex }: MachineSettings): CodexWorkspaceConfig {
   return {
-    authVolume: process.env.PCUBE_CODEX_AUTH_VOLUME || undefined,
-    authFile: process.env.PCUBE_CODEX_AUTH_FILE || undefined,
-    forceLegacy: process.env.PCUBE_CODEX_AUTH === "legacy",
-    model: process.env.PCUBE_CODEX_MODEL || undefined,
-    effort: process.env.PCUBE_CODEX_EFFORT || undefined,
-    pathMap: (process.env.PCUBE_CODEX_PATH_MAP ?? "")
-      .split(",")
-      .filter((s) => s.includes("="))
-      .map((s) => s.split("=", 2) as [string, string]),
-    ensureImage: process.env.PCUBE_CODEX_ENSURE_IMAGE !== "0",
+    authVolume: codex.authVolume,
+    authFile: codex.authFile,
+    forceLegacy: codex.auth === "legacy",
+    model: codex.model,
+    effort: codex.effort,
+    pathMap: codex.pathMap,
+    ensureImage: codex.ensureImage,
   };
 }
 
@@ -96,7 +95,7 @@ function localPath(job: PreflightJob, p: string) {
 }
 
 /**
- * llmcs の codex-workspace（TypeScript 版 @llmcs/codex-workspace）で、Docker コンテナ内の
+ * llmcs の codex-workspace（TypeScript 版。npm の @infodb/codex-workspace）で、Docker コンテナ内の
  * codex app-server に preflight を頼む。
  *
  * コンテナには管理対象リポジトリが /workspace、データディレクトリが /data としてマウントされる。
@@ -221,7 +220,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     log({ kind: "info", text: `codex-workspace: ${CONTAINER_WORKSPACE} <= ${workspace}, ${CONTAINER_DATA} <= ${data}` });
     if (this.cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
-      log({ kind: "info", text: `Codex ${await ensureImage()}` });
+      log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
     }
 
     const command =

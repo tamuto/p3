@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { apiRoutes } from "./api/routes.ts";
 import { openProject, PCUBE_ROOT } from "./context.ts";
+import type { MachineSettings } from "./machineSettings.ts";
 
 export interface ServeOptions {
   dataDir: string;
@@ -14,11 +15,13 @@ export interface ServeOptions {
   host: string;
   /** ビルド済みの画面 (dist/web) も配信する */
   static: boolean;
+  /** マシンごとの設定（省くと環境変数と個人設定から読む） */
+  settings?: MachineSettings;
 }
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions) {
-  const ctx = await openProject(opts.dataDir, { repoRoot: opts.repoRoot });
+  const ctx = await openProject(opts.dataDir, { repoRoot: opts.repoRoot, settings: opts.settings });
   const { ws, preflight } = ctx;
   void ws.watch();
 

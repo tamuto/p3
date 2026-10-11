@@ -39,12 +39,13 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 
 管理したいシステムは、本体・ドキュメント・基盤のように **複数のリポジトリに分かれている** ことが多い。
 要望・Preflight・タスクはそれらを横断するので、プロジェクトのデータはどのリポジトリにも属さない
-**データのフォルダ** に置く（場所は自由。例: `/mnt/assets/pcube`）。
+**データのフォルダ** に置く（場所は自由。例: `~/p3-data/myapp`、チームで同期するフォルダ）。
 
 | 何を | どこに | 共有 |
 | --- | --- | --- |
 | プロジェクトのデータ（要望・タスク・Preflight の記録、`project.yaml`） | データのフォルダ | する（方法は下の「共有」） |
-| 個人設定（参加しているプロジェクトとフォルダの場所、手元のリポジトリの場所、画面の設定、いずれ Codex のログイン） | `~/.config/infodb-p3/config.yaml` | しない |
+| 個人設定（参加しているプロジェクトとフォルダの場所、手元のリポジトリの場所、画面の設定、マシンごとの設定（Codex の認証の選び方・パスの対応・serve の待ち受けなど）） | `~/.config/infodb-p3/config.yaml` | しない |
+| ChatGPT の接続（トークン） | `~/.config/infodb-p3/chatgpt.json`（所有者だけが読める） | しない |
 | コード・ドキュメント | 各リポジトリ | 今までどおり |
 
 - 手元のリポジトリの場所はマシンごとに違うので、プロジェクトのデータではなく個人設定に持たせる
@@ -53,6 +54,9 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   決まらなければ登録済みの一覧と選び方を出す（`src/server/store/locate.ts`）
 - 使う人はフォルダや実行パスを意識しない前提で、セットアップは2段階まで・エラーは次にすることを示す、を守る
 - リポジトリの中の `.pcube/` も以前の置き方として読める（デモ・テスト）
+- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`PCUBE_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
+  CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
+  （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
 
 複数のリポジトリへの対応（`project.yaml` の `repos`、タスクの作業先、リポジトリをまたぐ Preflight）と、
 1人1つのサーバで画面からプロジェクトを切り替える形（決定済み）は、次の段階で入れる。
@@ -78,7 +82,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 | データのフォルダ（Markdown / YAML / JSON） | 正。タスク・要望・Preflight の記録。人も AI も直接読める |
 | CLI（`pcube`） | 主な操作口。人も AI も使う。ファイルを直接読み書きするので **認証が要らない** |
 | `pcube serve` + ブラウザ | ローカルのビューア兼エディタ。ファイルを監視して画面に流す。データは持たない |
-| Codex（`@llmcs/codex-workspace`） | 操作する人のマシンで、その人のアカウントで動く。リポジトリとデータのフォルダだけを見せたコンテナの中 |
+| Codex（`@infodb/codex-workspace`） | 操作する人のマシンで、その人のアカウントで動く。リポジトリとデータのフォルダだけを見せたコンテナの中 |
 
 REST API はブラウザのためのローカル API として残すが、AI には CLI を使わせる。
 CLI がファイルを直接触る形なら、API ごとに認証を持たせる問題はそもそも起きない。
@@ -97,7 +101,7 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
 
 - Preflight は **実行した人のマシン** で、`codex-workspace` のコンテナの中で動く。コンテナには管理対象リポジトリを
   `/workspace`、データのフォルダを `/data` としてマウントする。データのフォルダはリポジトリの外にあってよい。
-  認証情報は各自の `auth.json`（pcube 本体の `.env` で場所を指定。プロジェクトには置かない）。
+  認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
 - 同じ要望を複数人が Preflight しても、run ごとに別ディレクトリ（ID に乱数を含む）なので衝突しない。
@@ -147,6 +151,40 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
 - API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
   要望の詳細と タスクの GET は印 `superseded` を返す。
 
+### codex-workspace の依存
+
+Codex をコンテナで動かす部品は npm の `@infodb/codex-workspace`（llmcs の codex-workspace-ts）。package.json では
+公開版の版の範囲（`^0.2.0`）で指定し、手元のフォルダへのリンク（`link:` / `file:`）は置かない。新しくチェックアウトしても
+隣に llmcs が無くて構わない。新しく公開された版は、pnpm の `minimumReleaseAge`（公開から1日）を過ぎるまで入れない。
+待たずに入れるための例外（`minimumReleaseAgeExclude`）はリポジトリに残さない。
+
+P3 が使う公開 API と約束:
+
+- `dockerCommand(workspace, { accessTokenEnv | authVolume, authFile })` が作る `docker run` は、作業場所を
+  `/workspace` にマウントする。P3 はそのマウントの直後に、データのフォルダを `/data` にマウントする引数を足す
+- `WorkspaceSession.open(command, { model, effort, env, clientInfo, onEvent })` で app-server を起動する。ChatGPT の
+  トークンは `env`（`ACCESS_TOKEN_ENV`）で渡し、`docker run` の引数や記録には値を出さない
+- `UsageLimitError` は使用量の上限（ChatGPT プランの `subscription_sharing_usage_limit_exceeded` を含む）
+- `ensureImage({ maxAgeMs })` はイメージが無いか `maxAgeMs` より古ければ作り直し、中の Codex の版を返す。作り直すたびに
+  `CODEX_REFRESH`（その時刻）が変わるので、Codex を入れる段はキャッシュを使わず、その時点の最新が入る
+  - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `PCUBE_CODEX_ENSURE_IMAGE=0` で止める）
+  - 強制更新（`p3 codex update`）: `maxAgeMs` を -∞ にして、作った日時によらず作り直す。プロジェクト・認証を決める前に動き、
+    個人設定の自動更新の停止（`codex.ensureImage: false`）とも関係しない。前に `docker version` でデーモンを確かめ、
+    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/server/preflight/codexImage.ts`）
+  - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
+    `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のまま。2026-10-11 に codex-cli 0.162.1 で約40秒）
+
+手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
+
+```bash
+pnpm add @infodb/codex-workspace@link:../llmcs/codex-workspace-ts   # 一時的に手元の llmcs を使う
+# …試す…
+git checkout package.json pnpm-lock.yaml pnpm-workspace.yaml && pnpm install   # 公開版に戻す
+```
+
+`npm pack` やコミットの前に、`package.json` と `pnpm-lock.yaml` に `link:` が無いことを確かめる。
+llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる。
+
 ## プロジェクトのドキュメントの扱い
 
 - ドキュメントは **リポジトリに置いたまま**（`docs/`, README, コードのコメント）。pcube は複製も同期もしない。
@@ -178,12 +216,18 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
 
 ## AI エージェントへの指示（`p3 init --agents` で AGENTS.md / CLAUDE.md に追記する内容）
 
+手順の詳しい版は同梱のスキル（`skills/p3/SKILL.md`。`.claude/skills/p3/SKILL.md` に置く）で、役割と終わり方は両方でそろえる
+（`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
+
 ```markdown
 ## タスク管理（infodb p3）
 
-- 作業の単位は要望。タスクは `p3` CLI で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）
+- 作業の単位は要望。タスクは `p3` CLI（入っていなければ `pnpx @infodb/p3`）で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）。
+  詳しい手順は `.claude/skills/p3/SKILL.md`
 - 変更するときは環境変数 `PCUBE_ACTOR=ai:<エージェント名>` を付ける
 - 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami` で確かめる
+- 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
+  Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
 - 着手するときは `p3 move T003 doing`、終えたら `p3 move T003 done --output <PR の URL など>`
 - 要望のタスクを全部終えたら `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる
