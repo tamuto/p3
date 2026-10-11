@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { Milestone, ProjectConfig } from "../../shared/types.ts";
 import { ChatGptPanel } from "../components/ChatGptPanel.tsx";
+import { ThemePanel } from "../components/ThemePanel.tsx";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
@@ -51,6 +52,7 @@ function SettingsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-10 p-8 pb-24">
       <ChatGptPanel tick={ctx.tick} />
+      <ThemePanel tick={ctx.tick} />
 
       <header className="flex items-center gap-4">
         <h1 className="shrink-0 text-2xl font-bold">プロジェクト設定</h1>
