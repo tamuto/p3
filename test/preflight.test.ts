@@ -9,7 +9,8 @@ import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
 import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";
 import { saveConnection } from "../src/server/chatgpt/store.ts";
 import { redact } from "../src/server/redact.ts";
-import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { CodexWorkspaceEngine, codexConfig, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
@@ -308,28 +309,19 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(command.indexOf("type=bind,src=/host/data,dst=/data")).toBeLessThan(command.indexOf(DEFAULT_IMAGE));
   });
 
-  it("環境変数から旧来の認証・旧来の明示・パス対応を読む", () => {
-    const keep = { ...process.env };
-    try {
-      delete process.env.PCUBE_CODEX_AUTH_VOLUME;
-      delete process.env.PCUBE_CODEX_AUTH_FILE;
-      delete process.env.PCUBE_CODEX_AUTH;
-      expect(codexConfigFromEnv()).toMatchObject({ authVolume: undefined, authFile: undefined, forceLegacy: false });
-      process.env.PCUBE_CODEX_AUTH = "legacy";
-      expect(codexConfigFromEnv().forceLegacy).toBe(true);
-      process.env.PCUBE_CODEX_AUTH_VOLUME = "vol";
-      process.env.PCUBE_CODEX_PATH_MAP = "/workspaces=/root/workspaces,/a=/b";
-      const cfg = codexConfigFromEnv()!;
-      expect(cfg.pathMap).toEqual([
-        ["/workspaces", "/root/workspaces"],
-        ["/a", "/b"],
-      ]);
-      const e = new CodexWorkspaceEngine(cfg);
-      expect(e.hostPath("/workspaces/pcube")).toBe("/root/workspaces/pcube");
-      expect(e.hostPath("/workspacesX")).toBe("/workspacesX");
-    } finally {
-      process.env = keep;
-    }
+  it("マシンの設定から旧来の認証・旧来の明示・パス対応を読む", () => {
+    const settings = (env: Record<string, string>) => resolveMachineSettings({ settings: {} }, env);
+    expect(codexConfig(settings({}))).toMatchObject({ authVolume: undefined, authFile: undefined, forceLegacy: false, ensureImage: true });
+    expect(codexConfig(settings({ PCUBE_CODEX_AUTH: "legacy" })).forceLegacy).toBe(true);
+    const cfg = codexConfig(settings({ PCUBE_CODEX_AUTH_VOLUME: "vol", PCUBE_CODEX_PATH_MAP: "/workspaces=/root/workspaces,/a=/b" }));
+    expect(cfg.authVolume).toBe("vol");
+    expect(cfg.pathMap).toEqual([
+      ["/workspaces", "/root/workspaces"],
+      ["/a", "/b"],
+    ]);
+    const e = new CodexWorkspaceEngine(cfg);
+    expect(e.hostPath("/workspaces/pcube")).toBe("/root/workspaces/pcube");
+    expect(e.hostPath("/workspacesX")).toBe("/workspacesX");
   });
 });
 

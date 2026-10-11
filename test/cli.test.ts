@@ -14,12 +14,13 @@ beforeEach(() => {
   CONFIG_HOME = tempDir("p3-config-");
 });
 
-/** CLI を別プロセスで動かす。マシンの .env にある Codex の設定などは効かないようにする */
-function pcube(cwd: string, args: string[], env: Record<string, string> = {}) {
+/** CLI を別プロセスで動かす。このマシンの PCUBE_* の環境変数（Codex の設定など）は効かないようにする */
+function pcube(cwd: string, args: string[], env: Record<string, string> = {}, configHome = CONFIG_HOME) {
+  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_")));
   const r = spawnSync(process.execPath, [BIN, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, PCUBE_CODEX_AUTH_VOLUME: "", PCUBE_CODEX_AUTH_FILE: "", PCUBE_DATA_DIR: "", PCUBE_ACTOR: "", PCUBE_REQUEST: "", XDG_CONFIG_HOME: CONFIG_HOME, ...env },
+    env: { ...base, XDG_CONFIG_HOME: configHome, ...env },
   });
   return { code: r.status, out: r.stdout, err: r.stderr, json: () => JSON.parse(r.stdout) };
 }
@@ -208,6 +209,58 @@ describe("pcube preflight / drafts / accept", () => {
     ]);
     expect(accepted.tasks[1].relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
     expect(pcube(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+  });
+});
+
+describe("マシンごとの設定（環境変数と個人設定。.env は読まない）", () => {
+  const configFile = () => join(CONFIG_HOME, "infodb-p3", "config.yaml");
+  const appendConfig = (text: string) => writeFileSync(configFile(), `${readFileSync(configFile(), "utf8")}${text}`);
+
+  it("個人設定の preflight.engine: mock で Mock になり、無ければ Codex が使えない理由で失敗する（Mock にしない）", async () => {
+    const { root, rid } = await initialized();
+    const codex = pcube(root, ["preflight", rid, "--json"], { DOCKER_HOST: "unix:///nonexistent.sock" });
+    expect(codex.code).not.toBe(0);
+    expect(codex.out + codex.err).not.toContain('"engine": "mock"');
+
+    appendConfig("preflight:\n  engine: mock\n");
+    const mock = pcube(root, ["preflight", rid, "--json"]);
+    expect(mock.code, mock.err).toBe(0);
+    expect(mock.json()).toMatchObject({ status: "completed", engine: "mock" });
+  });
+
+  it("パッケージやプロジェクトに .env があっても読まない", async () => {
+    const { root, rid } = await initialized();
+    writeFileSync(join(root, ".env"), "PCUBE_PREFLIGHT_ENGINE=mock\n");
+    writeFileSync(join(root, ".pcube", ".env"), "PCUBE_PREFLIGHT_ENGINE=mock\n");
+    const r = pcube(root, ["preflight", rid, "--json"], { DOCKER_HOST: "unix:///nonexistent.sock" });
+    expect(r.code).not.toBe(0);
+    expect(readFileSync(new URL("../src/server/context.ts", import.meta.url), "utf8")).not.toContain("loadEnvFile");
+    expect(readFileSync(new URL("../src/cli/main.ts", import.meta.url), "utf8")).not.toContain("loadEnvFile");
+  });
+
+  it("読めない設定は、直す場所を示して終了コード 1", async () => {
+    const { root } = await initialized();
+    const env = pcube(root, ["request", "ls"], { PCUBE_CODEX_PATH_MAP: "/workspaces" });
+    expect(env.code).toBe(1);
+    expect(env.err).toMatch(/設定: 環境変数 PCUBE_CODEX_PATH_MAP の「\/workspaces」が読めません/);
+    appendConfig("serve:\n  port: web\n");
+    const cfg = pcube(root, ["whoami"]);
+    expect(cfg.code).toBe(1);
+    expect(cfg.err).toContain("個人設定 serve.port");
+    // 個人設定のプロジェクトの一覧・登録は、マシンの設定が読めなくても使える
+    expect(pcube(root, ["project", "ls"]).code).toBe(0);
+  });
+
+  it("init・project add / rm で個人設定を書いても、マシンの設定は残る", async () => {
+    const { root } = await initialized();
+    appendConfig("codex:\n  pathMap:\n    /workspaces: /home/me/workspaces\n  ensureImage: false\n");
+    const other = await repo();
+    expect(pcube(other, ["init", "--yes", "--project", "other", "--dir", join(other, ".pcube")]).code).toBe(0);
+    expect(pcube(root, ["project", "rm", "other"]).code).toBe(0);
+    expect(pcube(other, ["project", "add", "other", join(other, ".pcube")]).code).toBe(0);
+    const text = readFileSync(configFile(), "utf8");
+    expect(text).toContain("/workspaces: /home/me/workspaces");
+    expect(text).toContain("ensureImage: false");
   });
 });
 

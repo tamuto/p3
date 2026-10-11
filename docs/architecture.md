@@ -44,7 +44,8 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 | 何を | どこに | 共有 |
 | --- | --- | --- |
 | プロジェクトのデータ（要望・タスク・Preflight の記録、`project.yaml`） | データのフォルダ | する（方法は下の「共有」） |
-| 個人設定（参加しているプロジェクトとフォルダの場所、手元のリポジトリの場所、画面の設定、いずれ Codex のログイン） | `~/.config/infodb-p3/config.yaml` | しない |
+| 個人設定（参加しているプロジェクトとフォルダの場所、手元のリポジトリの場所、画面の設定、マシンごとの設定（Codex の認証の選び方・パスの対応・serve の待ち受けなど）） | `~/.config/infodb-p3/config.yaml` | しない |
+| ChatGPT の接続（トークン） | `~/.config/infodb-p3/chatgpt.json`（所有者だけが読める） | しない |
 | コード・ドキュメント | 各リポジトリ | 今までどおり |
 
 - 手元のリポジトリの場所はマシンごとに違うので、プロジェクトのデータではなく個人設定に持たせる
@@ -53,6 +54,9 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   決まらなければ登録済みの一覧と選び方を出す（`src/server/store/locate.ts`）
 - 使う人はフォルダや実行パスを意識しない前提で、セットアップは2段階まで・エラーは次にすることを示す、を守る
 - リポジトリの中の `.pcube/` も以前の置き方として読める（デモ・テスト）
+- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`PCUBE_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
+  CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
+  （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
 
 複数のリポジトリへの対応（`project.yaml` の `repos`、タスクの作業先、リポジトリをまたぐ Preflight）と、
 1人1つのサーバで画面からプロジェクトを切り替える形（決定済み）は、次の段階で入れる。
@@ -163,7 +167,7 @@ P3 が使う公開 API と約束:
 - `UsageLimitError` は使用量の上限（ChatGPT プランの `subscription_sharing_usage_limit_exceeded` を含む）
 - `ensureImage({ maxAgeMs })` はイメージが無いか `maxAgeMs` より古ければ作り直し、中の Codex の版を返す。作り直すたびに
   `CODEX_REFRESH`（その時刻）が変わるので、Codex を入れる段はキャッシュを使わず、その時点の最新が入る
-  - いつもの Preflight: 既定の1日より古ければ作り直す（`PCUBE_CODEX_ENSURE_IMAGE=0` で止める）
+  - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `PCUBE_CODEX_ENSURE_IMAGE=0` で止める）
   - 強制更新（`p3 codex update`）: `maxAgeMs` を負にして、作った日時によらず作り直す
 
 手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:

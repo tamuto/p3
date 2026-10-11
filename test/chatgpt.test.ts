@@ -262,7 +262,7 @@ describe("Sign in with ChatGPT: 秘密を出さない・個人設定と分ける
     expect(text).not.toMatch(/at-1|rt-1|eyJ/);
 
     const cfgPath = join(dir, "config.yaml");
-    await saveUserConfig({ projects: { p: { dir: "/data/p", repos: {} } }, ui: { theme: "dark" } }, cfgPath);
+    await saveUserConfig({ projects: { p: { dir: "/data/p", repos: {} } }, ui: { theme: "dark" }, settings: {} }, cfgPath);
     expect((await loadConnection(file))?.tokens?.accessToken).toBe("at-1");
     const c = (await loadConnection(file))!;
     await saveConnection({ ...c, tokens: undefined }, file);

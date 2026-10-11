@@ -29,7 +29,7 @@ export class MockEngine implements PreflightEngine {
     return {
       name: "mock" as const,
       ok: true,
-      detail: "Mock（要望本文の箇条書きをそのままタスク案にする簡易評価）で実行します。PCUBE_PREFLIGHT_ENGINE=mock で選ばれています",
+      detail: "Mock（要望本文の箇条書きをそのままタスク案にする簡易評価）で実行します。PCUBE_PREFLIGHT_ENGINE=mock か個人設定の preflight.engine: mock で選ばれています",
     };
   }
 

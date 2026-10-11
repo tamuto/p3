@@ -30,7 +30,6 @@
 ```bash
 pnpm install
 pnpm build                   # 画面（pcube serve で配信する dist/web）
-cp .env.example .env         # Codex の認証・パス対応（マシンごとの設定。プロジェクトには置かない）
 pnpm link --global           # `pcube` / `p3` コマンドを使えるようにする（任意）
 ```
 
@@ -318,22 +317,57 @@ Codex のイメージ（`llmcs-codex-workspace:local`）は、無いか作って
 - 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
   Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
 
-| 環境変数 | 内容 |
-| --- | --- |
-| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル）。ChatGPT に接続していなければこちらを使う |
-| `PCUBE_CODEX_AUTH` | `legacy` にすると、ChatGPT に接続していても旧来の `auth.json` を使う |
-| `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`）。リポジトリとデータのフォルダの両方に使う |
-| `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
-| `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
-| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
+### マシンごとの設定
+
+Codex の認証・パスの対応などはマシン（と人）ごとに違うので、プロジェクトのデータには置かない。
+**個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下）に書くか、環境変数で渡す。
+`.env` は読まない（P3 のパッケージの中にも、プロジェクトの中にも置かない）。
+
+```yaml
+# ~/.config/infodb-p3/config.yaml（projects・ui と同じファイル。必要な項目だけ書く）
+codex:
+  pathMap:                         # DevContainer のとき: このマシンのパス → Docker デーモンから見たパス
+    /workspaces: /home/me/workspaces
+  # auth: legacy                   # ChatGPT に接続していても旧来の auth.json を使う（既定 auto）
+  # authVolume: codex-state        # 旧来: auth.json を入れた Docker ボリューム
+  # authFile: /home/me/.codex/auth.json   # 旧来: ホストの auth.json（authVolume とどちらか）
+  # model: gpt-5.5
+  # effort: medium
+  # ensureImage: false             # Preflight の前のイメージの作り直し（1日ごと）を止める
+# preflight:
+#   engine: mock                   # 明示したときだけ Mock で評価する
+# serve:
+#   host: 127.0.0.1
+#   port: 4310
+```
+
+値は項目ごとに **CLI の明示（`--port` / `--host` / `--engine`）→ 環境変数 → 個人設定 → 既定値** の順で決まる。
+環境変数を空にすると（`PCUBE_CODEX_MODEL=`）、個人設定の値を使わずに既定値に戻す。読めない値（`ensureImage: maybe`、
+`=` の無いパスの対応など）は、どこの何を直すかを出して止まる。ChatGPT のトークンはここに置かない（`chatgpt.json`）。
+
+| 個人設定 | 環境変数 | 内容 |
+| --- | --- | --- |
+| `codex.auth` | `PCUBE_CODEX_AUTH` | `auto`（既定。ChatGPT に接続していれば ChatGPT、無ければ旧来）/ `legacy`（接続していても旧来の `auth.json`） |
+| `codex.authVolume` / `codex.authFile` | `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル） |
+| `codex.pathMap` | `PCUBE_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker デーモンから見たパス。リポジトリとデータのフォルダの両方に使う |
+| `codex.model` / `codex.effort` | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
+| `codex.ensureImage` | `PCUBE_CODEX_ENSURE_IMAGE`（`0` / `1`） | `false` でイメージの自動更新確認をしない |
+| `preflight.engine` | `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
+| `serve.host` / `serve.port` | `PCUBE_HOST` / `PCUBE_PORT` | `p3 serve` の待ち受け（既定 `0.0.0.0` / `4310`） |
+
+`PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
+
+**これまでの `.env` からの移し方:** P3 は前の版まで、P3 の置き場所の `.env` を読んでいた。今は読まないので、その中の値を
+上の表に従って個人設定に書き写す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
+接続に変えたりはしない。書き写したら `.env` は消してよい。
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-既定のエンジンは Codex で、認証は次の順に選ぶ: `PCUBE_CODEX_AUTH=legacy` と旧来の設定 → 旧来の `auth.json` /
-ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE`）だけ → 旧来の `auth.json` /
+既定のエンジンは Codex で、認証は次の順に選ぶ: `codex.auth: legacy` と旧来の設定 → 旧来の `auth.json` /
+ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`codex.authVolume` / `codex.authFile`）だけ → 旧来の `auth.json` /
 どれも無い → 使えない（画面と CLI でサインインを案内する。**認証が無いときに Mock に切り替えない**）。
 
-**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`PCUBE_PREFLIGHT_ENGINE=mock` か `--engine mock` で
+**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`preflight.engine: mock`（`PCUBE_PREFLIGHT_ENGINE=mock`）か `--engine mock` で
 明示したときだけ使う。再評価ではメモの箇条書きを案に足し、
 前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
@@ -425,11 +459,11 @@ pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 済ませるので、マイルストーン・期限・タグを含めて各画面をそのまま確かめられる。
 `pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
 サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
-信頼できないネットワークでは `PCUBE_HOST=127.0.0.1` に絞ること。
+信頼できないネットワークでは `serve.host: 127.0.0.1`（`PCUBE_HOST=127.0.0.1`）に絞ること。
 
 テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
 Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
-CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、マシンの `.env` の Codex 設定は効かないようにしている。
+CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `PCUBE_*` の環境変数は効かないようにしている。
 
 ## 構成
 

@@ -4,7 +4,8 @@ import { parseArgs } from "node:util";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
-import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
+import { openProject, type PcubeContext } from "../server/context.ts";
+import { resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
@@ -40,7 +41,7 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
-  serve [--port] [--host]      ブラウザ用のビューアを起動
+  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $PCUBE_PORT / $PCUBE_HOST）
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
@@ -153,7 +154,6 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(HELP);
     return 0;
   }
-  loadMachineEnv();
   const cwd = process.cwd();
   const out = new Output(o.json ?? false);
 
@@ -194,19 +194,15 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
+  // マシンごとの設定は環境変数と個人設定から（.env は読まない）
+  const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
 
   if (cmd === "serve") {
-    await startServer({
-      dataDir: target.dataDir,
-      repoRoot: target.repoRoot,
-      port: Number(o.port ?? process.env.PCUBE_PORT ?? 4310),
-      host: o.host ?? process.env.PCUBE_HOST ?? "0.0.0.0",
-      static: true,
-    });
+    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, port: settings.serve.port, host: settings.serve.host, static: true, settings });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot });
+  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot, settings });
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
@@ -803,6 +799,10 @@ main(process.argv.slice(2)).then(
     if (e instanceof ConflictError) {
       process.stderr.write(`競合: ${e.message}。最新を取得してやり直してください\n`);
       process.exit(3);
+    }
+    if (e instanceof SettingsError) {
+      process.stderr.write(`設定: ${e.message}\n`);
+      process.exit(1);
     }
     if (e instanceof ProjectNotResolvedError) {
       process.stderr.write(`${e.message}\n`);
