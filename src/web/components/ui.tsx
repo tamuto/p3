@@ -69,7 +69,7 @@ export const inputCls =
 export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">{title}</h3>
         {aside}
       </div>

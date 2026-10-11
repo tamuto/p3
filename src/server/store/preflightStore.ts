@@ -69,6 +69,43 @@ export class PreflightStore {
   async list(requestId: string): Promise<PreflightRun[]> {
     const ids = await readdir(join(this.requestsDir, requestId, "preflight")).catch(() => [] as string[]);
     const runs = await Promise.all(ids.filter((i) => i.startsWith("PF-")).map((i) => this.get(requestId, i)));
-    return runs.filter((r): r is PreflightRun => !!r).sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
+    return newestFirst(runs.filter((r): r is PreflightRun => !!r));
   }
+}
+
+/**
+ * run を新しい順に並べる。基本は開始時刻だが、時計は戻ることがある（WSL2 の時刻の補正など）ので、
+ * 前回を引き継いだ run（previous）は、引き継いだ相手より必ず新しいとする。
+ */
+export function newestFirst<T extends Pick<PreflightRun, "id" | "startedAt" | "previous">>(runs: T[]): T[] {
+  const byTime = [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
+  // previous の鎖の長さ（引き継いだ回数）。鎖でつながる run どうしは、長い方が新しい
+  const ids = new Map(runs.map((r) => [r.id, r]));
+  const depth = new Map<string, number>();
+  const chain = (r: T, seen = new Set<string>()): number => {
+    if (depth.has(r.id)) return depth.get(r.id)!;
+    const prev = r.previous && !seen.has(r.id) ? ids.get(r.previous) : undefined;
+    const d = prev ? chain(prev, seen.add(r.id)) + 1 : 0;
+    depth.set(r.id, d);
+    return d;
+  };
+  const root = (r: T): string => {
+    let cur = r;
+    for (const seen = new Set<string>(); cur.previous && ids.has(cur.previous) && !seen.has(cur.id); ) {
+      seen.add(cur.id);
+      cur = ids.get(cur.previous)!;
+    }
+    return cur.id;
+  };
+  // 時刻順の並びで各鎖が占める位置はそのままにし、その位置に鎖の run を引き継いだ順（新しい方から）で入れ直す
+  const groups = new Map<string, T[]>();
+  for (const r of byTime) (groups.get(root(r)) ?? groups.set(root(r), []).get(root(r))!).push(r);
+  for (const g of groups.values()) g.sort((a, b) => chain(b) - chain(a));
+  const next = new Map([...groups].map(([k]) => [k, 0]));
+  return byTime.map((r) => {
+    const k = root(r);
+    const i = next.get(k)!;
+    next.set(k, i + 1);
+    return groups.get(k)![i];
+  });
 }
