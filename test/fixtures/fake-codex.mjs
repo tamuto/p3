@@ -1,4 +1,4 @@
-// テスト用の偽 codex app-server。@llmcs/codex-workspace と JSON-RPC で話し、
+// テスト用の偽 codex app-server。@infodb/codex-workspace と JSON-RPC で話し、
 // preflight の指示文から run ディレクトリを読み取って、assessment.json と drafts/*.md を書く。
 //   FAKE_TARGET   既存のタスクの参照（<要望ID>/T001）。影響・関係の相手にする
 //   FAKE_REPO     作業場所（コンテナの /workspace に当たる）

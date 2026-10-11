@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
-import { DEFAULT_IMAGE, dockerCommand } from "@llmcs/codex-workspace";
+import { DEFAULT_IMAGE, dockerCommand } from "@infodb/codex-workspace";
 import { progress } from "../src/server/ops.ts";
 import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
 import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";

@@ -303,13 +303,12 @@ p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う�
 ```
 
 Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
-（`@llmcs/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
+（npm の `@infodb/codex-workspace`）で、操作する人のマシンのコンテナの中で、その人のアカウントで動かす。
 コンテナには管理対象リポジトリを `/workspace`、データのフォルダを `/data` としてマウントする（データのフォルダは
 リポジトリの外にあってよい）。途中経過は SSE で画面に流れる。
 
-依存は今は手元の llmcs を `link:../llmcs/codex-workspace-ts` で参照している。llmcs 側にタグ
-（`codex-workspace-ts-v0.1.0`）が打たれたら `github:tamuto/llmcs#codex-workspace-ts-v0.1.0&path:/codex-workspace-ts`
-へ切り替える（サブディレクトリの git 依存を扱えるので、パッケージマネージャは pnpm）。
+Codex のイメージ（`llmcs-codex-workspace:local`）は、無いか作ってから1日より古ければ、Preflight の前に作り直す
+（そのときの最新の Codex が入る）。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
 
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
@@ -454,4 +453,4 @@ docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / ops / preflight / api / cli）
 ```
 
-技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@llmcs/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
+技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@infodb/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

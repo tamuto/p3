@@ -87,7 +87,7 @@ Preflight
 - 同じマシンの CLI・serve・並行する Preflight が同時に更新しないよう、lock を取り、取ったら読み直して、まだ必要なら更新する。
 - `invalid_grant` などの更新できないエラーは、トークンを消して「サインインし直してください」。ネットワークや 5xx では消さない。
 
-## llmcs（@llmcs/codex-workspace。T005）
+## llmcs（@infodb/codex-workspace。T005）
 
 公式の Codex app-server の手順に合わせ、llmcs に足すもの（旧来の `authVolume` / `authFile` はそのまま使える）:
 

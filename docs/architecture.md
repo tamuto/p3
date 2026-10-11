@@ -78,7 +78,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 | データのフォルダ（Markdown / YAML / JSON） | 正。タスク・要望・Preflight の記録。人も AI も直接読める |
 | CLI（`pcube`） | 主な操作口。人も AI も使う。ファイルを直接読み書きするので **認証が要らない** |
 | `pcube serve` + ブラウザ | ローカルのビューア兼エディタ。ファイルを監視して画面に流す。データは持たない |
-| Codex（`@llmcs/codex-workspace`） | 操作する人のマシンで、その人のアカウントで動く。リポジトリとデータのフォルダだけを見せたコンテナの中 |
+| Codex（`@infodb/codex-workspace`） | 操作する人のマシンで、その人のアカウントで動く。リポジトリとデータのフォルダだけを見せたコンテナの中 |
 
 REST API はブラウザのためのローカル API として残すが、AI には CLI を使わせる。
 CLI がファイルを直接触る形なら、API ごとに認証を持たせる問題はそもそも起きない。
@@ -97,7 +97,7 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
 
 - Preflight は **実行した人のマシン** で、`codex-workspace` のコンテナの中で動く。コンテナには管理対象リポジトリを
   `/workspace`、データのフォルダを `/data` としてマウントする。データのフォルダはリポジトリの外にあってよい。
-  認証情報は各自の `auth.json`（pcube 本体の `.env` で場所を指定。プロジェクトには置かない）。
+  認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
 - 同じ要望を複数人が Preflight しても、run ごとに別ディレクトリ（ID に乱数を含む）なので衝突しない。
@@ -146,6 +146,36 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
   操作は行ったうえで `warnings`（code・対象・置き換えた側・文言）を返す。作業中のままの再指定では出さない。
 - API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### codex-workspace の依存
+
+Codex をコンテナで動かす部品は npm の `@infodb/codex-workspace`（llmcs の codex-workspace-ts）。package.json では
+公開版の版の範囲（`^0.2.0`）で指定し、手元のフォルダへのリンク（`link:` / `file:`）は置かない。新しくチェックアウトしても
+隣に llmcs が無くて構わない。新しく公開された版は、pnpm の `minimumReleaseAge`（公開から1日）を過ぎるまで入れない。
+待たずに入れるための例外（`minimumReleaseAgeExclude`）はリポジトリに残さない。
+
+P3 が使う公開 API と約束:
+
+- `dockerCommand(workspace, { accessTokenEnv | authVolume, authFile })` が作る `docker run` は、作業場所を
+  `/workspace` にマウントする。P3 はそのマウントの直後に、データのフォルダを `/data` にマウントする引数を足す
+- `WorkspaceSession.open(command, { model, effort, env, clientInfo, onEvent })` で app-server を起動する。ChatGPT の
+  トークンは `env`（`ACCESS_TOKEN_ENV`）で渡し、`docker run` の引数や記録には値を出さない
+- `UsageLimitError` は使用量の上限（ChatGPT プランの `subscription_sharing_usage_limit_exceeded` を含む）
+- `ensureImage({ maxAgeMs })` はイメージが無いか `maxAgeMs` より古ければ作り直し、中の Codex の版を返す。作り直すたびに
+  `CODEX_REFRESH`（その時刻）が変わるので、Codex を入れる段はキャッシュを使わず、その時点の最新が入る
+  - いつもの Preflight: 既定の1日より古ければ作り直す（`PCUBE_CODEX_ENSURE_IMAGE=0` で止める）
+  - 強制更新（`p3 codex update`）: `maxAgeMs` を負にして、作った日時によらず作り直す
+
+手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
+
+```bash
+pnpm add @infodb/codex-workspace@link:../llmcs/codex-workspace-ts   # 一時的に手元の llmcs を使う
+# …試す…
+git checkout package.json pnpm-lock.yaml pnpm-workspace.yaml && pnpm install   # 公開版に戻す
+```
+
+`npm pack` やコミットの前に、`package.json` と `pnpm-lock.yaml` に `link:` が無いことを確かめる。
+llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる。
 
 ## プロジェクトのドキュメントの扱い
 

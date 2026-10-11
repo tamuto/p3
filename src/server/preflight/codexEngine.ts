@@ -11,7 +11,7 @@ import {
   dockerCommand,
   ensureImage,
   type WorkspaceEvent,
-} from "@llmcs/codex-workspace";
+} from "@infodb/codex-workspace";
 import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
 import { APP_NAME } from "../chatgpt/oauth.ts";
 import { redact } from "../redact.ts";
@@ -96,7 +96,7 @@ function localPath(job: PreflightJob, p: string) {
 }
 
 /**
- * llmcs の codex-workspace（TypeScript 版 @llmcs/codex-workspace）で、Docker コンテナ内の
+ * llmcs の codex-workspace（TypeScript 版。npm の @infodb/codex-workspace）で、Docker コンテナ内の
  * codex app-server に preflight を頼む。
  *
  * コンテナには管理対象リポジトリが /workspace、データディレクトリが /data としてマウントされる。
