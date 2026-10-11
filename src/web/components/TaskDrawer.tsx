@@ -8,6 +8,8 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
+import { relationItems } from "../lib/relations.ts";
+import { RelationRow } from "./RelationRow.tsx";
 
 type Draft = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
 
@@ -242,33 +244,39 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           <Section title="関係（明示）">
             {graph.outgoing.length + graph.incoming.length === 0 && <Empty>明示的な関係はありません</Empty>}
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {graph.outgoing.map((e) => (
-                <li key={`o-${e.type}-${e.to}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="indigo">{RELATION_TYPES[e.type as RelationType]?.label ?? e.type}</Badge>
-                  <Id id={short(e.to)} onClick={() => open(e.to)} />
-                  <span className="truncate">{title(e.to)}</span>
-                  <Origin e={e} />
-                  {e.origin !== "index" && (
-                    <button className="ml-auto text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(e)}>
-                      削除
-                    </button>
-                  )}
-                </li>
-              ))}
-              {graph.incoming.map((e) => (
-                <li key={`i-${e.type}-${e.from}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="violet">{RELATION_TYPES[e.type as RelationType]?.inverse ?? e.type}</Badge>
-                  <Id id={short(e.from)} onClick={() => open(e.from)} />
-                  <span className="truncate">{title(e.from)}</span>
-                  <Origin e={e} />
+              {relationItems(graph.outgoing, graph.incoming, rid).map((r) => (
+                <li key={r.key}>
+                  <RelationRow
+                    role={r.role}
+                    tone={r.direction === "out" ? "indigo" : "violet"}
+                    refId={r.short}
+                    onOpen={() => open(r.ref)}
+                    title={title(r.ref)}
+                    note={r.edge.origin !== "index" ? r.edge.note : undefined}
+                    aside={
+                      <>
+                        <Origin e={r.edge} />
+                        {r.removable && (
+                          <button className="text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(r.edge)} aria-label={`${r.role} ${r.short} の関係を削除`}>
+                            削除
+                          </button>
+                        )}
+                      </>
+                    }
+                  />
                 </li>
               ))}
             </ul>
             <div className="flex gap-2 pt-1">
-              <select className={`${inputCls} !w-40 shrink-0`} value={relType} onChange={(e) => setRelType(e.target.value as RelationType)}>
+              <select
+                className={`${inputCls} !w-40 shrink-0`}
+                value={relType}
+                title={RELATION_TYPES[relType].verb}
+                onChange={(e) => setRelType(e.target.value as RelationType)}
+              >
                 {relationTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {RELATION_TYPES[t].label}
+                  <option key={t} value={t} title={RELATION_TYPES[t].verb}>
+                    {RELATION_TYPES[t].verb.split("（")[0]}
                   </option>
                 ))}
               </select>
@@ -299,6 +307,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 追加
               </Button>
             </div>
+            <p className="text-sm text-slate-500">
+              {RELATION_TYPES[relType].verb}。このタスクには「{RELATION_TYPES[relType].label} {relTarget || "相手"}」、相手には「{RELATION_TYPES[relType].inverse} {short(id)}」と出ます。
+            </p>
           </Section>
 
           <Section title="関係しそう（暗黙: 領域・内容の近さ）">

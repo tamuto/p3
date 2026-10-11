@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { loadMachineEnv, openProject, type PcubeContext } from "../server/context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
@@ -81,7 +81,8 @@ Preflight
   --actor 名前   変更者（既定: $PCUBE_ACTOR → human:<git の user.name>）
   --rev 番号     楽観ロック。指定した rev でなければ更新しない（set / move）
 
-関係の種類: ${relationTypes.map((t) => `${t}(${RELATION_TYPES[t].label})`).join(" ")}
+関係の種類（A → B と張る。A の詳細には「相手の役割 B」、B の詳細には「相手の役割 A」と出る）:
+${relationTypes.map((t) => `  ${t.padEnd(13)} ${RELATION_TYPES[t].verb}  →「${RELATION_TYPES[t].label}」/ 逆「${RELATION_TYPES[t].inverse}」`).join("\n")}
 `;
 
 const OPTIONS = {
@@ -412,7 +413,7 @@ async function main(argv: string[]): Promise<number> {
       const rel: Relation = { type: type as RelationType, target, note: o.note };
       if (o.confidence !== undefined) rel.confidence = num(o.confidence, "confidence");
       const next = await addRelation(ctx, ref, rel, actor);
-      return out.result(next, () => `張りました: ${ref} ${RELATION_TYPES[rel.type].label} ${target}`);
+      return out.result(next, () => `張りました: ${ref} の${RELATION_TYPES[rel.type].label}: ${target}（${RELATION_TYPES[rel.type].verb}）`);
     }
 
     case "archive": {
@@ -665,9 +666,9 @@ function formatEntity(ctx: PcubeContext, item: Task | Request, graph: ReturnType
     lines.push("", "関係:");
     for (const e of graph.outgoing) {
       const origin = e.origin !== "human" ? `  [${e.origin}${e.weight !== undefined ? ` ${e.weight}` : ""}]` : "";
-      lines.push(`  → ${RELATION_TYPES[e.type].label}  ${short(e.to)} ${titleOf(ctx, e.to)}${origin}`);
+      lines.push(`  → ${pad(relationRole(e.type, "out"))} ${short(e.to)} ${titleOf(ctx, e.to)}${origin}`);
     }
-    for (const e of graph.incoming) lines.push(`  ← ${RELATION_TYPES[e.type].inverse}  ${short(e.from)} ${titleOf(ctx, e.from)}`);
+    for (const e of graph.incoming) lines.push(`  ← ${pad(relationRole(e.type, "in"))} ${short(e.from)} ${titleOf(ctx, e.from)}`);
   }
   if (graph.implicit.length) {
     lines.push("", "関係しそう:");
@@ -815,3 +816,9 @@ main(process.argv.slice(2)).then(
     process.exit(1);
   },
 );
+
+/** 関係の役割を同じ幅にそろえる（全角は2桁として数える。CLI の詳細で相手の列がそろうように） */
+function pad(label: string, width = 8): string {
+  const w = [...label].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
+  return label + " ".repeat(Math.max(1, width - w));
+}

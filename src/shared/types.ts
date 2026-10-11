@@ -15,15 +15,29 @@
 // 相手の書き方（参照）は shared/refs.ts を参照。
 // ---------------------------------------------------------------------------
 
+/**
+ * 関係の種類。A →(種類)→ B と張ったとき、画面と CLI は「役割 + 相手」で見せる:
+ *   label   A から見た B の役割（A の詳細に「依存先 B」）
+ *   inverse B から見た A の役割（B の詳細に「依存元 A」）
+ *   verb    種類そのものの説明（関係を張るときの選択肢・CLI のヘルプ）
+ * 例: T002 depends_on T001 → T002 に「依存先 T001」、T001 に「依存元 T002」
+ */
 export const RELATION_TYPES = {
-  depends_on: { label: "依存する", inverse: "依存される", schedule: true },
-  part_of: { label: "の一部", inverse: "を含む", schedule: false },
-  derived_from: { label: "から派生", inverse: "の派生元", schedule: false },
-  impacts: { label: "に影響", inverse: "から影響を受ける", schedule: false },
-  relates_to: { label: "関連", inverse: "関連", schedule: false },
-  duplicates: { label: "と重複", inverse: "と重複", schedule: false },
-  supersedes: { label: "を置き換え", inverse: "に置き換えられた", schedule: false },
+  depends_on: { label: "依存先", inverse: "依存元", verb: "依存する（相手が先に終わっている必要がある）", schedule: true },
+  part_of: { label: "親", inverse: "子", verb: "一部である（相手が全体）", schedule: false },
+  derived_from: { label: "派生元", inverse: "派生先", verb: "派生した（相手から生まれた）", schedule: false },
+  impacts: { label: "影響先", inverse: "影響元", verb: "影響する（相手に影響が及ぶ）", schedule: false },
+  relates_to: { label: "関連", inverse: "関連", verb: "関連する", schedule: false },
+  duplicates: { label: "重複", inverse: "重複", verb: "重複する（相手と同じ内容）", schedule: false },
+  supersedes: { label: "旧案", inverse: "新案", verb: "置き換える（相手は古い案）", schedule: false },
 } as const;
+
+/** 関係の向きに応じた相手の役割。out: 張った側から見た相手、in: 張られた側から見た相手（張った側） */
+export function relationRole(type: string, direction: "out" | "in"): string {
+  const t = RELATION_TYPES[type as keyof typeof RELATION_TYPES];
+  if (!t) return type;
+  return direction === "out" ? t.label : t.inverse;
+}
 
 export type RelationType = keyof typeof RELATION_TYPES;
 export const relationTypes = Object.keys(RELATION_TYPES) as RelationType[];

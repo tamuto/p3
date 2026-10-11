@@ -92,8 +92,9 @@ function BoardPage() {
   return (
     <div className="flex h-full flex-col">
       {error && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{error}</div>}
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-4 p-5">
-        <div className="grid min-h-0 grid-cols-2 gap-4">
+      {/* 広い画面は 未着手・完了 を横に並べ、その下に作業中（V 字）。狭い画面は縦に積んでページごとスクロールする */}
+      <div className="grid gap-4 p-5 md:min-h-0 md:flex-1 md:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="grid gap-4 md:min-h-0 md:grid-cols-2">
           {pane("todo")}
           {pane(
             "done",

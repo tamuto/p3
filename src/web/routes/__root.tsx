@@ -29,7 +29,7 @@ const NAV = [
   { to: "/settings", label: "設定", hint: "プロジェクト名・ドキュメント・列" },
 ] as const;
 
-const navCls = "rounded-md px-3 py-1.5 font-medium transition";
+const navCls = "rounded-md px-3 py-1.5 font-medium whitespace-nowrap transition";
 const navActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300";
 const navIdle = "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800";
 
@@ -40,7 +40,7 @@ function Layout() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-6 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+      <header className="flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
         <Link to="/" className="flex items-center gap-3" title="infodb p3">
           <Logo />
           <span className="font-medium">{ctx.info.project.name}</span>
@@ -60,7 +60,7 @@ function Layout() {
             </Link>
           ))}
         </nav>
-        <Link to="/requests/new" className={buttonCls("primary", "ml-auto")}>
+        <Link to="/requests/new" className={buttonCls("primary", "ml-auto whitespace-nowrap")}>
           ＋ 新しい要望
         </Link>
         {errors.length > 0 && (

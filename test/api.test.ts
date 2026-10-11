@@ -135,7 +135,7 @@ describe("REST API", () => {
     expect(list.body[0].tasks).toEqual([expect.objectContaining({ id: "T001", status: "done", doneAt: expect.any(String) })]);
   });
 
-  it("エンジンの状態を返す（Codex が未設定なら Mock）", async () => {
+  it("エンジンの状態を返す（テストの Mock）", async () => {
     const { call } = await setup();
     expect((await call("GET", "/engine")).body).toMatchObject({ name: "mock", ok: true });
   });
