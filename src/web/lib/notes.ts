@@ -54,7 +54,7 @@ export interface NotesPanelInput {
 }
 
 export interface NotesPanelState {
-  /** intro: まだ一度も実行していない（入力欄は出さず、本文に書くよう案内する）/ input: 入力欄を出す */
+  /** intro: まだ一度も実行していない（入力欄は出さない）/ input: 入力欄を出す */
   mode: "intro" | "input";
   canSaveAndRun: boolean;
   canSaveOnly: boolean;
@@ -66,7 +66,7 @@ export interface NotesPanelState {
 
 /**
  * メモは「評価の結果を見て、確認事項への回答や方針の変更を次の評価に渡す」ための欄。
- *   - 一度も実行していなければ入力欄は出さない（最初の条件は要望の本文に書く）。CLI などで保存済みのメモがあれば見せる
+ *   - 一度も実行していなければ何も出さない（評価を読んでから書く欄なので）。CLI などで保存済みのメモがあればそれだけ見せる
  *   - 入力中のメモがある間は、上の通常の実行を止める（「保存して再実行」か、入力を消す）
  *   - 実行中でも保存はできる（実行中の評価ではなく次の Preflight に渡る）。エンジンが使えなくても保存はできる
  */
@@ -77,10 +77,8 @@ export function notesPanelState(i: NotesPanelInput): NotesPanelState {
       canSaveAndRun: false,
       canSaveOnly: false,
       blockPlainRun: false,
-      hint:
-        i.pending > 0
-          ? `保存済みのメモ ${i.pending} 件を、最初の Preflight に渡します。`
-          : "最初の Preflight の条件や背景は、要望の本文に書いてください。メモは、評価の結果を見てから確認事項への回答や方針の変更を書く欄です。",
+      // 何も出さない。CLI などで先に保存したメモがあるときだけ、それを最初の Preflight に渡すと示す
+      hint: i.pending > 0 ? `保存済みのメモ ${i.pending} 件を、最初の Preflight に渡します。` : undefined,
     };
   }
   const hasDraft = i.draft.trim() !== "";

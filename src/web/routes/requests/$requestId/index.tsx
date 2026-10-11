@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   REQUEST_STATUSES,
   relationRole,
@@ -108,6 +108,19 @@ function RequestPanel({
   // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
   const hasHistory = runs.length > 0 || !!run;
   const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: false, pending: 0 });
+  // メモ欄は評価の下（評価を読んでから書くため）。入力中の文はここで持つので、表示が変わっても消えない
+  const notes = (
+    <Notes
+      ctx={ctx}
+      request={request}
+      hasHistory={hasHistory}
+      running={running}
+      engineOk={engine?.ok !== false}
+      draft={draft}
+      onDraft={setDraft}
+      onStarted={started}
+    />
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
@@ -162,19 +175,12 @@ function RequestPanel({
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
 
-      {/* メモ欄はいつもここ（実行の操作のすぐ下）に1つだけ。実行の状態で場所を変えない */}
-      <Notes
-        ctx={ctx}
-        request={request}
-        hasHistory={hasHistory}
-        running={running}
-        engineOk={engine?.ok !== false}
-        draft={draft}
-        onDraft={setDraft}
-        onStarted={started}
-      />
-
-      {run && <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} />}
+      {run ? (
+        <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} />
+      ) : (
+        // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
+        notes
+      )}
 
     </div>
   );
@@ -186,12 +192,15 @@ function RunView({
   run,
   onChanged,
   onOpenRun,
+  notes,
 }: {
   ctx: AppCtx;
   request: Request;
   run: PreflightRun;
   onChanged: (r: PreflightRun) => void;
   onOpenRun: (runId: string) => void;
+  /** メモ欄。評価の下の決まった場所に置く（評価が無い間＝実行中・失敗も同じ場所。入れ替えて作り直さない） */
+  notes: ReactNode;
 }) {
   const a = run.assessment;
   const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length ? 4 : run.status === "completed" ? 3 : 2;
@@ -267,7 +276,6 @@ function RunView({
       {run.status === "failed" && <p className="rounded-md bg-rose-50 p-4 text-rose-700 dark:bg-rose-950 dark:text-rose-300">失敗: {run.error}</p>}
 
       {a && (
-        <>
           <Section title="評価">
             <div className="space-y-4 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
               <div className="flex items-start gap-3">
@@ -306,7 +314,7 @@ function RunView({
                   action={
                     a.questions.length > 0 ? (
                       <a href={`#${NOTE_INPUT_ID}`} className="text-sm text-indigo-600 underline" onClick={focusNoteInput}>
-                        メモ欄で答える ↑
+                        メモ欄で答える ↓
                       </a>
                     ) : undefined
                   }
@@ -314,7 +322,13 @@ function RunView({
               </div>
             </div>
           </Section>
+      )}
 
+      {/* 評価の下。評価が無い間（実行中・失敗）も同じ並びの位置なので、作り直されず入力も消えない */}
+      {notes}
+
+      {a && (
+        <>
           {a.impacts.length > 0 && (
             <Section title="既存項目への影響（タスク化時に要望の関係として記録）">
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -359,7 +373,7 @@ function focusNoteInput(e: { preventDefault: () => void }) {
 /**
  * Preflight へのメモ（確認事項への回答・方針の変更）。保存すると次の Preflight に前回の結果と一緒に渡す。
  * 引き継ぎ元はいつも直近の run（過去の run を表示していても変わらない）なので、それを先に見せる。
- * まだ一度も実行していなければ入力欄は出さない（最初の条件は要望の本文に書く）。入力中の文は親が持つ。
+ * 評価の下に置く（評価を読んでから書くため）。まだ一度も実行していなければ出さない。入力中の文は親が持つ。
  */
 function Notes({
   ctx,
@@ -377,7 +391,7 @@ function Notes({
   running: boolean;
   engineOk: boolean;
   draft: string;
-  onDraft: (s: string) => void;
+  onDraft: Dispatch<SetStateAction<string>>;
   onStarted: (r: PreflightRun) => void;
 }) {
   const [info, setInfo] = useState<NotesInfo>();
@@ -395,9 +409,11 @@ function Notes({
     setBusy(true);
     setMessage(null);
     try {
-      const r = await submitNote(api, request.id, draft, run);
-      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）。保存の前に失敗したら入力は残す
-      onDraft("");
+      const sent = draft;
+      const r = await submitNote(api, request.id, sent, run);
+      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）。保存の前に失敗したら入力は残す。
+      // 送った後に書き足していれば、その文は消さない
+      onDraft((cur) => (cur === sent ? "" : cur));
       if (r.kind === "started") setMessage({ error: false, text: "メモを保存して、Preflight を始めました" });
       else if (r.kind === "not-started")
         setMessage({ error: true, text: `メモ ${r.note.id} は保存済みです（書き直しは不要）。Preflight を始められませんでした: ${r.error}` });
@@ -411,10 +427,8 @@ function Notes({
     }
   }
 
-  // まだ実行しておらず、保存済みのメモも無ければ、短い案内だけにする
-  if (st.mode === "intro" && !info?.notes.length && !info?.invalid.length) {
-    return <p className="text-sm text-slate-500">{st.hint}</p>;
-  }
+  // まだ実行しておらず、保存済みのメモも無ければ何も出さない
+  if (st.mode === "intro" && !info?.notes.length && !info?.invalid.length) return null;
 
   return (
     <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/notes/*.md</span>}>

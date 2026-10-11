@@ -60,8 +60,8 @@ describe("メモ欄の表示と操作", () => {
   const base: NotesPanelInput = { hasHistory: true, running: false, engineOk: true, draft: "", busy: false, pending: 0 };
   const st = (p: Partial<NotesPanelInput>) => notesPanelState({ ...base, ...p });
 
-  it("一度も実行していなければ入力欄を出さず、本文に書くよう案内する。保存済みのメモがあれば最初の Preflight に渡すと示す", () => {
-    expect(st({ hasHistory: false })).toMatchObject({ mode: "intro", canSaveAndRun: false, canSaveOnly: false, blockPlainRun: false, hint: expect.stringContaining("要望の本文") });
+  it("一度も実行していなければ何も出さない（案内もしない）。保存済みのメモがあれば最初の Preflight に渡すと示す", () => {
+    expect(st({ hasHistory: false })).toEqual({ mode: "intro", canSaveAndRun: false, canSaveOnly: false, blockPlainRun: false, hint: undefined });
     expect(st({ hasHistory: false, pending: 2 }).hint).toBe("保存済みのメモ 2 件を、最初の Preflight に渡します。");
     // 入力の途中でも（ありえないが）実行は止めない
     expect(st({ hasHistory: false, draft: "x" }).blockPlainRun).toBe(false);
