@@ -124,8 +124,8 @@ function RequestPanel({
   );
 
   return (
-    // 横幅を広く使う（上限 1536px）。狭い画面では左右の余白を縮める
-    <div className="mx-auto w-full max-w-screen-2xl space-y-8 px-4 py-6 sm:px-6 lg:p-8">
+    // ブラウザの幅をそのまま使う（上限なし）。狭い画面では左右の余白を縮める
+    <div className="w-full space-y-8 px-4 py-6 sm:px-6 lg:p-8">
       <RequestMeta ctx={ctx} data={data} />
 
       <section className="space-y-3">
