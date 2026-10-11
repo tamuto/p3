@@ -487,6 +487,25 @@ pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
 Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
 CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `PCUBE_*` の環境変数は効かないようにしている。
 
+### npm で配る中身
+
+`@infodb/p3` として npm に公開する（公開そのものは人が行う）。TypeScript のソースを `tsx` でそのまま動かし、
+画面だけをビルドして同梱する。
+
+| 何を | どうする |
+| --- | --- |
+| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
+| 同梱しないもの | `.env`・個人設定・デモデータ（`.pcube-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
+| 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
+| Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
+| 公開前のビルド | `prepack` で `pnpm build`（`npm pack` / `npm publish` の前に画面を作る）。利用者が入れるときにはビルドも Docker の操作もしない |
+| bin | `p3` と `pcube`（同じもの）。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
+
+```bash
+pnpm -s check                       # 型検査・テスト・画面のビルド
+npm pack --pack-destination /tmp    # 中身を確かめる（prepack で画面を作り直す）
+```
+
 ## 構成
 
 ```

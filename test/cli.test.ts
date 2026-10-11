@@ -236,8 +236,11 @@ describe("要望の作業ツリー", () => {
     expect(existsSync(join(wt, ".pcube", "requests", rid, "tasks", "T004.md"))).toBe(false);
 
     // `pnpm --dir <p3 の場所> pcube ...` で呼ばれたとき（pnpm がカレントを p3 の場所に移し、元の場所は INIT_CWD）
-    const viaPnpm = { ...ai, npm_lifecycle_event: "pcube", INIT_CWD: wt };
+    const viaPnpm = { ...ai, npm_lifecycle_event: "pcube", npm_package_name: "@infodb/p3", INIT_CWD: wt };
     expect(pcube(fileURLToPath(new URL("..", import.meta.url)), ["whoami", "--json"], viaPnpm).json()).toMatchObject({ actor: "ai:claude", request: rid });
+    // 利用者のパッケージの "p3" スクリプトから呼ばれたとき（pnpx・npm exec も）は、今の場所のまま
+    const viaUserScript = { ...ai, npm_lifecycle_event: "p3", npm_package_name: "myapp", INIT_CWD: tempDir() };
+    expect(pcube(wt, ["whoami", "--json"], viaUserScript).json()).toMatchObject({ request: rid });
   });
 });
 
