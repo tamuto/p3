@@ -9,13 +9,13 @@ import {
   UsageLimitError,
   WorkspaceSession,
   dockerCommand,
-  ensureImage,
   type WorkspaceEvent,
 } from "@infodb/codex-workspace";
 import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
 import { APP_NAME } from "../chatgpt/oauth.ts";
 import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
+import { ensureCodexImage } from "./codexImage.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -220,7 +220,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     log({ kind: "info", text: `codex-workspace: ${CONTAINER_WORKSPACE} <= ${workspace}, ${CONTAINER_DATA} <= ${data}` });
     if (this.cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
-      log({ kind: "info", text: `Codex ${await ensureImage()}` });
+      log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
     }
 
     const command =

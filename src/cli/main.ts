@@ -13,6 +13,7 @@ import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../server/requ
 import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
 import { loadUserConfig } from "../server/userConfig.ts";
+import { codexCommand } from "./codex.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
@@ -45,6 +46,8 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
+  codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
+                               Preflight の前は、作ってから1日より古いときだけ作り直す
 
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag t
@@ -177,6 +180,13 @@ async function main(argv: string[]): Promise<number> {
   // ChatGPT との接続はこのマシンのもの（どのプロジェクトにも属さない）なので、プロジェクトを決める前に扱う
   if (cmd === "chatgpt") {
     const r = await chatgptCommand(args, o);
+    out.result(r.data, () => r.text);
+    return r.code ?? 0;
+  }
+
+  // Codex のイメージはこのマシンの Docker のもの。プロジェクト・認証が無くても更新できる
+  if (cmd === "codex") {
+    const r = await codexCommand(args);
     out.result(r.data, () => r.text);
     return r.code ?? 0;
   }

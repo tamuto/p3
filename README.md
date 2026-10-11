@@ -307,7 +307,17 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 リポジトリの外にあってよい）。途中経過は SSE で画面に流れる。
 
 Codex のイメージ（`llmcs-codex-workspace:local`）は、無いか作ってから1日より古ければ、Preflight の前に作り直す
-（そのときの最新の Codex が入る）。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
+（そのときの最新の Codex が入る）。新しい Codex をすぐ使いたいとき・最初の Preflight の前に作っておきたいときは
+`p3 codex update` で今すぐ作り直せる（入った版を表示する。Docker があればよく、プロジェクトの登録やサインインは要らない）。
+
+```bash
+p3 codex update
+#   Codex のイメージ llmcs-codex-workspace:local を作り直しています（…）   ← 進み具合は stderr
+#   Codex を更新しました: codex-cli 0.162.1（変わらず。これが最新）
+#     イメージ llmcs-codex-workspace:local（2026-10-11 15:54:06 作成）
+```
+
+Docker が無い・デーモンに繋がらない・作れない（ネットワークなど）・版を読めないときは、次にすることを出して終了コード 1。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
 
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる

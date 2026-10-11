@@ -168,7 +168,11 @@ P3 が使う公開 API と約束:
 - `ensureImage({ maxAgeMs })` はイメージが無いか `maxAgeMs` より古ければ作り直し、中の Codex の版を返す。作り直すたびに
   `CODEX_REFRESH`（その時刻）が変わるので、Codex を入れる段はキャッシュを使わず、その時点の最新が入る
   - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `PCUBE_CODEX_ENSURE_IMAGE=0` で止める）
-  - 強制更新（`p3 codex update`）: `maxAgeMs` を負にして、作った日時によらず作り直す
+  - 強制更新（`p3 codex update`）: `maxAgeMs` を -∞ にして、作った日時によらず作り直す。プロジェクト・認証を決める前に動き、
+    個人設定の自動更新の停止（`codex.ensureImage: false`）とも関係しない。前に `docker version` でデーモンを確かめ、
+    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/server/preflight/codexImage.ts`）
+  - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
+    `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のまま。2026-10-11 に codex-cli 0.162.1 で約40秒）
 
 手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
 
