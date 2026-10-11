@@ -104,6 +104,38 @@ describe("前回の結果とメモの引き継ぎ", () => {
     expect(carryover(second.id)).toContain("CLI だけでよい");
   });
 
+  it("最初の実行の前に保存したメモも、最初の Preflight に渡す", async () => {
+    const { ctx, req, preflight } = await setup();
+    const n = await ctx.ws.notes.add(req.id, "CLI で先に書いたメモ");
+    const first = await preflight();
+    expect(first.previous).toBeUndefined();
+    expect(first.notes).toEqual([n.id]);
+  });
+
+  it("実行中に保存したメモは、その実行ではなく次の Preflight に渡す", async () => {
+    const { ctx, req } = await setup();
+    let release!: () => void;
+    const slow: PreflightEngine = {
+      name: "codex",
+      status: async () => ({ name: "codex", ok: true, detail: "" }),
+      run: (job) =>
+        new Promise((res) => {
+          release = () => res({ changed: [] });
+          void job;
+        }),
+    };
+    const ctx2 = await openTestProject(ctx.ws.dataDir, { mock: new MockEngine({ delay: 0 }), codex: slow });
+    const running = await ctx2.preflight.start(req.id, { engine: "codex" });
+    const during = await ctx2.ws.notes.add(req.id, "実行中に書いた");
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    const done = await ctx2.preflight.wait(req.id, running.id);
+    expect(done?.notes).toBeUndefined();
+    const next = await ctx2.preflight.start(req.id, { engine: "mock" });
+    expect(next.notes).toEqual([during.id]);
+    await ctx2.preflight.wait(req.id, next.id);
+  });
+
   it("渡し済みのメモは次から除き、実行の後に足したメモは次回に渡す", async () => {
     const { ctx, req, preflight } = await setup();
     const n1 = await ctx.ws.notes.add(req.id, "一つ目");
