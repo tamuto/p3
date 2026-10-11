@@ -70,8 +70,12 @@ export interface Warning {
  */
 export function startWarnings(ws: Workspace, ref: string, prevStatus: string, nextStatus: string | undefined): Warning[] {
   if (nextStatus !== "doing" || prevStatus === "doing") return [];
-  const marks = supersededMarks(ws).get(ref);
-  if (!marks?.length) return [];
+  return supersededWarnings(supersededMarks(ws).get(ref) ?? [], ref);
+}
+
+/** 置き換えの印から作る注意。着手のとき（startWarnings）と詳細を読むとき（show の warnings）で同じ形にする */
+export function supersededWarnings(marks: SupersededMark[], ref: string): Warning[] {
+  if (!marks.length) return [];
   const from = marks.map((m) => m.from);
   const by = from.map((f) => (f.includes("/") ? f : `要望 ${f} の再評価`)).join(", ");
   return [{ code: "superseded", target: ref, from, message: `${ref} は ${by} で置き換えられています。置き換え先を確かめてから進めてください` }];

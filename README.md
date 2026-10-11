@@ -178,7 +178,7 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 | `pcube milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
 | `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=resolved` `due=` `milestone=` `tags=`）・アーカイブ |
 | `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
-| `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲） |
+| `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲）。`--brief` で作業に要る項目だけ（下の「短い出力」） |
 | `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
 | `pcube set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
 | `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す）。置き換えられたタスクを作業中にすると警告（移動はする） |
@@ -193,6 +193,24 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 今の要望は `--req <要望>` → `PCUBE_REQUEST` → 要望の作業ツリー の順で決まる。
 `--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
 サーバが動いていれば、CLI での変更はファイル監視経由ですぐ画面に反映される。
+
+#### 短い出力（`show --brief` / `request show --brief`）
+
+AI がタスクを進めるときに読む形。作業に要る項目だけを出し、本文は切り詰めない。関係や影響を調べるときは通常の出力を使う。
+
+| | 残すもの | 省くもの |
+| --- | --- | --- |
+| タスク | `item` の id・ref・request・title・status・body・rev・outputs・relations（`depends_on` だけ）、`dependencies`、`superseded`、`warnings` | 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・`graph`（関係しそう・影響範囲） |
+| 要望 | `item` の id・title・status・body・rev・workstream（ブランチ。あるときだけ）、`tasks` の id・ref・title・status、`issue` | 日時・areas・tags・関係・`graph`・タスクの本文など |
+
+JSON の項目名と階層は通常の `--json` と同じで、項目を省くだけ。タスクの通常の `--json` にも、次の2つを足した:
+
+- `dependencies`: 依存の相手と状態 `[{ ref, title, status }]`。`ref` は `<要望ID>/T001` か `<要望ID>`。
+  相手が見つからない（アーカイブした・参照の誤り）ときは `title` と `status` が `null`（完了とは扱わない）
+- `warnings`: 詳細を読んだときの注意 `[{ code: "superseded", target, from: [...], message }]`。`move` の着手の警告と同じ形
+  （置き換えた側が複数なら `from` に全部）
+
+テキストの短い出力は、見出し・状態と rev・依存（`T002 doing / … / T004 （状態不明）`）・成果物・注意・本文の順。
 
 ## データの持ち方
 
