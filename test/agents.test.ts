@@ -15,6 +15,8 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     "`preflight`", // Preflight は人
     "`accept`", // タスク化は人
     "--note-only", // 頼まれたメモの保存はよい
+    "--brief", // 作業に使うときは短い出力
+    "dependencies", // 依存の状態の読み方
     "status=resolved", // 作業を終えたら対応済
     "rejected", // 完了済・見送りは人
     "check", // 済みは人

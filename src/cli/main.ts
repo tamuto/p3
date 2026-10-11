@@ -16,6 +16,7 @@ import { loadUserConfig } from "../server/userConfig.ts";
 import { codexCommand } from "./codex.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
+import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
 import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
 
 /**
@@ -52,13 +53,14 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag t
   request ls                   一覧（--status draft,active ... --milestone id --tag t）
-  request show [<要望>]
+  request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
   request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
   request archive <要望>
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
   show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
+                               --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status
   set <T003> キー=値 ...         title status labels areas outputs（空で消す）
   move <T003> <ステータス>        --output URL/パス（成果物を足す）
@@ -95,6 +97,7 @@ const OPTIONS = {
   req: { type: "string" },
   request: { type: "string" },
   json: { type: "boolean" },
+  brief: { type: "boolean" },
   actor: { type: "string" },
   rev: { type: "string" },
   help: { type: "boolean", short: "h" },
@@ -317,10 +320,15 @@ async function main(argv: string[]): Promise<number> {
       if (!ref) return ambiguous(out, ctx, query, current);
       if (!ref.includes("/")) return requestCommand(ctx, out, ["show", ref], o, actor, requestArg, expectedRev);
       const item = ctx.ws.requireTask(ref);
+      const marks = supersededMarks(ctx.ws);
+      if (o.brief) {
+        const view = briefTask(ctx, item, marks);
+        return out.result(view, () => formatBriefTask(view));
+      }
       const graph = ctx.index.neighborhood(ref);
       const file = relative(cwd, split(ref).col.path(item.id));
-      const superseded = supersededMarks(ctx.ws).get(ref) ?? [];
-      return out.result({ item, graph, file, superseded }, () =>
+      const { superseded, dependencies, warnings } = taskExtras(ctx, item, marks);
+      return out.result({ item, graph, file, superseded, dependencies, warnings }, () =>
         [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, graph, file)].join(""),
       );
     }
@@ -556,6 +564,10 @@ async function requestCommand(
     case "show": {
       const rid = requestArg(rest[0]);
       const r = ctx.ws.requests.require(rid);
+      if (o.brief) {
+        const view = briefRequest(ctx, r, resolvedIssue(ctx.ws, r));
+        return out.result(view, () => formatBriefRequest(view));
+      }
       const graph = ctx.index.neighborhood(rid);
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);

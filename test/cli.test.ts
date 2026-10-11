@@ -337,6 +337,119 @@ describe("pcube preflight --note / notes", () => {
   });
 });
 
+describe("show --brief（作業に要る項目だけ）", () => {
+  /**
+   * T001 done・T002 doing（← T001）・T003 todo（← T002・別の要望のタスク・別の要望・アーカイブした T004）、
+   * T005 が T001 を置き換え、要望も T001 を置き換える
+   */
+  async function prepared() {
+    const { root, rid } = await initialized();
+    const other = pcube(root, ["request", "new", "別の要望", "--json"]).json().id as string;
+    pcube(root, ["new", "別の要望のタスク", "--req", other]);
+    for (const t of ["下準備", "本体", "仕上げ", "消す予定", "新しい方式"]) pcube(root, ["new", t, "--req", rid, "--body", `${t}の作業内容\n\n## 完了条件\n- できる`]);
+    pcube(root, ["move", "T001", "done", "--req", rid, "--output", "https://example.com/pull/1"]);
+    pcube(root, ["move", "T002", "doing", "--req", rid]);
+    for (const [from, to] of [["T002", "T001"], ["T003", "T002"], ["T003", `${other}/T001`], ["T003", other], ["T003", "T004"]]) {
+      const r = pcube(root, ["link", from, "depends_on", to, "--req", rid]);
+      expect(r.code, r.err).toBe(0);
+    }
+    pcube(root, ["link", "T003", "relates_to", "T005", "--req", rid]);
+    pcube(root, ["link", "T005", "supersedes", "T001", "--req", rid, "--note", "新しい方式に替える"]);
+    pcube(root, ["archive", "T004", "--req", rid]);
+    const reqFile = join(root, ".pcube", "requests", rid, "request.md");
+    writeFileSync(reqFile, readFileSync(reqFile, "utf8").replace(/^---\n/, `---\nrelations:\n  - { type: supersedes, target: T001 }\n`));
+    return { root, rid, other };
+  }
+
+  it("タスク: 本文・依存とその状態（見つからないものは null）・置き換えの注意・成果物・rev を残し、ほかを省く", async () => {
+    const { root, rid, other } = await prepared();
+    const full = pcube(root, ["show", "T003", "--req", rid, "--json"]).json();
+    const brief = pcube(root, ["show", "T003", "--req", rid, "--brief", "--json"]);
+    expect(brief.code, brief.err).toBe(0);
+    const b = brief.json();
+    expect(Object.keys(b)).toEqual(["item", "superseded", "dependencies", "warnings"]);
+    expect(Object.keys(b.item)).toEqual(["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"]);
+    for (const k of Object.keys(b.item)) if (k !== "relations") expect(b.item[k]).toEqual(full.item[k]);
+    expect(b.item.body).toContain("## 完了条件");
+    // 依存だけ（関係しそうな相手・relates_to は省く）。type / target は元のまま
+    expect(b.item.relations.map((r: any) => [r.type, r.target])).toEqual([
+      ["depends_on", "T002"],
+      ["depends_on", `${other}/T001`],
+      ["depends_on", other],
+      ["depends_on", "T004"],
+    ]);
+    const deps = [
+      { ref: `${rid}/T002`, title: "本体", status: "doing" },
+      { ref: `${other}/T001`, title: "別の要望のタスク", status: "todo" },
+      { ref: other, title: "別の要望", status: "draft" },
+      { ref: `${rid}/T004`, title: null, status: null }, // アーカイブした: 状態不明（完了とは扱わない）
+    ];
+    expect(b.dependencies).toEqual(deps);
+    expect(full.dependencies).toEqual(deps); // 通常の --json にも同じ項目
+    expect(b).not.toHaveProperty("graph");
+    expect(b).not.toHaveProperty("file");
+    expect(b.item).not.toHaveProperty("createdAt");
+
+    const text = pcube(root, ["show", "T003", "--req", rid, "--brief"]).out;
+    expect(text).toContain("依存    T002 doing / " + `${other}/T001 todo / ${other} draft / T004 （状態不明）`);
+    expect(text).toContain("仕上げの作業内容");
+    expect(text).not.toContain("関係しそう");
+    expect(text).not.toContain("影響範囲");
+    expect(text).not.toContain("ファイル:");
+    expect(text.length).toBeLessThan(pcube(root, ["show", "T003", "--req", rid]).out.length);
+
+    // 依存なし・完了・成果物
+    const done = pcube(root, ["show", "T001", "--req", rid, "--brief", "--json"]).json();
+    expect(done.item).toMatchObject({ status: "done", outputs: ["https://example.com/pull/1"], relations: [] });
+    expect(done.dependencies).toEqual([]);
+  });
+
+  it("置き換え: タスクから・要望からの複数の印と警告を、通常・短い出力で同じ形で出す", async () => {
+    const { root, rid } = await prepared();
+    const superseded = [{ from: rid }, { from: `${rid}/T005`, note: "新しい方式に替える" }];
+    const warnings = [{ code: "superseded", target: `${rid}/T001`, from: [rid, `${rid}/T005`], message: expect.stringContaining("置き換えられています") }];
+    for (const extra of [[], ["--brief"]]) {
+      const j = pcube(root, ["show", "T001", "--req", rid, ...extra, "--json"]).json();
+      expect(j.superseded).toEqual(superseded);
+      expect(j.warnings).toEqual(warnings);
+    }
+    expect(pcube(root, ["show", "T001", "--req", rid, "--brief"]).out).toContain("※ 261");
+    // 着手の警告（move）は今までどおり
+    expect(pcube(root, ["move", "T002", "doing", "--req", rid, "--json"]).json().warnings).toBeUndefined();
+  });
+
+  it("要望: 本文・状態・ブランチ・タスクの一覧（id・ref・title・status）と issue。show <要望> と request show は同じ", async () => {
+    const { root, rid } = await prepared();
+    // 未完了のタスクがあるのに対応済（ファイルを人が直したなど。CLI からはこの状態にできない）
+    const reqFile = join(root, ".pcube", "requests", rid, "request.md");
+    writeFileSync(reqFile, readFileSync(reqFile, "utf8").replace(/^status: \w+$/m, "status: resolved"));
+    const full = pcube(root, ["request", "show", rid, "--json"]).json();
+    const b = pcube(root, ["request", "show", rid, "--brief", "--json"]).json();
+    expect(Object.keys(b)).toEqual(["item", "tasks", "issue"]);
+    expect(Object.keys(b.item)).toEqual(["id", "title", "status", "body", "rev"]); // ブランチが無い要望は workstream を出さない
+    for (const k of Object.keys(b.item)) expect(b.item[k]).toEqual(full.item[k]);
+    expect(b.tasks).toEqual(full.tasks.map((t: any) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status })));
+    expect(b.issue).toBe(full.issue);
+    expect(pcube(root, ["show", rid, "--brief", "--json"]).json()).toEqual(b);
+    // 今の要望を省略しても同じ
+    expect(pcube(root, ["request", "show", "--req", rid, "--brief", "--json"]).json()).toEqual(b);
+    const text = pcube(root, ["request", "show", rid, "--brief"]).out;
+    expect(text).toMatch(/^※ 対応済ですが/);
+    expect(text).toContain("タスク (4):");
+    expect(text).not.toContain("関係:");
+  });
+
+  it("ブランチのある要望は workstream を残し、曖昧な指定・見つからない指定は今までどおり", async () => {
+    const { root, rid } = await initialized();
+    pcube(root, ["preflight", rid, "--engine", "mock"]);
+    pcube(root, ["accept", rid]);
+    const b = pcube(root, ["request", "show", rid, "--brief", "--json"]).json();
+    expect(b.item.workstream.branch).toMatch(/^req\//);
+    expect(pcube(root, ["request", "show", rid, "--brief"]).out).toContain(`branch ${b.item.workstream.branch}`);
+    expect(pcube(root, ["show", "存在しない語句", "--brief"]).code).toBe(2);
+  });
+});
+
 describe("置き換えられたタスク", () => {
   /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を置き換えると書かれた状態を作る */
   async function reassessed() {

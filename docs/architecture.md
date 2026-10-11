@@ -228,9 +228,10 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 - 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami` で確かめる
 - 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
   Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
+- 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む
 - 着手するときは `p3 move T003 doing`、終えたら `p3 move T003 done --output <PR の URL など>`
 - 要望のタスクを全部終えたら `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は `p3 new "<タイトル>" --body "..."` でタスクにする（人への質問はタスクにしない）
-- 関係と影響範囲は `p3 show T003 --json` で確認し、`p3 link T004 depends_on T003` で張る
+- 関係と影響範囲を調べるときは `--brief` を付けずに `p3 show T003 --json` で確認し、`p3 link T004 depends_on T003` で張る
 ```
