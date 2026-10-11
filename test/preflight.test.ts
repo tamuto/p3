@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_IMAGE, dockerCommand } from "@llmcs/codex-workspace";
 import { progress } from "../src/server/ops.ts";
+import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
+import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";
+import { saveConnection } from "../src/server/chatgpt/store.ts";
+import { redact } from "../src/server/redact.ts";
 import { CodexWorkspaceEngine, codexConfigFromEnv, withDataMount } from "../src/server/preflight/codexEngine.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
@@ -123,6 +127,8 @@ describe("PreflightService（mock エンジン）", () => {
 describe("CodexWorkspaceEngine（偽の app-server）", () => {
   function engine(repo: string, data: string, logFile: string, scenario = "", target = "") {
     return new CodexWorkspaceEngine({
+      authVolume: "vol", // 旧来の auth.json（ChatGPT には接続していない）
+      account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [
         [repo, "/host/repo"],
         [data, "/host/data"],
@@ -220,6 +226,8 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     await writeProjectFile(join(dataDir, "project.yaml"), projectConfig({ repo: repo.root }));
     let supersede = "";
     const codex = new CodexWorkspaceEngine({
+      authVolume: "vol",
+      account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [],
       ensureImage: false,
       command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
@@ -300,12 +308,15 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(command.indexOf("type=bind,src=/host/data,dst=/data")).toBeLessThan(command.indexOf(DEFAULT_IMAGE));
   });
 
-  it("認証の設定が無ければ Codex エンジンを有効にしない。パス対応を読む", () => {
+  it("環境変数から旧来の認証・旧来の明示・パス対応を読む", () => {
     const keep = { ...process.env };
     try {
       delete process.env.PCUBE_CODEX_AUTH_VOLUME;
       delete process.env.PCUBE_CODEX_AUTH_FILE;
-      expect(codexConfigFromEnv()).toBeUndefined();
+      delete process.env.PCUBE_CODEX_AUTH;
+      expect(codexConfigFromEnv()).toMatchObject({ authVolume: undefined, authFile: undefined, forceLegacy: false });
+      process.env.PCUBE_CODEX_AUTH = "legacy";
+      expect(codexConfigFromEnv().forceLegacy).toBe(true);
       process.env.PCUBE_CODEX_AUTH_VOLUME = "vol";
       process.env.PCUBE_CODEX_PATH_MAP = "/workspaces=/root/workspaces,/a=/b";
       const cfg = codexConfigFromEnv()!;
@@ -319,5 +330,132 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     } finally {
       process.env = keep;
     }
+  });
+});
+
+describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
+  const PLAN = ["openid", "offline_access", "chatgpt.tokens.use.direct"];
+  /** 接続を書いた ChatGptAccount（refresh は fetch で決める） */
+  async function account(opts: { scopes?: string[]; expiresInMs?: number; tokens?: boolean; refresh?: () => Response } = {}) {
+    const file = join(tempDir(), "chatgpt.json");
+    if (opts.tokens !== false) {
+      await saveConnection(
+        {
+          hostId: "urn:uuid:h",
+          clientId: "oaiapp_1",
+          account: { sub: "u", email: "a@example.com" },
+          tokens: {
+            accessToken: "at-secret",
+            refreshToken: "rt-secret",
+            expiresAt: new Date(Date.now() + (opts.expiresInMs ?? 3_600_000)).toISOString(),
+            scopes: opts.scopes ?? PLAN,
+            savedAt: new Date().toISOString(),
+          },
+        },
+        file,
+      );
+    }
+    const fetch = (async () => opts.refresh?.() ?? new Response("{}", { status: 500 })) as typeof globalThis.fetch;
+    return new ChatGptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch, now: Date.now });
+  }
+
+  it("選び方: 旧来の明示 > ChatGPT の接続 > 旧来だけ > 無し（サインインを案内）", async () => {
+    const connected = await account();
+    const none = await account({ tokens: false });
+    expect(await new CodexWorkspaceEngine({ authVolume: "v", forceLegacy: true, account: connected, pathMap: [], ensureImage: false }).auth()).toEqual({ mode: "legacy" });
+    expect(await new CodexWorkspaceEngine({ authVolume: "v", account: connected, pathMap: [], ensureImage: false }).auth()).toEqual({ mode: "chatgpt", email: "a@example.com" });
+    expect(await new CodexWorkspaceEngine({ authFile: "/f", account: none, pathMap: [], ensureImage: false }).auth()).toEqual({ mode: "legacy" });
+    const nothing = await new CodexWorkspaceEngine({ account: none, pathMap: [], ensureImage: false }).auth();
+    expect(nothing).toMatchObject({ mode: "none", reason: expect.stringContaining("サインインしてください") });
+    const noPlan = await new CodexWorkspaceEngine({ account: await account({ scopes: ["openid"] }), pathMap: [], ensureImage: false }).auth();
+    expect(noPlan).toMatchObject({ mode: "none", reason: expect.stringContaining("許可されていません") });
+  });
+
+  it("未接続なら状態で理由を出し、接続のファイルが変われば確かめ直す（serve に反映）", async () => {
+    const acc = await account({ tokens: false });
+    const engine = new CodexWorkspaceEngine({ account: acc, pathMap: [], ensureImage: false });
+    expect(await engine.status()).toMatchObject({ ok: false, auth: "none", detail: expect.stringContaining("サインインしてください") });
+    // CLI で（プラン利用の同意なしに）サインインした
+    const file = (acc as unknown as { file: string }).file;
+    await new Promise((r) => setTimeout(r, 20));
+    await saveConnection({ hostId: "h", clientId: "c", account: { sub: "u" }, tokens: { accessToken: "a", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), scopes: ["openid"], savedAt: "" } }, file);
+    expect(await engine.status()).toMatchObject({ ok: false, detail: expect.stringContaining("許可されていません") });
+  });
+
+  it("ChatGPT プランでは access token を環境変数で渡し、P3 として名乗り、旧来の使用量の API を呼ばない", async () => {
+    const repo = await makeRepo();
+    const logFile = join(tempDir(), "codex.jsonl");
+    let mode = "";
+    const codex = new CodexWorkspaceEngine({
+      authVolume: "vol", // 旧来の設定があっても、接続していれば ChatGPT
+      account: await account(),
+      pathMap: [],
+      ensureImage: false,
+      command: (_w, _d, auth) => {
+        mode = auth;
+        return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, `FAKE_LOG=${logFile}`, process.execPath, FAKE_CODEX];
+      },
+    });
+    const ctx = await openTestProject(repo.dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("completed");
+    expect(mode).toBe("chatgpt");
+    const sent = readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(sent.find((m) => "accessToken" in m)).toEqual({ clientInfo: { name: "infodb_p3", title: "infodb p3", version: expect.any(String) }, accessToken: "at-secret" });
+    expect(sent.some((m) => m.method === "account/rateLimits/read")).toBe(false);
+    expect(run.log.map((l) => l.text)).toEqual(expect.arrayContaining([expect.stringContaining("ChatGPT プラン（a@example.com）"), expect.stringContaining("取得できません")]));
+    expect(JSON.stringify(run)).not.toContain("at-secret"); // run の記録にトークンを残さない
+  });
+
+  it("Codex のエラーがトークンの一部や全部を含んでも、ログとエラーには残さない", async () => {
+    const repo = await makeRepo();
+    const codex = new CodexWorkspaceEngine({
+      account: await account(),
+      pathMap: [],
+      ensureImage: false,
+      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", "FAKE_SCENARIO=unauthorized", process.execPath, FAKE_CODEX],
+    });
+    const ctx = await openTestProject(repo.dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft" });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("401 Unauthorized");
+    expect(run.error).toContain("[伏せました]");
+    const saved = readFileSync(join(ctx.ws.preflight.runDir(req.id, id), "run.json"), "utf8");
+    for (const text of [JSON.stringify(run), saved]) {
+      expect(text).not.toContain("at-secret");
+      expect(text).not.toContain("at-secre"); // 先頭 8 文字
+      expect(text).not.toMatch(/\*\*\*ret/); // 末尾 3 文字
+    }
+  });
+
+  it("期限切れで更新できなければ失敗させ、Mock に落とさない", async () => {
+    const repo = await makeRepo();
+    const codex = new CodexWorkspaceEngine({
+      account: await account({ expiresInMs: -1000, refresh: () => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 }) }),
+      pathMap: [],
+      ensureImage: false,
+      command: () => {
+        throw new Error("起動してはいけない");
+      },
+    });
+    const ctx = await openTestProject(repo.dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft" });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run).toMatchObject({ status: "failed", engine: "codex", error: expect.stringContaining("サインインし直してください") });
+  });
+});
+
+describe("トークンらしいものを伏せる", () => {
+  it("Codex が一部を見せるキー・JWT・Bearer の値・渡した値を伏せ、ほかは変えない", () => {
+    expect(redact("Incorrect API key provided: dummy-to***-123. You can find…")).toBe("Incorrect API key provided: [伏せました]. You can find…");
+    expect(redact("id=eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1In0.c2lnbmF0dXJl end")).toBe("id=[伏せました] end");
+    expect(redact("Authorization: Bearer abc.def-ghi")).toBe("Authorization: Bearer [伏せました]");
+    expect(redact("token is opaque-value-123", ["opaque-value-123"])).toBe("token is [伏せました]");
+    expect(redact("通常のログ: rg -l foo (exit 0) / 5h窓 10%")).toBe("通常のログ: rg -l foo (exit 0) / 5h窓 10%");
   });
 });

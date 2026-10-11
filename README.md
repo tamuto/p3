@@ -263,6 +263,27 @@ ID の順は数を含む部分を数として比べる（T2 < T10）。要望・
 
 ## Preflight
 
+### ChatGPT プランで動かす（Sign in with ChatGPT）
+
+Preflight の Codex は、各自の ChatGPT アカウント（プラン）で動かす。サインインは P3 が行う（Codex の初期設定のサインインは要らない）。
+
+```bash
+p3 chatgpt login        # ブラウザで ChatGPT にサインインし、プランの利用に同意する（127.0.0.1:1455 で待つ）
+p3 chatgpt login --paste  # ブラウザがコールバックに届かない環境: 「接続できません」の画面のアドレスバーの URL を貼る
+p3 chatgpt status       # 接続の状態（アカウント・プラン利用の可否・期限）
+p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う）。--forget でこのマシンの登録ごと消す
+```
+
+- 接続はこのマシン・この人のもので、どのプロジェクトにも属さない（`~/.config/infodb-p3/chatgpt.json`、0600）。
+  トークンは CLI の出力・画面・ログに出さない。個人設定（`config.yaml`）とは別のファイルなので、互いの保存で消えない
+- トークンは使うときに更新する（期限の 35 分前を過ぎていたら。refresh token は毎回入れ替わる）。更新できなくなったら
+  サインインし直してもらう。解除しても、このマシンの登録（ホスト ID・発行された client ID）とアカウントは残し、次のサインインで使う
+- 設定画面の「Continue with ChatGPT」でも同じことができる（serve が待ち受ける。待っている間は取消と、届かなかったときの URL の貼り付け）。
+  この操作と状態の表示は **P3 を動かしているマシンのローカルの画面からだけ** 受け付ける（serve は既定で 0.0.0.0 で待つので、
+  LAN の別のマシンからのサインイン・解除を断る。`docker run -p` で公開した serve の画面からはできないので CLI を使う）
+- DevContainer では、VS Code が待ち受けのポートを転送するので、ホストのブラウザからのコールバックが届く。
+  詳しい設計は [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md)
+
 ```
 要望を書く ─▶ 文脈選定 ─▶ Codex が評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
              (intel)      (codex-workspace)         (drafts/D*.md)              (tasks/T*.md + 関係 + ブランチ)
@@ -280,22 +301,28 @@ Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/ma
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
 - 存在しない要望・タスクへの関係はタスク化のときに捨てる
-- 使用量の上限に当たっている場合は頼まずに失敗させる
+- 旧来の認証では、使用量の上限に当たっている場合は頼まずに失敗させる。ChatGPT プランには使用量を読む公式の API が無いので、
+  上限に当たったら「Usage limit reached」として失敗させ、Manage usage（https://chatgpt.com/settings/usage）を案内する
 - 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
   Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
 
 | 環境変数 | 内容 |
 | --- | --- |
-| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | Codex の `auth.json`（Docker ボリューム内 / ホストのファイル）。どちらかがあれば Codex エンジンが有効 |
+| `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル）。ChatGPT に接続していなければこちらを使う |
+| `PCUBE_CODEX_AUTH` | `legacy` にすると、ChatGPT に接続していても旧来の `auth.json` を使う |
 | `PCUBE_CODEX_PATH_MAP` | 開発コンテナ内のパス → Docker デーモンから見たパス（例 `/workspaces=/root/workspaces`）。リポジトリとデータのフォルダの両方に使う |
 | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
 | `PCUBE_CODEX_ENSURE_IMAGE` | `0` でイメージの自動更新確認をしない |
-| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Codex が設定されていても Mock で評価する |
+| `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-エンジンは1つだけで、選ぶものではない。Codex の認証が設定されていなければ **Mock**（要望本文の箇条書きを
-そのままタスク案にするだけの簡易評価）になり、画面にその旨を出す。再評価ではメモの箇条書きを案に足し、
+既定のエンジンは Codex で、認証は次の順に選ぶ: `PCUBE_CODEX_AUTH=legacy` と旧来の設定 → 旧来の `auth.json` /
+ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE`）だけ → 旧来の `auth.json` /
+どれも無い → 使えない（画面と CLI でサインインを案内する。**認証が無いときに Mock に切り替えない**）。
+
+**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`PCUBE_PREFLIGHT_ENGINE=mock` か `--engine mock` で
+明示したときだけ使う。再評価ではメモの箇条書きを案に足し、
 前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
 
@@ -314,7 +341,7 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 | `/requests/261009-k7m3x` | 要望の概要（期限・マイルストーン・タグ）と Preflight（`?run=PF-...` で過去の評価）。評価エンジンの状態も出す |
 | `/requests/261009-k7m3x/board` | 要望のタスクボード（V 字。ドラッグで列を移動。完了カードの「✓ 済み」でボードから外す） |
 | `/requests/261009-k7m3x/done` | 要望の対応済み（済みにしたタスクと成果物の一覧。要望のステータスの「対応済」とは別） |
-| `/settings` | プロジェクト設定（マイルストーン・列・ドキュメントなど） |
+| `/settings` | このマシンの ChatGPT プランの接続（「Continue with ChatGPT」・取消・解除・Manage usage）と、プロジェクト設定（マイルストーン・ドキュメントなど） |
 
 要望の中のページでは `?task=T003` でタスク詳細を重ねて開く。
 

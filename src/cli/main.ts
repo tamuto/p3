@@ -12,6 +12,7 @@ import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../server/requ
 import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
 import { loadUserConfig } from "../server/userConfig.ts";
+import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
 
@@ -40,6 +41,9 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動
+  chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
+                               login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
+                               logout: --forget（このマシンの登録ごと消す）
 
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag t
@@ -116,6 +120,9 @@ const OPTIONS = {
   agents: { type: "boolean" },
   "note-only": { type: "boolean" },
   "archive-superseded": { type: "boolean" },
+  paste: { type: "boolean" },
+  "no-browser": { type: "boolean" },
+  forget: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   port: { type: "string" },
   host: { type: "string" },
@@ -164,6 +171,13 @@ async function main(argv: string[]): Promise<number> {
       }),
     );
     return 0;
+  }
+
+  // ChatGPT との接続はこのマシンのもの（どのプロジェクトにも属さない）なので、プロジェクトを決める前に扱う
+  if (cmd === "chatgpt") {
+    const r = await chatgptCommand(args, o);
+    out.result(r.data, () => r.text);
+    return r.code ?? 0;
   }
 
   const user = await loadUserConfig();

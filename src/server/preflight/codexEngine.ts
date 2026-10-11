@@ -1,31 +1,62 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
-import { CONTAINER_WORKSPACE, DEFAULT_IMAGE, UsageLimitError, WorkspaceSession, dockerCommand, ensureImage, type WorkspaceEvent } from "@llmcs/codex-workspace";
+import {
+  ACCESS_TOKEN_ENV,
+  CONTAINER_WORKSPACE,
+  DEFAULT_IMAGE,
+  UsageLimitError,
+  WorkspaceSession,
+  dockerCommand,
+  ensureImage,
+  type WorkspaceEvent,
+} from "@llmcs/codex-workspace";
+import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
+import { APP_NAME } from "../chatgpt/oauth.ts";
+import { redact } from "../redact.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
 const run = promisify(execFile);
 
+/** initialize で名乗る版（P3 の package.json） */
+const P3_VERSION: string = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+/** どの認証で Codex を動かすか（docs/chatgpt-sign-in.md の「Preflight」） */
+export type CodexAuth =
+  | { mode: "chatgpt"; email?: string }
+  | { mode: "legacy" }
+  | { mode: "none"; reason: string };
+
 export interface CodexWorkspaceConfig {
+  /** 旧来: Codex の初期設定でサインインした auth.json（Docker ボリューム / ホストのファイル） */
   authVolume?: string;
   authFile?: string;
+  /** PCUBE_CODEX_AUTH=legacy: ChatGPT に接続していても旧来の auth.json を使う */
+  forceLegacy?: boolean;
+  /** Sign in with ChatGPT の接続（既定は個人設定の chatgpt.json） */
+  account?: ChatGptAccount;
   model?: string;
   effort?: string;
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
   /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
-  command?: (workspace: string, data: string) => string[];
+  command?: (workspace: string, data: string, auth: CodexAuth["mode"]) => string[];
 }
 
-export function codexConfigFromEnv(): CodexWorkspaceConfig | undefined {
-  const authVolume = process.env.PCUBE_CODEX_AUTH_VOLUME || undefined;
-  const authFile = process.env.PCUBE_CODEX_AUTH_FILE || undefined;
-  if (!authVolume && !authFile) return undefined;
+export function codexConfigFromEnv(): CodexWorkspaceConfig {
   return {
-    authVolume,
-    authFile,
+    authVolume: process.env.PCUBE_CODEX_AUTH_VOLUME || undefined,
+    authFile: process.env.PCUBE_CODEX_AUTH_FILE || undefined,
+    forceLegacy: process.env.PCUBE_CODEX_AUTH === "legacy",
     model: process.env.PCUBE_CODEX_MODEL || undefined,
     effort: process.env.PCUBE_CODEX_EFFORT || undefined,
     pathMap: (process.env.PCUBE_CODEX_PATH_MAP ?? "")
@@ -75,19 +106,48 @@ function localPath(job: PreflightJob, p: string) {
 export class CodexWorkspaceEngine implements PreflightEngine {
   readonly name = "codex" as const;
 
-  constructor(private cfg: CodexWorkspaceConfig) {}
+  private readonly account: ChatGptAccount;
 
-  private checked?: { at: number; status: EngineStatus };
+  constructor(private cfg: CodexWorkspaceConfig) {
+    this.account = cfg.account ?? new ChatGptAccount();
+  }
+
+  private checked?: { at: number; key: number; status: EngineStatus };
+
+  /**
+   * 認証の選び方: 1. PCUBE_CODEX_AUTH=legacy と旧来の設定 → 旧来 / 2. ChatGPT に接続済み → ChatGPT /
+   * 3. 旧来の設定だけ → 旧来（移行期間の互換）/ 4. どれも無い → 使えない（サインインを案内する）
+   */
+  async auth(): Promise<CodexAuth> {
+    const legacy = !!(this.cfg.authVolume || this.cfg.authFile);
+    if (this.cfg.forceLegacy && legacy) return { mode: "legacy" };
+    const s = await this.account.status();
+    if (s.connected) {
+      if (!s.planAllowed) return { mode: "none", reason: "ChatGPT プランの利用が許可されていません。もう一度サインインして、プランの利用に同意してください" };
+      return { mode: "chatgpt", email: s.email };
+    }
+    if (legacy) return { mode: "legacy" };
+    return {
+      mode: "none",
+      reason: s.registered
+        ? "ChatGPT の接続が切れています。サインインし直してください（設定画面の「Continue with ChatGPT」か p3 chatgpt login）"
+        : "ChatGPT にサインインしてください（設定画面の「Continue with ChatGPT」か p3 chatgpt login）",
+    };
+  }
 
   /**
    * 使えるか: Docker が動くか、認証情報（ボリューム / ファイル）があるか、イメージがあるか。
    * イメージが無くても、初回の Preflight で作るので使える扱いにする。結果は1分ためる。
    */
   async status(): Promise<EngineStatus> {
-    if (this.checked && Date.now() - this.checked.at < 60_000) return this.checked.status;
-    const ng = (detail: string): EngineStatus => ({ name: "codex", ok: false, detail });
+    // 接続のファイルが変われば（CLI でサインイン・解除した）すぐ確かめ直す
+    const key = await this.account.mtime();
+    if (this.checked && this.checked.key === key && Date.now() - this.checked.at < 60_000) return this.checked.status;
+    const auth = await this.auth();
+    const ng = (detail: string): EngineStatus => ({ name: "codex", ok: false, detail, auth: auth.mode });
     let status: EngineStatus;
     try {
+      if (auth.mode === "none") throw new Error(auth.reason);
       await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeout: 5000 });
       if (this.cfg.authVolume) {
         await run("docker", ["volume", "inspect", this.cfg.authVolume], { timeout: 5000 }).catch(() => {
@@ -97,13 +157,22 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       const image = await run("docker", ["image", "inspect", "--format", "{{.Created}}", DEFAULT_IMAGE], { timeout: 5000 })
         .then((r) => `イメージ ${DEFAULT_IMAGE}（${r.stdout.trim().slice(0, 10)} 作成）`)
         .catch(() => `イメージ ${DEFAULT_IMAGE} は初回の実行で作ります`);
-      const auth = this.cfg.authVolume ? `認証 ボリューム ${this.cfg.authVolume}` : `認証 ${this.cfg.authFile}`;
-      status = { name: "codex", ok: true, detail: `Codex（codex-workspace）で評価します · ${image} · ${auth}${this.cfg.model ? ` · モデル ${this.cfg.model}` : ""}` };
+      const by =
+        auth.mode === "chatgpt"
+          ? `ChatGPT プラン（${auth.email ?? "サインイン済み"}）`
+          : `旧来の認証 ${this.cfg.authVolume ? `ボリューム ${this.cfg.authVolume}` : this.cfg.authFile}`;
+      status = {
+        name: "codex",
+        ok: true,
+        auth: auth.mode,
+        account: auth.mode === "chatgpt" ? auth.email : undefined,
+        detail: `Codex（codex-workspace）で評価します · ${by} · ${image}${this.cfg.model ? ` · モデル ${this.cfg.model}` : ""}`,
+      };
     } catch (e) {
       const msg = (e as NodeJS.ErrnoException).code === "ENOENT" ? "docker コマンドがありません" : (e as Error).message.split("\n")[0];
       status = ng(`Codex を使えません: ${msg}`);
     }
-    this.checked = { at: Date.now(), status };
+    this.checked = { at: Date.now(), key, status };
     return status;
   }
 
@@ -115,6 +184,38 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   async run(job: PreflightJob, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
+    const auth = await this.auth();
+    if (auth.mode === "none") throw new Error(auth.reason);
+    // ChatGPT プラン: 1ターン（最長 30 分）より長く使えるトークンにしてから始める（実行の途中では更新しない）
+    let env: Record<string, string> | undefined;
+    if (auth.mode === "chatgpt") {
+      try {
+        env = { [ACCESS_TOKEN_ENV]: await this.account.accessToken(35 * 60_000) };
+      } catch (e) {
+        if (e instanceof ChatGptAuthError) this.checked = undefined;
+        throw e;
+      }
+      log({ kind: "info", text: `ChatGPT プラン（${auth.email ?? "サインイン済み"}）で動かします` });
+    }
+    // 渡したトークンそのものも、ログとエラーに残さない
+    const secret = env?.[ACCESS_TOKEN_ENV];
+    const raw = log;
+    log = (e) => raw({ ...e, text: redact(e.text, [secret]) });
+    try {
+      return await this.runWith(job, auth, env, log, signal);
+    } catch (e) {
+      if (e instanceof Error) e.message = redact(e.message, [secret]);
+      throw e;
+    }
+  }
+
+  private async runWith(
+    job: PreflightJob,
+    auth: Exclude<CodexAuth, { mode: "none" }>,
+    env: Record<string, string> | undefined,
+    log: Log,
+    signal: AbortSignal,
+  ): Promise<EngineOutcome> {
     const workspace = this.hostPath(job.repoRoot);
     const data = this.hostPath(job.dataDir);
     log({ kind: "info", text: `codex-workspace: ${CONTAINER_WORKSPACE} <= ${workspace}, ${CONTAINER_DATA} <= ${data}` });
@@ -124,19 +225,34 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     }
 
     const command =
-      this.cfg.command?.(workspace, data) ??
-      withDataMount(dockerCommand(workspace, { authVolume: this.cfg.authVolume, authFile: this.cfg.authFile }), workspace, data);
+      this.cfg.command?.(workspace, data, auth.mode) ??
+      withDataMount(
+        dockerCommand(
+          workspace,
+          auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: this.cfg.authVolume, authFile: this.cfg.authFile },
+        ),
+        workspace,
+        data,
+      );
     await using session = await WorkspaceSession.open(command, {
       model: this.cfg.model,
       effort: this.cfg.effort,
+      env,
+      // ChatGPT プランでは、登録のときの agent_name_hint と同じ名前で名乗る
+      clientInfo: { name: APP_NAME, title: "infodb p3", version: P3_VERSION },
       onEvent: (e) => logEvent(e, log),
     });
-    const usage = await session.usage();
-    log({
-      kind: "info",
-      text: `使用量: ${Object.entries(usage.windows).map(([m, p]) => `${Number(m) / 60}h窓 ${p}%`).join(" / ")}`,
-    });
-    if (usage.reached) throw new Error(`Codex の使用量上限です: ${usage.reached}`);
+    if (auth.mode === "legacy") {
+      const usage = await session.usage();
+      log({
+        kind: "info",
+        text: `使用量: ${Object.entries(usage.windows).map(([m, p]) => `${Number(m) / 60}h窓 ${p}%`).join(" / ")}`,
+      });
+      if (usage.reached) throw new Error(`Codex の使用量上限です: ${usage.reached}`);
+    } else {
+      // プラン利用では使用量を読む公式の API が無い。上限に当たればターンの失敗として分かる
+      log({ kind: "info", text: "使用量: ChatGPT プランでは取得できません（上限に当たると失敗として知らせます）" });
+    }
 
     const paths = containerPaths(job);
     await session.startThread(developerInstructions(job, paths));
@@ -147,7 +263,13 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       log({ kind: "info", text: `完了 (${result.seconds}s, ${result.commands.length} commands, 変更 ${result.changed.length} files)` });
       return { changed: result.changed.map((p) => localPath(job, p)), usage: result.usage ?? undefined, threadModel: session.model ?? undefined };
     } catch (e) {
-      if (e instanceof UsageLimitError) throw new Error(`Codex の使用量上限: ${e.message}`);
+      if (e instanceof UsageLimitError) {
+        throw new Error(
+          auth.mode === "chatgpt"
+            ? "Usage limit reached: ChatGPT プランの使用量の上限に当たりました。Manage usage: https://chatgpt.com/settings/usage"
+            : `Codex の使用量上限: ${e.message}`,
+        );
+      }
       throw e;
     }
   }

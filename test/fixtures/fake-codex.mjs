@@ -15,6 +15,14 @@ const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 
 function runTurn(id, text) {
+  if (scenario === "unauthorized") {
+    // 本物の Codex のように、キーの一部を見せるエラーを返す（トークンそのものも混ぜて、伏せられるか確かめる）
+    const t = process.env.ACCESS_TOKEN ?? "";
+    const message = `unexpected status 401 Unauthorized: Incorrect API key provided: ${t.slice(0, 8)}***${t.slice(-3)}. raw=${t}`;
+    notify("error", { error: { message } });
+    notify("turn/completed", { turn: { id, status: "failed", error: { message } } });
+    return;
+  }
   // run ディレクトリはコンテナの中のパス（/data/requests/.../preflight/PF-...）で伝えられる
   const runDir = /(\/data\/[^\s`]+)\/assessment\.json/.exec(text)?.[1];
   const abs = join(data, runDir.slice("/data".length));
@@ -63,6 +71,11 @@ for await (const line of createInterface({ input: process.stdin })) {
         },
         ordinaryUsageAllowed: scenario !== "usage",
       });
+      break;
+    case "initialize":
+      // 名乗りと、環境変数で渡された access token（ChatGPT プラン）を記録する
+      appendFileSync(log, `${JSON.stringify({ clientInfo: m.params?.clientInfo, accessToken: process.env.ACCESS_TOKEN ?? null })}\n`);
+      reply({});
       break;
     case "thread/start":
       reply({ thread: { id: "t1" }, model: "fake-model" });
