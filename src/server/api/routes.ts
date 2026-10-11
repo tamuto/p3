@@ -9,6 +9,8 @@ import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
+import { userThemeRoutes } from "./userThemeRoutes.ts";
+import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 
 /**
@@ -99,6 +101,8 @@ export function apiRoutes(ctx: PcubeContext) {
       return c.json({ error: err.message, current }, 409);
     }
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
+    // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
+    if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });
@@ -135,6 +139,8 @@ export function apiRoutes(ctx: PcubeContext) {
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
   app.get("/engine", async (c) => c.json(await preflight.engineStatus()));
   if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, ws, preflight));
+  /** 個人設定のテーマ（このマシンのすべてのプロジェクトで共通。ほかの個人設定は扱わない） */
+  app.route("/user-theme", userThemeRoutes(() => ws.emit({ type: "changed", kind: "user" })));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));

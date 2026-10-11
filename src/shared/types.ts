@@ -335,6 +335,15 @@ export interface Neighborhood {
 }
 
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project" | "chatgpt"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project" | "chatgpt" | "user"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
+
+// ---------------------------------------------------------------------------
+// 画面のテーマ（個人設定の ui.theme。このマシンのすべてのプロジェクトで共通）
+// ---------------------------------------------------------------------------
+
+/** system: OS（ブラウザ）の表示設定に合わせる（既定）/ light: 常にライト / dark: 常にダーク */
+export const THEMES = ["system", "light", "dark"] as const;
+export type Theme = (typeof THEMES)[number];
+export const isTheme = (v: unknown): v is Theme => typeof v === "string" && (THEMES as readonly string[]).includes(v);

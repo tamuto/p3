@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile, open } from "node:fs/promises";
+import { mkdir, rename, writeFile, open, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomBytes, randomInt } from "node:crypto";
 
@@ -8,6 +8,42 @@ export async function writeFileAtomic(path: string, content: string): Promise<vo
   const tmp = `${path}.${randomBytes(4).toString("hex")}.tmp`;
   await writeFile(tmp, content, "utf8");
   await rename(tmp, path);
+}
+
+/**
+ * ロックのファイル（O_EXCL で作る）で、同じマシンの別のプロセス（CLI・serve）と処理を1つずつにする。
+ * 取れなければ少し待つ。古いロック（staleMs より前）は落ちたプロセスのものとして取り直す。
+ */
+export async function withFileLock<T>(
+  lock: string,
+  fn: () => Promise<T>,
+  opts: { timeoutMs?: number; staleMs?: number; busyMessage?: string; mode?: number } = {},
+): Promise<T> {
+  const { timeoutMs = 30_000, staleMs = 60_000, busyMessage = `${lock} を待ちきれませんでした（別のプロセスが使っています）` } = opts;
+  await mkdir(dirname(lock), { recursive: true, mode: 0o700 });
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const fh = await open(lock, "wx", opts.mode ?? 0o600);
+      await fh.writeFile(String(process.pid));
+      await fh.close();
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      const st = await stat(lock).catch(() => undefined);
+      if (st && Date.now() - st.mtimeMs > staleMs) {
+        await unlink(lock).catch(() => {});
+        continue;
+      }
+      if (Date.now() > until) throw new Error(busyMessage);
+      await new Promise((r) => setTimeout(r, 20 + Math.random() * 80));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    await unlink(lock).catch(() => {});
+  }
 }
 
 /** 既に存在する場合は false を返す（ID 採番の競合検出用） */
