@@ -11,7 +11,23 @@ import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { CLOSED_STATUSES, matchesShow, parseShow, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
-import { addDays, bucketStart, daysBetween, groupMarks, PX_PER_DAY, ticks, timeRange, visibleRows, ZOOMS, type Zoom } from "../lib/timeline.ts";
+import {
+  addDays,
+  bucketStart,
+  centerDate as centerDateAt,
+  daysBetween,
+  groupMarks,
+  leftWidth,
+  PX_PER_DAY,
+  scheduleSpan,
+  scrollLeftFor,
+  ticks,
+  timeRange,
+  visibleRows,
+  WIDE_LEFT_W,
+  ZOOMS,
+  type Zoom,
+} from "../lib/timeline.ts";
 
 
 /**
@@ -19,6 +35,7 @@ import { addDays, bucketStart, daysBetween, groupMarks, PX_PER_DAY, ticks, timeR
  *   完了 ○ / 済み ✓（完了にした日）、作業中 ◐（作業中にした日）、未着手 □（今日の右に残りの数）
  *   要望の期限 ⚑、マイルストーン ◆ と縦の破線、今日は縦の線
  * 期間に上限はなく、見えている範囲だけを描く（仮想スクロール）。ズーム（日 / 週 / 月）で幅を変える。
+ * 狭い画面（スマートフォン）では左の一覧を縮め（lib/timeline.ts の leftWidth）、ステータスとタイトルを2段で出す。
  */
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string; task?: string; zoom?: Zoom } => ({
@@ -33,7 +50,6 @@ export const Route = createFileRoute("/")({
 
 const ROW_H = 52;
 const HEAD_H = 64;
-const LEFT_W = 380;
 /** 見えている範囲の外にも少し余分に描く（スクロールしたとき端が欠けないように） */
 const OVERSCAN_PX = 300;
 const ZOOM_LABEL: Record<Zoom, string> = { day: "日", week: "週", month: "月" };
@@ -102,11 +118,14 @@ function ProgressPage() {
       cancelAnimationFrame(frame);
     };
   }, [hasRows]);
+  // 左の一覧の幅（狭い画面では縮める）。スケジュールの見える幅・今日への移動・ズームの中央はすべてこの幅から決める
+  const leftW = leftWidth(view.width);
+  const narrow = leftW < WIDE_LEFT_W;
   // データの期間が画面より短いときは、画面の右端まで日付を描く（何も無い帯を作らない）
-  const shown = { from: range.from, to: [range.to, addDays(range.from, Math.ceil((view.width - LEFT_W) / px))].sort().at(-1)! };
+  const shown = { from: range.from, to: [range.to, addDays(range.from, Math.ceil(scheduleSpan(view.width) / px))].sort().at(-1)! };
   const width = (daysBetween(shown.from, shown.to) + 1) * px;
   const viewFrom = view.left - OVERSCAN_PX;
-  const viewTo = view.left + view.width - LEFT_W + OVERSCAN_PX;
+  const viewTo = view.left + scheduleSpan(view.width) + OVERSCAN_PX;
   const inView = useCallback((left: number, w = 0) => left + w >= viewFrom && left <= viewTo, [viewFrom, viewTo]);
   const { first, last } = visibleRows(view.top, view.height, HEAD_H, ROW_H, rows.length);
 
@@ -114,9 +133,9 @@ function ProgressPage() {
   const scrollToDate = useCallback(
     (d: string, at = 0.4) => {
       const el = scroller.current;
-      if (el) el.scrollLeft = Math.max(0, x(d) - (el.clientWidth - LEFT_W) * at);
+      if (el) el.scrollLeft = scrollLeftFor(d, range.from, px, el.clientWidth, at);
     },
-    [x],
+    [range.from, px],
   );
   const centerDate = useRef<string | null>(null);
   const initialized = useRef(false);
@@ -132,7 +151,7 @@ function ProgressPage() {
   }, [zoom, scrollToDate, today, hasRows]);
   const changeZoom = (z: Zoom) => {
     const el = scroller.current;
-    if (el) centerDate.current = addDays(range.from, Math.floor((el.scrollLeft + (el.clientWidth - LEFT_W) / 2) / px));
+    if (el) centerDate.current = centerDateAt(el.scrollLeft, range.from, px, el.clientWidth);
     void navigate({ search: (prev) => ({ ...prev, zoom: z === "day" ? undefined : z }) });
   };
 
@@ -206,12 +225,12 @@ function ProgressPage() {
         </div>
       ) : (
         <div ref={scroller} className="min-h-0 flex-1 overflow-auto" data-testid="schedule">
-          <div className="flex" style={{ width: LEFT_W + width, height }}>
+          <div className="flex" style={{ width: leftW + width, height }}>
             {/* 左: 要望（見えている行だけ） */}
-            <div className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ width: LEFT_W }}>
+            <div className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ width: leftW }}>
               <div className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }} />
               {rows.slice(first, last).map((p, k) => (
-                <RequestCell key={p.request.id} p={p} top={HEAD_H + (first + k) * ROW_H} />
+                <RequestCell key={p.request.id} p={p} top={HEAD_H + (first + k) * ROW_H} narrow={narrow} />
               ))}
             </div>
 
@@ -319,18 +338,22 @@ function Legend() {
   );
 }
 
-function RequestCell({ p, top }: { p: RequestProgress; top: number }) {
+/** 左の要望の行。狭い画面では、ステータスを上に、タイトルを下に2行まで出す（全文は Hint と要望の画面で） */
+function RequestCell({ p, top, narrow }: { p: RequestProgress; top: number; narrow: boolean }) {
   const r = p.request;
   return (
     <Link
       to="/requests/$requestId"
       params={{ requestId: r.id }}
-      className="absolute inset-x-0 flex items-center gap-2 border-b border-slate-200 px-4 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+      className={cx(
+        "absolute inset-x-0 flex border-b border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+        narrow ? "flex-col justify-center gap-0.5 px-2" : "items-center gap-2 px-4",
+      )}
       style={{ top, height: ROW_H }}
     >
-      <RequestStatusBadge status={r.status} />
+      <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
       <Hint content={`${r.title}\n${r.id}`} className="min-w-0">
-        <span className="block truncate font-medium">{r.title}</span>
+        <span className={cx("block font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "truncate")}>{r.title}</span>
       </Hint>
     </Link>
   );

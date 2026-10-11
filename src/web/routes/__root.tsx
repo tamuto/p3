@@ -41,11 +41,12 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-        <Link to="/" className="flex items-center gap-3" title="infodb p3">
+        {/* 狭い画面ではプロジェクト名を省略して、見出しが画面の幅に収まるようにする */}
+        <Link to="/" className="flex min-w-0 items-center gap-3" title={`infodb p3 · ${ctx.info.project.name}`}>
           <Logo />
-          <span className="font-medium">{ctx.info.project.name}</span>
+          <span className="truncate font-medium">{ctx.info.project.name}</span>
         </Link>
-        <nav className="flex gap-1">
+        <nav className="flex shrink-0 gap-1">
           {NAV.map((n) => (
             <Link
               key={n.to}

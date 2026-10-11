@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { bucketStart, groupMarks, nextBucket, PX_PER_DAY, ticks, timeRange, visibleRows } from "../src/web/lib/timeline.ts";
+import {
+  bucketStart,
+  centerDate,
+  daysBetween,
+  groupMarks,
+  leftWidth,
+  nextBucket,
+  PX_PER_DAY,
+  scheduleSpan,
+  scrollLeftFor,
+  ticks,
+  timeRange,
+  visibleRows,
+  ZOOMS,
+} from "../src/web/lib/timeline.ts";
 
 describe("timeline", () => {
   it("まとまりの最初の日: 週は月曜、月は1日", () => {
@@ -55,5 +69,56 @@ describe("timeline", () => {
     const mid = visibleRows(52_000, 600, 64, 52, 1000);
     expect(mid.first).toBeGreaterThan(990 - 20);
     expect(mid.last).toBe(1000);
+  });
+});
+
+describe("狭い画面の表示幅", () => {
+  it("広い画面は 380px のまま、狭い画面は縮める。境目は 640px", () => {
+    expect(leftWidth(1280)).toBe(380);
+    expect(leftWidth(640)).toBe(380);
+    expect(leftWidth(639)).toBe(230);
+    expect(leftWidth(375)).toBe(135);
+    expect(leftWidth(200)).toBe(112); // 下限
+    expect(leftWidth(0)).toBe(380); // 測る前
+  });
+
+  it("スケジュールの見える幅はいつも正（測る前は 0）", () => {
+    expect(scheduleSpan(1280)).toBe(900);
+    expect(scheduleSpan(640)).toBe(260);
+    expect(scheduleSpan(639)).toBe(409);
+    expect(scheduleSpan(375)).toBe(240);
+    expect(scheduleSpan(0)).toBe(0);
+    for (let w = 1; w <= 2000; w += 7) expect(scheduleSpan(w), `${w}px`).toBeGreaterThanOrEqual(0);
+    for (const w of [320, 375, 639, 640, 1280]) expect(scheduleSpan(w), `${w}px`).toBeGreaterThan(0);
+  });
+
+  it("今日への移動とズームの中央は同じ見える幅で計算し、中央の日付が保たれる", () => {
+    const from = "2026-01-05";
+    for (const w of [375, 639, 640, 1280]) {
+      for (const zoom of ZOOMS) {
+        const px = PX_PER_DAY[zoom];
+        const d = "2026-06-15";
+        const left = scrollLeftFor(d, from, px, w, 0.5);
+        expect(centerDate(left, from, px, w), `${w}px ${zoom}`).toBe(d);
+        // 今日（0.4 の位置）は見える範囲の中にある
+        const todayLeft = scrollLeftFor(d, from, px, w, 0.4);
+        const xd = daysBetween(from, d) * px;
+        expect(xd - todayLeft).toBeGreaterThanOrEqual(0);
+        expect(xd - todayLeft).toBeLessThan(scheduleSpan(w));
+      }
+    }
+    expect(scrollLeftFor(from, from, 30, 375, 0.4)).toBe(0); // 左端より前にはしない
+  });
+
+  it("見える範囲の目盛りを描く（375px でも見える幅を覆う）", () => {
+    const range = { from: "2026-01-05", to: "2026-12-28" };
+    for (const zoom of ZOOMS) {
+      const px = PX_PER_DAY[zoom];
+      const left = scrollLeftFor("2026-06-15", range.from, px, 375, 0.4);
+      const t = ticks(range, zoom, "2026-06-15", left, left + scheduleSpan(375));
+      expect(t.length, zoom).toBeGreaterThan(0);
+      expect(t[0].x).toBeLessThanOrEqual(left);
+      expect(t.at(-1)!.x + t.at(-1)!.width).toBeGreaterThanOrEqual(left + scheduleSpan(375));
+    }
   });
 });
