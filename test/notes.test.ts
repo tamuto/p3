@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PreflightNote, PreflightRun } from "../src/shared/types.ts";
 import { ApiError } from "../src/web/lib/api.ts";
-import { nextRunLabel, submitNote } from "../src/web/lib/notes.ts";
+import { nextRunLabel, notesPanelState, submitNote, type NotesPanelInput } from "../src/web/lib/notes.ts";
 
 const note = (id: string, pending: boolean): PreflightNote & { pending: boolean } => ({ id, requestId: "r", createdAt: "2026-10-09T00:00:00Z", body: "b", pending });
 
@@ -53,5 +53,29 @@ describe("画面のメモ", () => {
       throw new ApiError(404, "not found", { error: "not found" });
     });
     await expect(submitNote(missing, "r", "回答", true)).rejects.toThrow("not found");
+  });
+});
+
+describe("メモ欄の表示と操作", () => {
+  const base: NotesPanelInput = { hasHistory: true, running: false, engineOk: true, draft: "", busy: false, pending: 0 };
+  const st = (p: Partial<NotesPanelInput>) => notesPanelState({ ...base, ...p });
+
+  it("一度も実行していなければ何も出さない（案内もしない）。保存済みのメモがあれば最初の Preflight に渡すと示す", () => {
+    expect(st({ hasHistory: false })).toEqual({ mode: "intro", canSaveAndRun: false, canSaveOnly: false, blockPlainRun: false, hint: undefined });
+    expect(st({ hasHistory: false, pending: 2 }).hint).toBe("保存済みのメモ 2 件を、最初の Preflight に渡します。");
+    // 入力の途中でも（ありえないが）実行は止めない
+    expect(st({ hasHistory: false, draft: "x" }).blockPlainRun).toBe(false);
+  });
+
+  it("実行した後は入力欄を出す。空なら保存できず、入力中は上の通常の実行を止める", () => {
+    expect(st({})).toMatchObject({ mode: "input", canSaveAndRun: false, canSaveOnly: false, blockPlainRun: false, hint: undefined });
+    expect(st({ draft: "  \n " })).toMatchObject({ canSaveAndRun: false, blockPlainRun: false });
+    expect(st({ draft: "回答" })).toMatchObject({ canSaveAndRun: true, canSaveOnly: true, blockPlainRun: true });
+    expect(st({ draft: "回答", busy: true })).toMatchObject({ canSaveAndRun: false, canSaveOnly: false }); // 二重送信しない
+  });
+
+  it("実行中は保存だけでき、次回に渡ると示す。エンジンが使えなくても保存だけはできる", () => {
+    expect(st({ running: true, draft: "回答" })).toMatchObject({ canSaveAndRun: false, canSaveOnly: true, hint: expect.stringContaining("次の Preflight に渡ります") });
+    expect(st({ engineOk: false, draft: "回答" })).toMatchObject({ canSaveAndRun: false, canSaveOnly: true, hint: expect.stringContaining("保存だけ") });
   });
 });

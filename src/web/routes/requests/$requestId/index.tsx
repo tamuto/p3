@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   REQUEST_STATUSES,
   relationRole,
@@ -14,7 +14,7 @@ import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
 import { api, ApiError, type EngineStatus, type NotesInfo } from "../../../lib/api.ts";
 import { archiveSelection } from "../../../lib/supersede.ts";
-import { nextRunLabel, submitNote } from "../../../lib/notes.ts";
+import { nextRunLabel, notesPanelState, PLAIN_RUN_BLOCKED, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
@@ -103,7 +103,24 @@ function RequestPanel({
   }
 
   const running = run?.status === "running";
-  const notes = <Notes ctx={ctx} request={request} canRun={!running && engine?.ok !== false} onStarted={started} />;
+  // メモ欄の入力は要望のページにいる間ずっと持つ（run を替えたり実行を始めたりしても消えない）
+  const [draft, setDraft] = useState("");
+  // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
+  const hasHistory = runs.length > 0 || !!run;
+  const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: false, pending: 0 });
+  // メモ欄は評価の下（評価を読んでから書くため）。入力中の文はここで持つので、表示が変わっても消えない
+  const notes = (
+    <Notes
+      ctx={ctx}
+      request={request}
+      hasHistory={hasHistory}
+      running={running}
+      engineOk={engine?.ok !== false}
+      draft={draft}
+      onDraft={setDraft}
+      onStarted={started}
+    />
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-8">
@@ -125,13 +142,13 @@ function RequestPanel({
       </section>
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false}>
+        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun}>
           {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
         {engine && (
           <span
             className={cx("text-sm", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
-            title={engine.name === "mock" ? "pcube 本体の .env に PCUBE_CODEX_AUTH_VOLUME などを設定すると Codex で評価します" : undefined}
+            title={engine.name === "mock" ? "PCUBE_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
           >
             {engine.ok ? "●" : "✕"} {engine.detail}
           </span>
@@ -143,7 +160,7 @@ function RequestPanel({
         )}
         {runs.length > 0 && (
           <select
-            className="ml-auto rounded-md bg-white px-2 py-1.5 ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-700"
+            className="ml-auto max-w-full min-w-0 rounded-md bg-white px-2 py-1.5 ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-700"
             value={runId ?? ""}
             onChange={(e) => setRunId(e.target.value)}
           >
@@ -154,16 +171,15 @@ function RequestPanel({
             ))}
           </select>
         )}
+        {notesState.blockPlainRun && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
 
-      {run?.assessment ? (
+      {run ? (
         <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} />
       ) : (
-        <>
-          {notes}
-          {run && <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} />}
-        </>
+        // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
+        notes
       )}
 
     </div>
@@ -183,8 +199,8 @@ function RunView({
   run: PreflightRun;
   onChanged: (r: PreflightRun) => void;
   onOpenRun: (runId: string) => void;
-  /** メモの入力（評価の確認事項のすぐ下に出す） */
-  notes?: ReactNode;
+  /** メモ欄。評価の下の決まった場所に置く（評価が無い間＝実行中・失敗も同じ場所。入れ替えて作り直さない） */
+  notes: ReactNode;
 }) {
   const a = run.assessment;
   const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length ? 4 : run.status === "completed" ? 3 : 2;
@@ -260,7 +276,6 @@ function RunView({
       {run.status === "failed" && <p className="rounded-md bg-rose-50 p-4 text-rose-700 dark:bg-rose-950 dark:text-rose-300">失敗: {run.error}</p>}
 
       {a && (
-        <>
           <Section title="評価">
             <div className="space-y-4 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
               <div className="flex items-start gap-3">
@@ -292,13 +307,28 @@ function RunView({
               </div>
               <div className="grid gap-6 sm:grid-cols-2">
                 <ListBlock title="リスク" items={a.risks} tone="rose" />
-                <ListBlock title="確認事項" items={a.questions} tone="amber" />
+                <ListBlock
+                  title="確認事項"
+                  items={a.questions}
+                  tone="amber"
+                  action={
+                    a.questions.length > 0 ? (
+                      <a href={`#${NOTE_INPUT_ID}`} className="text-sm text-indigo-600 underline" onClick={focusNoteInput}>
+                        メモ欄で答える ↓
+                      </a>
+                    ) : undefined
+                  }
+                />
               </div>
             </div>
           </Section>
+      )}
 
-          {notes}
+      {/* 評価の下。評価が無い間（実行中・失敗）も同じ並びの位置なので、作り直されず入力も消えない */}
+      {notes}
 
+      {a && (
+        <>
           {a.impacts.length > 0 && (
             <Section title="既存項目への影響（タスク化時に要望の関係として記録）">
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -329,15 +359,46 @@ function RunView({
   );
 }
 
+const NOTE_INPUT_ID = "preflight-note";
+
+/** 確認事項からメモ欄へ（入力欄にカーソルを置く） */
+function focusNoteInput(e: { preventDefault: () => void }) {
+  const el = document.getElementById(NOTE_INPUT_ID) as HTMLTextAreaElement | null;
+  if (!el) return;
+  e.preventDefault();
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  el.focus({ preventScroll: true });
+}
+
 /**
  * Preflight へのメモ（確認事項への回答・方針の変更）。保存すると次の Preflight に前回の結果と一緒に渡す。
  * 引き継ぎ元はいつも直近の run（過去の run を表示していても変わらない）なので、それを先に見せる。
+ * 評価の下に置く（評価を読んでから書くため）。まだ一度も実行していなければ出さない。入力中の文は親が持つ。
  */
-function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Request; canRun: boolean; onStarted: (r: PreflightRun) => void }) {
+function Notes({
+  ctx,
+  request,
+  hasHistory,
+  running,
+  engineOk,
+  draft,
+  onDraft,
+  onStarted,
+}: {
+  ctx: AppCtx;
+  request: Request;
+  hasHistory: boolean;
+  running: boolean;
+  engineOk: boolean;
+  draft: string;
+  onDraft: Dispatch<SetStateAction<string>>;
+  onStarted: (r: PreflightRun) => void;
+}) {
   const [info, setInfo] = useState<NotesInfo>();
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const pending = info?.notes.filter((n) => n.pending).length ?? 0;
+  const st = notesPanelState({ hasHistory, running, engineOk, draft, busy, pending });
 
   useEffect(() => {
     void api.notes(request.id).then(setInfo);
@@ -348,12 +409,16 @@ function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Requ
     setBusy(true);
     setMessage(null);
     try {
-      const r = await submitNote(api, request.id, text, run);
-      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）
-      setText("");
+      const sent = draft;
+      const r = await submitNote(api, request.id, sent, run);
+      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）。保存の前に失敗したら入力は残す。
+      // 送った後に書き足していれば、その文は消さない
+      onDraft((cur) => (cur === sent ? "" : cur));
+      if (r.kind === "started") setMessage({ error: false, text: "メモを保存して、Preflight を始めました" });
+      else if (r.kind === "not-started")
+        setMessage({ error: true, text: `メモ ${r.note.id} は保存済みです（書き直しは不要）。Preflight を始められませんでした: ${r.error}` });
+      else setMessage({ error: false, text: `メモ ${r.note.id} を保存しました。${running ? "実行中の評価ではなく、" : ""}次の Preflight に渡します` });
       if (r.kind === "started") onStarted(r.run);
-      else if (r.kind === "not-started") setMessage({ error: true, text: `メモ ${r.note.id} は保存しましたが、Preflight を始められませんでした: ${r.error}` });
-      else setMessage({ error: false, text: `メモ ${r.note.id} を保存しました。次の Preflight に渡します` });
       setInfo(await api.notes(request.id));
     } catch (e) {
       setMessage({ error: true, text: (e as Error).message });
@@ -361,6 +426,9 @@ function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Requ
       setBusy(false);
     }
   }
+
+  // まだ実行しておらず、保存済みのメモも無ければ何も出さない
+  if (st.mode === "intro" && !info?.notes.length && !info?.invalid.length) return null;
 
   return (
     <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/notes/*.md</span>}>
@@ -377,7 +445,7 @@ function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Requ
                       <span>{n.createdBy ?? "不明"}</span>
                       <span>{n.createdAt.slice(0, 16).replace("T", " ")}</span>
                     </div>
-                    <p className="whitespace-pre-wrap">{n.body}</p>
+                    <p className="break-words whitespace-pre-wrap">{n.body}</p>
                   </li>
                 ))}
               </ul>
@@ -387,34 +455,44 @@ function Notes({ ctx, request, canRun, onStarted }: { ctx: AppCtx; request: Requ
                 読めないメモ（渡しません）: {i.file} — {i.error}
               </p>
             ))}
-            <p className="text-sm text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>
+            {st.mode === "input" && <p className="text-sm text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
           </>
         )}
-        <textarea
-          rows={3}
-          className={inputCls}
-          value={text}
-          placeholder="確認事項への回答や、方針の変更を書きます（例: 対象は CLI だけ。Web は不要）"
-          onChange={(e) => setText(e.target.value)}
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" disabled={busy || !canRun || !text.trim()} onClick={() => void submit(true)}>
-            保存して再実行
-          </Button>
-          <Button disabled={busy || !text.trim()} onClick={() => void submit(false)}>
-            メモだけ保存
-          </Button>
-          {message && <span className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>{message.text}</span>}
-        </div>
+        {st.hint && <p className="text-sm text-slate-600 dark:text-slate-400">{st.hint}</p>}
+        {st.mode === "input" && (
+          <>
+            <textarea
+              id={NOTE_INPUT_ID}
+              rows={3}
+              className={inputCls}
+              value={draft}
+              aria-label="Preflight へのメモ"
+              placeholder="確認事項への回答や、方針の変更を書きます（例: 対象は CLI だけ。Web は不要）"
+              onChange={(e) => onDraft(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="primary" disabled={!st.canSaveAndRun} onClick={() => void submit(true)}>
+                保存して再実行
+              </Button>
+              <Button disabled={!st.canSaveOnly} onClick={() => void submit(false)}>
+                {running ? "メモだけ保存（次回に渡す）" : "メモだけ保存"}
+              </Button>
+            </div>
+          </>
+        )}
+        {message && <p className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>{message.text}</p>}
       </div>
     </Section>
   );
 }
 
-function ListBlock({ title, items, tone }: { title: string; items: string[]; tone: "rose" | "amber" }) {
+function ListBlock({ title, items, tone, action }: { title: string; items: string[]; tone: "rose" | "amber"; action?: ReactNode }) {
   return (
     <div>
-      <span className="font-medium">{title}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">{title}</span>
+        {action}
+      </div>
       {items.length === 0 ? (
         <p className="text-slate-400">なし</p>
       ) : (
