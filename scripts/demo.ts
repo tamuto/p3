@@ -55,13 +55,13 @@ async function seedDemo(dir: string) {
 
   /** 要望を作って Preflight し、タスク化する（skip したタスク案はタスクにしない） */
   async function request(r: Partial<Request> & { title: string; body: string }, opts: { materialize?: boolean; skip?: string[] } = {}) {
-    const req = await ws.requests.create({ status: "draft", ...r }, "human:tamuto");
+    const req = await ws.requests.create({ status: "draft", ...r }, "human:demo");
     if (opts.materialize === undefined) return req.id; // Preflight 前のまま
-    const run = await preflight.start(req.id, { actor: "human:tamuto" });
+    const run = await preflight.start(req.id, { actor: "human:demo" });
     await preflight.wait(req.id, run.id);
     if (opts.materialize) {
       for (const key of opts.skip ?? []) await preflight.updateDraft(req.id, run.id, key, { include: false });
-      await preflight.materialize(req.id, run.id, "human:tamuto");
+      await preflight.materialize(req.id, run.id, "human:demo");
     }
     index.invalidate();
     return req.id;
@@ -111,7 +111,7 @@ async function seedDemo(dir: string) {
     { materialize: true },
   );
   for (const [i, t] of ["T001", "T002", "T003"].entries()) await work(store, t, "done", pr(i + 1));
-  await ws.requests.update(store, { status: "done" }, { actor: "human:tamuto" });
+  await ws.requests.update(store, { status: "done" }, { actor: "human:demo" });
   await req(store, -24);
   await task(store, "T001", { created: -23, started: -22, done: -20, checked: -19 });
   await task(store, "T002", { created: -23, started: -19, done: -17, checked: -16 });
@@ -168,7 +168,7 @@ async function seedDemo(dir: string) {
   await work(cli, "T002", "doing");
   // 要望をまたぐ依存（CLI の find はストアの楽観ロックが前提）
   const t1 = ws.tasksOf(cli).require("T003");
-  await ws.tasksOf(cli).update("T003", { relations: [...t1.relations, { type: "depends_on", target: `${store}/T002`, origin: "human" }] }, { actor: "human:tamuto" });
+  await ws.tasksOf(cli).update("T003", { relations: [...t1.relations, { type: "depends_on", target: `${store}/T002`, origin: "human" }] }, { actor: "human:demo" });
   await req(cli, -7);
   await task(cli, "T001", { created: -6, started: -5, done: -3, checked: -3 });
   await task(cli, "T002", { created: -6, started: -2 });

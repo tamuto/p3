@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { appendFile, copyFile, mkdir } from "node:fs/promises";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -159,8 +159,8 @@ export async function init(o: InitOptions): Promise<string> {
     const key = await ask("プロジェクト名（切り替えに使う短い名前）", o.project ?? slugifyName(basename(root)) ?? "project");
     if (!PROJECT_NAME.test(key)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${key}`);
     const dirRaw = o.dir ?? (await ask("データを置くフォルダ（リポジトリの外を勧めます）", ""));
-    if (!dirRaw) throw new UsageError("データを置くフォルダを指定してください。例: p3 init --project pcube --dir /mnt/assets/pcube");
-    const dir = resolve(o.cwd, dirRaw);
+    if (!dirRaw) throw new UsageError("データを置くフォルダを指定してください。例: p3 init --project myapp --dir ~/p3-data/myapp");
+    const dir = resolvePath(o.cwd, dirRaw);
 
     const registered = user.projects[key];
     if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
@@ -254,10 +254,10 @@ export async function projectCommand(
   if (sub === "add") {
     if (!name || !dirRaw) throw new UsageError("p3 project add <名前> <フォルダ> [--repo <リポジトリ>]");
     if (!PROJECT_NAME.test(name)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${name}`);
-    const dir = resolve(cwd, dirRaw);
+    const dir = resolvePath(cwd, dirRaw);
     if (!existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} はまだ p3 のプロジェクトではありません。作るときは管理したいリポジトリの中で p3 init`);
     if (user.projects[name] && user.projects[name].dir !== dir) throw new UsageError(`「${name}」は別のフォルダで登録済みです: ${user.projects[name].dir}`);
-    const repo = o.repo ? resolve(cwd, o.repo) : mainWorktree(cwd);
+    const repo = o.repo ? resolvePath(cwd, o.repo) : mainWorktree(cwd);
     user.projects[name] = { dir, repos: repo ? { ...user.projects[name]?.repos, main: repo } : (user.projects[name]?.repos ?? {}) };
     await saveUserConfig(user);
     return { data: { name, ...user.projects[name] }, text: `登録しました: ${name} → ${dir}${repo ? `（リポジトリ ${repo}）` : ""}` };
@@ -270,6 +270,9 @@ export async function projectCommand(
   }
   throw new UsageError("p3 project [ls | add <名前> <フォルダ> | rm <名前>]");
 }
+
+/** 入力されたパス。対話式の入力ではシェルが ~ を展開しないので、ここで展開する */
+export const resolvePath = (cwd: string, p: string) => resolve(cwd, p === "~" ? homedir() : p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
 
 const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 

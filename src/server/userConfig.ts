@@ -10,12 +10,12 @@ import { writeFileAtomic } from "./store/fsutil.ts";
  *   ~/.config/infodb-p3/config.yaml
  *
  *   projects:
- *     pcube:                       # プロジェクト名 → データを置くフォルダ（場所は自由）
- *       dir: /mnt/assets/pcube
+ *     myapp:                       # プロジェクト名 → データを置くフォルダ（場所は自由）
+ *       dir: /home/me/p3-data/myapp
  *       repos:                     # 手元のリポジトリの場所（マシンごとに違うのでプロジェクトのデータには書かない）
- *         main: /workspaces/pcube
+ *         main: /home/me/src/myapp
  *     other:
- *       dir: /somefolder/other
+ *       dir: /home/me/p3-data/other
  *   ui:
  *     theme: system                # 画面の表示（system / light / dark）
  *   codex: { ... }                 # マシンごとの設定（Codex・Preflight・serve。→ machineSettings.ts）

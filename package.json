@@ -54,7 +54,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm test && pnpm build",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "verify:pack": "node scripts/verify-pack.mjs"
   },
   "dependencies": {
     "@hono/node-server": "~2.1.3",

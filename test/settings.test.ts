@@ -126,3 +126,14 @@ describe("個人設定のファイル", () => {
     });
   });
 });
+
+describe("入力されたパス", () => {
+  it("~ をホームに展開する（対話式の入力ではシェルが展開しない）", async () => {
+    const { homedir } = await import("node:os");
+    const { resolvePath } = await import("../src/cli/project.ts");
+    expect(resolvePath("/w", "~/p3-data/a")).toBe(join(homedir(), "p3-data/a"));
+    expect(resolvePath("/w", "~")).toBe(homedir());
+    expect(resolvePath("/w", "data")).toBe("/w/data");
+    expect(resolvePath("/w", "~x")).toBe("/w/~x");
+  });
+});
