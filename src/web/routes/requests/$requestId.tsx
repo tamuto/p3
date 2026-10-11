@@ -63,7 +63,7 @@ function RequestFrame() {
           )}
         </div>
         <h1 className="mt-1 text-xl font-bold">{request.title}</h1>
-        <nav className="mt-3 flex gap-1">
+        <nav className="mt-3 flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <Link
               key={t.to}
@@ -71,7 +71,7 @@ function RequestFrame() {
               to={t.to}
               params={{ requestId: request.id }}
               activeOptions={{ exact: t.exact, includeSearch: false }}
-              className="-mb-px border-b-2 px-3 py-2 font-medium"
+              className="-mb-px border-b-2 px-3 py-2 font-medium whitespace-nowrap"
               activeProps={{ className: "border-indigo-600 text-indigo-700 dark:text-indigo-300" }}
               inactiveProps={{ className: "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200" }}
             >

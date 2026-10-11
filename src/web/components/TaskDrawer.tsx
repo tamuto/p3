@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationRole, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { markFrom, warningText } from "../lib/supersede.ts";
@@ -8,6 +8,8 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
+import { relationItems } from "../lib/relations.ts";
+import { RelationRow } from "./RelationRow.tsx";
 
 type Draft = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
 
@@ -242,25 +244,26 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           <Section title="関係（明示）">
             {graph.outgoing.length + graph.incoming.length === 0 && <Empty>明示的な関係はありません</Empty>}
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {graph.outgoing.map((e) => (
-                <li key={`o-${e.type}-${e.to}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="indigo">{relationRole(e.type, "out")}</Badge>
-                  <Id id={short(e.to)} onClick={() => open(e.to)} />
-                  <span className="truncate">{title(e.to)}</span>
-                  <Origin e={e} />
-                  {e.origin !== "index" && (
-                    <button className="ml-auto text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(e)}>
-                      削除
-                    </button>
-                  )}
-                </li>
-              ))}
-              {graph.incoming.map((e) => (
-                <li key={`i-${e.type}-${e.from}`} className="flex items-center gap-2 py-1.5">
-                  <Badge tone="violet">{relationRole(e.type, "in")}</Badge>
-                  <Id id={short(e.from)} onClick={() => open(e.from)} />
-                  <span className="truncate">{title(e.from)}</span>
-                  <Origin e={e} />
+              {relationItems(graph.outgoing, graph.incoming, rid).map((r) => (
+                <li key={r.key}>
+                  <RelationRow
+                    role={r.role}
+                    tone={r.direction === "out" ? "indigo" : "violet"}
+                    refId={r.short}
+                    onOpen={() => open(r.ref)}
+                    title={title(r.ref)}
+                    note={r.edge.origin !== "index" ? r.edge.note : undefined}
+                    aside={
+                      <>
+                        <Origin e={r.edge} />
+                        {r.removable && (
+                          <button className="text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(r.edge)} aria-label={`${r.role} ${r.short} の関係を削除`}>
+                            削除
+                          </button>
+                        )}
+                      </>
+                    }
+                  />
                 </li>
               ))}
             </ul>

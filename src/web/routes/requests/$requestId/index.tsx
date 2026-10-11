@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   REQUEST_STATUSES,
-  RELATION_TYPES,
+  relationRole,
   type RequestStatus,
   type PreflightLogEntry,
   type PreflightRun,
@@ -20,6 +20,7 @@ import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
 import { useServerEvents } from "../../../lib/live.ts";
 import { optionalString } from "../../../lib/search.ts";
+import { RelationRow } from "../../../components/RelationRow.tsx";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
 export const Route = createFileRoute("/requests/$requestId/")({
@@ -300,15 +301,23 @@ function RunView({
 
           {a.impacts.length > 0 && (
             <Section title="既存項目への影響（タスク化時に要望の関係として記録）">
-              <ul className="space-y-1.5">
-                {a.impacts.map((i) => (
-                  <li key={`${i.type}-${i.target}`} className="flex items-start gap-2">
-                    <Badge tone="amber">{RELATION_TYPES[i.type].label}</Badge>
-                    <Id id={i.target} onClick={() => { const ref = absRef(i.target, request.id); if (ref) ctx.open(ref); }} />
-                    <span className="text-slate-600 dark:text-slate-400">{i.reason}</span>
-                    <span className="ml-auto font-mono text-sm text-slate-400">{Math.round(i.confidence * 100)}%</span>
-                  </li>
-                ))}
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                {a.impacts.map((i) => {
+                  const ref = absRef(i.target, request.id);
+                  return (
+                    <li key={`${i.type}-${i.target}`}>
+                      <RelationRow
+                        role={relationRole(i.type, "out")}
+                        tone="amber"
+                        refId={i.target}
+                        onOpen={ref ? () => ctx.open(ref) : undefined}
+                        title={ref ? titleIn(ctx, ref) : undefined}
+                        note={i.reason}
+                        aside={<span className="font-mono text-sm text-slate-400" title="確信度">{Math.round(i.confidence * 100)}%</span>}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             </Section>
           )}
@@ -535,13 +544,14 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
                 </details>
                 <div className="flex flex-wrap gap-1">
                   {d.areas.map((a) => (
-                    <Badge key={a} className="font-mono">
-                      {a}
+                    <Badge key={a} className="max-w-full font-mono" title={a}>
+                      <span className="truncate">{a}</span>
                     </Badge>
                   ))}
                   {d.relations.map((r) => (
-                    <Badge key={`${r.type}-${r.target}`} tone="amber" title={r.note}>
-                      {RELATION_TYPES[r.type].label} {r.target}
+                    <Badge key={`${r.type}-${r.target}`} tone="amber" className="max-w-full" title={`${relationRole(r.type, "out")} ${r.target}${r.note ? `: ${r.note}` : ""}`}>
+                      <span className="shrink-0">{relationRole(r.type, "out")}</span>
+                      <span className="truncate font-mono">{r.target}</span>
                     </Badge>
                   ))}
                 </div>
@@ -695,4 +705,12 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
       {error && <p className="text-rose-600">{error}</p>}
     </section>
   );
+}
+
+/** 参照の題（要望か、どの要望のタスクでも。進捗の一覧から引く） */
+function titleIn(ctx: AppCtx, ref: string): string | undefined {
+  const [rid, tid] = ref.split("/");
+  const p = ctx.requests.find((x) => x.request.id === rid);
+  if (!p) return undefined;
+  return tid ? p.tasks.find((t) => t.id === tid)?.title : p.request.title;
 }
