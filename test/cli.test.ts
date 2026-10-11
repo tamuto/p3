@@ -458,6 +458,7 @@ describe("置き換えられたタスク", () => {
     pcube(root, ["accept", rid]);
     pcube(root, ["move", "T002", "doing", "--req", rid]);
     const run = pcube(root, ["preflight", rid, "--engine", "mock", "--json"]).json();
+    expect(run, JSON.stringify({ status: run.status, error: run.error, log: run.log?.slice(-3) })).toMatchObject({ status: "completed" });
     const dir = join(root, ".pcube", "requests", rid, "preflight", run.id);
     const d1 = join(dir, "drafts", "D1.md");
     writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "relations:\n  - { type: supersedes, target: T001 }\n  - { type: supersedes, target: T002 }\ninclude: true"));
