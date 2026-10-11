@@ -1,71 +1,32 @@
 ---
 name: p3
-description: infodb p3（pcube）で、このリポジトリ自身の要望とタスクを管理する。ユーザーが要望の登録・Preflight の結果の確認・タスクの着手や完了・進捗の確認を頼んだとき、または要望 ID（261009-k7m3x の形）やタスク（T003）に触れたときに使う。
+description: infodb p3（P³）自身の開発で、このリポジトリの要望とタスクを p3 で管理する。ユーザーが要望の登録・Preflight の結果の確認・タスクの着手や完了・進捗の確認を頼んだとき、または要望 ID（261009-k7m3x の形）やタスク（T003）に触れたときに使う。
 ---
 
-# p3 でこのプロジェクトを管理する（ドッグフーディング・試験運用）
+# p3 で P3 自身の開発を管理する（開発向け）
 
-このリポジトリ（pcube = infodb p3 自身）の作業は、p3 の要望とタスクで管理する。
-データは `/mnt/assets/pcube`、登録は個人設定 `~/.config/infodb-p3/config.yaml`（プロジェクト名 `pcube`）。
-データのフォルダのファイルは直接編集しない。必ず CLI を通す。
+このリポジトリ（infodb p3 本体）の作業も、p3 の要望とタスクで管理する。
+操作の手順・人と AI の役割・してはいけないことは、利用者向けのスキル **`skills/p3/SKILL.md`**（パッケージに同梱し、
+`p3 init --agents` で各プロジェクトに置く原本）に従う。最初にそれを読むこと。ここには P3 の開発だけで違う点を書く。
 
-## CLI の呼び方
+## CLI の呼び方（開発中のソースで動かす）
+
+公開版（`pnpx @infodb/p3`）ではなく、このリポジトリのソースで動かす:
 
 ```bash
-PCUBE_ACTOR=ai:claude pnpm -s --dir /workspaces/pcube p3 --project pcube <コマンド> [引数] --json
+PCUBE_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   # リポジトリのルートで
 ```
 
-- `--dir /workspaces/pcube` は p3 本体の場所（作業ツリーの写しには node_modules が無いので、必ずメインを指す）
-- `--project pcube` はどこから呼んでも対象を固定するため。`PCUBE_ACTOR=ai:claude` は変更者の記録
-- 結果は `--json` で読む。人に見せる表はオプションなしの出力でよい
-- 終了コード: 0 成功 / 1 使い方の誤り（メッセージに次にすることが出る）/ 2 見つからない / 3 競合（`show` で読み直してやり直す）
-- 迷ったら `p3 help`。最初に `p3 whoami` で対象のプロジェクトを確かめる
+- 別の場所（作業ツリーなど）から呼ぶときは `pnpm -s --dir <依存を入れたチェックアウト> p3 ...`。p3 は呼び出し元の場所
+  （`INIT_CWD`）に戻ってから、対象のプロジェクトと今の要望を判定する。作業ツリーで直接動かすなら、そこで `pnpm install` する
+- 対象のプロジェクトは `p3 whoami` で確かめる（名前やデータのフォルダを決め打ちしない）
+- ブランチを切り替えると、この CLI もそのブランチのコードで動く。CLI を壊す変更の途中で CLI が動かなくなったら、
+  `git stash` などで戻してから操作し、ユーザーに伝える
 
-## 要望を登録する（ユーザーから新しい作業を頼まれたとき）
+## 開発の決まり
 
-1. `request new "<タイトル>" --body "<背景・やりたいこと・完了条件を箇条書きで>"`（任意で `--area src/web --tag ui --due YYYY-MM-DD --milestone <id>`）
-2. 登録したら要望 ID をユーザーに伝えて終える。**Preflight（評価・細分化）とタスク化（`accept`）は人が行う。**
-   AI からは実行しない（勧めたり、実行してよいか尋ねたりもしない）。人がタスク化を終えたら、タスクを進める
-
-人が行った Preflight の内容を聞かれたら、`drafts <要望ID>` で評価とタスク案を読んで答えてよい（読むだけ）。
-評価の確認事項（questions）への回答を頼まれたら、`preflight <要望ID> --note "..." --note-only` でメモとして残す（実行はしない）。
-
-## タスクを進める
-
-作業は **要望ごとのブランチ** で行う。ブランチ名はタスク化のときに要望に割り当てられる
-（`request show <要望ID> --json` の `item.workstream.branch`。例: `req/261009-k7m3x`）。
-
-1. ブランチに入る: 無ければ最新の main から作る（`git switch main && git pull --ff-only && git switch -c <branch>`）、あれば `git switch <branch>`。
-   作業ツリー（git worktree）は作らない（作業ツリーでは依存の `link:../llmcs/...` が解決できない）
-2. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --json` で中身と依存（depends_on）を読む。依存が完了していないタスクから始めない。
-   **置き換えられたタスク**（`ls` の `※置換`、`--json` の `superseded`）からは始めない。残っていれば扱いをユーザーに確かめる
-   （不要ならユーザーの了承を得て `archive`）。`move` が警告（`warnings`）を返したら、作業を止めてユーザーに伝える
-3. 着手: `move T003 doing --req <要望ID>`
-4. 作業し、テスト（`pnpm -s check`）を通してブランチにコミット・push したら、完了: `move T003 done --req <要望ID> --output https://github.com/tamuto/pcube/commit/<sha>`
-   （成果物が複数あれば `--output` を繰り返す）
-5. 作業中に見つけた追加の作業は `new "<タイトル>" --req <要望ID> --body "..."` でタスクにする。依存は `link T004 depends_on T003 --req <要望ID>`
-6. 要望のタスクが全部完了したら（`ls --req <要望ID>` が全部 done、成果物と検証も済み）、要望を **対応済** にする:
-   `request set <要望ID> status=resolved --json`。未完了のタスクがあると拒否される（終わらせるか、不要ならユーザーの了承を得て
-   `archive`）。拒否をタスクを偽って完了にする・ファイルを直接書き換えるなどで回避しない
-7. PR を作るかユーザーに確認し、了承を得てから `gh pr create`（本文に要望 ID とタスクの一覧）。
-   作った PR の URL は最後のタスクの `--output` に足す。マージ・要望の完了済（`done`）は人が行う
-8. 対応済の後にタスクを足した・完了から戻したときは、要望は自動で進行中に戻る（`--json` の `reopened`）。
-   終えたらもう一度 6 で対応済にする
-
-ブランチを切り替えると、この CLI（p3 本体）もそのブランチのコードで動く。CLI を壊す変更の途中で
-CLI が動かなくなったら、`git stash` などで戻してから操作し、ユーザーに伝える。
-
-## してはいけないこと
-
-- Preflight の実行（`preflight`）とタスク化（`accept`）をしない。どちらも人が行う
-- `check`（済み）を付けない。済みは人が成果物を確認して付ける
-- 要望のステータスを `done`（完了済）/ `rejected`（見送り）にしない（人が決める）。AI がするのは作業を終えたときの `resolved`（対応済）まで。
-  タスク化で `active` になるのは自動
-- タスクを要望をまたいで動かさない。別の要望の作業なら、その要望にタスクを足すか、新しい要望を提案する
-- データのフォルダ（`/mnt/assets/pcube`）や `~/.config/infodb-p3/` のファイルを直接書き換えない
-- 人への質問をタスクにしない
-
-## 状況を報告する
-
-- 全体: `progress`（マイルストーンごと）。要望の中: `ls --req <要望ID>`
-- 画面はユーザーが `pnpm -s p3 serve` で開く（http://localhost:4310）。CLI の変更はそのまま画面に反映される
+- タスクを完了にする前に `pnpm -s check`（型検査・テスト・画面のビルド）を通す。CI は足さない
+- 成果物の `--output` には push したコミットの URL（`git remote get-url origin` のリポジトリの `/commit/<sha>`）か PR の URL
+- 依存の `@infodb/codex-workspace` は公開版を使う。手元の llmcs で試すときの一時的な手順は `docs/architecture.md`（codex-workspace の依存）
+- `skills/p3/SKILL.md` と `src/cli/project.ts` の `AGENTS_SNIPPET` は内容をそろえる（役割・終わり方を変えたら両方を直す。
+  `test/agents.test.ts` が確かめる）

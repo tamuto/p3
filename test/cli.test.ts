@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,54 @@ describe("pcube init", () => {
     expect(agents).toContain("完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める");
     expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(1); // 2回目は拒む
     expect(pcube(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
+  });
+});
+
+describe("p3 init --agents（AI 向けの指示とスキル）", () => {
+  const SKILL = fileURLToPath(new URL("../skills/p3/SKILL.md", import.meta.url));
+  const placed = (root: string) => join(root, ".claude", "skills", "p3", "SKILL.md");
+
+  it("新しく作るときに、AGENTS.md へ追記してスキルを置く。もう一度でも重ねない", async () => {
+    const root = await repo();
+    const r = pcube(root, ["init", "--yes", "--agents", "--dir", ".pcube"]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain("AI 向けのスキルを .claude/skills/p3/SKILL.md に置きました");
+    expect(readFileSync(placed(root), "utf8")).toBe(readFileSync(SKILL, "utf8"));
+
+    // 別の人が同じデータに参加する（同じリポジトリの別のチェックアウト）。指示は重ねず、スキルは最新のまま
+    const again = pcube(root, ["init", "--yes", "--agents", "--project", "same", "--dir", ".pcube"], {}, tempDir("p3-config-"));
+    expect(again.code, again.err).toBe(0);
+    expect(again.out).toContain("参加しました");
+    expect(again.out).toContain("は最新です");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8").split("タスク管理（infodb p3）")).toHaveLength(2);
+  });
+
+  it("参加のときも置き、手で直したスキルは上書きせずに案内する", async () => {
+    const root = await repo();
+    expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(0);
+    await mkdir(join(root, ".claude", "skills", "p3"), { recursive: true });
+    writeFileSync(placed(root), "# 自分で直したスキル\n");
+    const r = pcube(root, ["init", "--yes", "--agents", "--project", "joined", "--dir", ".pcube"], {}, tempDir("p3-config-"));
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain("上書きしません");
+    expect(readFileSync(placed(root), "utf8")).toBe("# 自分で直したスキル\n");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+  });
+
+  it("CLAUDE.md だけがあればそちらに追記する", async () => {
+    const root = await repo();
+    rmSync(join(root, "AGENTS.md"));
+    writeFileSync(join(root, "CLAUDE.md"), "# claude\n");
+    expect(pcube(root, ["init", "--yes", "--agents", "--dir", ".pcube"]).code).toBe(0);
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain("タスク管理（infodb p3）");
+    expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+  });
+
+  it("--agents が無ければ（非対話では）何も置かない", async () => {
+    const root = await repo();
+    expect(pcube(root, ["init", "--yes", "--dir", ".pcube"]).code).toBe(0);
+    expect(existsSync(placed(root))).toBe(false);
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe("# rules\n");
   });
 });
 

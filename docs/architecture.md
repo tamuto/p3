@@ -216,12 +216,18 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 
 ## AI エージェントへの指示（`p3 init --agents` で AGENTS.md / CLAUDE.md に追記する内容）
 
+手順の詳しい版は同梱のスキル（`skills/p3/SKILL.md`。`.claude/skills/p3/SKILL.md` に置く）で、役割と終わり方は両方でそろえる
+（`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
+
 ```markdown
 ## タスク管理（infodb p3）
 
-- 作業の単位は要望。タスクは `p3` CLI で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）
+- 作業の単位は要望。タスクは `p3` CLI（入っていなければ `pnpx @infodb/p3`）で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）。
+  詳しい手順は `.claude/skills/p3/SKILL.md`
 - 変更するときは環境変数 `PCUBE_ACTOR=ai:<エージェント名>` を付ける
 - 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami` で確かめる
+- 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
+  Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
 - 着手するときは `p3 move T003 doing`、終えたら `p3 move T003 done --output <PR の URL など>`
 - 要望のタスクを全部終えたら `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる
