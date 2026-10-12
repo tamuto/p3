@@ -15,6 +15,7 @@ import {
   type Task,
   type Evidence,
   type FixedAttachment,
+  type InputMatch,
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
@@ -30,6 +31,7 @@ import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTarget
 import { hideConfigPath } from "../userConfig.ts";
 import { extractXlsx, XlsxError } from "./xlsx.ts";
 import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
+import { compareInput, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -114,7 +116,11 @@ export class PreflightService {
   }
 
   async start(requestId: string, opts: { engine?: PreflightEngine["name"]; actor?: string } = {}): Promise<PreflightRun> {
-    const request = this.ws.requests.require(requestId);
+    // 評価対象はディスクから読み直して固定する（監視していない外部の編集も取り込む）。この後に変わっても、この run は固定した内容で評価する
+    await this.ws.requests.reload(requestId);
+    const current = this.ws.requests.require(requestId);
+    const input = normalizeInput(current);
+    const request: Request = { ...current, ...input };
     if ([...this.active.values()].some((a) => a.run.requestId === requestId)) {
       throw new Error(`${requestId} の preflight は実行中です`);
     }
@@ -166,6 +172,7 @@ export class PreflightService {
       drafts: [],
       scope: refs.map(refScope),
       ui: { status: "generating", targets: [], items: [], problems: [] },
+      input,
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
     // 添付は始める時点のものを run の中にコピーして固定する。途中で変わったら始めない（原本は残るので、そのまま再試行できる）
@@ -180,6 +187,15 @@ export class PreflightService {
     if (carryover) await writeFileAtomic(join(runDir, "carryover.md"), carryover);
     const carried = carryover ? { text: carryover, previous: carry.previous, notes: carry.notes } : undefined;
     if (carry.previous) this.log(run, { kind: "info", text: `前回 ${carry.previous.id} の結果を引き継ぎます` });
+    if (carry.previous && carry.requestChange) {
+      const m = carry.requestChange.match;
+      this.log(run, {
+        kind: "info",
+        text: m.status === "changed"
+          ? `前回の評価のあとで要望の${(m.changed ?? []).map((k) => (k === "title" ? "タイトル" : "本文")).join("と")}が変わりました。今の内容を基準に評価し、変わったことを資料として渡します`
+          : `前回が何を評価したか確かめられません（${m.reason ?? "不明"}）。今の内容を基準に評価します`,
+      });
+    }
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
     if (run.attachments) this.log(run, { kind: "info", text: `添付 ${run.attachments.length} 件を固定して渡します: ${run.attachments.map((a) => `${a.id}（${a.name}）`).join(", ")}` });
@@ -189,7 +205,7 @@ export class PreflightService {
       this.log(run, { kind: "info", text: "読める参照先がありません。要望と P3 のデータだけで評価します（コードは確かめられません）" });
     }
     // 要望のスナップショットと文脈をファイルとして残す（後から「何を根拠に判断したか」を辿れる）
-    await writeFileAtomic(join(runDir, "request.md"), `# ${request.id} ${request.title}\n\n${request.body}`);
+    await writeFileAtomic(join(runDir, "request.md"), renderRequestSnapshot(request.id, input));
     await writeFileAtomic(
       join(runDir, "context.md"),
       `# Context for ${request.id}\n\n${context.map((c) => `- ${c.ref} ${c.title} (${c.score}) — ${c.reasons.join(" / ")}`).join("\n")}\n`,
@@ -202,7 +218,7 @@ export class PreflightService {
 
     const abort = new AbortController();
     const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
-    const done = this.execute(engine, run, runDir, carried, abort.signal, after, refs);
+    const done = this.execute(engine, run, request, runDir, carried, abort.signal, after, refs);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -242,6 +258,7 @@ export class PreflightService {
   private async execute(
     engine: PreflightEngine,
     run: PreflightRun,
+    request: Request,
     runDir: string,
     carryover: PreflightJob["carryover"],
     signal: AbortSignal,
@@ -254,7 +271,8 @@ export class PreflightService {
       const outcome = await engine.run(
         {
           project: this.ws.project,
-          request: this.ws.requests.require(run.requestId),
+          // 始めたときに固定した要望（実行中に本文が変わっても、request.md・run.input と同じものを渡す）
+          request,
           context: run.context,
           refs,
           dataDir: this.ws.dataDir,
@@ -399,7 +417,22 @@ export class PreflightService {
     return next;
   }
 
-  /** タスク化の前に見せるもの: 採用する案と、置き換えられる既存タスク（ファイルは変えない） */
+  /**
+   * run の評価対象と今の要望が同じか。fresh: 要望をディスクから読み直してから比べる（タスク化の直前など）。
+   * 既定はメモリ上の要望（serve は変更を監視して取り込む）
+   */
+  async inputMatch(requestId: string, run: PreflightRun, opts: { fresh?: boolean } = {}): Promise<InputMatch> {
+    if (opts.fresh) await this.ws.requests.reload(requestId);
+    const request = this.ws.requests.require(requestId);
+    return compareInput(await runInput(run, this.ws.preflight.runDir(requestId, run.id)), request);
+  }
+
+  /** run に今の要望との比較（inputMatch）を添える（画面・CLI・API の表示用。run.json には書かない） */
+  async withInputMatch(requestId: string, run: PreflightRun): Promise<PreflightRun & { inputMatch: InputMatch }> {
+    return { ...run, inputMatch: await this.inputMatch(requestId, run) };
+  }
+
+  /** タスク化の前に見せるもの: 採用する案と、置き換えられる既存タスク、評価対象が今の要望と同じか（ファイルは変えない） */
   async previewMaterialize(requestId: string, runId: string) {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run) throw new NotFoundError(runId);
@@ -407,6 +440,7 @@ export class PreflightService {
       include: run.drafts.filter((d) => d.include).map((d) => d.key),
       candidates: supersedeCandidates(this.ws, run),
       materialized: run.materialized ?? [],
+      inputMatch: await this.inputMatch(requestId, run, { fresh: true }),
     };
   }
 
@@ -420,6 +454,9 @@ export class PreflightService {
    *
    * 古いタスクを先に外さないよう、新しいタスクと関係を保存してからアーカイブする。途中経過は run.json の
    * materialization に残し、途中で失敗したら同じ呼び出しでやり直せる（作った案は作り直さず、アーカイブも重ねない）。
+   *
+   * 評価対象（タイトル・本文）が今の要望と違う・確かめられない run からはタスク化しない（StaleInputError。やり直しも同じ）。
+   * 直前に要望をディスクから読み直して比べ、断るときは何も書かない
    */
   async materialize(
     requestId: string,
@@ -431,6 +468,8 @@ export class PreflightService {
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
     const resuming = run.materialization && !run.materialization.done;
     if (!resuming && run.materialized?.length) throw new Error(`既にタスク化済みです: ${run.materialized.join(", ")}`);
+    const match = await this.inputMatch(requestId, run, { fresh: true });
+    if (match.status !== "same") throw new StaleInputError(requestId, runId, match);
     const request = this.ws.requests.require(requestId);
     const tasks = this.ws.tasksOf(requestId);
     const drafts = resuming ? run.drafts.filter((d) => d.key in run.materialization!.created || d.include) : run.drafts.filter((d) => d.include);

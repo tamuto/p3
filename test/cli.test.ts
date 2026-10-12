@@ -15,11 +15,12 @@ beforeEach(() => {
 });
 
 /** CLI を別プロセスで動かす。このマシンの P3_* の環境変数（Codex の設定など）は効かないようにする */
-function p3(cwd: string, args: string[], env: Record<string, string> = {}, configHome = CONFIG_HOME) {
+function p3(cwd: string, args: string[], env: Record<string, string> = {}, configHome = CONFIG_HOME, input?: string) {
   const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_")));
   const r = spawnSync(process.execPath, [BIN, ...args], {
     cwd,
     encoding: "utf8",
+    input,
     env: { ...base, XDG_CONFIG_HOME: configHome, ...env },
   });
   return { code: r.status, out: r.stdout, err: r.stderr, json: () => JSON.parse(r.stdout) };
@@ -267,6 +268,32 @@ describe("p3 preflight / drafts / accept", () => {
     ]);
     expect(accepted.tasks[1].relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
     expect(p3(root, ["request", "show", rid, "--json"]).json().item.status).toBe("active");
+  });
+
+  it("評価のあとで本文を変えると accept は断り（--json で理由）、再評価すればタスク化できる", async () => {
+    const { root, rid } = await initialized();
+    expect(p3(root, ["preflight", rid, "--engine", "mock"]).code).toBe(0);
+    const rev = p3(root, ["request", "show", rid, "--brief", "--json"]).json().item.rev;
+    const set = p3(root, ["request", "set", rid, "--body", "-", "--rev", String(rev), "--json"], {}, CONFIG_HOME, "- 送信基盤\n- 再送\n");
+    expect(set.code, set.err).toBe(0);
+    expect(set.json().body).toContain("- 再送");
+    // 古い rev では保存しない
+    expect(p3(root, ["request", "set", rid, "--body", "x", "--rev", String(rev)]).code).toBe(3);
+
+    expect(p3(root, ["drafts", rid]).out).toContain("古い評価からはタスク化しません");
+    expect(p3(root, ["drafts", rid, "--json"]).json().inputMatch).toEqual({ status: "changed", changed: ["body"] });
+    const json = p3(root, ["accept", rid, "--json"]);
+    expect(json.code).toBe(1);
+    expect(json.json()).toMatchObject({ code: "stale_input", request: rid, inputMatch: { status: "changed", changed: ["body"] } });
+    const human = p3(root, ["accept", rid]);
+    expect(human.code).toBe(1);
+    expect(human.err).toContain(`p3 preflight ${rid}`);
+    expect(p3(root, ["ls", "--req", rid, "--json"]).json()).toEqual([]);
+
+    expect(p3(root, ["preflight", rid, "--engine", "mock"]).code).toBe(0);
+    const ok = p3(root, ["accept", rid, "--json"]);
+    expect(ok.code, ok.err).toBe(0);
+    expect(ok.json().tasks.map((t: any) => t.title)).toEqual(["送信基盤", "再送"]);
   });
 });
 

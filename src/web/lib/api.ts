@@ -14,7 +14,11 @@ import type {
   Task,
   Theme,
   Attachment,
+  InputMatch,
 } from "../../shared/types.ts";
+
+/** API の run（評価対象と今の要望が同じか inputMatch を添える。run.json には無い） */
+export type RunInfo = PreflightRun & { inputMatch?: InputMatch };
 
 export interface AttachmentList {
   items: Attachment[];
@@ -62,7 +66,7 @@ const relPath = (ref: string) => (ref.includes("/") ? `${taskPath(ref)}/relation
 export interface RequestDetail {
   request: Request;
   tasks: Task[];
-  runs: PreflightRun[];
+  runs: RunInfo[];
   graph: Neighborhood;
   /** 置き換えられたタスクの印（T001 → 置き換えた側） */
   superseded: Record<string, SupersededMark[]>;
@@ -155,7 +159,7 @@ export const api = {
   startPreflight: (rid: string, opts: { engine?: string; note?: string } = {}) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, opts),
   notes: (rid: string) => call<NotesInfo>("GET", `/requests/${rid}/notes`),
   addNote: (rid: string, body: string) => call<PreflightNote>("POST", `/requests/${rid}/notes`, { body }),
-  run: (rid: string, runId: string) => call<PreflightRun>("GET", `/requests/${rid}/preflight/${runId}`),
+  run: (rid: string, runId: string) => call<RunInfo>("GET", `/requests/${rid}/preflight/${runId}`),
   cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
   attachments: (rid: string) => call<AttachmentList>("GET", `/requests/${rid}/attachments`),
   /** 添付を足す（multipart。説明・出典は空なら送らない） */
@@ -174,7 +178,7 @@ export const api = {
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */
   previewMaterialize: (rid: string, runId: string) =>
-    call<{ include: string[]; candidates: SupersedeCandidate[]; materialized: string[] }>("GET", `/requests/${rid}/preflight/${runId}/materialize`),
+    call<{ include: string[]; candidates: SupersedeCandidate[]; materialized: string[]; inputMatch: InputMatch }>("GET", `/requests/${rid}/preflight/${runId}/materialize`),
   /** archive: アーカイブする置き換えられるタスク（候補として見た rev つき） */
   materialize: (rid: string, runId: string, archive: { id: string; rev: number }[] = []) =>
     call<MaterializeResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { archive }),

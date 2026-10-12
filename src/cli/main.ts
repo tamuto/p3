@@ -6,7 +6,7 @@ import { renderCommand } from "./render.ts";
 import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } from "../server/store/attachments.ts";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type InputMatch, type MaterializeResult, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
 import { openProject, type P3Context } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
@@ -26,6 +26,7 @@ import { addRepoOutputs, checkRepoTarget, ensureWorkstreams, parseRepoOutput, re
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
+import { StaleInputError, staleMessage } from "../server/preflight/input.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -77,6 +78,10 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか）
   request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
   request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
+                               --body 本文|-  本文を書き換える（- は標準入力。どの状態でも書き換えられる。--rev で楽観ロック）
+                               例: p3 request show <要望> --brief --json で rev を見て
+                                   p3 request set <要望> --body - --rev 3 < body.md
+                               評価のあとでタイトル・本文を変えると、その評価からはタスク化できない（もう一度 preflight）
                                --tag 値 ...  タグをこの値の並びに置き換える（カンマで分けない。tags=a,b はカンマで分ける）
   request archive <要望>
 
@@ -104,8 +109,9 @@ Preflight
   attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）
   attach add <ファイル>           添付を足す  --description 説明 --source 出典。次の Preflight を始めるときに run に固定して渡す
   attach get <A-ID> / rm <A-ID>  原本を書き出す（--out ファイル、--run PF-... でその run に固定した原本）/ 外す
-  drafts [<要望>]               最新の評価とタスク案  --run PF-...
+  drafts [<要望>]               最新の評価とタスク案  --run PF-...（評価対象が今の要望と同じか: inputMatch）
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
+                               評価のあとでタイトル・本文が変わった run からはしない（code: stale_input。再評価する）
                                置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
 
 共通オプション
@@ -616,9 +622,11 @@ async function main(argv: string[]): Promise<number> {
       const run = await pickRun(ctx, rid, o.run);
       // タスク化の前なら、置き換えられる既存タスクも見せる
       const supersedes = run.materialized?.length ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
-      return out.result({ ...run, supersedes }, () =>
+      const inputMatch = await ctx.preflight.inputMatch(rid, run);
+      return out.result({ ...run, inputMatch, supersedes }, () =>
         [
           formatRun(ctx, rid, run),
+          inputMatchLine(rid, run, inputMatch),
           supersedes.length
             ? `\n置き換えられる既存タスク（accept では残す。--archive-superseded でアーカイブ）:\n${table(supersedes.map((c) => [c.id, c.status, c.title]))}`
             : "",
@@ -639,7 +647,15 @@ async function main(argv: string[]): Promise<number> {
       // 置き換えられるタスクは --archive-superseded のときだけ、確定時点の候補（プレビューと同じ rev）をアーカイブする
       const { candidates } = await ctx.preflight.previewMaterialize(rid, run.id);
       const archive = o["archive-superseded"] ? candidates.map((c) => ({ id: c.id, rev: c.rev })) : [];
-      const r = await ctx.preflight.materialize(rid, run.id, actor, { archive });
+      let r: MaterializeResult;
+      try {
+        r = await ctx.preflight.materialize(rid, run.id, actor, { archive });
+      } catch (e) {
+        if (!(e instanceof StaleInputError) || !o.json) throw e;
+        // --json では理由を機械可読で返す（終了コードは 1）
+        out.result({ error: e.message, code: e.code, request: rid, run: run.id, inputMatch: e.match }, () => "");
+        return 1;
+      }
       return out.result(r, () =>
         [
           `タスク化 (${rid} / ${run.id}):\n${table(r.tasks.map((t) => [t.id, t.title, deps(t)]))}`,
@@ -867,6 +883,15 @@ function ambiguous(out: Output, ctx: P3Context, query: string, current?: string)
     r.candidates.length ? `候補が複数あります:\n${table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title]))}` : `見つかりません: ${query}`,
   );
   return r.candidates.length ? 1 : 2; // 候補が複数なら使い方の誤り（1）、何も無ければ見つからない（2）
+}
+
+/** 評価対象と今の要望の比較（drafts の表示） */
+function inputMatchLine(rid: string, run: PreflightRun, m: InputMatch): string {
+  if (m.status === "same") return "";
+  if (run.materialized?.length && run.materialization?.done !== false) {
+    return `\n※ この評価のあとで要望が変わっています（${m.status === "changed" ? (m.changed ?? []).join(", ") : m.reason}）。タスク化は済んでいます。作り直すなら p3 preflight ${rid}`;
+  }
+  return `\n※ ${staleMessage(rid, run.id, m)}`;
 }
 
 async function pickRun(ctx: P3Context, rid: string, runId?: string) {

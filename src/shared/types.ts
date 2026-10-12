@@ -337,6 +337,30 @@ export interface PreflightRun {
   ui?: UiMaterials;
   /** 始めるときに固定した添付（run の attachments/ と ui/current/）。無ければ添付なし */
   attachments?: FixedAttachment[];
+  /**
+   * 評価対象: 始めるときにディスクから読み直して固定した要望のタイトルと本文（正規化済み。エンジンに渡したものと同じ）。
+   * 無ければ以前の run（run の request.md から読む）
+   */
+  input?: PreflightInput;
+}
+
+/** Preflight の評価対象（要望のタイトルと本文）。比べるのはこの2つだけ（タグ・期限・ステータスは比べない） */
+export interface PreflightInput {
+  title: string;
+  body: string;
+}
+
+/**
+ * run の評価対象と今の要望が同じか。
+ *   same: 同じ（タスク化できる） / changed: タイトルか本文が変わった / unknown: run の評価対象が読めない（以前の run の欠損など）
+ * changed と unknown の run からはタスク化しない（再評価する）
+ */
+export interface InputMatch {
+  status: "same" | "changed" | "unknown";
+  /** changed のとき、変わった項目 */
+  changed?: ("title" | "body")[];
+  /** unknown の理由 */
+  reason?: string;
 }
 
 /** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */

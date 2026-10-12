@@ -33,7 +33,13 @@ export const AI_MANIFEST = {
     { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
     { method: "POST", path: "/api/requests", desc: "要望の作成" },
     { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・関係・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },
-    { method: "PATCH", path: "/api/requests/:rid", desc: "要望の更新（rev で楽観ロック）。status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める" },
+    {
+      method: "PATCH",
+      path: "/api/requests/:rid",
+      desc:
+        "要望の更新（rev で楽観ロック。競合は 409 code: rev_conflict）。タイトル・本文はどの状態でも変えられる（評価のあとで変えるとその評価からはタスク化できない）。" +
+        "status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める",
+    },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },
     { method: "POST|DELETE", path: "/api/requests/:rid[/tasks/:tid]/relations", desc: "関係の追加・削除" },
@@ -52,8 +58,19 @@ export const AI_MANIFEST = {
     { method: "GET|DELETE", path: "/api/requests/:rid/attachments/:aid", desc: "添付の原本（xlsx はダウンロード）・外す（固定済みの過去の run の資料は残る）" },
     { method: "GET", path: "/api/requests/:rid/preflight/:run/attachments/:aid", desc: "その run に固定した添付の原本（run の attachments に一覧）" },
     { method: "GET", path: "/api/requests/:rid/preflight/:run/attachments/:aid/extract", desc: "その run に固定した xlsx から取り出した内容（Markdown のテキスト）" },
-    { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補。何も変えない）" },
-    { method: "POST", path: "/api/requests/:rid/preflight/:run/materialize", desc: "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}" },
+    {
+      method: "GET",
+      path: "/api/requests/:rid/preflight[/:run]",
+      desc: "Preflight の run。各 run に inputMatch {status: same|changed|unknown, changed?: [title|body], reason?}（評価対象と今の要望が同じか。タグ・期限・ステータスは比べない）",
+    },
+    { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）" },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/preflight/:run/materialize",
+      desc:
+        "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}。" +
+        "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict",
+    },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },
     { method: "GET", path: "/api/chatgpt", desc: "ChatGPT プランの接続の状態（トークンは返さない）。このマシンからだけ" },
     { method: "POST", path: "/api/chatgpt/login|cancel|paste|logout", desc: "サインインの開始・取消・コールバックの URL の貼り付け・解除。このマシンのローカルの画面（Origin）からだけ" },
