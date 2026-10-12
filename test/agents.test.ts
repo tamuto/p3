@@ -23,6 +23,8 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     "superseded", // 置き換えられたタスクから始めない
     "warnings",
     "人への質問をタスクにしない",
+    "`work`", // 作業先のリポジトリとブランチ
+    "--repo-output", // 複数のリポジトリの PR を最後のタスクに残す
   ];
   it.each(shared)("どちらにも「%s」がある", (word) => {
     expect(skill).toContain(word);
