@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -367,7 +367,8 @@ describe("show --brief（作業に要る項目だけ）", () => {
     const brief = pcube(root, ["show", "T003", "--req", rid, "--brief", "--json"]);
     expect(brief.code, brief.err).toBe(0);
     const b = brief.json();
-    expect(Object.keys(b)).toEqual(["item", "superseded", "dependencies", "warnings"]);
+    expect(Object.keys(b)).toEqual(["item", "work", "superseded", "dependencies", "warnings"]);
+    expect(b.work).toEqual({ repo: "main", registered: true }); // 今までのプロジェクト: 主リポジトリ（まだブランチの割当なし）
     expect(Object.keys(b.item)).toEqual(["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"]);
     for (const k of Object.keys(b.item)) if (k !== "relations") expect(b.item[k]).toEqual(full.item[k]);
     expect(b.item.body).toContain("## 完了条件");
@@ -425,10 +426,10 @@ describe("show --brief（作業に要る項目だけ）", () => {
     writeFileSync(reqFile, readFileSync(reqFile, "utf8").replace(/^status: \w+$/m, "status: resolved"));
     const full = pcube(root, ["request", "show", rid, "--json"]).json();
     const b = pcube(root, ["request", "show", rid, "--brief", "--json"]).json();
-    expect(Object.keys(b)).toEqual(["item", "tasks", "issue"]);
+    expect(Object.keys(b)).toEqual(["item", "branches", "tasks", "issue"]);
     expect(Object.keys(b.item)).toEqual(["id", "title", "status", "body", "rev"]); // ブランチが無い要望は workstream を出さない
     for (const k of Object.keys(b.item)) expect(b.item[k]).toEqual(full.item[k]);
-    expect(b.tasks).toEqual(full.tasks.map((t: any) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status })));
+    expect(b.tasks).toEqual(full.tasks.map((t: any) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: "main" })));
     expect(b.issue).toBe(full.issue);
     expect(pcube(root, ["show", rid, "--brief", "--json"]).json()).toEqual(b);
     // 今の要望を省略しても同じ
@@ -755,5 +756,114 @@ describe("Preflight の調べた範囲と根拠（p3 drafts）", () => {
     expect(json.scope.map((s: any) => [s.name, s.status])).toEqual([["app", "ok"], ["docs", "ok"], ["infra", "unregistered"]]);
     expect(JSON.stringify(json.scope)).not.toContain(root); // このマシンのパスは入れない
     expect(json.assessment.evidence[0].kind).toBe("assumed");
+  });
+});
+
+describe("作業先とリポジトリごとのブランチ（CLI）", () => {
+  /** app（このリポジトリ）と infra（別の git）。両方を作業先にし、Mock の案を2つのリポジトリに分けてタスク化する */
+  async function twoRepos() {
+    const { root, rid } = await initialized();
+    git(root, "add", "-A");
+    git(root, "commit", "-qm", "init");
+    const infra = tempDir("infra-");
+    gitInit(infra);
+    await mkdir(join(infra, "terraform"));
+    writeFileSync(join(infra, "terraform", "main.tf"), "# tf\n");
+    git(infra, "add", "-A");
+    git(infra, "commit", "-qm", "init");
+    expect(pcube(root, ["repo", "add", "app", root, "role=本体", "writable=true", "readFirst=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "infra", infra, "role=基盤", "writable=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "lib", tempDir("lib-"), "role=依存"]).code).toBe(0); // 参照だけ
+    expect(pcube(root, ["preflight", rid, "--engine", "mock"]).code).toBe(0);
+    const runDir = join(root, ".pcube", "requests", rid, "preflight");
+    const run = readdirSync(runDir)[0];
+    const d2 = join(runDir, run, "drafts", "D2.md");
+    writeFileSync(d2, readFileSync(d2, "utf8").replace(/^repo: app$/m, "repo: infra"));
+    const accepted = pcube(root, ["accept", rid]);
+    expect(accepted.code, accepted.err).toBe(0);
+    return { root, rid, infra };
+  }
+
+  it("タスク化で作業先ごとにブランチを割り当て、どちらのリポジトリ・作業ツリー・サブフォルダからも今の要望を操作できる", async () => {
+    const { root, rid, infra } = await twoRepos();
+    const shown = pcube(root, ["request", "show", rid, "--json"]).json();
+    expect(Object.keys(shown.workstreams)).toEqual(["app", "infra"]);
+    const branch = shown.workstreams.infra.branch;
+    expect(pcube(root, ["ls", "--req", rid, "--json"]).json().map((t: any) => t.repo)).toEqual(["app", "infra", "app"]);
+    // 各リポジトリに要望の作業ツリーを作る（P3 は作らない。AI や人が作る）
+    git(root, "worktree", "add", "-q", join(root, shown.workstreams.app.worktree), "-b", shown.workstreams.app.branch);
+    git(infra, "worktree", "add", "-q", join(infra, shown.workstreams.infra.worktree), "-b", branch);
+    const infraTree = join(infra, shown.workstreams.infra.worktree);
+    for (const where of [join(root, shown.workstreams.app.worktree), infraTree, join(infraTree, "terraform")]) {
+      const who = pcube(where, ["whoami", "--json"]).json();
+      expect(who.request).toBe(rid);
+      expect(who.dataDir).toBe(join(root, ".pcube")); // 同じデータのフォルダ
+    }
+    expect(pcube(infraTree, ["whoami", "--json"]).json().here).toEqual(["infra"]);
+    const made = pcube(join(infraTree, "terraform"), ["new", "基盤の追加", "--repo", "infra", "--json"]).json();
+    expect(made.ref.startsWith(`${rid}/`)).toBe(true);
+    // detached HEAD でも、割り当てた作業ツリーの中なら分かる
+    git(infraTree, "checkout", "-q", "--detach");
+    expect(pcube(infraTree, ["whoami", "--json"]).json().request).toBe(rid);
+    // 明示が先
+    const other = pcube(root, ["request", "new", "別の要望", "--json"]).json().id;
+    expect(pcube(infraTree, ["whoami", "--req", other, "--json"]).json().request).toBe(other);
+  });
+
+  it("別のリポジトリの同じ名前のブランチと取り違えない。パスに要望 ID が入っているだけでは決めない", async () => {
+    const { root, rid, infra } = await twoRepos();
+    const other = pcube(root, ["request", "new", "別の要望", "--json"]).json().id;
+    // 別の要望の app のブランチを、rid の infra のブランチと同じ名前にする
+    const infraBranch = pcube(root, ["request", "show", rid, "--json"]).json().workstreams.infra.branch;
+    const otherFile = join(root, ".pcube", "requests", other, "request.md");
+    writeFileSync(otherFile, readFileSync(otherFile, "utf8").replace(/^---\n/, `---\nworkstreams:\n  app: { branch: "${infraBranch}", worktree: .worktrees/x }\n`));
+    git(infra, "checkout", "-q", "-b", infraBranch);
+    expect(pcube(infra, ["whoami", "--json"]).json().request).toBe(rid);
+    // 要望 ID の名前のフォルダ（作業ツリーではない）
+    const fake = join(root, "notes", rid);
+    await mkdir(fake, { recursive: true });
+    git(root, "checkout", "-q", "-b", "unrelated");
+    expect(pcube(fake, ["whoami", "--json"]).json().request).toBeNull();
+  });
+
+  it("作業先の指定・外す・断る、作業先で絞る、リポジトリごとの成果物（以前の --output も使える）", async () => {
+    const { root, rid } = await twoRepos();
+    expect(pcube(root, ["new", "x", "--req", rid, "--repo", "lib"]).err).toContain("参照だけ");
+    expect(pcube(root, ["new", "x", "--req", rid, "--repo", "nope"]).err).toContain("登録されていません");
+    const none = pcube(root, ["new", "調査", "--req", rid, "--repo", "none", "--json"]).json();
+    expect(none.repo).toBeNull();
+    expect(pcube(root, ["set", none.id, "--req", rid, "repo=infra"]).code).toBe(0);
+    expect(pcube(root, ["set", none.id, "--req", rid, "repo=none"]).code).toBe(0);
+    expect(pcube(root, ["show", none.id, "--req", rid, "--json"]).json().item.repo).toBeNull();
+    expect(pcube(root, ["set", none.id, "--req", rid, "repo=lib"]).code).not.toBe(0);
+    expect(pcube(root, ["ls", "--req", rid, "--repo", "infra", "--json"]).json().map((t: any) => t.repo)).toEqual(["infra"]);
+    expect(pcube(root, ["ls", "--req", rid, "--repo", "none", "--json"]).json().map((t: any) => t.id)).toEqual([none.id]);
+    expect(pcube(root, ["ls", "--all", "--repo", "app", "--json"]).json().length).toBe(2);
+    expect(pcube(root, ["ls", "--req", rid, "--repo", "zzz"]).err).toContain("登録されていません");
+    const text = pcube(root, ["ls", "--req", rid]).out;
+    expect(text).toMatch(/T002\s+todo\s+infra/);
+
+    // 最後のタスクに、関係するリポジトリの PR を全部残す
+    const last = pcube(root, ["move", "T003", "done", "--req", rid, "--repo-output", "app=https://example.com/app/pull/1", "--repo-output", "infra=https://example.com/infra/pull/2", "--output", "設計メモ docs/x.md"]);
+    expect(last.code, last.err).toBe(0);
+    const t3 = pcube(root, ["show", "T003", "--req", rid, "--json"]).json().item;
+    expect(t3.repoOutputs).toEqual([
+      { repo: "app", output: "https://example.com/app/pull/1" },
+      { repo: "infra", output: "https://example.com/infra/pull/2" },
+    ]);
+    expect(t3.outputs).toEqual(["設計メモ docs/x.md"]);
+    expect(pcube(root, ["move", "T003", "done", "--req", rid, "--repo-output", "lib=x"]).err).toContain("参照だけ");
+    expect(pcube(root, ["move", "T003", "done", "--req", rid, "--repo-output", "noequal"]).err).toContain("<参照先の名前>=<成果物>");
+    const brief = pcube(root, ["show", "T002", "--req", rid, "--brief"]).out;
+    expect(brief).toMatch(/作業先 {2}infra {2}branch req\//);
+    const briefJson = pcube(root, ["show", "T003", "--req", rid, "--brief", "--json"]).json();
+    expect(briefJson.item.repoOutputs).toHaveLength(2);
+    expect(pcube(root, ["show", "T003", "--req", rid, "--brief"]).out).toContain("成果物  infra: https://example.com/infra/pull/2");
+    const req = pcube(root, ["request", "show", rid, "--brief"]).out;
+    expect(req).toMatch(/branch {2}app: req\//);
+    expect(req).toMatch(/branch {2}infra: req\//);
+    expect(pcube(root, ["set", "T003", "--req", rid, "repoOutputs="]).code).toBe(0);
+    expect(pcube(root, ["show", "T003", "--req", rid, "--json"]).json().item.repoOutputs).toBeUndefined(); // 空の配列はファイルに書かない
+    expect(pcube(root, ["drafts", rid]).out).toMatch(/D2\s+infra/);
   });
 });

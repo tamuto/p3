@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { slugify } from "./store/fsutil.ts";
 import type { Workspace } from "./store/workspace.ts";
-import type { Workstream } from "../shared/types.ts";
-import { primaryRepo, repoTargetProblem, requestWorkstreams } from "../shared/workTarget.ts";
+import type { RepoOutput, Task, Workstream } from "../shared/types.ts";
+import { primaryRepo, repoTargetProblem, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 
 /** 作業先にできない（参照先に無い・参照だけ）。何も変えていない */
 export class RepoTargetError extends Error {}
@@ -103,3 +103,28 @@ export async function ensureWorkstreams(ws: Workspace, requestId: string, repos:
   const patch = workstreamPatch(ws, requestId, planWorkstreams(ws, requestId, names));
   if (Object.keys(patch).length) await ws.requests.update(requestId, patch, { actor });
 }
+
+/** タスクの作業先と、そのリポジトリのブランチ（CLI・画面に出す）。作業先なしは repo: null */
+export function taskWork(ws: Workspace, t: Task): { repo: string | null; branch?: string; worktree?: string; registered?: boolean } {
+  const repo = taskRepo(t, ws.project) ?? null;
+  if (!repo) return { repo: null };
+  const w = requestWorkstreams(ws.requests.require(t.request), ws.project)[repo];
+  const ref = ws.refs().find((r) => r.name === repo);
+  return { repo, ...(w ? { branch: w.branch, worktree: w.worktree } : {}), registered: ref?.status === "ok" };
+}
+
+/** CLI の --repo の値: none / 空 → null（作業先なし）、それ以外は名前 */
+export const repoArg = (v: string | undefined): string | null | undefined => (v === undefined ? undefined : v === "" || v === "none" ? null : v);
+
+/** --repo-output <名前>=<値> を読む（作業先にできる参照先だけ） */
+export function parseRepoOutput(ws: Workspace, raw: string): RepoOutput {
+  const eq = raw.indexOf("=");
+  if (eq < 1 || !raw.slice(eq + 1).trim()) throw new RepoTargetError(`--repo-output は <参照先の名前>=<成果物> で: ${raw}`);
+  const repo = raw.slice(0, eq).trim();
+  checkRepoTarget(ws, repo);
+  return { repo, output: raw.slice(eq + 1).trim() };
+}
+
+/** 成果物を足す（同じ組は重ねない） */
+export const addRepoOutputs = (cur: readonly RepoOutput[], add: readonly RepoOutput[]): RepoOutput[] =>
+  [...cur, ...add].filter((o, i, all) => all.findIndex((x) => x.repo === o.repo && x.output === o.output) === i);

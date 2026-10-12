@@ -12,6 +12,7 @@ import { resolveRequestId } from "../server/ops.ts";
 import { mainWorktree } from "../server/store/locate.ts";
 import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
 import { LEGACY_REPO, repoNameProblem, type RepoRef } from "../shared/repos.ts";
+import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../server/store/workspace.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../server/userConfig.ts";
 
@@ -42,8 +43,34 @@ export function resolveActor(explicit: string | undefined, cwd: string): string 
   return `human:${git(cwd, "config", "user.name") ?? process.env.USER ?? userInfo().username}`;
 }
 
+/** 今いる場所が、どの参照先（リポジトリ・フォルダ）か。参照先の中か、その git のリポジトリの作業ツリーの中なら当たる */
+export function locateHere(ctx: PcubeContext, cwd: string): { repos: string[]; branch?: string } {
+  const here = resolve(cwd);
+  const common = git(here, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  const repos = ctx.ws
+    .refs()
+    .filter((r) => r.status === "ok" && r.local)
+    .filter((r) => {
+      if (inside(here, r.local!)) return true;
+      // 要望の作業ツリーの中: 参照先と同じ git のリポジトリで、作業ツリーの中の同じ場所（サブフォルダなら同じ相対位置）より下
+      if (!common) return false;
+      const theirs = git(r.local!, "rev-parse", "--path-format=absolute", "--git-common-dir");
+      if (theirs !== common) return false;
+      const top = git(here, "rev-parse", "--show-toplevel");
+      const theirTop = git(r.local!, "rev-parse", "--show-toplevel");
+      return !!top && !!theirTop && inside(here, join(top, relative(theirTop, r.local!)));
+    })
+    .map((r) => r.name);
+  const branch = common ? git(here, "symbolic-ref", "--quiet", "--short", "HEAD") : undefined;
+  return { repos, branch };
+}
+
+const inside = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith("/") ? dir : `${dir}/`);
+
 /**
- * 今の要望。明示（--req / PCUBE_REQUEST）→ git のブランチ（要望の作業ツリー req/<要望ID>-...）→ 作業ツリーのパス。
+ * 今の要望。明示（--req / PCUBE_REQUEST）→ 今いる参照先のブランチ（その参照先の割当だけと照らす）→
+ * 割り当てた作業ツリーの中（detached HEAD や git でないときも）→ ブランチ名に要望 ID が入っている。
+ * パスに要望 ID が入っているだけでは決めない。候補が複数なら --req を案内する。
  * AI が要望の作業ツリーで作業していれば、`pcube new "..."` だけでその要望のタスクになる。
  */
 export function currentRequest(ctx: PcubeContext, explicit: string | undefined, cwd: string): string | undefined {
@@ -52,12 +79,38 @@ export function currentRequest(ctx: PcubeContext, explicit: string | undefined, 
     if (!id) throw new UsageError(`要望が見つかりません: ${explicit}`);
     return id;
   }
-  const branch = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
+  const { repos: hereRepos, branch } = locateHere(ctx, cwd);
   const requests = ctx.ws.requests.list();
-  const byBranch = branch && requests.find((r) => r.workstream?.branch === branch);
-  if (byBranch) return byBranch.id;
-  for (const s of [branch ?? "", cwd]) {
-    const m = new RegExp(REQUEST_ID.source.slice(1, -1)).exec(s);
+  const pick = (ids: string[], why: string) => {
+    const uniq = [...new Set(ids)];
+    if (uniq.length > 1) throw new UsageError(`${why}が複数の要望に当たります: ${uniq.join(", ")}。--req <要望ID> で指定してください`);
+    return uniq[0];
+  };
+  if (branch) {
+    // 今いる参照先の割当だけと照らす（別のリポジトリの同じ名前のブランチと取り違えない）。参照先の外なら全部と照らす
+    const byBranch = requests
+      .filter((r) => Object.entries(requestWorkstreams(r, ctx.ws.project)).some(([name, w]) => w.branch === branch && (!hereRepos.length || hereRepos.includes(name))))
+      .map((r) => r.id);
+    const hit = pick(byBranch, `ブランチ ${branch} `);
+    if (hit) return hit;
+  }
+  // 割り当てた作業ツリーの中（参照先のパスがこのマシンで分かるものだけ）
+  const refs = new Map(ctx.ws.refs().filter((r) => r.status === "ok" && r.local).map((r) => [r.name, r.local!]));
+  const here = resolve(cwd);
+  const byTree = requests
+    .filter((r) =>
+      Object.entries(requestWorkstreams(r, ctx.ws.project)).some(([name, w]) => {
+        const local = refs.get(name);
+        if (!local || !w.worktree) return false;
+        const top = git(local, "rev-parse", "--show-toplevel") ?? local;
+        return inside(here, resolve(top, w.worktree));
+      }),
+    )
+    .map((r) => r.id);
+  const tree = pick(byTree, "この作業ツリー");
+  if (tree) return tree;
+  if (branch) {
+    const m = new RegExp(REQUEST_ID.source.slice(1, -1)).exec(branch);
     if (m && ctx.ws.requests.get(m[0])) return m[0];
   }
   return undefined;
