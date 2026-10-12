@@ -59,8 +59,8 @@ P3 をコンテナの中で動かし、Docker はホストのデーモンを使�
 
 - **パスの対応:** Codex のコンテナはホストのデーモンが作るので、マウントするパスはホストから見たものでなければならない。
   リポジトリとデータのフォルダが、コンテナの中とホストでどこに当たるかを個人設定の `codex.pathMap` に書く
-  （例: コンテナの `/workspaces` がホストの `<開いたフォルダの親>` なら `/workspaces: <そのホストのパス>`）。
-  データのフォルダもホストから見える（バインドマウントされた）場所に置く
+  （`p3 user-config set codex.pathMap+=/workspaces=<ホストのパス>`）。ホストのパスの調べ方と確かめ方は「Preflight」の
+  「パスの対応（DevContainer の中から使うとき）」。データのフォルダもホストから見える（バインドマウントされた）場所に置く
 - **サインインのコールバック（1455）:** `p3 chatgpt login` は 127.0.0.1:1455 で待ち、VS Code がそのポートをホストへ転送するので、
   ホストのブラウザから届く。1455 が使えずに別のポートで待ったときや、転送先のポートが変わったとき、転送されない環境
   （SSH・別のコンテナ）では、ブラウザが「接続できません」になる。そのときは `p3 chatgpt login --paste` で、その画面の
@@ -643,6 +643,77 @@ codex:
 
 `PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
 
+**CLI で見る・変える:** config.yaml を手で編集しなくてよい。
+
+```bash
+p3 user-config                                   # 項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）
+p3 user-config set codex.model=gpt-5.5 codex.effort=high   # 書く（読めない値があれば何も書かない）
+p3 user-config set codex.model=                  # 消す（既定値に戻す）
+p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces   # パスの対応を1件足す（同じパスなら置き換える）
+p3 user-config set codex.pathMap-=/workspaces    # 1件外す（codex.pathMap= で全部外す）
+```
+
+コメントとほかの項目（projects など）は残す。書く前に読むときと同じ規則で確かめ、読めなければ理由を出して書かない。
+
+#### パスの対応（DevContainer の中から使うとき）
+
+P3 が Codex のコンテナを作るとき、参照先とデータのフォルダを **Docker のデーモン（ホスト）から見たパス** でマウントする。
+P3 を DevContainer の中で動かし、Docker はホストのものを使う（docker-outside-of-docker）と、コンテナの中のパス（例
+`/workspaces/app`）とホストのパスが違うので、その対応を `codex.pathMap` に書く。ホストで直接動かすときは要らない。
+
+1. **ホストから見たパスを調べる:** P3 を動かしているコンテナのマウントを見る。DevContainer の中の `docker` はホストの
+   デーモンにつながるので、中からでも調べられる。
+
+   ```bash
+   docker ps --format '{{.Names}}'          # 自分のコンテナの名前を探す（VS Code が付けた名前など）
+   docker inspect <コンテナの名前> --format '{{range .Mounts}}{{.Source}} → {{.Destination}}{{"\n"}}{{end}}'
+   # /home/me/workspaces → /workspaces       ← Source がホスト、Destination がコンテナの中
+   # /mnt/usb/assets → /mnt/assets
+   ```
+
+2. **対応を書く:** 参照先とデータのフォルダを含む Destination ごとに1件。左がコンテナの中（このマシン）、右がホスト。
+
+   ```bash
+   p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces
+   p3 user-config set codex.pathMap+=/mnt/assets=/mnt/usb/assets   # データのフォルダが別のマウントにあるとき
+   ```
+
+   前から順に、境界（`/`）が合う最初の対応を使う。データのフォルダも、ホストから見える（バインドマウントされた）場所に置く。
+
+3. **確かめる:** `p3 user-config` で対応を見て、Preflight を1回動かす。開始のログの「パスの対応」に、参照先とデータの
+   それぞれで「codex.pathMap の対応あり」と出ればよい。違うと `bind source path does not exist` で止まり、直し方を出す
+   （serve はそのままで、直せば次の Preflight から効く）。
+
+#### 旧来の認証（Codex でサインインした auth.json）
+
+ふだんは ChatGPT の接続（設定画面の「Continue with ChatGPT」か `p3 chatgpt login`）を使う。こちらは、ChatGPT に接続せずに
+Codex の `auth.json` で動かしたいときだけ使う。Codex のコンテナには `/codex/auth.json` としてマウントする（書き換えられる。
+トークンの更新を保つため）。
+
+- **Docker のボリュームに置く（`codex.authVolume`。勧める）:** Codex をこのマシンに入れなくてよい。P3 のイメージの中の Codex で
+  サインインし、ボリュームの一番上に `auth.json` を作る。
+
+  ```bash
+  p3 codex update                                  # イメージを作る（まだなら）
+  docker volume create codex-state
+  docker run --rm -it --entrypoint codex -v codex-state:/codex llmcs-codex-workspace:local login --device-auth
+  #   表示された URL をブラウザで開き、表示されたコードを入れてサインインする
+  docker run --rm --entrypoint codex -v codex-state:/codex llmcs-codex-workspace:local login status   # Logged in … と出ればよい
+  p3 user-config set codex.authVolume=codex-state
+  ```
+
+  `--device-auth` は、ChatGPT のアカウントでデバイスコードでのサインインが使えるときの方法。使えなければ下のファイルの方法にする。
+- **ホストのファイルを使う（`codex.authFile`）:** Codex を入れたマシンで `codex login` すると `~/.codex/auth.json`（`CODEX_HOME`
+  があればその下）ができる。そのパスを書く。**Docker のホストから見たパス** で書く（`codex.pathMap` は効かない）。
+
+  ```bash
+  p3 user-config set codex.authFile=/home/me/.codex/auth.json
+  ```
+
+`authVolume` と `authFile` はどちらか一方。ChatGPT に接続していると、そちらが優先される。接続したまま旧来の認証を使うときは
+`p3 user-config set codex.auth=legacy`（戻すときは `codex.auth=`）。どれを使っているかは、概要ページのエンジンの状態と
+Preflight の開始のログに出る。
+
 **serve を起動し直さずに効く設定:** `p3 serve` は Codex と Preflight の設定（`codex.*` と `preflight.engine`）を、
 **Preflight を始めるたび** と **エンジンの状態を見るたび**（概要ページ・設定画面の ChatGPT の欄）に個人設定から読み直す。
 始めたときの設定（認証・パスの対応・モデル・イメージの確認）はその Preflight の間ずっと使い、実行中に書き換えても途中の
@@ -656,7 +727,7 @@ run や並んで動いている run は変わらない。待ち受け（`serve.h
 タブやウィンドウに戻ったとき・変更通知）に確かめ直す（定期的には問い合わせない）。取れなかったときは使えると見せない。
 
 **これまでの `.env` からの移し方:** P3 は前の版まで、P3 の置き場所の `.env` を読んでいた。今は読まないので、その中の値を
-上の表に従って個人設定に書き写す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
+上の表に従って `p3 user-config set` で個人設定に移す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
 接続に変えたりはしない。書き写したら `.env` は消してよい。
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
@@ -675,7 +746,14 @@ app-server（docker run）が初期化の前に終わりました（終了コー
 今のパスの対応:
   参照先 pcube → コンテナ /workspace/pcube（codex.pathMap の対応なし（このマシンのパスのまま渡す））
   データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））
+直し方: このパスを含む「このマシンのパス」と「Docker のホストから見たパス」の対応を足します
+  p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker のホストから見たパス>
+  例: p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces
+  Docker のホストから見たパスは、ホストで docker inspect <この開発コンテナ> の Mounts（Source が Docker のホスト、Destination がこのマシン）で分かります。
+  今の対応は p3 user-config で確かめられます。直せば serve はそのままで次の Preflight から効きます
 ```
+
+対応が当たっていたのに無いとき（行き先の誤り）は、同じ「このマシンのパス」で足し直すよう案内する。
 
 | Docker の出力 | 次にすること |
 | --- | --- |

@@ -203,6 +203,17 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 - マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`PCUBE_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
+- マシンごとの設定の書き換え（`p3 user-config set`。`src/server/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
+  パスの対応は `codex.pathMap+=A=B` / `codex.pathMap-=A` で1件ずつ足し・外す（全部の置き換えは受けない。書き間違いで全部を
+  失わないように）。`updateUserConfig` の中で変更を当ててから、環境変数を見ずに `resolveMachineSettings` で確かめ、読めなければ
+  何も書かない（テーマを含めて一括）。表示（`describeSettings`）は項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）。
+  空の環境変数は既定に戻すので出どころも既定。プロジェクトの登録（projects）は表示しない（`p3 project ls`）
+- パスの対応のエラー（`bind source path does not exist`）には、直し方（`pathMapHowTo`）として設定するコマンド・例・ホストの
+  パスの調べ方を添える。共有の記録に残るので、このマシンのパスは例のパスで示す。対応が当たっていたなら行き先の誤りとして案内する
+- 旧来の認証の auth.json は、P3 のイメージの中の Codex（`CODEX_HOME=/codex`）で `codex login --device-auth` すれば、ボリュームの
+  一番上にでき、そのまま `authVolume`（`volume-subpath=auth.json`）で使える（2026-10-12、codex-cli 0.162.1 で、空のボリュームに
+  `login status` が `Not logged in` を返すことまで確かめた。サインインそのものは人が行う）。`authFile` は Docker のホストのパスで
+  渡すので `codex.pathMap` は効かない
 - serve の Codex と Preflight の設定は `SettingsSource`（`machineSettingsSource`）から、Preflight を始めるたび・エンジンの状態を
   見るたびに読み直す（`loadUserSettings` で厳密に読み、形が違えば空にせずエラー）。Codex エンジンは `snapshot()` で始めるときの
   設定に決めたエンジンを作り、その run の間はそれを使う。既定のエンジンも始めるたびに決める。読めなければ、その run を
