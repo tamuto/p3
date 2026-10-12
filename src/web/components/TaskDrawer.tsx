@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationTypes, type GraphEdge, type RepoOutput, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, failureOf } from "../lib/api.ts";
 import { markFrom, warningText } from "../lib/supersede.ts";
@@ -8,14 +8,12 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
-import { relationItems } from "../lib/relations.ts";
+import { Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
-import { RelationRow } from "./RelationRow.tsx";
 
-type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
+type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string; record: string };
 
 const toDraft = (t: Task): Fields => ({
   title: t.title,
@@ -24,40 +22,37 @@ const toDraft = (t: Task): Fields => ({
   labels: t.labels.join(", "),
   areas: t.areas.join(", "),
   outputs: t.outputs.join("\n"),
+  record: t.record ?? "",
 });
 
 const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /**
  * タスク詳細（要望の画面に重ねる）。id は要望の中の ID（T003。T3 / 3 も可）。
- * 関係の相手は、同じ要望のタスクは T003、別の要望は <要望ID> か <要望ID>/T003 と書く。
+ * 関係（依存・置き換え）は Preflight のタスク化が張るもので、ここでは見るだけ。
  */
 export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; data: RequestData; id: string; onClose: () => void }) {
   const rid = data.request.id;
   const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
-  const [graph, setGraph] = useState<Neighborhood>();
   const [superseded, setSuperseded] = useState<SupersededMark[]>([]);
   // 入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で。lib/draft.ts）
   const [draft, setDraft] = useState<DraftState<Fields>>();
   /** 外で削除・アーカイブされた（入力は残し、保存しない） */
   const [gone, setGone] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [relType, setRelType] = useState<RelationType>("depends_on");
-  const [relTarget, setRelTarget] = useState("");
   const latest = useRef(latestOnly());
   const dirty = !!draft && isDirty(draft, shallowEqual);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。
-   * own: この画面での入力欄以外の操作（済み・関係）の後。入力欄の項目が編集を始めたときのままなら、自分で上げた rev に合わせる
+   * own: この画面での入力欄以外の操作（済み）の後。入力欄の項目が編集を始めたときのままなら、自分で上げた rev に合わせる
    */
   const load = async (fresh = false, own = false) => {
     try {
       const r = await latest.current.run(() => api.task(id));
       if (r === STALE) return;
       setTask(r.task);
-      setGraph(r.graph);
       setSuperseded(r.superseded);
       setGone(false);
       const server = toDraft(r.task);
@@ -92,15 +87,21 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  if (!task || !draft || !graph) return null;
+  if (!task || !draft) return null;
   const fields = draft.value;
   // 共有の参照先があるときだけ、作業先とリポジトリごとの成果物を扱う
   const multi = ctx.info.project.repos.length > 0;
 
   const set = <K extends keyof Fields>(k: K, v: Fields[K]) => setDraft((d) => d && editDraft(d, { ...d.value, [k]: v }));
-  /** 同じ要望の中は T003 と短く見せる */
-  const short = (ref: string) => (ref.startsWith(`${rid}/`) ? ref.slice(rid.length + 1) : ref);
-  const title = (ref: string) => graph.titles[ref] ?? data.tasks.find((t) => t.ref === ref)?.title ?? "";
+  /** 同じ要望のタスクの題 */
+  const title = (tid: string) => data.tasks.find((t) => t.id === tid)?.title ?? "";
+  // 関係は同じ要望の中だけ: このタスクから（依存先・置き換える古い案）と、このタスクへ（依存元・置き換えた新しい案）
+  const relations = [
+    ...task.relations.map((r) => ({ key: `out-${r.type}-${r.target}`, role: relationRole(r.type, "out"), target: r.target })),
+    ...data.tasks.flatMap((t) =>
+      t.relations.filter((r) => r.target === task.id).map((r) => ({ key: `in-${r.type}-${t.id}`, role: relationRole(r.type, "in"), target: t.id })),
+    ),
+  ];
   const open = (ref: string) => ctx.open(ref);
 
   async function save() {
@@ -111,6 +112,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         labels: split(fields.labels),
         areas: split(fields.areas),
         outputs: fields.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
+        record: fields.record.trim() || null,
         rev: draft!.baseRev,
       });
       setDraft(draftOf(toDraft(res), res.rev));
@@ -138,24 +140,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     } catch (e) {
       setMsg((e as Error).message);
     }
-  }
-
-  async function addRel(type: RelationType, target: string, note?: string) {
-    try {
-      await api.addRelation(id, { type, target, note });
-      setRelTarget("");
-      setMsg(null);
-      await load(false, true);
-      data.reload();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
-
-  async function removeRel(e: GraphEdge) {
-    await api.removeRelation(id, { type: e.type as RelationType, target: e.to });
-    await load(false, true);
-    data.reload();
   }
 
 
@@ -277,113 +261,29 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           <Field label="本文 (Markdown)">
             <textarea rows={6} className={`${inputCls} font-mono`} value={fields.body} onChange={(e) => set("body", e.target.value)} />
           </Field>
+          <Field label="変更の記録 (Markdown。完了したら: 何を変えたか・なぜ・入れた決まり・やめたもの)">
+            <textarea
+              rows={4}
+              className={`${inputCls} font-mono`}
+              value={fields.record}
+              placeholder={task.status === "done" ? "まだ書かれていません" : "完了にするときに書きます"}
+              onChange={(e) => set("record", e.target.value)}
+            />
+          </Field>
 
-          <Section title="関係（明示）">
-            {graph.outgoing.length + graph.incoming.length === 0 && <Empty>明示的な関係はありません</Empty>}
-            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {relationItems(graph.outgoing, graph.incoming, rid).map((r) => (
-                <li key={r.key}>
-                  <RelationRow
-                    role={r.role}
-                    tone={r.direction === "out" ? "indigo" : "violet"}
-                    refId={r.short}
-                    onOpen={() => open(r.ref)}
-                    title={title(r.ref)}
-                    note={r.edge.origin !== "index" ? r.edge.note : undefined}
-                    aside={
-                      <>
-                        <Origin e={r.edge} />
-                        {r.removable && (
-                          <button className="text-sm text-slate-400 hover:text-rose-600" onClick={() => removeRel(r.edge)} aria-label={`${r.role} ${r.short} の関係を削除`}>
-                            削除
-                          </button>
-                        )}
-                      </>
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
-            <div className="flex gap-2 pt-1">
-              <select
-                className={`${inputCls} !w-40 shrink-0`}
-                value={relType}
-                title={RELATION_TYPES[relType].verb}
-                onChange={(e) => setRelType(e.target.value as RelationType)}
-              >
-                {relationTypes.map((t) => (
-                  <option key={t} value={t} title={RELATION_TYPES[t].verb}>
-                    {RELATION_TYPES[t].verb.split("（")[0]}
-                  </option>
-                ))}
-              </select>
-              <input
-                className={`${inputCls} font-mono`}
-                list="p3-rel-targets"
-                placeholder="T004 / <要望ID> / <要望ID>/T004"
-                value={relTarget}
-                onChange={(e) => setRelTarget(e.target.value)}
-              />
-              <datalist id="p3-rel-targets">
-                {data.tasks
-                  .filter((t) => t.ref !== id)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
-                {ctx.requests
-                  .filter((p) => p.request.id !== rid)
-                  .map((p) => (
-                    <option key={p.request.id} value={p.request.id}>
-                      {p.request.title}
-                    </option>
-                  ))}
-              </datalist>
-              <Button className="shrink-0 whitespace-nowrap" disabled={!relTarget} onClick={() => addRel(relType, relTarget)}>
-                追加
-              </Button>
-            </div>
-            <p className="text-sm text-slate-500">
-              {RELATION_TYPES[relType].verb}。このタスクには「{RELATION_TYPES[relType].label} {relTarget || "相手"}」、相手には「{RELATION_TYPES[relType].inverse} {short(id)}」と出ます。
-            </p>
-          </Section>
-
-          <Section title="関係しそう（暗黙: 領域・内容の近さ）">
-            {graph.implicit.length === 0 ? (
-              <Empty>候補はありません</Empty>
+          <Section title="関係（Preflight のタスク化で張ったもの）">
+            {relations.length === 0 ? (
+              <Empty>関係はありません</Empty>
             ) : (
-              <ul className="space-y-1.5">
-                {graph.implicit.map((r) => (
-                  <li key={r.ref} className="flex items-start gap-2">
-                    <span className="w-12 pt-0.5 text-right font-mono text-sm text-slate-400">{r.score.toFixed(2)}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Id id={short(r.ref)} onClick={() => open(r.ref)} />
-                        <span className="truncate">{r.title}</span>
-                      </div>
-                      <p className="text-sm text-slate-500">{r.reasons.join(" / ")}</p>
-                    </div>
-                    <Button variant="ghost" className="text-sm" onClick={() => addRel("relates_to", r.ref, r.reasons.join(" / "))}>
-                      ＋関連付け
-                    </Button>
+              <ul className="space-y-1">
+                {relations.map((r) => (
+                  <li key={r.key} className="flex min-w-0 items-center gap-2">
+                    <span className="w-14 shrink-0 text-sm text-slate-500">{r.role}</span>
+                    <Id id={r.target} onClick={() => open(`${rid}/${r.target}`)} />
+                    <span className="min-w-0 truncate">{title(r.target)}</span>
                   </li>
                 ))}
               </ul>
-            )}
-          </Section>
-
-          <Section title="影響範囲（推移的）">
-            {graph.impactScope.length === 0 ? (
-              <Empty>このタスクの変更が波及する項目はありません</Empty>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {graph.impactScope.map((x) => (
-                  <button key={x} onClick={() => open(x)} className="rounded bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
-                    <span className="font-mono text-sm">{short(x)}</span> {title(x)}
-                  </button>
-                ))}
-              </div>
             )}
           </Section>
 
@@ -393,17 +293,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         </div>
       </aside>
     </div>
-  );
-}
-
-function Origin({ e }: { e: GraphEdge }) {
-  if (e.origin === "human") return null;
-  const label = e.origin === "index" ? "構造" : e.origin === "ai" ? "AI" : "preflight";
-  return (
-    <Badge tone={e.origin === "index" ? "slate" : "amber"} title={e.note}>
-      {label}
-      {e.weight !== undefined && ` ${Math.round(e.weight * 100)}%`}
-    </Badge>
   );
 }
 

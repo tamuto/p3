@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
 import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
-import { parseAssessment } from "../src/core/preflight/service.ts";
+import { parseAssessment, parseEvidence } from "../src/core/preflight/service.ts";
 import { writeRepoEntry } from "../src/core/store/projectFile.ts";
 import { makeProject, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
@@ -104,5 +104,14 @@ describe("判断の根拠（assessment.json の evidence）", () => {
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     const r = (await ctx.preflight.wait(req.id, id))!;
     expect(r.assessment!.evidence!.every((e) => e.kind === "assumed")).toBe(true);
+  });
+});
+
+describe("経緯を根拠にした判断（コミット）", async () => {
+  const { evidenceLines } = await import("../src/shared/scopeView.ts");
+  it("evidence の commit を残し、表示に出す", () => {
+    const [e] = parseEvidence([{ claim: "評価対象の固定は 261012-8m55z で入れた", kind: "assumed", commit: " cc42e41 " }])!;
+    expect(e).toEqual({ claim: "評価対象の固定は 261012-8m55z で入れた", kind: "assumed", commit: "cc42e41" });
+    expect(evidenceLines([e]).join("\n")).toContain("（commit cc42e41）");
   });
 });

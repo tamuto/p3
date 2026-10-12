@@ -148,10 +148,10 @@ export function Drafts({
                       <span className="truncate">{a}</span>
                     </Badge>
                   ))}
-                  {d.relations.map((r) => (
-                    <Badge key={`${r.type}-${r.target}`} tone="amber" className="max-w-full" title={`${relationRole(r.type, "out")} ${r.target}${r.note ? `: ${r.note}` : ""}`}>
-                      <span className="shrink-0">{relationRole(r.type, "out")}</span>
-                      <span className="truncate font-mono">{r.target}</span>
+                  {d.supersedes.map((target) => (
+                    <Badge key={target} tone="amber" className="max-w-full" title={`${relationRole("supersedes", "out")} ${target}`}>
+                      <span className="shrink-0">{relationRole("supersedes", "out")}</span>
+                      <span className="truncate font-mono">{target}</span>
                     </Badge>
                   ))}
                 </div>
@@ -185,8 +185,7 @@ export function Drafts({
                   </Badge>
                 )}
                 <span className="text-sm text-slate-500">
-                  {c.reasons.map((r) => (r.source === "draft" ? `案 ${r.draft}` : "評価")).join(" · ")}
-                  {c.reasons[0]?.note ? ` — ${c.reasons[0].note}` : ""}
+                  {c.reasons.map((r) => `案 ${r.draft}`).join(" · ")}
                 </span>
               </li>
             ))}

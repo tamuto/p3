@@ -23,14 +23,15 @@ import type { RefScope, RepoRef } from "./repos.ts";
  *   verb    種類そのものの説明（関係を張るときの選択肢・CLI のヘルプ）
  * 例: T002 depends_on T001 → T002 に「依存先 T001」、T001 に「依存元 T002」
  */
+/**
+ * タスクの関係は2つだけ（どちらも同じ要望の中のタスクを指す。target は "T003"）。
+ *   depends_on: 順序（相手が先に終わっている必要がある）。Preflight の案の dependsOn から張る
+ *   supersedes: 再評価で古いタスクを置き換える（相手は古い案）。Preflight の案の supersedes から張る
+ * 手で張る機能は持たない
+ */
 export const RELATION_TYPES = {
-  depends_on: { label: "依存先", inverse: "依存元", verb: "依存する（相手が先に終わっている必要がある）", schedule: true },
-  part_of: { label: "親", inverse: "子", verb: "一部である（相手が全体）", schedule: false },
-  derived_from: { label: "派生元", inverse: "派生先", verb: "派生した（相手から生まれた）", schedule: false },
-  impacts: { label: "影響先", inverse: "影響元", verb: "影響する（相手に影響が及ぶ）", schedule: false },
-  relates_to: { label: "関連", inverse: "関連", verb: "関連する", schedule: false },
-  duplicates: { label: "重複", inverse: "重複", verb: "重複する（相手と同じ内容）", schedule: false },
-  supersedes: { label: "旧案", inverse: "新案", verb: "置き換える（相手は古い案）", schedule: false },
+  depends_on: { label: "依存先", inverse: "依存元", verb: "依存する（相手が先に終わっている必要がある）" },
+  supersedes: { label: "旧案", inverse: "新案", verb: "置き換える（相手は古い案）" },
 } as const;
 
 /** 関係の向きに応じた相手の役割。out: 張った側から見た相手、in: 張られた側から見た相手（張った側） */
@@ -43,17 +44,15 @@ export function relationRole(type: string, direction: "out" | "in"): string {
 export type RelationType = keyof typeof RELATION_TYPES;
 export const relationTypes = Object.keys(RELATION_TYPES) as RelationType[];
 
-/** 誰がそのエッジを張ったか。AI 由来のものは confidence を持ち、人が見直せる。 */
+/** 誰が張ったか（今は Preflight のタスク化だけが張る） */
 export type RelationOrigin = "human" | "ai" | "preflight";
 
 export interface Relation {
   type: RelationType;
-  /** 同じ要望のタスクは "T003"、別の要望のタスクは "<要望ID>/T003"、要望そのものは "<要望ID>" */
+  /** 同じ要望のタスク（"T003"） */
   target: string;
   note?: string;
   origin?: RelationOrigin;
-  /** 0..1 (AI 推定の場合) */
-  confidence?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +80,7 @@ export interface Task {
   title: string;
   status: TaskStatus;
   labels: string[];
-  /** 影響するコード領域（例: "src/server/store"）。暗黙の関連の根拠になる */
+  /** 触るコード領域（例: "src/core/store"）。表示と絞り込みに使う */
   areas: string[];
   /** 成果物。1項目ずつ URL（PR / MR）・文章・ドキュメントのパスのどれでもよい。項目全体が http(s) の URL なら画面でリンクにする */
   outputs: string[];
@@ -97,6 +96,11 @@ export interface Task {
   doneAt?: string;
   /** 完了したタスクを人が確認して「済み」にした日時（完了から戻すと消える） */
   checkedAt?: string;
+  /**
+   * 変更の記録（Markdown）。完了にするときに作業した側が書く: 何を変えたか・なぜ・入れた決まり・やめたもの。
+   * 後の Preflight が経緯を調べるとき、タスク解析・リリースノートの材料に読む。AI が完了にするときは必須
+   */
+  record?: string;
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -136,8 +140,6 @@ export interface Request {
   title: string;
   status: RequestStatus;
   areas: string[];
-  /** 別の要望・タスクとの関係（target は "<要望ID>" か "<要望ID>/T003"） */
-  relations: Relation[];
   /** 期限（YYYY-MM-DD） */
   due?: string;
   /** まとめてリリースする単位（project.yaml の milestones の id） */
@@ -184,8 +186,8 @@ export interface ProposedTask {
   areas: string[];
   /** 同じ run 内の他の key */
   dependsOn: string[];
-  /** 既存の要望/タスクへの関係（target は "<要望ID>" か "<要望ID>/T003"） */
-  relations: Relation[];
+  /** 置き換える同じ要望の既存タスク（"T003"。再評価で古いタスクを置き換えるとき） */
+  supersedes: string[];
   /** 取り込み対象か（UI で切り替え） */
   include: boolean;
   /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
@@ -200,8 +202,6 @@ export interface PreflightAssessment {
   risks: string[];
   questions: string[];
   areas: string[];
-  /** 既存の要望/タスクへの影響（target は "<要望ID>" か "<要望ID>/T003"） */
-  impacts: { target: string; type: RelationType; reason: string; confidence: number }[];
   /** 判断の根拠（調べた箇所と、推測の明示）。無ければ記録なし（以前の結果） */
   evidence?: Evidence[];
 }
@@ -220,17 +220,10 @@ export interface Evidence {
   file?: string;
   /** 行・関数名など */
   location?: string;
+  /** 経緯を確かめたコミット（git の履歴を根拠にしたとき） */
+  commit?: string;
   /** P3 が付けた注記（確かめた根拠として扱えなかった理由） */
   note?: string;
-}
-
-export interface RelatedItem {
-  /** "<要望ID>" か "<要望ID>/T003" */
-  ref: string;
-  title: string;
-  kind: "task" | "request";
-  score: number;
-  reasons: string[];
 }
 
 export type PreflightStatus = "running" | "completed" | "failed";
@@ -300,8 +293,6 @@ export interface PreflightRun {
   status: PreflightStatus;
   startedAt: string;
   finishedAt?: string;
-  /** インテリジェンス層が選んだ文脈 */
-  context: RelatedItem[];
   log: PreflightLogEntry[];
   assessment?: PreflightAssessment;
   /** drafts/ 配下のファイルから読み込まれる */
@@ -363,7 +354,7 @@ export interface InputMatch {
   reason?: string;
 }
 
-/** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */
+/** タスクが置き換えられていることの印。from は置き換えた側のタスク（<要望ID>/T004） */
 export interface SupersededMark {
   from: string;
   note?: string;
@@ -378,8 +369,8 @@ export interface SupersedeCandidate {
   title: string;
   status: TaskStatus;
   rev: number;
-  /** どこに置き換えが書かれていたか（評価の影響 / 採用したタスク案） */
-  reasons: { source: "impact" | "draft"; draft?: string; note?: string }[];
+  /** 置き換えを書いた採用したタスク案 */
+  reasons: { draft: string }[];
 }
 
 /** タスク化の結果 */
@@ -499,28 +490,6 @@ export interface ProjectConfig {
     /** プロジェクト固有の評価の観点・制約（例: 「外部 API の追加は要相談」） */
     instructions: string;
   };
-}
-
-/** グラフの辺。from / to は絶対参照（"<要望ID>" か "<要望ID>/T003"） */
-export interface GraphEdge {
-  from: string;
-  to: string;
-  type: RelationType;
-  origin: RelationOrigin | "index";
-  weight?: number;
-  note?: string;
-}
-
-export interface Neighborhood {
-  ref: string;
-  outgoing: GraphEdge[];
-  incoming: GraphEdge[];
-  /** 明示エッジは無いが、領域・内容の類似から推定された関連 */
-  implicit: RelatedItem[];
-  /** depends_on / impacts / part_of を逆にたどった影響範囲（絶対参照） */
-  impactScope: string[];
-  /** 上に出てくる参照のタイトル（別の要望のタスクも画面に名前で出すため） */
-  titles: Record<string, string>;
 }
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */

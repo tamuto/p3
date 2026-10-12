@@ -22,9 +22,8 @@ import type { FixedAttachment } from "../../shared/types.ts";
 import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
 import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
-import { refScope, type ResolvedRef } from "../repoRefs.ts";
+import { gitHistory, refScope, type ResolvedRef } from "../repoRefs.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
-import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
 const run = promisify(execFile);
@@ -486,9 +485,13 @@ const entryMissing = (r: ResolvedRef, entry: string) => !!r.local && !existsSync
 function refsSection(job: PreflightJob) {
   const ok = job.refs.filter((r) => r.status === "ok");
   const writable = writableRepos(job.project);
+  const history = (r: ResolvedRef) => {
+    const h = r.local ? gitHistory(r.local) : { status: "unavailable" as const, reason: "パスがありません" };
+    return h.status === "ok" ? "［git の履歴あり］" : h.status === "shallow" ? `［git の履歴は途中まで: ${h.reason}］` : `［git の履歴なし: ${h.reason}］`;
+  };
   const lines = ok.map(
     (r) =>
-      `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}${writable.includes(r.name) ? "［作業先にできる］" : ""}`,
+      `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}${writable.includes(r.name) ? "［作業先にできる］" : ""}${history(r)}`,
   );
   const skipped = job.refs.filter((r) => r.status !== "ok").map((r) => `${r.name}（${refScope(r).reason}）`);
   return [
@@ -500,11 +503,6 @@ function refsSection(job: PreflightJob) {
     ...(skipped.length ? [`- 見ていない参照先: ${skipped.join(" / ")}。中身は確かめられないので、これに関わる判断は推測として扱ってください。`] : []),
     `- タスク案の repo（作業先）に書けるのは ${writable.join(" / ")} か none だけです。1つのタスクの作業先は1つにし、複数のリポジトリにまたがる作業はタスクを分けてください。`,
   ].join("\n");
-}
-
-function contextList(ctx: RelatedItem[]) {
-  if (!ctx.length) return "（関連しそうな既存項目は見つかりませんでした）";
-  return ctx.map((c) => `- ${c.ref} [${c.kind}] ${c.title} — score ${c.score}: ${c.reasons.join(" / ")}`).join("\n");
 }
 
 function developerInstructions(job: PreflightJob, paths: ContainerPaths) {
@@ -565,6 +563,32 @@ function uiSection(paths: ContainerPaths) {
 `;
 }
 
+/**
+ * 過去の経緯の調べ方。p3 は関係しそうな過去の項目を選んで渡さない（パスや語の重なりでは、ファイルの移動・分割で外れる）。
+ * Codex が、特定したコードの git の履歴と、そこから分かる要望 ID の記録（/data）を必要な分だけ読む
+ */
+function historySection(job: PreflightJob, paths: ContainerPaths) {
+  const ok = job.refs.filter((r) => r.status === "ok" && r.local && gitHistory(r.local).status !== "unavailable");
+  const git = ok.length
+    ? `- コードの経緯は git の履歴で確かめる（参照先は読むだけなので、git も読むだけの操作にする。所有者の違いで断られたら -c safe.directory='*' を付ける）:
+  - そのファイルの変更の流れ: git -C ${CONTAINER_WORKSPACE}/<参照先> log --follow --oneline -- <パス>
+  - その行を誰がなぜ書いたか（移動・分割・コピーも追う）: git -C ${CONTAINER_WORKSPACE}/<参照先> blame -C -C -M -w -L <開始>,<終了> -- <パス>
+  - 変更の中身と目的: git -C ${CONTAINER_WORKSPACE}/<参照先> show <コミット>（メッセージと差分）
+  - 最近の流れ: git -C ${CONTAINER_WORKSPACE}/<参照先> log --merges --oneline -n 30
+  git の履歴が使える参照先: ${ok.map((r) => `${CONTAINER_WORKSPACE}/${r.mount}`).join(" / ")}`
+    : "- 使える git の履歴はありません（参照先の一覧の［git の履歴なし］を見てください）。経緯はコードと下の要望・タスクの記録だけで判断し、その制約を評価に書いてください。";
+  return `
+## 過去の経緯の調べ方
+p3 は関係しそうな過去の要望・タスクを選んで渡しません。あなたが必要な分だけ調べてください（全部を読まない）。
+${git}
+- マージのコミットのブランチ名（例 Merge pull request #27 from <所有者>/req/<要望ID>-...）やコミットのメッセージから要望 ID が分かれば、
+  ${paths.dataDir}/requests/<要望ID>/ の request.md（要望）、tasks/T00x.md（タスク。完了したものには「変更の記録」: 何を・なぜ・入れた決まり・やめたもの）、
+  preflight/<run>/assessment.json（その時の評価）を読む。語で探すなら rg -l '<語>' ${paths.dataDir}/requests --glob '*.md'
+- 過去の記録は、その時点の判断です。今のコードと食い違えば、今のコードを正とし、食い違いをリスクか確認事項に書いてください。
+- 経緯を根拠にした判断は、evidence に確かめたコミットを commit として書いてください（例 "commit": "cc42e41"）。
+`;
+}
+
 /** Codex に渡す依頼文（テストで確かめる） */
 export const codexPrompt = (job: PreflightJob) => prompt(job, containerPaths(job));
 
@@ -578,14 +602,13 @@ ${codeMapSection(job)}
 ## 要望（${paths.runDir}/request.md にも同じ内容があります）
 ${r.body.trim() || "(本文なし)"}
 ${carryoverSection(job, paths)}${attachmentsSection(job, paths)}
-## p3 のインテリジェンス層が選んだ関連項目
-要望は ${paths.dataDir}/requests/<要望ID>/request.md、タスクは ${paths.dataDir}/requests/<要望ID>/tasks/<T00x>.md にあります。必要なものだけ読んでください。
-${contextList(job.context)}
 
+${historySection(job, paths)}
 ## やること
 1. 要望の妥当性（目的・価値・既存方針との整合）を評価する。
 2. 参照先のコードを必要な範囲で調べ（「最初に読むもの」を先に読み、主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
-3. 既存のタスク/要望との関係（依存・影響・重複など）を洗い出す。関係は1対1とは限らない。
+   関係するコードを特定したら、上の「過去の経緯の調べ方」でそのコードの経緯と、それを入れた要望・タスクを確かめる。
+3. 再評価で、この要望の既存のタスクを新しい案で置き換えるなら、案の supersedes に書く（同じ要望のタスクだけ）。
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。
    verdict が no_go の場合はタスク案は不要です。

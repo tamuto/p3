@@ -122,7 +122,7 @@ describe("Preflight と xlsx", () => {
     expect(run.log.map((l) => l.text).join("\n")).toContain("壊れ.xlsx の中身を取り出せません（未読として渡します）");
 
     // Codex への資料: 取り出した内容と画像のパス、未確認のもの
-    const text = codexPrompt({ project: ctx.ws.project, request: req, context: [], refs: [], dataDir, runDir, attachments: run.attachments });
+    const text = codexPrompt({ project: ctx.ws.project, request: req, refs: [], dataDir, runDir, attachments: run.attachments });
     const base = `/data/requests/${req.id}/preflight/${run.id}`;
     expect(text).toContain(`取り出した内容: ${base}/attachments/${a.id}.md（シート 2・セル`);
     expect(text).toContain(`埋め込みの画像: ${base}/ui/spec/${a.id}-1.png（シート「画面項目」B4）`);

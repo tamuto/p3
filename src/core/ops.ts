@@ -1,7 +1,6 @@
-import { normalizeTaskId, parseRef } from "../shared/refs.ts";
+import { normalizeTaskId } from "../shared/refs.ts";
 import { type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
-import { NotFoundError } from "./store/collection.ts";
 
 /**
  * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。
@@ -79,22 +78,12 @@ export function resolve(ctx: P3Context, q: string, current?: string): ResolveRes
     // 今の要望の中のものを先に
     .sort((a, b) => Number(b.request === current) - Number(a.request === current))
     .map((t) => ({ ref: t.ref, title: t.title, score: 0.9, reasons: ["タイトルに含む"] }));
-  const similar = ctx.index
-    .related({ text: query, limit: 5, minScore: 0.15 })
-    .filter((r) => !byTitle.some((b) => b.ref === r.ref));
-  const candidates = [...byTitle, ...similar].slice(0, 8);
+  const candidates = byTitle.slice(0, 8);
   return { match: candidates.length === 1 ? candidates[0].ref : null, candidates };
 }
 
 export function titleOf({ ws }: P3Context, ref: string): string {
   return ws.task(ref)?.title ?? ws.requests.get(ref)?.title ?? "?";
-}
-
-/** 参照の指す要望かタスクのコレクションと ID */
-export function entityOf({ ws }: P3Context, ref: string) {
-  const r = parseRef(ref);
-  if (!r || !ws.exists(ref)) throw new NotFoundError(ref);
-  return r.task ? { col: ws.tasksOf(r.request), id: r.task, request: r.request } : { col: ws.requests, id: r.request, request: r.request };
 }
 
 /**

@@ -299,11 +299,6 @@ describe("関係の表示（相手の役割）", () => {
     // [種類, A から見た B, B から見た A]
     const table: [string, string, string][] = [
       ["depends_on", "依存先", "依存元"], // T002 は T001 に依存 → T002「依存先 T001」/ T001「依存元 T002」
-      ["part_of", "親", "子"], // T003 は要望 R の一部 → T003「親 R」/ R「子 T003」
-      ["derived_from", "派生元", "派生先"],
-      ["impacts", "影響先", "影響元"],
-      ["relates_to", "関連", "関連"],
-      ["duplicates", "重複", "重複"],
       ["supersedes", "旧案", "新案"], // T005 が T001 を置き換え → T005「旧案 T001」/ T001「新案 T005」
     ];
     expect(relationTypes).toEqual(table.map(([t]) => t));
@@ -313,6 +308,5 @@ describe("関係の表示（相手の役割）", () => {
       expect(RELATION_TYPES[t as keyof typeof RELATION_TYPES].verb).toBeTruthy();
     }
     expect(relationRole("unknown", "out")).toBe("unknown");
-    expect(RELATION_TYPES.depends_on.schedule).toBe(true);
   });
 });

@@ -1,12 +1,11 @@
 import type { SupersedeCandidate, SupersededMark } from "../../shared/types.ts";
 
-/** 置き換えた側を短く（同じ要望の中は T005、要望単位なら「要望」） */
+/** 置き換えた側を短く（同じ要望の中は T005） */
 export function markFrom(m: SupersededMark, requestId: string): string {
-  if (m.from === requestId) return "要望";
   return m.from.startsWith(`${requestId}/`) ? m.from.slice(requestId.length + 1) : m.from;
 }
 
-/** 印の文言（例: 置き換え ← T005, 要望） */
+/** 印の文言（例: 置き換え ← T005） */
 export function markText(marks: SupersededMark[] | undefined, requestId: string): string {
   return marks?.length ? `置き換え ← ${marks.map((m) => markFrom(m, requestId)).join(", ")}` : "";
 }

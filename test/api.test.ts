@@ -78,24 +78,20 @@ describe("REST API", () => {
     expect((await call("GET", "/requests/261001-nopee")).status).toBe(404);
   });
 
-  it("関係は相対・絶対参照で張れ、循環は 400 で拒む。resolve は今の要望を優先する", async () => {
+  it("関係を手で張る API は無い。resolve はタイトルで探し、今の要望を優先する", async () => {
     const { call, ctx, rid } = await setup();
     const other = await newRequest(ctx, { title: "別の要望" });
     await newTask(ctx, rid, { title: "ガント", status: "doing" });
     await newTask(ctx, rid, { title: "かんばん" });
     await newTask(ctx, other.id, { title: "かんばんの色" });
-    expect((await call("POST", `/requests/${rid}/tasks/T001/relations`, { type: "depends_on", target: "T002" })).status).toBe(200);
-    const cycle = await call("POST", `/requests/${rid}/tasks/T002/relations`, { type: "depends_on", target: "T001" });
-    expect(cycle.status).toBe(400);
-    expect(cycle.body.error).toContain("循環");
-    const cross = await call("POST", `/requests/${rid}/tasks/T002/relations`, { type: "impacts", target: `${other.id}/T001` });
-    expect(cross.body.relations).toEqual([{ type: "impacts", target: `${other.id}/T001`, origin: "human" }]);
-    expect((await call("GET", `/requests/${rid}/tasks/T002`)).body.graph.incoming).toHaveLength(1);
+    const app = apiRoutes(ctx);
+    const status = async (method: string, path: string) => (await app.request(path, { method, headers: { "content-type": "application/json" }, body: method === "GET" ? undefined : "{}" })).status;
+    expect(await status("POST", `/requests/${rid}/tasks/T001/relations`)).toBe(404);
+    expect((await call("GET", `/requests/${rid}/tasks/T002`)).body).not.toHaveProperty("graph");
+    expect(await status("GET", "/graph")).toBe(404);
     expect((await call("GET", `/requests/${rid}/tasks?status=doing`)).body.map((t: any) => t.id)).toEqual(["T001"]);
     const found = await call("GET", `/resolve?q=${encodeURIComponent("かんばん")}&request=${rid}`);
-    expect(found.body.candidates[0].ref).toBe(`${rid}/T002`);
-    const del = await call("DELETE", `/requests/${rid}/tasks/T001/relations?type=depends_on&target=T002`);
-    expect(del.body.relations).toEqual([]);
+    expect(found.body.candidates.map((c: any) => c.ref)).toEqual([`${rid}/T002`, `${other.id}/T001`]);
   });
 
   it("プロジェクト設定を保存できる。タスクのステータスは 未着手 / 作業中 / 完了 だけ", async () => {

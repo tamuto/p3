@@ -1,23 +1,23 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
 import { ConflictError } from "../src/core/store/collection.ts";
 import { supersededMarks } from "../src/core/supersede.ts";
-import type { PreflightAssessment, SupersedeCandidate } from "../src/shared/types.ts";
+import type { SupersedeCandidate } from "../src/shared/types.ts";
 import { archiveSelection, markText, warningText } from "../src/web/lib/supersede.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /**
- * 既存タスク T001〜T004 がある要望を再評価し、評価の impacts と案の relations に置き換えを書いた状態を作る。
+ * 既存タスク T001〜T004 がある要望を再評価し、案の supersedes に置き換えを書いた状態を作る。
  * Mock は置き換えを推論しないので、評価とタスク案のファイルを直接直す（ファイル契約は Codex と同じ）。
  */
 async function setup() {
   const p = await makeProject();
   const { ctx } = p;
   const other = await newRequest(ctx, { title: "別の要望" });
-  const otherTask = await newTask(ctx, other.id, { title: "別の要望のタスク" });
+
   const req = await newRequest(ctx, { title: "再評価する要望", status: "active", body: "- 新しい案 A\n- 新しい案 B" });
   for (const title of ["古い案 1", "古い案 2", "古い案 3"]) await newTask(ctx, req.id, { title });
   await newTask(ctx, req.id, { title: "完了済み", status: "done" });
@@ -25,34 +25,20 @@ async function setup() {
 
   const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
   await ctx.preflight.wait(req.id, id);
-  const runFile = join(ctx.ws.preflight.runDir(req.id, id), "run.json");
-  const editImpacts = (impacts: PreflightAssessment["impacts"]) => {
-    const run = JSON.parse(readFileSync(runFile, "utf8"));
-    run.assessment.impacts = impacts;
-    writeFileSync(runFile, JSON.stringify(run));
-  };
-  const sup = (target: string, reason = "置き換え") => ({ target, type: "supersedes" as const, reason, confidence: 0.9 });
-  editImpacts([
-    sup(`${req.id}/T001`), // 評価だけ（絶対参照）
-    sup(`${req.id}/T004`), // 完了済みは外す
-    sup(`${req.id}/T009`), // 無いタスクは外す
-    sup(otherTask.ref), // 別の要望は外す
-    sup(req.id), // 要望そのものは外す
-  ]);
-  const rel = (target: string) => ({ type: "supersedes" as const, target, origin: "ai" as const, note: "案の置き換え" });
-  await ctx.preflight.updateDraft(req.id, id, "D1", { relations: [rel("T002"), rel("T001")] }); // 相対参照・両方に出る T001
-  await ctx.preflight.updateDraft(req.id, id, "D2", { relations: [rel("T003")], include: false }); // 不採用の案だけの関係
+  // 採用する D1 は T002・T001・完了済みの T004・無い T009 を置き換えると書き、不採用の D2 は T003
+  await ctx.preflight.updateDraft(req.id, id, "D1", { supersedes: ["T002", "T1", "T004", "T009"] });
+  await ctx.preflight.updateDraft(req.id, id, "D2", { supersedes: ["T003"], include: false });
   return { ...p, req, other, runId: id };
 }
 
 describe("置き換えられるタスクの判定", () => {
-  it("評価の impacts と採用案の relations から、同じ要望の未完了タスクだけを候補にする", async () => {
+  it("採用案の supersedes から、同じ要望の今ある未完了タスクだけを候補にする", async () => {
     const { ctx, req, runId } = await setup();
     const preview = await ctx.preflight.previewMaterialize(req.id, runId);
     expect(preview.include).toEqual(["D1"]);
-    expect(preview.candidates.map((c) => [c.id, c.status, c.reasons.map((r) => r.source + (r.draft ?? ""))])).toEqual([
-      ["T001", "todo", ["impact", "draftD1"]],
-      ["T002", "doing", ["draftD1"]],
+    expect(preview.candidates.map((c) => [c.id, c.status, c.reasons.map((r) => r.draft)])).toEqual([
+      ["T001", "todo", ["D1"]],
+      ["T002", "doing", ["D1"]],
     ]);
     // 不採用を採用に戻すと候補が増える
     await ctx.preflight.updateDraft(req.id, runId, "D2", { include: true });
@@ -61,7 +47,7 @@ describe("置き換えられるタスクの判定", () => {
     expect(ctx.ws.tasksOf(req.id).list().map((t) => t.id)).toEqual(["T001", "T002", "T003", "T004"]);
   });
 
-  it("選ばなければ全部残し、印は保存済みの関係から出す（評価だけの置き換えは要望単位）", async () => {
+  it("選ばなければ全部残し、印は保存済みの関係から出す", async () => {
     const { ctx, req, runId } = await setup();
     const r = await ctx.preflight.materialize(req.id, runId, "human:a");
     expect(r.tasks.map((t) => t.id)).toEqual(["T005"]);
@@ -71,7 +57,7 @@ describe("置き換えられるタスクの判定", () => {
       expect.arrayContaining([expect.objectContaining({ type: "supersedes", target: "T002" }), expect.objectContaining({ type: "supersedes", target: "T001" })]),
     );
     const marks = supersededMarks(ctx.ws);
-    expect(marks.get(`${req.id}/T001`)?.map((m) => m.from)).toEqual([req.id, `${req.id}/T005`]);
+    expect(marks.get(`${req.id}/T001`)?.map((m) => m.from)).toEqual([`${req.id}/T005`]);
     expect(marks.get(`${req.id}/T002`)?.map((m) => m.from)).toEqual([`${req.id}/T005`]);
     expect(marks.has(`${req.id}/T003`)).toBe(false); // 不採用の案だけにあった
   });
@@ -144,7 +130,7 @@ describe("置き換えの API", () => {
 
     const detail = (await call("GET", `/requests/${req.id}`)).body;
     expect(Object.keys(detail.superseded).sort()).toEqual(["T001", "T004"]); // 完了済みにも印は出る（画面では出さない）。アーカイブした T002 には出さない
-    expect((await call("GET", `/requests/${req.id}/tasks/T001`)).body.superseded.map((m: any) => m.from)).toEqual([req.id, `${req.id}/T005`]);
+    expect((await call("GET", `/requests/${req.id}/tasks/T001`)).body.superseded.map((m: any) => m.from)).toEqual([`${req.id}/T005`]);
     const moved = await call("PATCH", `/requests/${req.id}/tasks/T001`, { status: "doing" });
     expect(moved.status).toBe(200);
     expect(moved.body).toMatchObject({ status: "doing", warnings: [{ code: "superseded" }] });
@@ -171,8 +157,8 @@ describe("置き換えの API", () => {
 describe("画面の置き換えの表示と選択", () => {
   const cand = (id: string, rev: number): SupersedeCandidate => ({ id, ref: `r/${id}`, title: id, status: "todo", rev, reasons: [] });
 
-  it("印の文言は同じ要望の中を短く、要望単位は「要望」", () => {
-    expect(markText([{ from: "r" }, { from: "r/T005" }, { from: "x/T001" }], "r")).toBe("置き換え ← 要望, T005, x/T001");
+  it("印の文言は同じ要望の中を短く", () => {
+    expect(markText([{ from: "r/T005" }, { from: "r/T006" }], "r")).toBe("置き換え ← T005, T006");
     expect(markText(undefined, "r")).toBe("");
   });
 

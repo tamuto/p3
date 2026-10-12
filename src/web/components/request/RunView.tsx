@@ -1,11 +1,9 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { relationRole, type PreflightLogEntry, type Request } from "../../../shared/types.ts";
-import { Badge, cx, Empty, Id, Meter, scoreTone, Section, type Tone } from "../ui.tsx";
+import { type PreflightLogEntry, type Request } from "../../../shared/types.ts";
+import { Badge, cx, Meter, scoreTone, Section, type Tone } from "../ui.tsx";
 import { type RunInfo } from "../../lib/api.ts";
-import { absRef } from "../../../shared/refs.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { preflightSteps } from "../../lib/preflightSteps.ts";
-import { RelationRow } from "../RelationRow.tsx";
 import { PreflightScope } from "../PreflightScope.tsx";
 import { UiMaterialsPanel } from "../UiMaterials.tsx";
 import { isMaterialized } from "../../../shared/preflightInput.ts";
@@ -96,31 +94,7 @@ export function RunView({
         {run.startedBy ? ` · 実行: ${run.startedBy}` : ""}
       </p>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Section title={`文脈として選ばれた項目 (${run.context.length})`}>
-          {run.context.length === 0 ? (
-            <Empty>関連する既存項目はありません</Empty>
-          ) : (
-            <ul className="space-y-2">
-              {run.context.map((c) => (
-                <li key={c.ref} className="flex gap-3">
-                  <div className="w-14 shrink-0 pt-1">
-                    <Meter value={Math.min(100, c.score * 100)} tone={c.score > 0.4 ? "emerald" : "amber"} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Id id={c.ref} onClick={() => ctx.open(c.ref)} />
-                      <span className="truncate">{c.title}</span>
-                    </div>
-                    <p className="text-sm break-words text-slate-500">{c.reasons.join(" / ")}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-        <LogView log={run.log} running={run.status === "running"} />
-      </div>
+      <LogView log={run.log} running={run.status === "running"} />
 
       {run.status === "failed" && <p className="rounded-md bg-rose-50 p-4 text-rose-700 dark:bg-rose-950 dark:text-rose-300">失敗: {run.error}</p>}
 
@@ -183,29 +157,6 @@ export function RunView({
 
       {a && (
         <>
-          {a.impacts.length > 0 && (
-            <Section title="既存項目への影響（タスク化時に要望の関係として記録）">
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {a.impacts.map((i) => {
-                  const ref = absRef(i.target, request.id);
-                  return (
-                    <li key={`${i.type}-${i.target}`}>
-                      <RelationRow
-                        role={relationRole(i.type, "out")}
-                        tone="amber"
-                        refId={i.target}
-                        onOpen={ref ? () => ctx.open(ref) : undefined}
-                        title={ref ? titleIn(ctx, ref) : undefined}
-                        note={i.reason}
-                        aside={<span className="font-mono text-sm text-slate-400" title="確信度">{Math.round(i.confidence * 100)}%</span>}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            </Section>
-          )}
-
           <Drafts ctx={ctx} request={request} run={run} onChanged={onChanged} blocked={blocked} />
         </>
       )}
@@ -253,13 +204,5 @@ function LogView({ log, running }: { log: PreflightLogEntry[]; running: boolean 
       </div>
     </Section>
   );
-}
-
-/** 参照の題（要望か、どの要望のタスクでも。進捗の一覧から引く） */
-function titleIn(ctx: AppCtx, ref: string): string | undefined {
-  const [rid, tid] = ref.split("/");
-  const p = ctx.requests.find((x) => x.request.id === rid);
-  if (!p) return undefined;
-  return tid ? p.tasks.find((t) => t.id === tid)?.title : p.request.title;
 }
 

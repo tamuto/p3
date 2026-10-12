@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
 import type { P3Context } from "../src/core/context.ts";
-import { ProjectIndex } from "../src/core/intel/index.ts";
 import type { PreflightEngine } from "../src/core/preflight/engine.ts";
 import { MockEngine } from "../src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../src/core/preflight/service.ts";
@@ -72,9 +71,8 @@ export async function openTestProject(
   const repos = opts.repos ?? (basename(dataDir) === ".p3" ? { main: dirname(dataDir) } : {});
   const ws = new Workspace(dataDir, repos);
   await ws.load();
-  const index = new ProjectIndex(ws);
-  const preflight = new PreflightService(ws, index, engines, engines.codex ? "codex" : "mock");
-  return { ws, index, preflight };
+  const preflight = new PreflightService(ws, engines, engines.codex ? "codex" : "mock");
+  return { ws, preflight };
 }
 
 export async function makeProject(config: Partial<ProjectConfig> = {}) {

@@ -1,5 +1,5 @@
 import type { RefScope, RepoRef } from "../../shared/repos.ts";
-import { evidenceWhere, SCOPE_STATUS_LABEL } from "../../shared/scopeView.ts";
+import { evidenceWhere, historyLabel, SCOPE_STATUS_LABEL } from "../../shared/scopeView.ts";
 import type { Evidence } from "../../shared/types.ts";
 import { Badge, cx, Section } from "./ui.tsx";
 
@@ -26,7 +26,13 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                     {s.role && <span className="text-sm text-slate-500">{s.role}</span>}
                     {s.readFirst && <Badge tone="indigo">最初に読む</Badge>}
                     <Badge tone={s.status === "ok" ? "emerald" : "rose"}>{SCOPE_STATUS_LABEL[s.status]}</Badge>
+                    {s.history && (
+                      <Badge tone={s.history.status === "ok" ? "slate" : "amber"} title={s.history.reason}>
+                        {s.history.status === "ok" ? "git の履歴あり" : s.history.status === "shallow" ? "git の履歴は途中まで" : "git の履歴なし"}
+                      </Badge>
+                    )}
                   </div>
+                  {s.history && s.history.status !== "ok" && <p className="text-sm break-words text-amber-700 dark:text-amber-400">{historyLabel(s.history)}</p>}
                   {s.status !== "ok" && (
                     <p className="text-sm break-words text-rose-700 dark:text-rose-300">
                       {s.reason ?? SCOPE_STATUS_LABEL[s.status]}。中身は確かめていないので、関わる判断は推測です

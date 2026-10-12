@@ -144,7 +144,7 @@ describe("添付と Codex への指示", () => {
     const req = await newRequest(ctx, { title: "x" });
     const runDir = join(dataDir, "requests", req.id, "preflight", "PF-1");
     const text = codexPrompt(
-      { project: ctx.ws.project, request: req, context: [], refs: [], dataDir, runDir, attachments: [
+      { project: ctx.ws.project, request: req, refs: [], dataDir, runDir, attachments: [
         { id: "A-20261012-000000-aaaa", name: "今.png", format: "png", bytes: 10, sha256: "x", width: 900, height: 600, createdAt: "", path: "ui/current/A-20261012-000000-aaaa.png" },
         { id: "A-20261012-000000-bbbb", name: "仕様.xlsx", format: "xlsx", bytes: 10, sha256: "x", createdAt: "", path: "attachments/A-20261012-000000-bbbb.xlsx", description: "画面の項目表" },
       ] },

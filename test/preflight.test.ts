@@ -36,13 +36,12 @@ describe("parseAssessment", () => {
         verdict: "maybe",
         validity: { score: 120, reasons: ["x"] },
         feasibility: { score: "abc" },
-        impacts: [{ target: "261001-abcde/T001", type: "impacts", confidence: 3 }, { target: "261001-abcde", type: "nope" }, { type: "impacts" }],
       }),
     );
     expect(a.verdict).toBe("clarify");
     expect(a.validity.score).toBe(100);
     expect(a.feasibility.score).toBe(0);
-    expect(a.impacts).toEqual([{ target: "261001-abcde/T001", type: "impacts", reason: "", confidence: 1 }]);
+    expect(a).not.toHaveProperty("impacts");
   });
 
   it("JSON として読めなければ分かるエラーにする", () => {
@@ -51,28 +50,27 @@ describe("parseAssessment", () => {
 });
 
 describe("PreflightService（mock エンジン）", () => {
-  it("文脈を選び、評価とタスク案を要望のフォルダに残し、要望を評価済みにする", async () => {
-    const { ctx, dataDir, req, existing } = await withRequest();
+  it("評価とタスク案を要望のフォルダに残し、要望を評価済みにする", async () => {
+    const { ctx, dataDir, req } = await withRequest();
     const started = await ctx.preflight.start(req.id, { engine: "mock" });
     expect(ctx.ws.requests.get(req.id)?.status).toBe("preflight");
     await expect(ctx.preflight.start(req.id, { engine: "mock" })).rejects.toThrow("実行中");
 
     const run = (await ctx.preflight.wait(req.id, started.id))!;
     expect(run.status).toBe("completed");
-    expect(run.context.map((c) => c.ref)).toContain(existing.ref);
     expect(run.drafts.map((d) => [d.key, d.title])).toEqual([
       ["D1", "CSV を書き出す"],
       ["D2", "画面にボタンを置く"],
     ]);
     const dir = join(dataDir, "requests", req.id, "preflight", run.id);
-    for (const f of ["run.json", "request.md", "context.md", "assessment.json", "drafts/D1.md"]) {
+    for (const f of ["run.json", "request.md", "assessment.json", "drafts/D1.md"]) {
       expect(existsSync(join(dir, f)), f).toBe(true);
     }
     expect(ctx.ws.requests.get(req.id)).toMatchObject({ status: "reviewed", lastPreflight: run.id });
   });
 
-  it("タスク案を直してからタスク化すると、要望の中に連番で作られ、依存・影響の関係とブランチ名が付く", async () => {
-    const { ctx, req, existing } = await withRequest();
+  it("タスク案を直してからタスク化すると、要望の中に連番で作られ、依存の関係とブランチ名が付く", async () => {
+    const { ctx, req } = await withRequest();
     const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
     await ctx.preflight.wait(req.id, id);
     await ctx.preflight.updateDraft(req.id, id, "D2", { title: "ボタン（直した）" });
@@ -86,8 +84,6 @@ describe("PreflightService（mock エンジン）", () => {
     const r = ctx.ws.requests.get(req.id)!;
     expect(r.status).toBe("active");
     expect(r.workstreams).toEqual({ main: { branch: `req/${req.id}-add-export` } });
-    // 別の要望のタスクへの影響は絶対参照で要望に記録する
-    expect(r.relations).toEqual([expect.objectContaining({ type: "impacts", target: existing.ref, origin: "preflight" })]);
     await expect(ctx.preflight.materialize(req.id, id)).rejects.toThrow("タスク化済み");
   });
 
@@ -253,7 +249,6 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run).toMatchObject({ engine: "codex", status: "completed" });
     expect(run.assessment?.feasibility.score).toBe(100);
-    expect(run.assessment?.impacts.map((i) => i.target)).toEqual([existing.ref, "261001-nopee/T009"]);
     expect(run.drafts.map((d) => [d.key, d.dependsOn])).toEqual([
       ["D1", []],
       ["D2", ["D1"]],
@@ -271,18 +266,11 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("- /workspace/main/docs — 設計（入口 /workspace/main/docs/design.md");
     expect(prompt).toContain("- /workspace/main/README.md — README\n");
     expect(prompt).not.toContain("## 主なフォルダ"); // 案内だけの参照先は無い
-    expect(prompt).toContain(existing.ref); // 文脈として選ばれた既存タスク
+    expect(prompt).not.toContain(existing.ref); // p3 が選んだ文脈は渡さない
     expect(prompt).toContain("drafts/D1.md");
 
-    // タスク化: 存在しない相手への関係・影響は捨てる
     const { tasks } = await ctx.preflight.materialize(req.id, id);
-    expect(tasks[1].relations).toEqual(
-      expect.arrayContaining([
-        { type: "relates_to", target: existing.ref, origin: "preflight" },
-        { type: "depends_on", target: "T001", origin: "preflight" },
-      ]),
-    );
-    expect(ctx.ws.requests.get(req.id)?.relations.map((r) => r.target)).toEqual([existing.ref]);
+    expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T001", origin: "preflight" }]);
   });
 
   it("再評価では前回の評価・タスク案とその後のメモをプロンプトに含める", async () => {
@@ -335,7 +323,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const second = await run();
     expect(second).toMatchObject({ status: "completed", previous: first.id, notes: [expect.any(String)] });
     const preview = await ctx.preflight.previewMaterialize(req.id, second.id);
-    expect(preview.candidates.map((c) => [c.id, c.reasons.map((r) => r.source)])).toEqual([["T001", ["impact", "draft"]]]); // 完了した T002 は候補にしない
+    expect(preview.candidates.map((c) => [c.id, c.reasons.map((r) => r.draft)])).toEqual([["T001", ["D2"]]]); // 完了した T002 は候補にしない
 
     const r = await ctx.preflight.materialize(req.id, second.id, "human:a", { archive: [{ id: "T001", rev: preview.candidates[0].rev }] });
     expect(r).toMatchObject({ archived: ["T001"], kept: [] });

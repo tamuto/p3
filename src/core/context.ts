@@ -1,5 +1,4 @@
 import { fileURLToPath } from "node:url";
-import { ProjectIndex } from "./intel/index.ts";
 import { ChatGptAccount } from "./chatgpt/account.ts";
 import { CodexWorkspaceEngine, codexConfig } from "./preflight/codexEngine.ts";
 import { fixedSettings, machineSettingsSource, type MachineSettings, type SettingsSource } from "./machineSettings.ts";
@@ -13,7 +12,6 @@ export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 export interface P3Context {
   ws: Workspace;
-  index: ProjectIndex;
   preflight: PreflightService;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
@@ -37,7 +35,6 @@ export async function openProject(
   const initial = await source.get().catch(() => undefined);
   const ws = new Workspace(dataDir, opts.repos);
   await ws.load();
-  const index = new ProjectIndex(ws);
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
   // Mock は preflight.engine: mock（P3_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
   const chatgpt = new ChatGptAccount();
@@ -45,9 +42,9 @@ export async function openProject(
     codex: new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt }),
     mock: new MockEngine(),
   };
-  const preflight = new PreflightService(ws, index, engines, {
+  const preflight = new PreflightService(ws, engines, {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  return { ws, index, preflight, chatgpt, projectName: opts.projectName };
+  return { ws, preflight, chatgpt, projectName: opts.projectName };
 }

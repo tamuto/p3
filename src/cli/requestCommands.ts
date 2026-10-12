@@ -78,16 +78,15 @@ export async function requestCommand(
         const view = briefRequest(ctx, r, resolvedIssue(ctx.ws, r));
         return out.result(view, () => formatBriefRequest(view));
       }
-      const graph = ctx.index.neighborhood(rid);
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);
       const branches = requestWorkstreams(r);
       const multi = ctx.ws.project.repos.length > 0;
-      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), graph, file, ...(issue ? { issue } : {}) }, () => {
+      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), file, ...(issue ? { issue } : {}) }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
         return [
           issue ? `※ ${issue}\n` : "",
-          formatEntity(ctx, r, graph, file),
+          formatEntity(ctx, r, file),
           ...(Object.keys(branches).length
             ? ["", "ブランチ（作業先のリポジトリごと）:", ...Object.entries(branches).map(([name, w]) => `  ${name}  ${w.branch}`)]
             : []),

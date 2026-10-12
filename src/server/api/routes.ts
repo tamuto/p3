@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
+import { REQUEST_STATUSES, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
 import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
@@ -17,7 +17,7 @@ import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
-import { addRelation, archiveTask, createRequest, createTask, removeRelation, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { archiveTask, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 
 /**
@@ -31,14 +31,6 @@ import { StaleInputError } from "../../core/preflight/input.ts";
  */
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const relation = z.object({
-  type: z.enum(relationTypes as [string, ...string[]]),
-  /** "T003"（同じ要望）/ "<要望ID>/T003" / "<要望ID>" */
-  target: z.string().min(1),
-  note: z.string().optional(),
-  origin: z.enum(["human", "ai", "preflight"]).optional(),
-  confidence: z.number().min(0).max(1).optional(),
-});
 const taskInput = z.object({
   title: z.string().min(1),
   /** 作業先（参照先の名前）。null は作業先なし */
@@ -49,6 +41,8 @@ const taskInput = z.object({
   areas: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   body: z.string().optional(),
+  /** 変更の記録（Markdown。完了にするときに書く） */
+  record: z.string().nullable().optional(),
 });
 /** checked: 完了したタスクに人が「済み」を付ける / 外す */
 const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional() });
@@ -111,7 +105,7 @@ function download(c: Context, data: Buffer, format: AttachmentFormat, name: stri
 }
 
 export function apiRoutes(ctx: P3Context) {
-  const { ws, index, preflight } = ctx;
+  const { ws, preflight } = ctx;
   const app = new Hono();
 
   app.onError((err, c) => {
@@ -180,7 +174,6 @@ export function apiRoutes(ctx: P3Context) {
       request: ws.requests.get(id),
       tasks: ws.tasksOf(id).list(),
       runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
-      graph: index.neighborhood(id),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
       issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
       // 置き換えられたタスクの印（T001 → 置き換えた側）
@@ -209,7 +202,7 @@ export function apiRoutes(ctx: P3Context) {
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
-    return c.json({ task, graph: index.neighborhood(task.ref), superseded: supersededMarks(ws).get(task.ref) ?? [] });
+    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [] });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
     const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
@@ -222,20 +215,6 @@ export function apiRoutes(ctx: P3Context) {
     await archiveTask(ctx, rid(c), tid(c));
     return c.json({ ok: true });
   });
-
-  // 関係（多元的な関係を1本ずつ操作する）。要望にもタスクにも張れる
-  const refOf = (c: Context) => (c.req.param("tid") ? `${rid(c)}/${tid(c)}` : rid(c));
-  for (const path of ["/requests/:rid/relations", "/requests/:rid/tasks/:tid/relations"]) {
-    app.post(path, async (c) => {
-      const ref = refOf(c);
-      return c.json(await addRelation(ctx, ref, relation.parse(await c.req.json()) as Relation, actorOf(c)));
-    });
-    app.delete(path, async (c) => {
-      const ref = refOf(c);
-      const { type, target } = c.req.query();
-      return c.json(await removeRelation(ctx, ref, { type, target }, actorOf(c)));
-    });
-  }
 
   // --- preflight ----------------------------------------------------------
   app.post("/requests/:rid/preflight", async (c) => {
@@ -346,19 +325,12 @@ export function apiRoutes(ctx: P3Context) {
     return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c), { archive: body.archive }), 201);
   });
 
-  // --- intelligence ------------------------------------------------------
+  // --- 横断 --------------------------------------------------------------
   app.get("/tasks", (c) => {
     const { status, area, q } = c.req.query();
     return c.json(listTasks(ctx, { status: status?.split(","), area, q }));
   });
-  app.get("/graph", (c) => c.json({ edges: index.edges() }));
-  app.get("/related", (c) => {
-    const { q = "", areas = "", seeds = "", limit } = c.req.query();
-    return c.json(
-      index.related({ text: q, areas: areas ? areas.split(",") : [], seeds: seeds ? seeds.split(",") : [], limit: limit ? Number(limit) : 10 }),
-    );
-  });
-  /** 参照・タイトル・自然文から対象を特定する（?request= で今の要望を優先） */
+  /** 参照・タイトルから対象を特定する（?request= で今の要望を優先） */
   app.get("/resolve", (c) => c.json(resolve(ctx, c.req.query("q") ?? "", c.req.query("request"))));
 
   // --- events (SSE) ------------------------------------------------------

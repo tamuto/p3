@@ -40,17 +40,12 @@ export class MockEngine implements PreflightEngine {
   }
 
   async run(job: PreflightJob, log: Parameters<PreflightEngine["run"]>[1], signal: AbortSignal): Promise<EngineOutcome> {
-    const { request, context } = job;
+    const { request } = job;
     log({ kind: "info", text: "mock engine: Codex を使わずにヒューリスティックで評価します" });
     await this.sleep(400, signal);
     for (const r of job.refs) for (const m of r.map) log({ kind: "command", text: `$ ls ${r.name}:${m.path}` });
     log({ kind: "command", text: `$ rg -l "${request.title.slice(0, 20)}" .` });
     await this.sleep(400, signal);
-    for (const c of context.slice(0, 3)) {
-      const [rid, tid] = c.ref.split("/");
-      log({ kind: "command", text: `$ cat requests/${rid}/${tid ? `tasks/${tid}.md` : "request.md"}` });
-      await this.sleep(250, signal);
-    }
 
     const notes = job.carryover?.notes ?? [];
     const previous = job.carryover?.previous;
@@ -65,33 +60,22 @@ export class MockEngine implements PreflightEngine {
       description: `要望 ${request.id} より。\n\n## 完了条件\n- ${title} が動作すること\n- 既存機能に回帰がないこと`,
       areas,
       dependsOn: i === 0 ? [] : [`D${i}`],
-      relations: [],
+      supersedes: [],
       include: !rejected.has(title),
       // 作業先は作業先にできる参照先の先頭（Mock は読まないので推定しない。無ければ作業先なし）
       repo: writableRepos(job.project)[0] ?? null,
     }));
 
-    const impacts = context
-      .filter((c) => c.score >= 0.25)
-      .slice(0, 4)
-      .map((c) => ({
-        target: c.ref,
-        type: (c.reasons.some((r) => r.includes("領域")) ? "impacts" : "relates_to") as "impacts" | "relates_to",
-        reason: c.reasons.join(" / "),
-        confidence: Math.min(0.9, c.score),
-      }));
-
     const clarity = Math.min(100, 40 + (request.body.length + notes.reduce((n, x) => n + x.body.length, 0)) / 8);
     const carried = [previous && `前回 ${previous.id} を引き継ぎ`, notes.length && `メモ ${notes.length} 件を反映`].filter(Boolean).join("、");
     const assessment: PreflightAssessment = {
-      summary: `「${request.title}」を ${drafts.length} 件のタスクに分割しました。関連する既存項目が ${impacts.length} 件あります。${carried ? `${carried}しました。` : ""}（mock による推定）`,
+      summary: `「${request.title}」を ${drafts.length} 件のタスクに分割しました。${carried ? `${carried}しました。` : ""}（mock による推定）`,
       verdict: clarity < 55 && !notes.length ? "clarify" : "go",
       validity: { score: Math.round(clarity), reasons: ["mock: 本文の具体性から推定"] },
-      feasibility: { score: impacts.length > 2 ? 60 : 80, reasons: ["mock: 既存項目との重なりから推定"] },
-      risks: impacts.length ? [`${impacts.map((i) => i.target).join(", ")} と影響範囲が重なる`] : [],
+      feasibility: { score: 80, reasons: ["mock: 固定の値"] },
+      risks: [],
       questions: clarity < 55 && !notes.length ? ["完了条件をより具体的にしてください"] : [],
       areas,
-      impacts,
       // Mock は参照先を読まないので、根拠はすべて推測
       evidence: [{ claim: "mock: 要望の本文の箇条書きからタスク案を作った（コードは読んでいない）", kind: "assumed" }],
     };

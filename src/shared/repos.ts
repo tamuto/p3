@@ -105,4 +105,9 @@ export interface RefScope {
   status: "ok" | "unregistered" | "missing" | "notdir";
   /** 見られなかった理由（パスは含めない） */
   reason?: string;
+  /**
+   * git の履歴が Codex のコンテナから使えるか（読めた参照先だけ）。ok: 使える / shallow: 浅い clone で途中まで /
+   * unavailable: 使えない（git の作業ツリー・リポジトリの中のサブフォルダ・git でない）。無ければ以前の評価（記録なし）
+   */
+  history?: { status: "ok" | "shallow" | "unavailable"; reason?: string };
 }
