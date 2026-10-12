@@ -15,7 +15,7 @@ import {
   type checkPending,
   type PendingAttach,
 } from "../lib/uiMaterials.ts";
-import { Badge, Button, buttonCls, inputCls, Section } from "./ui.tsx";
+import { Badge, Button, buttonCls, FilePicker, inputCls, Section } from "./ui.tsx";
 
 /**
  * 要望の添付（次の Preflight に渡すもの）。画像・xlsx を足し・外し・原本を取る。
@@ -135,21 +135,21 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
           </p>
         ))}
         <div className="flex flex-wrap items-end gap-2">
-          <label className="flex min-w-0 flex-col gap-1 text-sm">
+          <div className="flex w-full min-w-0 flex-col gap-1 text-sm sm:w-auto">
             <span className="text-slate-500">ファイル</span>
-            <input
-              ref={fileInput}
-              type="file"
+            <FilePicker
+              inputRef={fileInput}
               accept={ATTACH_ACCEPT}
-              className="max-w-full text-sm"
+              aria-label="添付するファイルを選ぶ"
+              chosen={form.file?.name ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, file: e.target.files?.[0] ?? null, error: null }))}
             />
-          </label>
-          <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm sm:max-w-xs">
+          </div>
+          <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm sm:max-w-xs">
             <span className="text-slate-500">説明</span>
             <input className={inputCls} value={form.description} placeholder="例: 今の一覧画面" onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           </label>
-          <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm sm:max-w-xs">
+          <label className="flex min-w-40 flex-1 flex-col gap-1 text-sm sm:max-w-xs">
             <span className="text-slate-500">出典</span>
             <input className={inputCls} value={form.source} placeholder="例: 本番の画面" onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} />
           </label>
@@ -208,12 +208,11 @@ export function NewAttachments({
         </ul>
       )}
       {check.total && <p className="text-sm text-rose-600">{check.total}</p>}
-      <input
-        type="file"
+      <FilePicker
+        label={items.length ? "ファイルを追加" : "ファイルを選ぶ（複数可）"}
         multiple
         accept={ATTACH_ACCEPT}
         aria-label="添付するファイルを選ぶ"
-        className="max-w-full text-sm"
         onChange={(e) => {
           const picked = [...(e.target.files ?? [])].map((file) => ({ key: `f${++seq.current}`, file, description: "", source: "" }));
           onChange([...items, ...picked]);
