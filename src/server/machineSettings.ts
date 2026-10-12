@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import type { UserConfig } from "./userConfig.ts";
+import { loadUserSettings, userConfigPath, UserConfigError, type UserConfig } from "./userConfig.ts";
 
 /**
  * マシンごとの設定（Codex の認証・パスの対応・Preflight の既定エンジン・serve の待ち受け）。
@@ -78,6 +78,35 @@ type Env = Record<string, string | undefined>;
 
 /** どこから来た値か（エラーの案内に使う） */
 type Raw = { value: unknown; from: string } | { value: undefined; from: "default" };
+
+/**
+ * マシンごとの設定を、呼ぶたびに読み直す（serve を起動し直さずに、個人設定の変更を次の Preflight から効かせる）。
+ * 読めなければ SettingsError（直すファイルと項目を添える）。CLI の明示（--port / --host）は起動のときの値のまま渡す
+ */
+export interface SettingsSource {
+  get(): Promise<MachineSettings>;
+  /** 個人設定のファイル（案内に出す） */
+  path: string;
+}
+
+export function machineSettingsSource(opts: { path?: string; env?: Env; cli?: SettingsOverrides } = {}): SettingsSource {
+  const path = opts.path ?? userConfigPath();
+  return {
+    path,
+    async get() {
+      try {
+        return resolveMachineSettings(await loadUserSettings(path), opts.env ?? process.env, opts.cli ?? {});
+      } catch (e) {
+        if (e instanceof UserConfigError) throw new SettingsError(e.message);
+        if (e instanceof SettingsError && e.message.includes("個人設定")) throw new SettingsError(`${e.message}（${path}）`);
+        throw e;
+      }
+    },
+  };
+}
+
+/** 決まった設定（テストや、起動のときに一度だけ決めたいとき） */
+export const fixedSettings = (settings: MachineSettings, path = userConfigPath()): SettingsSource => ({ path, get: async () => settings });
 
 export function resolveMachineSettings(user: Pick<UserConfig, "settings">, env: Env = process.env, cli: SettingsOverrides = {}): MachineSettings {
   const pick = (key: Key, flag?: string): Raw => {

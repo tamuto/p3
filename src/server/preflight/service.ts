@@ -23,20 +23,60 @@ import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
 
+/** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
+const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
+  name,
+  status: async () => ({ name, ok: false, detail: message }),
+  run: async () => Promise.reject(new Error(message)),
+});
+
 export class PreflightService {
   private active = new Map<string, { run: PreflightRun; abort: AbortController; done: Promise<void> }>();
 
+  /** 最後に分かった既定のエンジン */
+  private lastDefault: PreflightEngine["name"];
+
+  /**
+   * defaultEngine: 決まった名前か、読むたびに今の既定を返す関数（serve: 個人設定の preflight.engine を Preflight を始めるたびに読む）
+   */
   constructor(
     private ws: Workspace,
     private index: ProjectIndex,
     private engines: Partial<Record<PreflightEngine["name"], PreflightEngine>>,
-    readonly defaultEngine: PreflightEngine["name"],
-  ) {}
+    defaultEngine: PreflightEngine["name"] | { load: () => Promise<PreflightEngine["name"]>; initial: PreflightEngine["name"] },
+  ) {
+    if (typeof defaultEngine === "string") {
+      this.lastDefault = defaultEngine;
+      this.loadDefault = async () => defaultEngine;
+    } else {
+      this.lastDefault = defaultEngine.initial;
+      this.loadDefault = defaultEngine.load;
+    }
+  }
 
-  /** 既定のエンジンが使えるか */
+  private loadDefault: () => Promise<PreflightEngine["name"]>;
+
+  /** 既定のエンジン（最後に読めた値。画面の表示用） */
+  get defaultEngine(): PreflightEngine["name"] {
+    return this.lastDefault;
+  }
+
+  /** 今の既定のエンジン。読めなければ SettingsError など */
+  private async currentDefault(): Promise<PreflightEngine["name"]> {
+    this.lastDefault = await this.loadDefault();
+    return this.lastDefault;
+  }
+
+  /** 既定のエンジンが使えるか（個人設定を読み直す。読めなければ直す場所を出す） */
   async engineStatus() {
-    const e = this.engines[this.defaultEngine];
-    return e ? e.status() : { name: this.defaultEngine, ok: false, detail: "エンジンがありません" };
+    let name: PreflightEngine["name"];
+    try {
+      name = await this.currentDefault();
+    } catch (e) {
+      return { name: this.lastDefault, ok: false, detail: `個人設定を読めないので Preflight を始められません: ${(e as Error).message}` };
+    }
+    const e = this.engines[name];
+    return e ? e.status() : { name, ok: false, detail: "エンジンがありません" };
   }
 
   availableEngines() {
@@ -70,8 +110,24 @@ export class PreflightService {
     if ([...this.active.values()].some((a) => a.run.requestId === requestId)) {
       throw new Error(`${requestId} の preflight は実行中です`);
     }
-    const engine = this.engines[opts.engine ?? this.defaultEngine];
+    // 既定のエンジンは始めるたびに個人設定から決める。読めなければ、この run を設定のエラーとして失敗にする
+    // （古い設定や Mock に落とさない。serve とほかの操作は続ける）
+    let engine: PreflightEngine | undefined;
+    if (opts.engine) engine = this.engines[opts.engine];
+    else {
+      try {
+        engine = this.engines[await this.currentDefault()];
+      } catch (e) {
+        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`;
+        engine = failing(this.lastDefault, message);
+      }
+    }
     if (!engine) throw new Error(`engine ${opts.engine} は利用できません`);
+    // 始めるときの設定に決める（この run の間は個人設定が変わっても使い続ける）
+    if (engine.snapshot) {
+      const from = engine;
+      engine = await from.snapshot!().catch((e: Error) => failing(from.name, e.message));
+    }
 
     const stamp = nowIso().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const id = `PF-${stamp}-${randomBytes(2).toString("hex")}`;

@@ -72,6 +72,10 @@ export function codexConfig({ codex }: MachineSettings): CodexWorkspaceConfig {
 
 type Log = Parameters<PreflightEngine["run"]>[1];
 
+/** 状態をためるときの鍵（設定が変われば確かめ直す） */
+const settingsKey = (c: CodexWorkspaceConfig) =>
+  JSON.stringify([c.authVolume, c.authFile, c.forceLegacy, c.model, c.effort, c.pathMap, c.ensureImage]);
+
 /** コンテナの中でデータディレクトリをマウントする場所 */
 export const CONTAINER_DATA = "/data";
 
@@ -110,20 +114,51 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   readonly name = "codex" as const;
 
   private readonly account: ChatGptAccount;
+  private readonly source: () => Promise<CodexWorkspaceConfig>;
+  /** 最後に読めた設定（auth() の既定に使う） */
+  private cfg: CodexWorkspaceConfig;
 
-  constructor(private cfg: CodexWorkspaceConfig) {
-    this.account = cfg.account ?? new ChatGptAccount();
+  /**
+   * cfg: 決まった設定か、読むたびに今の設定を返す関数（serve: 個人設定を Preflight を始めるたび・状態を見るたびに読み直す）。
+   * account（ChatGPT の接続）は関数が返す値ではなく、ここで渡したもの（無ければ既定）を共有する
+   */
+  constructor(cfg: CodexWorkspaceConfig | { load: () => Promise<CodexWorkspaceConfig>; account?: ChatGptAccount }) {
+    if ("load" in cfg) {
+      this.account = cfg.account ?? new ChatGptAccount();
+      this.source = cfg.load;
+      this.cfg = { pathMap: [], ensureImage: true };
+    } else {
+      this.account = cfg.account ?? new ChatGptAccount();
+      this.source = async () => cfg;
+      this.cfg = cfg;
+    }
   }
 
-  private checked?: { at: number; key: number; status: EngineStatus };
+  async snapshot(): Promise<PreflightEngine> {
+    let cfg: CodexWorkspaceConfig;
+    try {
+      cfg = await this.config();
+    } catch (e) {
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+    }
+    return new CodexWorkspaceEngine({ ...cfg, account: this.account });
+  }
+
+  /** 今の設定（読めなければ SettingsError など。その Preflight は始めない） */
+  private async config(): Promise<CodexWorkspaceConfig> {
+    this.cfg = await this.source();
+    return this.cfg;
+  }
+
+  private checked?: { at: number; key: string; status: EngineStatus };
 
   /**
    * 認証の選び方: 1. PCUBE_CODEX_AUTH=legacy と旧来の設定 → 旧来 / 2. ChatGPT に接続済み → ChatGPT /
    * 3. 旧来の設定だけ → 旧来（移行期間の互換）/ 4. どれも無い → 使えない（サインインを案内する）
    */
-  async auth(): Promise<CodexAuth> {
-    const legacy = !!(this.cfg.authVolume || this.cfg.authFile);
-    if (this.cfg.forceLegacy && legacy) return { mode: "legacy" };
+  async auth(cfg: CodexWorkspaceConfig = this.cfg): Promise<CodexAuth> {
+    const legacy = !!(cfg.authVolume || cfg.authFile);
+    if (cfg.forceLegacy && legacy) return { mode: "legacy" };
     const s = await this.account.status();
     if (s.connected) {
       if (!s.planAllowed) return { mode: "none", reason: "ChatGPT プランの利用が許可されていません。もう一度サインインして、プランの利用に同意してください" };
@@ -143,18 +178,26 @@ export class CodexWorkspaceEngine implements PreflightEngine {
    * イメージが無くても、初回の Preflight で作るので使える扱いにする。結果は1分ためる。
    */
   async status(): Promise<EngineStatus> {
-    // 接続のファイルが変われば（CLI でサインイン・解除した）すぐ確かめ直す
-    const key = await this.account.mtime();
+    let cfg: CodexWorkspaceConfig;
+    try {
+      cfg = await this.config();
+    } catch (e) {
+      // 個人設定が読めない: 直す場所を出す（ためない。直せば次の問い合わせで戻る）
+      this.checked = undefined;
+      return { name: "codex", ok: false, detail: `個人設定を読めないので Preflight を始められません: ${(e as Error).message}` };
+    }
+    // 接続のファイルが変われば（CLI でサインイン・解除した）・個人設定が変われば、すぐ確かめ直す
+    const key = `${await this.account.mtime()}:${settingsKey(cfg)}`;
     if (this.checked && this.checked.key === key && Date.now() - this.checked.at < 60_000) return this.checked.status;
-    const auth = await this.auth();
+    const auth = await this.auth(cfg);
     const ng = (detail: string): EngineStatus => ({ name: "codex", ok: false, detail, auth: auth.mode });
     let status: EngineStatus;
     try {
       if (auth.mode === "none") throw new Error(auth.reason);
       await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeout: 5000 });
-      if (this.cfg.authVolume) {
-        await run("docker", ["volume", "inspect", this.cfg.authVolume], { timeout: 5000 }).catch(() => {
-          throw new Error(`認証情報のボリューム ${this.cfg.authVolume} がありません`);
+      if (cfg.authVolume) {
+        await run("docker", ["volume", "inspect", cfg.authVolume], { timeout: 5000 }).catch(() => {
+          throw new Error(`認証情報のボリューム ${cfg.authVolume} がありません`);
         });
       }
       const image = await run("docker", ["image", "inspect", "--format", "{{.Created}}", DEFAULT_IMAGE], { timeout: 5000 })
@@ -163,13 +206,13 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       const by =
         auth.mode === "chatgpt"
           ? `ChatGPT プラン（${auth.email ?? "サインイン済み"}）`
-          : `旧来の認証 ${this.cfg.authVolume ? `ボリューム ${this.cfg.authVolume}` : this.cfg.authFile}`;
+          : `旧来の認証 ${cfg.authVolume ? `ボリューム ${cfg.authVolume}` : cfg.authFile}`;
       status = {
         name: "codex",
         ok: true,
         auth: auth.mode,
         account: auth.mode === "chatgpt" ? auth.email : undefined,
-        detail: `Codex（codex-workspace）で評価します · ${by} · ${image}${this.cfg.model ? ` · モデル ${this.cfg.model}` : ""}`,
+        detail: `Codex（codex-workspace）で評価します · ${by} · ${image}${cfg.model ? ` · モデル ${cfg.model}` : ""}`,
       };
     } catch (e) {
       const msg = (e as NodeJS.ErrnoException).code === "ENOENT" ? "docker コマンドがありません" : (e as Error).message.split("\n")[0];
@@ -184,7 +227,14 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   async run(job: PreflightJob, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
-    const auth = await this.auth();
+    // 始めるときの設定をこの run の間ずっと使う（途中で個人設定が変わっても、ほかの run には影響しない）
+    let cfg: CodexWorkspaceConfig;
+    try {
+      cfg = await this.config();
+    } catch (e) {
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+    }
+    const auth = await this.auth(cfg);
     if (auth.mode === "none") throw new Error(auth.reason);
     // ChatGPT プラン: 1ターン（最長 30 分）より長く使えるトークンにしてから始める（実行の途中では更新しない）
     let env: Record<string, string> | undefined;
@@ -202,7 +252,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     const raw = log;
     log = (e) => raw({ ...e, text: redact(e.text, [secret]) });
     try {
-      return await this.runWith(job, auth, env, log, signal);
+      return await this.runWith(cfg, job, auth, env, log, signal);
     } catch (e) {
       if (e instanceof Error) e.message = redact(e.message, [secret]);
       throw e;
@@ -210,6 +260,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   private async runWith(
+    cfg: CodexWorkspaceConfig,
     job: PreflightJob,
     auth: Exclude<CodexAuth, { mode: "none" }>,
     env: Record<string, string> | undefined,
@@ -217,13 +268,13 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     signal: AbortSignal,
   ): Promise<EngineOutcome> {
     const mappings: PathMapping[] = [
-      { label: "リポジトリ", local: job.repoRoot, ...mapPath(this.cfg.pathMap, job.repoRoot), container: CONTAINER_WORKSPACE },
-      { label: "データ", local: job.dataDir, ...mapPath(this.cfg.pathMap, job.dataDir), container: CONTAINER_DATA },
+      { label: "リポジトリ", local: job.repoRoot, ...mapPath(cfg.pathMap, job.repoRoot), container: CONTAINER_WORKSPACE },
+      { label: "データ", local: job.dataDir, ...mapPath(cfg.pathMap, job.dataDir), container: CONTAINER_DATA },
     ];
     const [workspace, data] = mappings.map((m) => m.host);
-    log({ kind: "info", text: `パスの対応（個人設定の codex.pathMap${this.cfg.configPath ? `、${this.cfg.configPath}` : ""}）:` });
-    for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, this.cfg.pathMap.length)}` });
-    if (this.cfg.ensureImage) {
+    log({ kind: "info", text: `パスの対応（個人設定の codex.pathMap${cfg.configPath ? `、${cfg.configPath}` : ""}）:` });
+    for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
+    if (cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
       try {
         log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
@@ -234,18 +285,18 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     }
 
     const command =
-      this.cfg.command?.(workspace, data, auth.mode) ??
+      cfg.command?.(workspace, data, auth.mode) ??
       withDataMount(
         dockerCommand(
           workspace,
-          auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: this.cfg.authVolume, authFile: this.cfg.authFile },
+          auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: cfg.authVolume, authFile: cfg.authFile },
         ),
         workspace,
         data,
       );
     // 中継ごしに起こして、すぐ終わったときの Docker の出力と終わり方を残す（launcher.mjs）
     const launch = await prepareLaunch(command);
-    const diag = { image: DEFAULT_IMAGE, mappings, rules: this.cfg.pathMap.length, configPath: this.cfg.configPath };
+    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length, configPath: cfg.configPath };
     /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
     const diagnosed = async (e: unknown, phase: "start" | "run") => {
       if (signal.aborted) return undefined;
@@ -259,7 +310,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       return new Error(d.message, { cause: e });
     };
     try {
-      return await this.session(launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+      return await this.session(cfg, launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
     } finally {
       await launch.cleanup();
     }
@@ -267,6 +318,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
 
   /** 起こして、スレッドを立てて、1回頼む。失敗は onError で診断をつけてから投げる */
   private async session(
+    cfg: CodexWorkspaceConfig,
     command: string[],
     job: PreflightJob,
     auth: Exclude<CodexAuth, { mode: "none" }>,
@@ -278,8 +330,8 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     let opened: WorkspaceSession;
     try {
       opened = await WorkspaceSession.open(command, {
-        model: this.cfg.model,
-        effort: this.cfg.effort,
+        model: cfg.model,
+        effort: cfg.effort,
         env,
         // ChatGPT プランでは、登録のときの agent_name_hint と同じ名前で名乗る
         clientInfo: { name: APP_NAME, title: "infodb p3", version: P3_VERSION },
