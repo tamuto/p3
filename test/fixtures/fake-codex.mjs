@@ -6,7 +6,8 @@
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
 //   FAKE_SUPERSEDE 置き換えられるタスクの参照（<要望ID>/T001）。評価の影響と D2 の関係に supersedes として書く
 //   FAKE_EVIDENCE  assessment.json の evidence（JSON の配列）
-//   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く）
+//   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く） /
+//                 ui（画面イメージの原稿と一覧を書く。画像は書かない） / nonui（画面を伴わないと書く）
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -51,8 +52,25 @@ function runTurn(id, text) {
     join(abs, "drafts", "D2.md"),
     `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\nrelations:\n  - { type: relates_to, target: ${target} }\n${supersede ? `  - { type: supersedes, target: ${supersede} }\n` : ""}---\n\n作る\n`,
   );
-  notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];
+  if (scenario === "ui" || scenario === "nonui") {
+    mkdirSync(join(abs, "ui", "src"), { recursive: true });
+    const index =
+      scenario === "nonui"
+        ? { needed: false, reason: "CLI だけの変更で画面は変わらない" }
+        : {
+            needed: true,
+            targets: ["D2"],
+            items: [
+              // rendered は P3 だけが書く（エンジンが書いても消される）
+              { id: "U1", html: "src/U1.html", title: "一覧の絞り込み", drafts: ["D2"], viewport: 1024, assumptions: ["仮のデータ"], rendered: { by: "p3" } },
+            ],
+          };
+    if (scenario === "ui") writeFileSync(join(abs, "ui", "src", "U1.html"), "<!doctype html><html lang=\"ja\"><body><h1>一覧</h1><button>絞り込む</button></body></html>");
+    writeFileSync(join(abs, "ui", "index.json"), JSON.stringify(index));
+    changes.push(`${runDir}/ui/index.json`, ...(scenario === "ui" ? [`${runDir}/ui/src/U1.html`] : []));
+  }
+  notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   if (scenario === "stray") changes.push("/workspace/main/src/main.ts");
   notify("item/completed", { item: { type: "fileChange", id: "p1", changes: changes.map((path) => ({ path, kind: "add" })) } });
   notify("item/completed", { item: { type: "agentMessage", id: "m1", text: "書きました" } });

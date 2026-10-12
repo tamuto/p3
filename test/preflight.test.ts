@@ -13,6 +13,9 @@ import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/server/pre
 import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
+import type { Renderer } from "../src/server/preflight/uiRender.ts";
+import { RenderError } from "../src/server/preflight/render.ts";
+import { wireframePng } from "../src/server/preflight/wireframe.ts";
 import { makeProject, MAIN_REF, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
@@ -125,8 +128,9 @@ describe("PreflightService（mock エンジン）", () => {
 });
 
 describe("CodexWorkspaceEngine（偽の app-server）", () => {
-  function engine(repo: string, data: string, logFile: string, scenario = "", target = "") {
+  function engine(repo: string, data: string, logFile: string, scenario = "", target = "", render?: Renderer) {
     return new CodexWorkspaceEngine({
+      render,
       authVolume: "vol", // 旧来の auth.json（ChatGPT には接続していない）
       account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [
@@ -144,7 +148,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
   }
 
   /** outside: データディレクトリをリポジトリの外に置く（project.yaml の repo は絶対パス） */
-  async function setup(scenario = "", { outside = false } = {}) {
+  async function setup(scenario = "", { outside = false, render }: { outside?: boolean; render?: Renderer } = {}) {
     const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }, { path: "README.md", role: "README" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
     const repo = await makeRepo(config);
     if (outside) {
@@ -158,11 +162,90 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const pre = await openTestProject(repo.dataDir, undefined, { repos: local });
     const past = await newRequest(pre, { title: "過去", status: "done" });
     const existing = await newTask(pre, past.id, { title: "既存", areas: ["src/a"] });
-    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) }, { repos: local });
+    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref, render) }, { repos: local });
     const req = await newRequest(ctx, { title: "x", status: "draft", areas: ["src/a"], body: "本文" });
     const sent = () => readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     return { ctx, req, existing, sent };
   }
+
+  /** 描画の代わり: 受け取った原稿を記録し、幅に合わせた PNG を書く */
+  function fakeRender(calls: { id: string; html: string; width: number }[] = []): Renderer {
+    return async (jobs, _work, outDir) => {
+      const { writeFile, mkdir } = await import("node:fs/promises");
+      await mkdir(outDir, { recursive: true });
+      calls.push(...jobs);
+      return Promise.all(
+        jobs.map(async (j) => {
+          await writeFile(join(outDir, `${j.id}.png`), wireframePng(j.width, 300, [[0, 0, 100, 20, 0x334155]]));
+          return { id: j.id, ok: true, file: join(outDir, `${j.id}.png`), blocked: [] };
+        }),
+      );
+    };
+  }
+
+  it("画面資料: 原稿の書き方を指示し、Codex の後に P3 が描画して取り込む（Codex は画像を見ていない）", async () => {
+    const calls: { id: string; html: string; width: number }[] = [];
+    const { ctx, req, sent } = await setup("ui", { render: fakeRender(calls) });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    const prompt = sent().find((m) => m.method === "turn/start").params.input[0].text as string;
+    expect(prompt).toContain(`/data/requests/${req.id}/preflight/${id}/ui/index.json`);
+    expect(prompt).toContain("画像を見たとも書かないでください");
+    expect(prompt).toContain("スクリプト・onclick などの属性・外のファイルや URL の参照");
+    expect(calls).toEqual([{ id: "U1", html: expect.stringContaining("絞り込む"), width: 1024 }]);
+    expect(run.ui).toMatchObject({ status: "ready", targets: ["D2"], items: [{ id: "U1", file: "U1.png", html: "src/U1.html", drafts: ["D2"], width: 1024, rendered: { by: "p3" } }] });
+    expect(run.assessment!.verdict).toBe("go");
+    // 原稿と画像を照合できる（同じ run の ui/）
+    const runDir = ctx.ws.preflight.runDir(req.id, id);
+    expect(readFileSync(join(runDir, "ui", "src", "U1.html"), "utf8")).toContain("絞り込む");
+    expect((await ctx.preflight.uiImage(req.id, id, "U1")).type).toBe("image/png");
+    // run の中だけを書いたので、想定外の変更の警告は出ない
+    expect(run.log.some((l) => l.text.startsWith("想定外の変更"))).toBe(false);
+  });
+
+  it("画面資料: 画面を伴わなければ不要の理由を残し、描画しない", async () => {
+    const calls: { id: string; html: string; width: number }[] = [];
+    const { ctx, req } = await setup("nonui", { render: fakeRender(calls) });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.ui).toMatchObject({ status: "not_needed", reason: "CLI だけの変更で画面は変わらない" });
+    expect(calls).toEqual([]);
+  });
+
+  it("画面資料: 描画に失敗しても評価は残し、足りないとして clarify にする", async () => {
+    const { ctx, req } = await setup("ui", {
+      render: async () => {
+        throw new RenderError("Docker デーモンにつながりません", "docker");
+      },
+    });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("completed");
+    expect(run.drafts).toHaveLength(2);
+    expect(run.assessment!.verdict).toBe("clarify");
+    expect(run.ui).toMatchObject({ status: "missing", needed: true, verdictAdjusted: { from: "go", to: "clarify" } });
+    expect(run.ui!.problems.join("\n")).toContain("U1: 画像がありません（描画できませんでした: Docker デーモンにつながりません）");
+  });
+
+  it("画面資料: 描画中に取り消しても評価は残し、画像は足りないとする", async () => {
+    let started!: () => void;
+    const rendering = new Promise<void>((r) => (started = r));
+    const { ctx, req } = await setup("ui", {
+      render: (_jobs, _w, _o, opts) =>
+        new Promise((_, reject) => {
+          started();
+          opts?.signal?.addEventListener("abort", () => reject(new RenderError("描画を取り消しました", "cancel")));
+        }),
+    });
+    const { id } = await ctx.preflight.start(req.id);
+    await rendering;
+    ctx.preflight.cancel(id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("completed");
+    expect(run.assessment).toBeDefined();
+    expect(run.ui?.status).toBe("missing");
+    expect(run.ui!.problems.join("\n")).toContain("描画を取り消しました");
+  });
 
   it("ドキュメントと評価の観点を指示に含め、Codex が書いたファイルを取り込んでタスク化できる", async () => {
     const { ctx, req, existing, sent } = await setup();

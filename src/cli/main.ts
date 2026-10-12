@@ -850,6 +850,7 @@ function uiLines(ui: PreflightRun["ui"], dir: string): string[] {
       ),
     );
     for (const m of ui.items.filter((x) => x.assumptions.length)) lines.push(`  ${m.id} の前提: ${m.assumptions.join(" / ")}`);
+    if (ui.items.some((m) => m.rendered)) lines.push("  P3 が原稿から描いた画像です（Codex は画像を見ていません。読めるかは画像で確かめてください）");
     lines.push(`  ファイル: ${dir}/`);
   }
   for (const p of ui.problems) lines.push(`  [取り込めない] ${p}`);

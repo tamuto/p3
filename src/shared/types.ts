@@ -268,6 +268,8 @@ export interface UiMaterial {
   assumptions: string[];
   /** 資料を作った run */
   run: string;
+  /** P3 が原稿から描いた（エンジンは画像を見ていない。利用者が確かめる）。clipped: 縦に長すぎて切った・blocked: 止めた読み込みの数 */
+  rendered?: { by: "p3"; clipped: boolean; blocked: number };
 }
 
 /**

@@ -231,12 +231,37 @@ describe("Preflight と画面資料", () => {
 
   it("以前の run（記録なし）はそのまま読め、画像は無い", async () => {
     const { ctx, req, run } = await setup(async () => {});
-    expect(run.ui).toMatchObject({ status: "missing" });
-    expect(run.ui!.needed).toBeUndefined();
+    // mock は画面を伴う要望に決まった例を書く
+    expect(run.ui).toMatchObject({ status: "ready", items: [{ id: "U1", kind: "proposal", html: "src/U1.html" }] });
     const file = join(ctx.ws.preflight.runDir(req.id, run.id), "run.json");
     const { ui, ...old } = JSON.parse(await readFile(file, "utf8"));
     await writeFile(file, JSON.stringify(old));
     expect((await ctx.preflight.get(req.id, run.id))!.ui).toBeUndefined();
     await expect(ctx.preflight.uiImage(req.id, run.id, "U1")).rejects.toThrow("not found");
+  });
+});
+
+describe("再評価と画面資料", () => {
+  it("前回の画面イメージを、前回の提案として固定した参照で渡す（今回の run には写さない）", async () => {
+    const { dataDir } = await makeRepo();
+    const ctx = await openTestProject(dataDir);
+    const req = await newRequest(ctx, { title: "一覧画面に絞り込みを足す", status: "draft", body: "- 絞り込み欄\n- 結果の表" });
+    const first = (await ctx.preflight.wait(req.id, (await ctx.preflight.start(req.id)).id))!;
+    expect(first.ui?.status).toBe("ready");
+    await ctx.preflight.addNote(req.id, "状態の絞り込みは複数選べるようにする");
+    const second = (await ctx.preflight.wait(req.id, (await ctx.preflight.start(req.id)).id))!;
+    const carry = await readFile(join(ctx.ws.preflight.runDir(req.id, second.id), "carryover.md"), "utf8");
+    expect(carry).toContain("## 前回の画面イメージ（前回の提案。今の画面の証拠ではありません");
+    expect(carry).toContain(`画像 requests/${req.id}/preflight/${first.id}/ui/U1.png / 原稿 requests/${req.id}/preflight/${first.id}/ui/src/U1.html`);
+    // 今回の資料は今回の run のもの
+    expect(second.ui!.items[0].run).toBe(second.id);
+  });
+
+  it("「P3 が描いた」はエンジンが書いても消す", async () => {
+    const { renderManuscripts } = await import("../src/server/preflight/uiRender.ts");
+    const runDir = await runDirWith({ needed: true, items: [item({ rendered: { by: "p3" } })] }, { "U1.png": png(), "src/U1.html": "<p>a</p>" });
+    await renderManuscripts(runDir, { log: () => {}, render: async () => [] });
+    const ui = await loadUiMaterials(runDir, "PF-1", ["D1"]);
+    expect(ui.items[0].rendered).toBeUndefined();
   });
 });

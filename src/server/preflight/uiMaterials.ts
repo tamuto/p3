@@ -28,14 +28,17 @@ export const UI_LIMITS = {
 } as const;
 
 export const UI_INDEX_SPEC = `{
-  "needed": true | false,          // 画面（UI）を伴う案があるか
-  "reason": "不要の理由（needed が false のとき必須）",
-  "targets": ["D1"],                // 画面イメージが要るタスク案（省くと items の drafts を合わせたもの）
+  "needed": true | false,
+  "reason": "不要の理由（needed が false のとき必須。例: CLI と API だけの変更で画面は変わらない）",
+  "targets": ["D1"],
   "items": [
-    { "id": "U1", "file": "U1.png", "html": "src/U1.html", "title": "何の画面か",
-      "drafts": ["D1", "D2"], "viewport": 1280, "assumptions": ["仮のデータで描いた"] }
+    { "id": "U1", "html": "src/U1.html", "title": "何の画面のどの状態か",
+      "drafts": ["D1", "D2"], "viewport": 1280, "assumptions": ["仮のデータで描いた", "省いたもの"] }
   ]
-}`;
+}
+needed: 画面（UI）を伴うタスク案があるか / targets: 画面イメージが要るタスク案の key（省くと items の drafts を合わせたもの）/
+items: 原稿1つにつき1件。id は U1, U2 ...、html は ui/ からの相対パス、drafts は対象のタスク案の key（1枚に複数をまとめてよい）、
+viewport は想定する画面の幅（px。320〜2560）。画像（file）は書かないでください（P3 が原稿から描いて書き足します）`;
 
 export class UiMaterialError extends Error {}
 
@@ -126,6 +129,7 @@ export async function readUiImage(uiDir: string, file: string): Promise<{ data: 
   return { data, info };
 }
 
+const isRendered = (v: unknown): v is { by: "p3"; clipped?: unknown; blocked?: unknown } => !!v && typeof v === "object" && (v as { by?: unknown }).by === "p3";
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()) : []);
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
@@ -200,6 +204,10 @@ export async function loadUiMaterials(runDir: string, runId: string, draftKeys: 
       problems.push(`${id}: 対象のタスク案（drafts）がありません`);
       continue;
     }
+    if (r.file === undefined) {
+      problems.push(`${id}: 画像がありません${typeof r.renderError === "string" ? `（描画できませんでした: ${r.renderError}）` : r.html === undefined ? "（原稿もありません）" : ""}`);
+      continue;
+    }
     let image: Awaited<ReturnType<typeof readUiImage>>;
     try {
       image = await readUiImage(uiDir, r.file as string);
@@ -236,6 +244,7 @@ export async function loadUiMaterials(runDir: string, runId: string, draftKeys: 
       ...(Number.isInteger(viewport) && viewport > 0 ? { viewport } : {}),
       assumptions: strs(r.assumptions),
       run: runId,
+      ...(isRendered(r.rendered) ? { rendered: { by: "p3" as const, clipped: !!r.rendered.clipped, blocked: Number(r.rendered.blocked) || 0 } } : {}),
     });
   }
 

@@ -16,6 +16,8 @@ import { APP_NAME } from "../chatgpt/oauth.ts";
 import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
+import { renderManuscripts, type Renderer } from "./uiRender.ts";
+import { UI_INDEX_SPEC } from "./uiMaterials.ts";
 import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
 import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
@@ -56,6 +58,8 @@ export interface CodexWorkspaceConfig {
   ensureImage: boolean;
   /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
   command?: (m: { repos: HostMount[]; data: string; auth: CodexAuth["mode"] }) => string[];
+  /** テスト用: 画面イメージの描画を差し替える（既定は描画のコンテナ） */
+  render?: Renderer;
 }
 
 /** マシンごとの設定（環境変数と個人設定。→ machineSettings.ts）から */
@@ -340,11 +344,16 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
       return new Error(d.message, { cause: e });
     };
+    let outcome: EngineOutcome;
     try {
-      return await this.session(cfg, launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+      outcome = await this.session(cfg, launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
     } finally {
       await launch.cleanup();
     }
+    // 画面イメージ: Codex が書いた原稿を、Codex の後に P3 が描画のコンテナで PNG にする（Codex のコンテナに Docker は渡さない）。
+    // 描けなくても評価は残す（取り込みで不足として扱う）
+    await renderManuscripts(job.runDir, { pathMap: cfg.pathMap, signal, log, render: cfg.render });
+    return outcome;
   }
 
   /** 起こして、スレッドを立てて、1回頼む。失敗は onError で診断をつけてから投げる */
@@ -508,6 +517,23 @@ ${refsSection(job)}
   }`;
 }
 
+/** 画面イメージの原稿の書き方 */
+function uiSection(paths: ContainerPaths) {
+  return `
+## 画面資料（画面イメージの原稿）
+- 原稿は ${paths.runDir}/ui/src/U1.html, U2.html ... に、1画面（または1つの状態）につき1ファイル。業務の画面のワイヤーフレームとして、
+  日本語のラベル・項目・配置・主な操作（ボタン・リンク）・前提（仮のデータなど）が読めるように書いてください。
+  見た目の作り込みより、何がどこにあるかが分かることを優先します。複数のタスク案を1画面にまとめてもよいが、drafts で対応を示してください。
+- 自己完結した HTML と <style> の CSS だけで書いてください。スクリプト・onclick などの属性・外のファイルや URL の参照（画像・CSS・フォント・
+  @import・相対パス）は使えません（P3 が断ります）。画像が要るなら data: の PNG / JPEG / SVG にしてください。フォントは指定しなくても日本語が出ます。
+- PNG は Codex の終了後に P3 が原稿から描いて ui/index.json に書き足します。あなたは PNG を作らず、画像を見たとも書かないでください。
+- 再評価で前回の画面イメージがあれば（引き継ぎに書いてあります）、それは前回の提案で、今の画面の証拠ではありません。
+  変えた案に合わせて、今回の run の ui/ に原稿を書き直してください（前回のファイルは書き換えない）。
+- 既存の画面を変える案でも、対象のアプリを起動したり、実装対象のリポジトリを変更したりしないでください。今の画面が分からなければ、
+  前提（assumptions）にそう書いてください。
+`;
+}
+
 function prompt(job: PreflightJob, paths: ContainerPaths) {
   const r = job.request;
   return `# Preflight: ${r.id} ${r.title}
@@ -529,12 +555,16 @@ ${contextList(job.context)}
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。
    verdict が no_go の場合はタスク案は不要です。
+5. 画面（UI）を伴うタスク案があれば、要望者と認識を合わせるための画面イメージの原稿を書く（下の「画面資料」）。
+   画面を伴わなければ、その理由を書く。
 
 ## 出力（ファイルとして書く）
 - ${paths.runDir}/assessment.json — 次の形の JSON:
 ${ASSESSMENT_SPEC}
 - ${paths.runDir}/drafts/D1.md, D2.md, ... — タスク案1件につき1ファイル:
 ${DRAFT_SPEC}
-
+- ${paths.runDir}/ui/index.json — 画面資料の一覧（画面を伴わなくても needed: false と理由を書く）:
+${UI_INDEX_SPEC}
+${uiSection(paths)}
 書き終えたら、最後に結論を2〜3文で返してください。`;
 }
