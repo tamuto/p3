@@ -19,12 +19,17 @@ function SettingsPage() {
   const ctx = useAppCtx();
   const [draft, setDraft] = useState<ProjectConfig>(ctx.info.project);
   const [dirty, setDirty] = useState(false);
+  /** 編集を始めたときの設定（編集中に外で変わったかを見る） */
+  const [base, setBase] = useState<ProjectConfig>(ctx.info.project);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // 外部（CLI・エディタ）で変わったら、編集中でなければ取り込む
+  // 外部（CLI・エディタ）で変わったら、編集中でなければ取り込む。編集中は入力を残して知らせる
   useEffect(() => {
-    if (!dirty) setDraft(ctx.info.project);
+    if (dirty) return;
+    setDraft(ctx.info.project);
+    setBase(ctx.info.project);
   }, [ctx.info.project, dirty]);
+  const changedElsewhere = dirty && JSON.stringify(ctx.info.project) !== JSON.stringify(base);
 
   const set = <K extends keyof ProjectConfig>(k: K, v: ProjectConfig[K]) => {
     setDraft({ ...draft, [k]: v });
@@ -136,7 +141,7 @@ function SettingsPage() {
       </Section>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-8 py-3">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-3 sm:px-8">
           <Button variant="primary" disabled={!dirty} onClick={save}>
             保存
           </Button>
@@ -144,7 +149,12 @@ function SettingsPage() {
             元に戻す
           </Button>
           {msg && <span className={cx(msg.ok ? "text-emerald-600" : "text-rose-600")}>{msg.text}</span>}
-          {dirty && !msg && <span className="text-slate-500">未保存の変更があります</span>}
+          {dirty && !msg && !changedElsewhere && <span className="text-slate-500">未保存の変更があります</span>}
+          {changedElsewhere && !msg && (
+            <span role="status" className="text-amber-700 dark:text-amber-300">
+              編集中に設定が他で変わりました。保存するとこの画面の内容で上書きします（最新を見るには「元に戻す」）
+            </span>
+          )}
         </div>
       </div>
     </div>
