@@ -69,8 +69,15 @@ export const ASSESSMENT_SPEC = `{
   "impacts": [
     { "target": "別の要望なら <要望ID>、そのタスクなら <要望ID>/T003", "type": "depends_on|impacts|relates_to|duplicates|supersedes",
       "reason": "なぜ関係するか", "confidence": 0.0-1.0 }
+  ],
+  "evidence": [
+    { "claim": "支える判断（例: 実現可能性: 既存の X で足りる / D2 の範囲）", "kind": "verified" | "assumed",
+      "repo": "参照先の名前（verified のとき）", "file": "参照先の中の相対パス", "location": "行・関数名など" }
   ]
-}`;
+}
+
+evidence には、判断に使ったファイル・箇所を書いてください。実際に読んで確かめたものは verified（repo・file を必ず書く）、
+読まずに推測した判断も消さずに assumed として書いてください（推測で書いた部分が分かるように）。`;
 
 export const DRAFT_SPEC = `---
 key: D2                # D1, D2 ... の連番
@@ -82,4 +89,8 @@ relations:             # 既存タスク/要望との関係（無ければ省略
 include: true
 ---
 
-作業内容・完了条件を Markdown で。`;
+作業内容・完了条件を Markdown で。最後に次の2つの見出しを付けてください:
+## 判断の根拠
+- この作業範囲にした根拠（<参照先>:<ファイル> の箇所。確かめていなければ「推測」と書く）
+## 未確認
+- 確かめられなかったこと（無ければ「なし」）`;

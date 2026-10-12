@@ -190,6 +190,26 @@ export interface PreflightAssessment {
   areas: string[];
   /** 既存の要望/タスクへの影響（target は "<要望ID>" か "<要望ID>/T003"） */
   impacts: { target: string; type: RelationType; reason: string; confidence: number }[];
+  /** 判断の根拠（調べた箇所と、推測の明示）。無ければ記録なし（以前の結果） */
+  evidence?: Evidence[];
+}
+
+/**
+ * 判断の根拠1つ。verified: 参照先のファイルを読んで確かめた / assumed: 確かめていない推測（消さずに推測と明示する）。
+ * P3 は、見ていない参照先・参照先の外・無いファイルを指す verified を assumed に直し、note に理由を書く
+ */
+export interface Evidence {
+  /** 支える判断（例: 「実現可能性: 既存の X で足りる」「D2 の範囲」） */
+  claim: string;
+  kind: "verified" | "assumed";
+  /** 参照先の名前 */
+  repo?: string;
+  /** 参照先の中の相対パス */
+  file?: string;
+  /** 行・関数名など */
+  location?: string;
+  /** P3 が付けた注記（確かめた根拠として扱えなかった理由） */
+  note?: string;
 }
 
 export interface RelatedItem {

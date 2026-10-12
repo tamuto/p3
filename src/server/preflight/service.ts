@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
@@ -12,6 +13,7 @@ import {
   type RelationType,
   type MaterializeResult,
   type Task,
+  type Evidence,
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
@@ -241,7 +243,7 @@ export class PreflightService {
         this.log(run, { kind: "error", text: `想定外の変更: ${shown}（確認して必要なら元に戻してください）` });
       }
 
-      run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"));
+      run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
       run.status = "completed";
     } catch (e) {
@@ -424,7 +426,36 @@ function clampScore(v: unknown) {
 const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
 
 /** LLM の出力は形が揺れるので、厳密に弾かず正規化する */
-export function parseAssessment(text: string): PreflightAssessment {
+/**
+ * evidence を取り込む。verified は、読めた参照先・その中の相対パス・あるファイルを指すときだけ認める
+ * （refs を渡したとき。ほかは assumed に直して理由を note に書く）。項目は消さない
+ */
+export function parseEvidence(v: unknown, refs?: readonly ResolvedRef[]): Evidence[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const text = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined);
+  return v
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((e) => {
+      const ev: Evidence = { claim: text(e.claim) ?? "（判断の説明がありません）", kind: e.kind === "verified" ? "verified" : "assumed" };
+      for (const k of ["repo", "file", "location"] as const) if (text(e[k])) ev[k] = text(e[k]);
+      if (ev.kind !== "verified" || !refs) return ev;
+      const problem = verifiedProblem(ev, refs);
+      return problem ? { ...ev, kind: "assumed" as const, note: problem } : ev;
+    });
+}
+
+function verifiedProblem(ev: Evidence, refs: readonly ResolvedRef[]): string | undefined {
+  if (!ev.repo || !ev.file) return "参照先とファイルが書かれていないので、確かめた根拠として扱いません";
+  const ref = refs.find((r) => r.name === ev.repo);
+  if (!ref) return `参照先「${ev.repo}」は登録されていません`;
+  if (ref.status !== "ok" || !ref.local) return `参照先 ${ev.repo} はこの評価で見ていません`;
+  const file = ev.file.replace(/^(\.\/)+/, "");
+  if (file.startsWith("/") || file.split("/").includes("..")) return "参照先の中の相対パスではありません";
+  if (!existsSync(join(ref.local, file))) return `${ev.repo}:${file} がありません`;
+  return undefined;
+}
+
+export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): PreflightAssessment {
   let a: Record<string, any>;
   try {
     a = JSON.parse(text);
@@ -448,5 +479,6 @@ export function parseAssessment(text: string): PreflightAssessment {
         reason: String(i.reason ?? ""),
         confidence: Math.max(0, Math.min(1, Number(i.confidence ?? 0.5))),
       })),
+    ...(Array.isArray(a.evidence) ? { evidence: parseEvidence(a.evidence, refs) } : {}),
   };
 }

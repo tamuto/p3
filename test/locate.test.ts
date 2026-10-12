@@ -10,7 +10,7 @@ const user = (projects: Record<string, { dir: string; repos?: Record<string, str
 
 describe("resolveProject（操作するプロジェクトを決める）", () => {
   it("--dir はデータのフォルダを直接指す。登録済みなら名前とリポジトリも付く", () => {
-    expect(resolveProject({ cwd: "/somewhere", dir: "../data", user: user() })).toEqual({ dataDir: "/data", via: "dir" });
+    expect(resolveProject({ cwd: "/somewhere", dir: "../data", user: user() })).toEqual({ dataDir: "/data", repos: {}, via: "dir" });
     const u = user({ p: { dir: "/data", repos: { main: "/repo" } } });
     expect(resolveProject({ cwd: "/", dir: "/data", user: u })).toMatchObject({ name: "p", repoRoot: "/repo" });
   });
@@ -57,7 +57,7 @@ describe("findDataDir（リポジトリの中の .pcube/。以前の置き方）
     const wt = join(root, ".worktrees", "REQ-0001");
     git(root, "worktree", "add", "-q", wt, "-b", "req/REQ-0001");
     expect(findDataDir(wt)).toBe(dataDir);
-    expect(resolveProject({ cwd: wt, user: user() })).toEqual({ dataDir, via: "legacy" });
+    expect(resolveProject({ cwd: wt, user: user() })).toEqual({ dataDir, repos: {}, via: "legacy" });
   });
 
   it("git 管理外なら上へ辿って探し、無ければ undefined", async () => {
