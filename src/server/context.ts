@@ -28,12 +28,12 @@ export interface PcubeContext {
  */
 export async function openProject(
   dataDir: string,
-  opts: { repoRoot?: string; settings?: MachineSettings | SettingsSource } = {},
+  opts: { repoRoot?: string; repos?: Record<string, string>; settings?: MachineSettings | SettingsSource } = {},
 ): Promise<PcubeContext> {
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
   const initial = await source.get().catch(() => undefined);
-  const ws = new Workspace(dataDir, opts.repoRoot);
+  const ws = new Workspace(dataDir, opts.repoRoot, opts.repos);
   await ws.load();
   const index = new ProjectIndex(ws);
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。

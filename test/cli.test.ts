@@ -678,3 +678,59 @@ describe("成果物（URL・文章・パス）", () => {
     expect(pcube(root, ["show", made.id, "--req", rid, "--json"]).json().item.outputs).toEqual(["a", "b"]);
   });
 });
+
+describe("p3 repo（Preflight が読む参照先）", () => {
+  it("3つ以上（git でないフォルダ・リポジトリの中のサブフォルダを含む）を足し・変え・消す。共有の定義とこのマシンのパスを分ける", async () => {
+    const { root } = await initialized();
+    // 今までの1リポジトリ: main がこのリポジトリ
+    const before = pcube(root, ["repo", "ls", "--json"]).json();
+    expect(before.map((r: any) => [r.name, r.status, r.local, r.legacy])).toEqual([["main", "ok", root, true]]);
+
+    const docsRepo = tempDir("allescdoc-");
+    gitInit(docsRepo);
+    await mkdir(join(docsRepo, "standard_guide"));
+    const infra = tempDir("allescinfra-"); // git でないフォルダ
+    expect(pcube(root, ["repo", "add", "allesc", root, "role=システム本体", "readFirst=true", "writable=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "docs", join(docsRepo, "standard_guide"), "role=ドキュメント", "mapFile=MAP.md"]).code).toBe(0);
+    const added = pcube(root, ["repo", "add", "infra", infra, "role=基盤"]);
+    expect(added.code, added.err).toBe(0);
+    const ls = pcube(root, ["repo", "ls", "--json"]).json();
+    expect(ls.map((r: any) => [r.name, r.role, r.readFirst, r.writable, r.status, r.mount])).toEqual([
+      ["allesc", "システム本体", true, true, "ok", "allesc"],
+      ["docs", "ドキュメント", false, false, "ok", "docs"],
+      ["infra", "基盤", false, false, "ok", "infra"],
+    ]);
+    // 共有の定義は project.yaml、このマシンのパスは個人設定（パスを共有のファイルに書かない）
+    const yaml = readFileSync(join(root, ".pcube", "project.yaml"), "utf8");
+    expect(yaml).toContain("allesc:");
+    expect(yaml).not.toContain(infra);
+    const config = readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8");
+    expect(config).toContain(infra);
+
+    // 変える・同じ名前を足せない・使えない名前・フォルダでないもの
+    expect(pcube(root, ["repo", "set", "infra", "role=基盤（Terraform）", "readFirst=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "ls", "--json"]).json().find((r: any) => r.name === "infra")).toMatchObject({ role: "基盤（Terraform）", readFirst: true });
+    expect(pcube(root, ["repo", "add", "infra", infra]).err).toContain("既にあります");
+    expect(pcube(root, ["repo", "add", "a:b", infra]).err).toContain("使えません");
+    expect(pcube(root, ["repo", "add", "x", join(root, "README.md")]).err).toContain("フォルダではありません");
+    expect(pcube(root, ["repo", "set", "infra", "readFirst=maybe"]).err).toContain("true か false");
+
+    // ほかの人: 共有の定義はあるが、このマシンのパスが無い → 未登録として案内
+    const otherHome = tempDir("p3-config-other-");
+    expect(pcube(root, ["project", "add", "other", join(root, ".pcube"), "--repo", root], {}, otherHome).code).toBe(0);
+    const theirs = pcube(root, ["--project", "other", "repo", "ls"], {}, otherHome);
+    expect(theirs.out).toContain("未登録 → p3 repo path docs <このマシンのパス>");
+    expect(pcube(root, ["--project", "other", "repo", "path", "docs", join(docsRepo, "standard_guide")], {}, otherHome).code).toBe(0);
+    expect(pcube(root, ["--project", "other", "repo", "ls", "--json"], {}, otherHome).json().find((r: any) => r.name === "docs").status).toBe("ok");
+
+    // このマシンのパスだけ外す（共有は残る）・共有ごと消す
+    pcube(root, ["user-config", "set", "ui.theme=dark"]);
+    expect(pcube(root, ["repo", "rm", "infra", "--local"]).code).toBe(0);
+    expect(pcube(root, ["repo", "ls", "--json"]).json().find((r: any) => r.name === "infra").status).toBe("unregistered");
+    expect(pcube(root, ["repo", "rm", "docs"]).code).toBe(0);
+    expect(pcube(root, ["repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["allesc", "infra"]);
+    expect(readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8")).toContain("theme: dark"); // ほかの個人設定は残る
+    // --dir で指しても読める（登録していないフォルダではパスの登録は案内）
+    expect(pcube(root, ["--dir", join(root, ".pcube"), "repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["allesc", "infra"]);
+  });
+});

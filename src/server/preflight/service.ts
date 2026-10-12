@@ -22,6 +22,7 @@ import { supersedeCandidates } from "../supersede.ts";
 import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
+import { refScope, type ResolvedRef } from "../repoRefs.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -142,6 +143,8 @@ export class PreflightService {
     // 前回の結果とその後のメモ。開始の時点で選んで固定する（実行中に足されたメモは次回に回る）
     const carry = await selectCarryover(this.ws, requestId);
     const carryover = renderCarryover(carry);
+    // 読む参照先は始めるときに決める（読めないものは理由を記録に残す。このマシンのパスは残さない）
+    const refs = this.ws.refs();
     const run: PreflightRun = {
       id,
       requestId,
@@ -154,6 +157,7 @@ export class PreflightService {
       context,
       log: [],
       drafts: [],
+      scope: refs.map(refScope),
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
     await this.ws.preflight.save(run);
@@ -163,6 +167,10 @@ export class PreflightService {
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
     for (const n of carry.invalidNotes) this.log(run, { kind: "error", text: `読めないメモを除きました: ${n.file}（${n.error}）` });
+    for (const s of run.scope ?? []) if (s.status !== "ok") this.log(run, { kind: "info", text: `見ていない参照先: ${s.name}（${s.reason}）` });
+    if (refs.length && !refs.some((r) => r.status === "ok")) {
+      this.log(run, { kind: "info", text: "読める参照先がありません。要望と P3 のデータだけで評価します（コードは確かめられません）" });
+    }
     // 要望のスナップショットと文脈をファイルとして残す（後から「何を根拠に判断したか」を辿れる）
     await writeFileAtomic(join(runDir, "request.md"), `# ${request.id} ${request.title}\n\n${request.body}`);
     await writeFileAtomic(
@@ -177,7 +185,7 @@ export class PreflightService {
 
     const abort = new AbortController();
     const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
-    const done = this.execute(engine, run, runDir, carried, abort.signal, after);
+    const done = this.execute(engine, run, runDir, carried, abort.signal, after, refs);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -206,6 +214,7 @@ export class PreflightService {
     carryover: PreflightJob["carryover"],
     signal: AbortSignal,
     after: (ok: boolean) => Request["status"],
+    refs: ResolvedRef[],
   ) {
     const repoRoot = this.ws.repoRoot;
     try {
@@ -216,6 +225,7 @@ export class PreflightService {
           request: this.ws.requests.require(run.requestId),
           context: run.context,
           repoRoot,
+          refs,
           dataDir: this.ws.dataDir,
           runDir,
           carryover,

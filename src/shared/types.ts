@@ -1,4 +1,4 @@
-import type { RepoRef } from "./repos.ts";
+import type { RefScope, RepoRef } from "./repos.ts";
 /**
  * pcube のドメイン型。サーバ・CLI・Web で共有する。
  *
@@ -231,6 +231,11 @@ export interface PreflightRun {
   previous?: string;
   /** 渡したメモの ID。内容は run ディレクトリの carryover.md に固定して残す */
   notes?: string[];
+  /**
+   * 調べた範囲: 参照先ごとに読めたか（始めるときに P3 が決める。モデルの申告では変えない）。このマシンのパスは入れない。
+   * 無ければ以前の run（記録なし）
+   */
+  scope?: RefScope[];
 }
 
 /** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */

@@ -10,8 +10,10 @@ export interface ResolvedProject {
   /** 個人設定に登録したプロジェクト名（登録していないフォルダを --dir で指したときは無い） */
   name?: string;
   dataDir: string;
-  /** 手元のリポジトリ（個人設定の repos）。無ければ project.yaml の repo */
+  /** 手元のリポジトリ（個人設定の repos.main か最初の項目。タスクの作業ツリーの元）。無ければ project.yaml の repo */
   repoRoot?: string;
+  /** 個人設定の参照先の名前 → このマシンのパス（Preflight が読む。全部） */
+  repos: Record<string, string>;
   /** どうやって決まったか */
   via: "dir" | "project" | "cwd" | "legacy" | "only";
 }
@@ -34,13 +36,14 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
     name,
     dataDir: p.dir,
     repoRoot: p.repos.main ?? Object.values(p.repos)[0],
+    repos: { ...p.repos },
     via,
   });
 
   if (o.dir) {
     const dataDir = resolve(o.cwd, o.dir);
     const hit = entries.find(([, p]) => p.dir === dataDir);
-    return hit ? named(hit, "dir") : { dataDir, via: "dir" };
+    return hit ? named(hit, "dir") : { dataDir, repos: {}, via: "dir" };
   }
   if (o.project) {
     const hit = entries.find(([name]) => name === o.project);
@@ -60,7 +63,7 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
   const legacy = findDataDir(o.cwd);
   if (legacy) {
     const hit = entries.find(([, p]) => p.dir === legacy);
-    return hit ? named(hit, "legacy") : { dataDir: legacy, via: "legacy" };
+    return hit ? named(hit, "legacy") : { dataDir: legacy, repos: {}, via: "legacy" };
   }
   if (entries.length === 1) return named(entries[0], "only");
 

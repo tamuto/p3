@@ -1,11 +1,14 @@
+import type { ResolvedRef } from "../repoRefs.ts";
 import type { PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
   request: Request;
   context: RelatedItem[];
-  /** 管理対象リポジトリのルート（ローカルパス） */
+  /** 管理対象リポジトリのルート（ローカルパス）。タスクの作業ツリーの元 */
   repoRoot: string;
+  /** Preflight が読む参照先（始めるときに解決したもの。読めないものも status つきで入る。0件でもよい） */
+  refs: ResolvedRef[];
   /** データディレクトリ（ローカル絶対パス）。リポジトリの外にあってもよい */
   dataDir: string;
   /** run ディレクトリ（ローカル絶対パス。データディレクトリの中） */

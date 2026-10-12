@@ -104,3 +104,16 @@ export function parseRepoPath(raw: string, known: readonly string[], defaultRepo
 
 /** 書き戻すときの形（既定の参照先なら名前を付けない） */
 export const formatRepoPath = (p: RepoPath, defaultRepo: string | undefined) => (p.repo === defaultRepo && !p.qualified ? p.path : `${p.repo}:${p.path}`);
+
+/** Preflight の記録（run.json）に残す参照先。このマシンのパスは入れない（共有するので） */
+export interface RefScope {
+  name: string;
+  /** コンテナの中の名前（/workspace/<mount>） */
+  mount: string;
+  role: string;
+  readFirst: boolean;
+  /** ok: 読めた / unregistered: このマシンのパスが無い / missing: パスが無い / notdir: フォルダでない */
+  status: "ok" | "unregistered" | "missing" | "notdir";
+  /** 見られなかった理由（パスは含めない） */
+  reason?: string;
+}
