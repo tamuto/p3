@@ -228,7 +228,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 ))}
               </select>
             </Field>
-            <dl className="grid grid-cols-3 gap-2 pb-1.5 text-sm" title="ステータスを変えたときに pcube が記録する日時">
+            <dl className="grid grid-cols-3 gap-2 pb-1.5 text-sm" title="ステータスを変えたときに p3 が記録する日時">
               <div>
                 <dt className="text-slate-500">作成</dt>
                 <dd>{fmtTime(task.createdAt)}</dd>
@@ -319,12 +319,12 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               </select>
               <input
                 className={`${inputCls} font-mono`}
-                list="pcube-rel-targets"
+                list="p3-rel-targets"
                 placeholder="T004 / <要望ID> / <要望ID>/T004"
                 value={relTarget}
                 onChange={(e) => setRelTarget(e.target.value)}
               />
-              <datalist id="pcube-rel-targets">
+              <datalist id="p3-rel-targets">
                 {data.tasks
                   .filter((t) => t.ref !== id)
                   .map((t) => (

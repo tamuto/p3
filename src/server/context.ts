@@ -8,10 +8,10 @@ import { MockEngine } from "./preflight/mockEngine.ts";
 import { PreflightService } from "./preflight/service.ts";
 import { Workspace } from "./store/workspace.ts";
 
-/** pcube 本体（パッケージ）のルート */
-export const PCUBE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+/** p3 本体（パッケージ）のルート */
+export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-export interface PcubeContext {
+export interface P3Context {
   ws: Workspace;
   index: ProjectIndex;
   preflight: PreflightService;
@@ -31,7 +31,7 @@ export interface PcubeContext {
 export async function openProject(
   dataDir: string,
   opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string } = {},
-): Promise<PcubeContext> {
+): Promise<P3Context> {
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
   const initial = await source.get().catch(() => undefined);
@@ -39,7 +39,7 @@ export async function openProject(
   await ws.load();
   const index = new ProjectIndex(ws);
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
-  // Mock は preflight.engine: mock（PCUBE_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
+  // Mock は preflight.engine: mock（P3_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
   const chatgpt = new ChatGptAccount();
   const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = {
     codex: new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt }),

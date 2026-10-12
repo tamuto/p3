@@ -5,11 +5,11 @@ import { RELATION_TYPES } from "../../shared/types.ts";
  * この REST API はローカルの画面のためのもので、AI エージェントには CLI を使わせる。
  */
 export const AI_MANIFEST = {
-  name: "pcube",
+  name: "p3",
   description:
     "1リポジトリ=1プロジェクトのファイルベースのタスク管理。作業の単位は要望で、要望ごとにフォルダを分ける" +
-    "（.pcube/requests/<要望ID>/request.md, tasks/T001.md, preflight/）。" +
-    "AI エージェントは `pcube` CLI（`pcube help`、`--json` 出力）を使うこと。要望の作業ツリーの中で実行すると、その要望が対象になる。",
+    "（.p3/requests/<要望ID>/request.md, tasks/T001.md, preflight/）。" +
+    "AI エージェントは `p3` CLI（`p3 help`、`--json` 出力）を使うこと。要望の作業ツリーの中で実行すると、その要望が対象になる。",
   refs: {
     request: "<要望ID>（例: 261009-k7m3x）",
     task: "<要望ID>/T003。同じ要望の中なら T003",

@@ -1,7 +1,6 @@
 # infodb p3（P³）
 
 > 正式名称は **infodb p3**。`pnpx @infodb/p3` で CLI を起動する。
-> 旧名 `pcube` の名残として、`pcube` コマンド（`p3` と同じ）・`.pcube/`・環境変数の `PCUBE_*` を使っている。
 
 ファイルベースのプロジェクト管理ツール。作業の単位は **要望** で、要望ごとにフォルダを作り、
 そこから生まれたタスクや評価の記録をすべてその下に置く。
@@ -16,12 +15,12 @@
   タスクボードは V 字（上段に未着手と完了、下段に作業中）。完了を人が確認して「済み」にするとボードから消え、対応済みの一覧に移る。
   ボードに残るのは要対応のものだけになる
 - 進捗は、左に要望・右にスケジュールで横断して見る。タスクボードは要望の中で見る
-- タスクは予定の日付や見積りを持たない。ステータスを変えた日時（作業中にした・完了にした）を pcube が記録し、
+- タスクは予定の日付や見積りを持たない。ステータスを変えた日時（作業中にした・完了にした）を p3 が記録し、
   完了したものは人が確認して「済み」にする
 - タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）。要望をまたぐ影響も辿れる
 - DB なし。1タスク = 1 Markdown ファイル。人・AI・Codex が直接編集しても整合する
-- 人も AI も同じ **CLI**（`pcube`）で操作する。ファイルを直接読み書きするので認証が要らない
-- ブラウザはローカルのビューア兼エディタ（`pcube serve`）。データはすべてローカルで完結する
+- 人も AI も同じ **CLI**（`p3`）で操作する。ファイルを直接読み書きするので認証が要らない
+- ブラウザはローカルのビューア兼エディタ（`p3 serve`）。データはすべてローカルで完結する
 
 > 現在はプロトタイプ。設計の方針は [docs/architecture.md](docs/architecture.md) を参照。
 
@@ -72,7 +71,7 @@ P3 をコンテナの中で動かし、Docker はホストのデーモンを使�
 ```bash
 pnpm install
 pnpm build                   # 画面（p3 serve で配信する dist/web）
-pnpm link --global           # `pcube` / `p3` コマンドをこのチェックアウトで使う（任意）
+pnpm link --global           # `p3` コマンドをこのチェックアウトで使う（任意）
 ```
 
 グローバルに入れずに、p3 の場所を指定して pnpm で直接動かしてもよい。管理したいリポジトリ（やその作業ツリー）の中で:
@@ -176,19 +175,19 @@ CLI やほかの serve でテーマを変えたときは、開いている画面
 ### 要望からタスクまで
 
 ```bash
-pcube milestone add v0.2 --title "通知まわり" --due 2026-11-30   # まとめてリリースする単位（任意）
-pcube request new "通知機能を追加したい" --area src/notify --milestone v0.2 --due 2026-11-15 --tag jira:PROJ-123 \
+p3 milestone add v0.2 --title "通知まわり" --due 2026-11-30   # まとめてリリースする単位（任意）
+p3 request new "通知機能を追加したい" --area src/notify --milestone v0.2 --due 2026-11-15 --tag jira:PROJ-123 \
   --body "- メール送信基盤
 - 通知設定画面"                        # → 261009-k7m3x（作成日-乱数。ID の一部 k7m3x でも指せる）
-pcube preflight k7m3x                  # Codex で評価・細分化（完了まで待つ）
-pcube drafts k7m3x                     # 評価とタスク案（D1, D2 ...）を見る。ファイルを直接直してもよい
-pcube preflight k7m3x --note "対象は CLI だけ。Web は不要"   # 確認事項に答えて再評価（前回の結果とメモを引き継ぐ）
-pcube preflight k7m3x --note - --note-only < answer.md     # メモを書き足すだけ（次の Preflight に渡す）
-pcube notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
+p3 preflight k7m3x                  # Codex で評価・細分化（完了まで待つ）
+p3 drafts k7m3x                     # 評価とタスク案（D1, D2 ...）を見る。ファイルを直接直してもよい
+p3 preflight k7m3x --note "対象は CLI だけ。Web は不要"   # 確認事項に答えて再評価（前回の結果とメモを引き継ぐ）
+p3 preflight k7m3x --note - --note-only < answer.md     # メモを書き足すだけ（次の Preflight に渡す）
+p3 notes k7m3x                      # メモの一覧と、次の Preflight に渡すもの
                                        # 画面では評価の下のメモ欄から書いて「保存して再実行」できる（初回の実行の後から）
-pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
+p3 accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
                                        # 再評価で古いタスクが置き換えられるなら表示して残す（--archive-superseded でアーカイブ）
-pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
+p3 serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
 
 タスク化すると要望は「進行中」になり、作業先のリポジトリごとにブランチ名（`req/261009-k7m3x-...`）が割り当てられる
@@ -198,33 +197,33 @@ pcube serve                            # http://localhost:4310 で進捗・タ�
 
 ```bash
 git switch -c req/261009-k7m3x       # 作業ツリー（git worktree）でもよい
-export PCUBE_ACTOR=ai:claude
-pcube move T001 doing
-pcube new "作業中に見つかった追加の作業" --body "..."        # → T004（要望の中の続きの番号）
-pcube move T001 done --output https://github.com/me/myapp/pull/42
+export P3_ACTOR=ai:claude
+p3 move T001 doing
+p3 new "作業中に見つかった追加の作業" --body "..."        # → T004（要望の中の続きの番号）
+p3 move T001 done --output https://github.com/me/myapp/pull/42
 ```
 
 ### CLI
 
 | コマンド | 内容 |
 | --- | --- |
-| `pcube progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも）。既定でも対応済を出す（画面の未完了とは違う） |
-| `pcube milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
-| `pcube request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=resolved` `due=` `milestone=` `tags=` / `--tag`）・アーカイブ |
-| `pcube ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
-| `pcube show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲）。`--brief` で作業に要る項目だけ（下の「短い出力」） |
-| `pcube new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
-| `pcube set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
-| `pcube move <T003> <status>` | 列を移動（`--output` で成果物を足す。繰り返し可）。置き換えられたタスクを作業中にすると警告（移動はする） |
-| `pcube check <T003> [--off]` | 完了したタスクを人が確認して「済み」にする / 外す |
-| `pcube link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
-| `pcube find <語句>` / `pcube impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
-| `pcube preflight\|drafts\|accept [<要望>]` | Preflight の実行（`--note` でメモを足して再評価）・確認・タスク化（`--archive-superseded` で置き換えられるタスクをアーカイブ） |
-| `pcube notes [<要望>]` | Preflight へのメモと、次に渡すもの |
-| `pcube init` / `pcube config` / `pcube whoami` | 初期設定 / 設定 / 変更者と今の要望 |
-| `pcube serve` | ビューアの起動 |
+| `p3 progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも）。既定でも対応済を出す（画面の未完了とは違う） |
+| `p3 milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
+| `p3 request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=resolved` `due=` `milestone=` `tags=` / `--tag`）・アーカイブ |
+| `p3 ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
+| `p3 show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲）。`--brief` で作業に要る項目だけ（下の「短い出力」） |
+| `p3 new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
+| `p3 set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
+| `p3 move <T003> <status>` | 列を移動（`--output` で成果物を足す。繰り返し可）。置き換えられたタスクを作業中にすると警告（移動はする） |
+| `p3 check <T003> [--off]` | 完了したタスクを人が確認して「済み」にする / 外す |
+| `p3 link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
+| `p3 find <語句>` / `p3 impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
+| `p3 preflight\|drafts\|accept [<要望>]` | Preflight の実行（`--note` でメモを足して再評価）・確認・タスク化（`--archive-superseded` で置き換えられるタスクをアーカイブ） |
+| `p3 notes [<要望>]` | Preflight へのメモと、次に渡すもの |
+| `p3 init` / `p3 config` / `p3 whoami` | 初期設定 / 設定 / 変更者と今の要望 |
+| `p3 serve` | ビューアの起動 |
 
-今の要望は `--req <要望>` → `PCUBE_REQUEST` → 今いる参照先に割り当てたブランチ → ブランチ名の要望 ID の順で決まる（パスに要望 ID が入っているだけでは決めない。detached HEAD では決めない）。
+今の要望は `--req <要望>` → `P3_REQUEST` → 今いる参照先に割り当てたブランチ → ブランチ名の要望 ID の順で決まる（パスに要望 ID が入っているだけでは決めない。detached HEAD では決めない）。
 `--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
 CLI はサーバを経由せずファイルに直接書く（serve が動いていなくてよい）。開いている画面には、ヘッダーの「再読み込み」か、
 タブ・ウィンドウに戻ったときの読み直しで反映される（ファイル監視で届くこともあるが当てにしない。下の「画面への反映」）。
@@ -268,7 +267,7 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
 ## データの持ち方
 
 ```
-<データのフォルダ>/                     （例: ~/p3-data/myapp。リポジトリの中なら .pcube/）
+<データのフォルダ>/                     （例: ~/p3-data/myapp。リポジトリの中なら .p3/）
   project.yaml                          プロジェクト設定
   requests/
     261009-k7m3x/                       要望のフォルダ（作成日 + 乱数5文字。タイトルが変わっても変わらない）
@@ -303,8 +302,8 @@ areas: [src/server/store/workspace.ts]
 outputs:                                     # 成果物（1項目ずつ。URL・文章・パスを混ぜてよい）
   - https://github.com/me/myapp/pull/42      # 項目全体が http(s) の URL なら画面でリンクになる
   - 判断の理由は docs/notify.md にまとめた    # 文章はそのまま出す（中の URL やパスはリンクにしない）
-startedAt: 2026-10-09T10:12:00.000Z         # 作業中にした日時（pcube が記録）
-doneAt: 2026-10-09T15:40:00.000Z            # 完了にした日時（pcube が記録）
+startedAt: 2026-10-09T10:12:00.000Z         # 作業中にした日時（p3 が記録）
+doneAt: 2026-10-09T15:40:00.000Z            # 完了にした日時（p3 が記録）
 checkedAt: 2026-10-10T09:00:00.000Z         # 人が確認して「済み」にした日時
 relations:
   - type: depends_on
@@ -723,20 +722,20 @@ codex:
 ```
 
 値は項目ごとに **CLI の明示（`--port` / `--host` / `--engine`）→ 環境変数 → 個人設定 → 既定値** の順で決まる。
-環境変数を空にすると（`PCUBE_CODEX_MODEL=`）、個人設定の値を使わずに既定値に戻す。読めない値（`ensureImage: maybe`、
+環境変数を空にすると（`P3_CODEX_MODEL=`）、個人設定の値を使わずに既定値に戻す。読めない値（`ensureImage: maybe`、
 `=` の無いパスの対応など）は、どこの何を直すかを出して止まる。ChatGPT のトークンはここに置かない（`chatgpt.json`）。
 
 | 個人設定 | 環境変数 | 内容 |
 | --- | --- | --- |
-| `codex.auth` | `PCUBE_CODEX_AUTH` | `auto`（既定。ChatGPT に接続していれば ChatGPT、無ければ旧来）/ `legacy`（接続していても旧来の `auth.json`） |
-| `codex.authVolume` / `codex.authFile` | `PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル） |
-| `codex.pathMap` | `PCUBE_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker デーモンから見たパス。リポジトリとデータのフォルダの両方に使う |
-| `codex.model` / `codex.effort` | `PCUBE_CODEX_MODEL` / `PCUBE_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
-| `codex.ensureImage` | `PCUBE_CODEX_ENSURE_IMAGE`（`0` / `1`） | `false` でイメージの自動更新確認をしない |
-| `preflight.engine` | `PCUBE_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
-| `serve.host` / `serve.port` | `PCUBE_HOST` / `PCUBE_PORT` | `p3 serve` の待ち受け（既定 `0.0.0.0` / `4310`） |
+| `codex.auth` | `P3_CODEX_AUTH` | `auto`（既定。ChatGPT に接続していれば ChatGPT、無ければ旧来）/ `legacy`（接続していても旧来の `auth.json`） |
+| `codex.authVolume` / `codex.authFile` | `P3_CODEX_AUTH_VOLUME` / `P3_CODEX_AUTH_FILE` | 旧来: Codex の初期設定でサインインした `auth.json`（Docker ボリューム内 / ホストのファイル） |
+| `codex.pathMap` | `P3_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker デーモンから見たパス。リポジトリとデータのフォルダの両方に使う |
+| `codex.model` / `codex.effort` | `P3_CODEX_MODEL` / `P3_CODEX_EFFORT` | モデル・推論の深さ（省略時は Codex の既定） |
+| `codex.ensureImage` | `P3_CODEX_ENSURE_IMAGE`（`0` / `1`） | `false` でイメージの自動更新確認をしない |
+| `preflight.engine` | `P3_PREFLIGHT_ENGINE` | `mock` にすると Mock で評価する（明示したときだけ） |
+| `serve.host` / `serve.port` | `P3_HOST` / `P3_PORT` | `p3 serve` の待ち受け（既定 `0.0.0.0` / `4310`） |
 
-`PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
+`P3_ACTOR`（変更者）と `P3_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
 
 **CLI で見る・変える:** config.yaml を手で編集しなくてよい。
 
@@ -836,10 +835,10 @@ app-server（`docker run`）がすぐ・途中で終わったときは、Docker 
 トークンなどは伏せてから残す。
 
 ```text
-app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 pcube>
-参照先 pcube のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください
+app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 p3>
+参照先 p3 のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください
 今のパスの対応:
-  参照先 pcube → コンテナ /workspace/pcube（codex.pathMap の対応なし（このマシンのパスのまま渡す））
+  参照先 p3 → コンテナ /workspace/p3（codex.pathMap の対応なし（このマシンのパスのまま渡す））
   データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））
 直し方: このパスを含む「このマシンのパス」と「Docker のホストから見たパス」の対応を足します
   p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker のホストから見たパス>
@@ -866,7 +865,7 @@ app-server（docker run）が初期化の前に終わりました（終了コー
 ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`codex.authVolume` / `codex.authFile`）だけ → 旧来の `auth.json` /
 どれも無い → 使えない（画面と CLI でサインインを案内する。**認証が無いときに Mock に切り替えない**）。
 
-**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`preflight.engine: mock`（`PCUBE_PREFLIGHT_ENGINE=mock`）か `--engine mock` で
+**Mock**（要望本文の箇条書きをそのままタスク案にするだけの簡易評価）は、`preflight.engine: mock`（`P3_PREFLIGHT_ENGINE=mock`）か `--engine mock` で
 明示したときだけ使う。再評価ではメモの箇条書きを案に足し、
 前回不採用にした案（同じ題）は不採用のままにする。メモの意味は解釈しない。Codex を使えない環境で画面とファイルの流れを
 確かめるためのもの。
@@ -876,7 +875,7 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 
 ## 画面
 
-`pcube serve` で開くローカルのビューア兼エディタ（React + TanStack Router + Tailwind CSS）。
+`p3 serve` で開くローカルのビューア兼エディタ（React + TanStack Router + Tailwind CSS）。
 画面の状態は URL に載るので、URL を共有すれば同じ画面が開ける。
 
 | URL | 画面 |
@@ -921,7 +920,7 @@ Preflight の評価の下には **画面資料** の欄を置き、提案（Code
 | 縦の線・丸囲みの日付 | 今日 |
 
 どの印もクリックするとタスクの詳細が開く（進捗の画面のまま）。同じ日・週・月にまとまった印は件数が付き、クリックで
-中のタスクを選ぶ。「済み」は詳細の「済みにする」ボタン（または `pcube check`）で付け外しする。
+中のタスクを選ぶ。「済み」は詳細の「済みにする」ボタン（または `p3 check`）で付け外しする。
 
 狭い画面（スケジュールの枠の幅が 640px 未満。スマートフォンなど）では、左の要望の一覧を枠の幅の 36%（112〜380px。375px で
 135px）に縮め、ステータスを上に、タイトルを下に2行まで出す（全文は要望の画面で）。右のスケジュールには残りの幅
@@ -967,40 +966,40 @@ AI にも CLI を使わせる（API ごとの認証を持たせずに済む）�
 `AGENTS.md` / `CLAUDE.md` の追記も、見出し（`タスク管理（infodb p3）`）があれば足さないので、新しい内容は
 docs/architecture.md の版と見比べて手で直す。
 
-- 要望のブランチ（作業ツリーでもよい）で作業すれば、要望を指定せずに `pcube move` / `pcube new` が使える
+- 要望のブランチ（作業ツリーでもよい）で作業すれば、要望を指定せずに `p3 move` / `p3 new` が使える
 - 作業中に新しく必要になった作業は、AI がそのままタスクとして足す（可視化される）
 - 人への質問（Human in the Loop）はタスクにせず、Claude Code などのチャットで行う
 
 ブラウザ用の REST API（`/api/...`、自己記述は `GET /api/ai/manifest`）もあるが、ローカルの画面のためのもの。
 
-## pcube 自体の開発
+## p3 自体の開発
 
 ```bash
-pnpm dev                     # API サーバ（pcube serve, tsx watch）+ Vite  http://localhost:5173
-pnpm build && pnpm start     # ビルドした画面を pcube serve から配信  http://localhost:4310
+pnpm dev                     # API サーバ（p3 serve, tsx watch）+ Vite  http://localhost:5173
+pnpm build && pnpm start     # ビルドした画面を p3 serve から配信  http://localhost:4310
 pnpm typecheck
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm check                   # 型検査 + テスト + ビルド
-pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
+pnpm demo:reset              # デモデータ（.p3-demo/）を作り直す
 pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 ```
 
-`pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
+`pnpm dev` / `pnpm start` は p3 自身の開発を題材にしたデモデータ（`.p3-demo/`、git 管理外）を開く。
 デモデータは無ければ自動で作られる（`scripts/demo.ts`。製品のコードではないので `src/` の外に置いている）。
 作るときに実際に Preflight（Mock）を走らせ、評価・タスク案・タスク化・作業の進行（成果物つきの完了など）まで
 済ませるので、マイルストーン・期限・タグを含めて各画面をそのまま確かめられる。
-`pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.pcube/` には触れない。
-`.pcube-demo/` が既にあると `pnpm demo`（`pnpm dev` / `pnpm start` の前）は何もしないので、デモの例が増えたとき
+`pnpm demo:reset` はこのデモデータを作り直すだけで、実際のプロジェクトの `.p3/` には触れない。
+`.p3-demo/` が既にあると `pnpm demo`（`pnpm dev` / `pnpm start` の前）は何もしないので、デモの例が増えたとき
 （例: 成果物に URL・文章・パスを混ぜた例。「要望ごとのタスクボード」の T001 は済み＝対応済みの一覧、T002 は完了＝ボード）
 は `pnpm demo:reset` で作り直す。手で直した内容も消えるので、残したいものは先に別の場所へ写しておく。
 実際のプロジェクトのデータは、デモの作り直しでは変わらない（成果物は保存の形が同じなので、移し替えも要らない）。
 デモの中身は `scripts/demoData.ts`（テストからも一時フォルダに作って確かめる）。
 サーバと Vite は既定で `0.0.0.0` で待ち受ける（DevContainer の外から見るため）。認証は無いので、
-信頼できないネットワークでは `serve.host: 127.0.0.1`（`PCUBE_HOST=127.0.0.1`）に絞ること。
+信頼できないネットワークでは `serve.host: 127.0.0.1`（`P3_HOST=127.0.0.1`）に絞ること。
 
-テストは一時ディレクトリに git リポジトリと `.pcube/` を作って動かす（`test/helpers.ts`）。
+テストは一時ディレクトリに git リポジトリと `.p3/` を作って動かす（`test/helpers.ts`）。
 Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。
-CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `PCUBE_*` の環境変数は効かないようにしている。
+CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `P3_*` の環境変数は効かないようにしている。
 
 ### npm で配る中身
 
@@ -1010,17 +1009,17 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設�
 | 何を | どうする |
 | --- | --- |
 | 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/server/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
-| 同梱しないもの | `.env`・個人設定・デモデータ（`.pcube-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
+| 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
 | 公開前のビルド | `prepack` で `pnpm build`（`npm pack` / `npm publish` の前に画面を作る）。利用者が入れるときにはビルドも Docker の操作もしない |
-| bin | `p3` と `pcube`（同じもの）。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
+| bin | `p3`。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
 
 ```bash
 pnpm -s check                       # 型検査・テスト・画面のビルド
 pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
 # DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
-PCUBE_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
+P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
 
 公開の手順とチェックリストは [docs/publishing.md](docs/publishing.md)。
@@ -1030,7 +1029,7 @@ PCUBE_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker -
 ```
 src/
   shared/            型定義・参照の解き方・日付（サーバ/Web 共通）
-  cli/               pcube CLI（ファイルを直接操作。serve でサーバも起動する）
+  cli/               p3 CLI（ファイルを直接操作。serve でサーバも起動する）
   server/
     ops.ts           CLI と API で共通の操作（参照・関係の規則・進捗の集計など）
     store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
@@ -1041,7 +1040,7 @@ src/
     routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
     routeTree.gen.ts ルート一覧（自動生成）
     components/      複数のページで使う部品（タスク詳細のドロワー、要望のステータスなど）
-bin/pcube.mjs        CLI の起動口（tsx でソースをそのまま動かす）
+bin/p3.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 scripts/demo.ts      開発用のデモデータを作る
 docs/                設計の方針
 test/                ユニットテスト（store / locate / intel / ops / preflight / api / cli）

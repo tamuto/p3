@@ -152,7 +152,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }, { path: "README.md", role: "README" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
     const repo = await makeRepo(config);
     if (outside) {
-      repo.dataDir = tempDir("pcube-data-");
+      repo.dataDir = tempDir("p3-data-");
       await mkdir(join(repo.dataDir, "requests"));
       await writeTestProject(repo.dataDir, config);
     }
@@ -308,7 +308,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
   it("再評価から置き換えまで: 前回とメモを引き継ぎ、置き換えられるタスクを選んでアーカイブし、番号は再利用しない", async () => {
     // データはリポジトリの外。置き換えの参照は2回目の評価からだけ書かせる
     const repo = await makeRepo();
-    const dataDir = tempDir("pcube-data-");
+    const dataDir = tempDir("p3-data-");
     await mkdir(join(dataDir, "requests"));
     await writeTestProject(dataDir);
     let supersede = "";
@@ -412,15 +412,15 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
   it("マシンの設定から旧来の認証・旧来の明示・パス対応を読む", () => {
     const settings = (env: Record<string, string>) => resolveMachineSettings({ settings: {} }, env);
     expect(codexConfig(settings({}))).toMatchObject({ authVolume: undefined, authFile: undefined, forceLegacy: false, ensureImage: true });
-    expect(codexConfig(settings({ PCUBE_CODEX_AUTH: "legacy" })).forceLegacy).toBe(true);
-    const cfg = codexConfig(settings({ PCUBE_CODEX_AUTH_VOLUME: "vol", PCUBE_CODEX_PATH_MAP: "/workspaces=/root/workspaces,/a=/b" }));
+    expect(codexConfig(settings({ P3_CODEX_AUTH: "legacy" })).forceLegacy).toBe(true);
+    const cfg = codexConfig(settings({ P3_CODEX_AUTH_VOLUME: "vol", P3_CODEX_PATH_MAP: "/workspaces=/root/workspaces,/a=/b" }));
     expect(cfg.authVolume).toBe("vol");
     expect(cfg.pathMap).toEqual([
       ["/workspaces", "/root/workspaces"],
       ["/a", "/b"],
     ]);
     const e = new CodexWorkspaceEngine(cfg);
-    expect(e.hostPath("/workspaces/pcube")).toBe("/root/workspaces/pcube");
+    expect(e.hostPath("/workspaces/p3")).toBe("/root/workspaces/p3");
     expect(e.hostPath("/workspacesX")).toBe("/workspacesX");
   });
 });

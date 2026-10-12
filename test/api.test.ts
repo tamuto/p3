@@ -20,7 +20,7 @@ async function setup() {
 describe("REST API", () => {
   it("要望を作るとフォルダごとの ID が振られ、一覧は進捗つきで返る", async () => {
     const { call } = await setup();
-    const created = await call("POST", "/requests", { title: "新しい要望", body: "本文" }, { "x-pcube-actor": "human:a" });
+    const created = await call("POST", "/requests", { title: "新しい要望", body: "本文" }, { "x-p3-actor": "human:a" });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ title: "新しい要望", status: "draft", updatedBy: "human:a" });
     const list = await call("GET", "/requests");
@@ -30,7 +30,7 @@ describe("REST API", () => {
 
   it("タスクは要望の中に作り、null で項目を消し、T3 / 3 でも指せる", async () => {
     const { call, rid } = await setup();
-    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", labels: ["x"] }, { "x-pcube-actor": "ai:claude" });
+    const created = await call("POST", `/requests/${rid}/tasks`, { title: "A", labels: ["x"] }, { "x-p3-actor": "ai:claude" });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ id: "T001", ref: `${rid}/T001`, status: "todo", updatedBy: "ai:claude" });
     const patched = await call("PATCH", `/requests/${rid}/tasks/1`, { labels: [], outputs: ["https://example.com/pull/1"], rev: 1 });
@@ -41,7 +41,7 @@ describe("REST API", () => {
 
   it("メモを書き足して Preflight を実行する。実行できなくてもメモは残し、その ID を返す", async () => {
     const { call, rid, ctx } = await setup();
-    const note = await call("POST", `/requests/${rid}/notes`, { body: "Web は不要" }, { "x-pcube-actor": "human:a" });
+    const note = await call("POST", `/requests/${rid}/notes`, { body: "Web は不要" }, { "x-p3-actor": "human:a" });
     expect(note.status).toBe(201);
     expect(note.body).toMatchObject({ body: "Web は不要", createdBy: "human:a" });
     expect((await call("POST", `/requests/${rid}/notes`, { body: " " })).status).toBe(400);

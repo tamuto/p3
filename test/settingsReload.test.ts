@@ -72,11 +72,11 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
 
   it("環境変数が個人設定より先。空の環境変数は既定値に戻す", async () => {
     const tmp = realpathSync(tmpdir());
-    const s = await setup({ PCUBE_CODEX_PATH_MAP: `${tmp}=/from-env` });
+    const s = await setup({ P3_CODEX_PATH_MAP: `${tmp}=/from-env` });
     await s.write(`${s.legacy}  pathMap:\n    ${s.repo.root}: /from-config\n`);
     await s.runOnce();
     expect(s.launched.at(-1)!.workspace).toBe(`/from-env${s.repo.root.slice(tmp.length)}`);
-    const cleared = await setup({ PCUBE_CODEX_PATH_MAP: "" });
+    const cleared = await setup({ P3_CODEX_PATH_MAP: "" });
     await cleared.write(`${cleared.legacy}  pathMap:\n    ${cleared.repo.root}: /from-config\n`);
     await cleared.runOnce();
     expect(cleared.launched.at(-1)!.workspace).toBe(cleared.repo.root);

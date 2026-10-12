@@ -16,9 +16,9 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
   });
 
   it("--project は登録した名前。無ければ登録済みの一覧を添えて断る", () => {
-    const u = user({ pcube: { dir: "/mnt/assets/pcube" }, other: { dir: "/somefolder/other" } });
+    const u = user({ p3: { dir: "/mnt/assets/p3" }, other: { dir: "/somefolder/other" } });
     expect(resolveProject({ cwd: "/", project: "other", user: u })).toMatchObject({ name: "other", dataDir: "/somefolder/other", via: "project" });
-    expect(() => resolveProject({ cwd: "/", project: "x", user: u })).toThrow(/pcube +\/mnt\/assets\/pcube/);
+    expect(() => resolveProject({ cwd: "/", project: "x", user: u })).toThrow(/p3 +\/mnt\/assets\/p3/);
   });
 
   it("今いる場所: 登録したリポジトリ（サブフォルダ・作業ツリー）かデータのフォルダの中ならそのプロジェクト", async () => {
@@ -49,8 +49,8 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
   });
 });
 
-describe("findDataDir（リポジトリの中の .pcube/。以前の置き方）", () => {
-  it("要望ごとの作業ツリーの中でも、メインの作業ツリーの .pcube/ を使う（状態をブランチごとに分岐させない）", async () => {
+describe("findDataDir（リポジトリの中の .p3/。以前の置き方）", () => {
+  it("要望ごとの作業ツリーの中でも、メインの作業ツリーの .p3/ を使う（状態をブランチごとに分岐させない）", async () => {
     const { root, dataDir } = await makeRepo();
     git(root, "add", "-A");
     git(root, "commit", "-qm", "init");
@@ -62,29 +62,29 @@ describe("findDataDir（リポジトリの中の .pcube/。以前の置き方）
 
   it("git 管理外なら上へ辿って探し、無ければ undefined", async () => {
     const dir = tempDir();
-    await mkdir(join(dir, ".pcube"), { recursive: true });
-    await writeFile(join(dir, ".pcube", "project.yaml"), "name: x\n");
+    await mkdir(join(dir, ".p3"), { recursive: true });
+    await writeFile(join(dir, ".p3", "project.yaml"), "name: x\n");
     await mkdir(join(dir, "a", "b"), { recursive: true });
-    expect(findDataDir(join(dir, "a", "b"))).toBe(join(dir, ".pcube"));
+    expect(findDataDir(join(dir, "a", "b"))).toBe(join(dir, ".p3"));
     expect(findDataDir(tempDir())).toBeUndefined();
   });
 });
 
 describe("個人設定", () => {
   it("名前 → フォルダ（文字列だけでも可）を読み、壊れた項目は捨てる", () => {
-    const u = normalizeUserConfig({ projects: { pcube: "/mnt/assets/pcube", other: { dir: "/somefolder/other", repos: { main: "/w/o" } }, "bad name": { dir: "/x" }, nodir: {} }, ui: { theme: "dark" } });
-    expect(u.projects).toEqual({ pcube: { dir: "/mnt/assets/pcube", repos: {} }, other: { dir: "/somefolder/other", repos: { main: "/w/o" } } });
+    const u = normalizeUserConfig({ projects: { p3: "/mnt/assets/p3", other: { dir: "/somefolder/other", repos: { main: "/w/o" } }, "bad name": { dir: "/x" }, nodir: {} }, ui: { theme: "dark" } });
+    expect(u.projects).toEqual({ p3: { dir: "/mnt/assets/p3", repos: {} }, other: { dir: "/somefolder/other", repos: { main: "/w/o" } } });
     expect(u.ui.theme).toBe("dark");
   });
 
   it("書き戻しても人が書いたコメントは残る", async () => {
     const path = join(tempDir(), "config.yaml");
-    await writeFile(path, "# 自分用のメモ\nprojects:\n  pcube: /mnt/assets/pcube # タスク管理\n");
+    await writeFile(path, "# 自分用のメモ\nprojects:\n  p3: /mnt/assets/p3 # タスク管理\n");
     const u = await loadUserConfig(path);
     u.projects.other = { dir: "/somefolder/other", repos: {} };
     await saveUserConfig(u, path);
     const text = await readFile(path, "utf8");
     expect(text).toContain("# 自分用のメモ");
-    expect((await loadUserConfig(path)).projects).toMatchObject({ pcube: { dir: "/mnt/assets/pcube" }, other: { dir: "/somefolder/other" } });
+    expect((await loadUserConfig(path)).projects).toMatchObject({ p3: { dir: "/mnt/assets/p3" }, other: { dir: "/somefolder/other" } });
   });
 });

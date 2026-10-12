@@ -83,7 +83,7 @@ export const REQUEST_KEY_ORDER: (keyof Request)[] = [
 export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
   const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
-    name: str(d.name) ?? "pcube project",
+    name: str(d.name) ?? "p3 project",
     description: str(d.description) ?? "",
     repos: normalizeRepos(d.repos),
     milestones: Array.isArray(d.milestones)

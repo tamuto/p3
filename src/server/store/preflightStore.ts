@@ -11,7 +11,7 @@ import { normalizeRelations } from "./normalize.ts";
  *   drafts/D1.md ...  細分化されたタスク案（1案 = 1ファイル。人や AI が直接編集できる）
  */
 export class PreflightStore {
-  /** requestsDir: .pcube/requests */
+  /** requestsDir: .p3/requests */
   constructor(readonly requestsDir: string) {}
 
   runDir(requestId: string, runId: string) {

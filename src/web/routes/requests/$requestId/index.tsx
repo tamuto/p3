@@ -162,7 +162,7 @@ function RequestPanel({
         {engine && (
           <span
             className={cx("text-sm", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
-            title={engine.name === "mock" ? "PCUBE_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
+            title={engine.name === "mock" ? "P3_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
           >
             {engine.ok ? "●" : "✕"} {engine.detail}
           </span>

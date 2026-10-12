@@ -11,7 +11,7 @@ import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 describe("成果物のリンク", () => {
   it("項目全体が絶対の http(s) URL のときだけリンクにする（前後の空白は判定で除く）", () => {
-    expect(outputHref("https://github.com/tamuto/pcube/pull/15")).toBe("https://github.com/tamuto/pcube/pull/15");
+    expect(outputHref("https://github.com/tamuto/p3/pull/15")).toBe("https://github.com/tamuto/p3/pull/15");
     expect(outputHref("  http://example.com/a?b=c#d  ")).toBe("http://example.com/a?b=c#d");
     expect(outputHref("HTTPS://Example.com/x")).toBe("https://example.com/x");
     for (const v of [

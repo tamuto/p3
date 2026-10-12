@@ -7,7 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { REQUEST_ID } from "../shared/refs.ts";
 import type { ProjectConfig } from "../shared/types.ts";
-import type { PcubeContext } from "../server/context.ts";
+import type { P3Context } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
 import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
 import { repoNameProblem } from "../shared/repos.ts";
@@ -37,7 +37,7 @@ export function repoRoot(cwd: string): string {
 }
 
 /**
- * CLI の変更者。明示（--actor / PCUBE_ACTOR。AI は ai:<名前>）→ human:<git の user.name> → OS のユーザー名。
+ * CLI の変更者。明示（--actor / P3_ACTOR。AI は ai:<名前>）→ human:<git の user.name> → OS のユーザー名。
  */
 export function resolveActor(explicit: string | undefined, cwd: string): string {
   if (explicit) return explicit;
@@ -45,7 +45,7 @@ export function resolveActor(explicit: string | undefined, cwd: string): string 
 }
 
 /** 今いる場所が、どの参照先（リポジトリ・フォルダ）か。参照先の中か、その git のリポジトリの作業ツリーの中なら当たる */
-export function locateHere(ctx: PcubeContext, cwd: string): { repos: string[]; branch?: string } {
+export function locateHere(ctx: P3Context, cwd: string): { repos: string[]; branch?: string } {
   const here = resolve(cwd);
   const common = git(here, "rev-parse", "--path-format=absolute", "--git-common-dir");
   const repos = ctx.ws
@@ -69,12 +69,12 @@ export function locateHere(ctx: PcubeContext, cwd: string): { repos: string[]; b
 const inside = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith("/") ? dir : `${dir}/`);
 
 /**
- * 今の要望。明示（--req / PCUBE_REQUEST）→ 今いる参照先のブランチ（その参照先の割当だけと照らす）→
+ * 今の要望。明示（--req / P3_REQUEST）→ 今いる参照先のブランチ（その参照先の割当だけと照らす）→
  * ブランチ名に要望 ID が入っている（detached HEAD などで決まらなければ --req で指定してもらう）。
  * パスに要望 ID が入っているだけでは決めない。候補が複数なら --req を案内する。
- * AI が要望の作業ツリーで作業していれば、`pcube new "..."` だけでその要望のタスクになる。
+ * AI が要望の作業ツリーで作業していれば、`p3 new "..."` だけでその要望のタスクになる。
  */
-export function currentRequest(ctx: PcubeContext, explicit: string | undefined, cwd: string): string | undefined {
+export function currentRequest(ctx: P3Context, explicit: string | undefined, cwd: string): string | undefined {
   if (explicit) {
     const id = resolveRequestId(ctx, explicit);
     if (!id) throw new UsageError(`要望が見つかりません: ${explicit}`);
@@ -117,7 +117,7 @@ export const AGENTS_SNIPPET = `
 
 - 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
   詳しい手順は \`.claude/skills/p3/SKILL.md\`
-- 変更するときは環境変数 \`PCUBE_ACTOR=ai:<エージェント名>\` を付ける
+- 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
 - 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami\` で確かめる
 - 新しい作業を頼まれたら \`p3 request new "<タイトル>" --body "..."\` で要望を登録し、ID を伝えて終える。
   Preflight（\`preflight\`）とタスク化（\`accept\`）は人が行う（AI は実行しない。結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
@@ -348,7 +348,7 @@ const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-"
 
 const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions"] as const;
 
-/** pcube config [set key=value ...] */
+/** p3 config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
   if (args[0] === "set") {
     const patch: Partial<ProjectConfig> = {};
@@ -362,7 +362,7 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
       else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
     }
-    if (!Object.keys(patch).length) throw new UsageError("pcube config set キー=値 ...");
+    if (!Object.keys(patch).length) throw new UsageError("p3 config set キー=値 ...");
     const next = await ws.saveProject(patch);
     const keys = args.slice(1).map((p) => p.slice(0, p.indexOf("=")));
     return { data: next, text: `更新しました: ${keys.join(", ")}` };

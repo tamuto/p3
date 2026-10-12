@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
-import type { PcubeContext } from "../src/server/context.ts";
+import type { P3Context } from "../src/server/context.ts";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import type { PreflightEngine } from "../src/server/preflight/engine.ts";
 import { MockEngine } from "../src/server/preflight/mockEngine.ts";
@@ -13,7 +13,7 @@ import { writeProjectFile, writeRepoEntry } from "../src/server/store/projectFil
 import type { RepoRef } from "../src/shared/repos.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 
-export function tempDir(prefix = "pcube-test-"): string {
+export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする
   return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 }
@@ -52,11 +52,11 @@ export async function writeTestProject(dataDir: string, config: Partial<ProjectC
   for (const r of cfg.repos) await writeRepoEntry(file, r.name, r);
 }
 
-/** git リポジトリ + .pcube/ を作る。本体の参照先 main はこのリポジトリ（openTestProject が個人設定の代わりに渡す） */
+/** git リポジトリ + .p3/ を作る。本体の参照先 main はこのリポジトリ（openTestProject が個人設定の代わりに渡す） */
 export async function makeRepo(config: Partial<ProjectConfig> = {}) {
   const root = tempDir();
   gitInit(root);
-  const dataDir = join(root, ".pcube");
+  const dataDir = join(root, ".p3");
   await mkdir(join(dataDir, "requests"), { recursive: true });
   await writeTestProject(dataDir, config);
   return { root, dataDir };
@@ -67,9 +67,9 @@ export async function openTestProject(
   dataDir: string,
   engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { mock: new MockEngine({ delay: 0 }) },
   opts: { repos?: Record<string, string> } = {},
-): Promise<PcubeContext> {
-  // 個人設定のこのマシンのパスの代わり。既定は makeRepo のリポジトリ（.pcube の親）を main に
-  const repos = opts.repos ?? (basename(dataDir) === ".pcube" ? { main: dirname(dataDir) } : {});
+): Promise<P3Context> {
+  // 個人設定のこのマシンのパスの代わり。既定は makeRepo のリポジトリ（.p3 の親）を main に
+  const repos = opts.repos ?? (basename(dataDir) === ".p3" ? { main: dirname(dataDir) } : {});
   const ws = new Workspace(dataDir, repos);
   await ws.load();
   const index = new ProjectIndex(ws);
@@ -82,10 +82,10 @@ export async function makeProject(config: Partial<ProjectConfig> = {}) {
   return { ...repo, ctx: await openTestProject(repo.dataDir) };
 }
 
-export function newRequest(ctx: PcubeContext, r: Partial<Request> & { title: string } = { title: "要望" }, actor = "test") {
+export function newRequest(ctx: P3Context, r: Partial<Request> & { title: string } = { title: "要望" }, actor = "test") {
   return ctx.ws.requests.create({ status: "active", body: "", ...r }, actor);
 }
 
-export function newTask(ctx: PcubeContext, requestId: string, t: Partial<Task> & { title: string }, actor = "test") {
+export function newTask(ctx: P3Context, requestId: string, t: Partial<Task> & { title: string }, actor = "test") {
   return ctx.ws.tasksOf(requestId).create({ status: "todo", ...t }, actor);
 }

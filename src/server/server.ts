@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { apiRoutes } from "./api/routes.ts";
-import { openProject, PCUBE_ROOT } from "./context.ts";
+import { openProject, P3_ROOT } from "./context.ts";
 import type { MachineSettings, SettingsSource } from "./machineSettings.ts";
 
 export interface ServeOptions {
@@ -31,19 +31,19 @@ export async function startServer(opts: ServeOptions) {
   app.route("/api", apiRoutes(ctx));
   if (opts.static) {
     // serveStatic の root はカレントからの相対で解釈される
-    const root = relative(process.cwd(), `${PCUBE_ROOT}dist/web`) || ".";
+    const root = relative(process.cwd(), `${P3_ROOT}dist/web`) || ".";
     app.use("/*", serveStatic({ root }));
     app.get("*", serveStatic({ path: `${root}/index.html` }));
   }
 
   serve({ fetch: app.fetch, port: opts.port, hostname: opts.host }, () => {
-    console.log(`pcube: ${ws.project.name}`);
+    console.log(`p3: ${ws.project.name}`);
     console.log(`  data     ${opts.dataDir}`);
     console.log(`  repos    ${ws.project.repos.map((r) => r.name).join(", ") || "（なし）"}`);
     console.log(`  engines  ${preflight.availableEngines().join(", ")} (default: ${preflight.defaultEngine})`);
     console.log(`  listen   http://${opts.host}:${opts.port}${opts.static ? "" : "  (api only)"}`);
-    if (opts.static && !existsSync(`${PCUBE_ROOT}dist/web/index.html`)) {
-      console.log(`  ⚠ 画面がビルドされていません。${PCUBE_ROOT} で \`pnpm build\` を実行してください`);
+    if (opts.static && !existsSync(`${P3_ROOT}dist/web/index.html`)) {
+      console.log(`  ⚠ 画面がビルドされていません。${P3_ROOT} で \`pnpm build\` を実行してください`);
     }
   });
 }

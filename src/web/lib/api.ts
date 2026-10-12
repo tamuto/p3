@@ -35,7 +35,7 @@ export class ApiError extends Error {
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body ? { "content-type": "application/json", "x-pcube-actor": "human:web" } : { "x-pcube-actor": "human:web" },
+    headers: body ? { "content-type": "application/json", "x-p3-actor": "human:web" } : { "x-p3-actor": "human:web" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -164,7 +164,7 @@ export const api = {
     form.append("file", input.file);
     if (input.description?.trim()) form.append("description", input.description.trim());
     if (input.source?.trim()) form.append("source", input.source.trim());
-    const res = await fetch(`/api/requests/${rid}/attachments`, { method: "POST", body: form, headers: { "x-pcube-actor": "human:web" } });
+    const res = await fetch(`/api/requests/${rid}/attachments`, { method: "POST", body: form, headers: { "x-p3-actor": "human:web" } });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
     return data as Attachment;

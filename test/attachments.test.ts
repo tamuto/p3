@@ -114,7 +114,7 @@ describe("添付の API", () => {
     const form = new FormData();
     form.append("file", new File([new Uint8Array(png(320, 200))], "今.png"));
     form.append("description", "今の画面");
-    const created = await app.request(`/requests/${req.id}/attachments`, { method: "POST", body: form, headers: { "x-pcube-actor": "human:web" } });
+    const created = await app.request(`/requests/${req.id}/attachments`, { method: "POST", body: form, headers: { "x-p3-actor": "human:web" } });
     expect(created.status).toBe(201);
     const a = (await created.json()) as { id: string; createdBy: string };
     expect(a.createdBy).toBe("human:web");

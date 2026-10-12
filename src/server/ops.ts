@@ -1,6 +1,6 @@
 import { absRef, normalizeTaskId, parseRef, relRef } from "../shared/refs.ts";
 import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
-import type { PcubeContext } from "./context.ts";
+import type { P3Context } from "./context.ts";
 import { NotFoundError } from "./store/collection.ts";
 
 /**
@@ -18,7 +18,7 @@ export interface TaskFilter {
   repo?: string;
 }
 
-export function listTasks({ ws }: PcubeContext, f: TaskFilter = {}): Task[] {
+export function listTasks({ ws }: P3Context, f: TaskFilter = {}): Task[] {
   let tasks = f.request ? ws.tasksOf(f.request).list() : ws.allTasks();
   if (f.status?.length) tasks = tasks.filter((t) => f.status!.includes(t.status));
   if (f.area) tasks = tasks.filter((t) => t.areas.some((a) => a.startsWith(f.area!)));
@@ -34,7 +34,7 @@ export function listTasks({ ws }: PcubeContext, f: TaskFilter = {}): Task[] {
 /**
  * 要望の ID を短い書き方からも解く: 完全な ID、乱数部分（k7m3x）、ID の先頭・末尾の一部（一意なときだけ）。
  */
-export function resolveRequestId({ ws }: PcubeContext, raw: string): string | undefined {
+export function resolveRequestId({ ws }: P3Context, raw: string): string | undefined {
   const s = raw.trim().toLowerCase();
   if (!s) return undefined;
   if (ws.requests.get(s)) return s;
@@ -48,7 +48,7 @@ export function resolveRequestId({ ws }: PcubeContext, raw: string): string | un
  *   "<要望>/T3"  "<要望>"  — 要望は短い書き方でもよい
  *   "T3" / "3"           — current（今の要望）の中のタスク
  */
-export function resolveRef(ctx: PcubeContext, raw: string, current?: string): string | undefined {
+export function resolveRef(ctx: P3Context, raw: string, current?: string): string | undefined {
   const s = raw.trim();
   const [head, tail] = s.split("/", 2);
   if (tail !== undefined) {
@@ -67,7 +67,7 @@ export interface ResolveResult {
 }
 
 /** 参照・タイトル・自然文から対象を特定する。参照の一致 → タイトル部分一致 → 内容類似 */
-export function resolve(ctx: PcubeContext, q: string, current?: string): ResolveResult {
+export function resolve(ctx: P3Context, q: string, current?: string): ResolveResult {
   const query = q.trim();
   const exact = query ? resolveRef(ctx, query, current) : undefined;
   if (exact) return { match: exact, candidates: [{ ref: exact, title: titleOf(ctx, exact), score: 1, reasons: ["参照が一致"] }] };
@@ -87,12 +87,12 @@ export function resolve(ctx: PcubeContext, q: string, current?: string): Resolve
   return { match: candidates.length === 1 ? candidates[0].ref : null, candidates };
 }
 
-export function titleOf({ ws }: PcubeContext, ref: string): string {
+export function titleOf({ ws }: P3Context, ref: string): string {
   return ws.task(ref)?.title ?? ws.requests.get(ref)?.title ?? "?";
 }
 
 /** 参照の指す要望かタスクのコレクションと ID */
-function entityOf({ ws }: PcubeContext, ref: string) {
+function entityOf({ ws }: P3Context, ref: string) {
   const r = parseRef(ref);
   if (!r || !ws.exists(ref)) throw new NotFoundError(ref);
   return r.task ? { col: ws.tasksOf(r.request), id: r.task, request: r.request } : { col: ws.requests, id: r.request, request: r.request };
@@ -102,7 +102,7 @@ function entityOf({ ws }: PcubeContext, ref: string) {
  * 関係を張る。ref と target は絶対参照か相対参照（ref の要望の中）。
  * ファイルには、同じ要望のタスクなら T003、それ以外は <要望ID>/T003 の形で書く。
  */
-export async function addRelation(ctx: PcubeContext, ref: string, rel: Relation, actor: string): Promise<Task | Request> {
+export async function addRelation(ctx: P3Context, ref: string, rel: Relation, actor: string): Promise<Task | Request> {
   if (!(rel.type in RELATION_TYPES)) throw new Error(`関係の種類が不正です: ${rel.type}`);
   const { col, id, request } = entityOf(ctx, ref);
   const from = absRef(ref)!;
@@ -122,7 +122,7 @@ export async function addRelation(ctx: PcubeContext, ref: string, rel: Relation,
 }
 
 export async function removeRelation(
-  ctx: PcubeContext,
+  ctx: P3Context,
   ref: string,
   r: { type: RelationType | string; target: string },
   actor: string,
@@ -138,10 +138,10 @@ export async function removeRelation(
 }
 
 /**
- * 要望ごとの進捗。進捗の画面と `pcube progress` で使う。
+ * 要望ごとの進捗。進捗の画面と `p3 progress` で使う。
  * 並び: 最終更新（要望自身と、アーカイブしていないタスクの updatedAt の最大）の新しい順。同じ日時なら要望 ID の順。
  */
-export function progress(ctx: PcubeContext): RequestProgress[] {
+export function progress(ctx: P3Context): RequestProgress[] {
   return ctx.ws.requests
     .list()
     .map((request) => {

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { PcubeContext } from "../context.ts";
+import type { P3Context } from "../context.ts";
 import { addRepo, checkFolder, removeRepo, setLocalRepoPath, updateRepo } from "../repoAdmin.ts";
 import { localOnly } from "./local.ts";
 
@@ -13,7 +13,7 @@ const repoPatch = z
  * /api/repos: 参照先（設定画面）。共有の定義の追加・変更・削除はプロジェクトの設定と同じく画面から行える。
  * このマシンのパス（個人設定）は、P3 を動かしているマシンのローカルの画面からだけ見せ・変える（ほかのマシンに個人のパスを見せない）
  */
-export function repoRoutes(ctx: PcubeContext) {
+export function repoRoutes(ctx: P3Context) {
   const { ws } = ctx;
   const app = new Hono();
 

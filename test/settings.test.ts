@@ -28,52 +28,52 @@ describe("マシンごとの設定", () => {
 
   it("環境変数が個人設定より、CLI の明示が環境変数より優先する", () => {
     const d = { codex: { model: "from-config" }, serve: { port: 4400, host: "127.0.0.1" } };
-    expect(resolve(d, { PCUBE_CODEX_MODEL: "from-env", PCUBE_PORT: "4500" }).codex.model).toBe("from-env");
-    expect(resolve(d, { PCUBE_PORT: "4500" }).serve.port).toBe(4500);
-    expect(resolve(d, { PCUBE_PORT: "4500", PCUBE_HOST: "0.0.0.0" }, { port: "4600", host: "::1" }).serve).toEqual({ port: 4600, host: "::1" });
+    expect(resolve(d, { P3_CODEX_MODEL: "from-env", P3_PORT: "4500" }).codex.model).toBe("from-env");
+    expect(resolve(d, { P3_PORT: "4500" }).serve.port).toBe(4500);
+    expect(resolve(d, { P3_PORT: "4500", P3_HOST: "0.0.0.0" }, { port: "4600", host: "::1" }).serve).toEqual({ port: 4600, host: "::1" });
   });
 
   it("環境変数を空にすると、個人設定を使わずに既定値に戻す", () => {
     const d = { codex: { model: "m", authVolume: "vol", pathMap: { "/a": "/b" }, ensureImage: false }, preflight: { engine: "mock" }, serve: { port: 4400 } };
-    const s = resolve(d, { PCUBE_CODEX_MODEL: "", PCUBE_CODEX_AUTH_VOLUME: "", PCUBE_CODEX_PATH_MAP: "", PCUBE_CODEX_ENSURE_IMAGE: "", PCUBE_PREFLIGHT_ENGINE: "", PCUBE_PORT: "" });
+    const s = resolve(d, { P3_CODEX_MODEL: "", P3_CODEX_AUTH_VOLUME: "", P3_CODEX_PATH_MAP: "", P3_CODEX_ENSURE_IMAGE: "", P3_PREFLIGHT_ENGINE: "", P3_PORT: "" });
     expect(s.codex).toMatchObject({ model: undefined, authVolume: undefined, pathMap: [], ensureImage: true });
     expect(s.preflight.engine).toBe("codex");
     expect(s.serve.port).toBe(4310);
   });
 
   it("イメージの更新は false / 0 で止まり、読めない値はエラー", () => {
-    expect(resolve({}, { PCUBE_CODEX_ENSURE_IMAGE: "0" }).codex.ensureImage).toBe(false);
-    expect(resolve({}, { PCUBE_CODEX_ENSURE_IMAGE: "false" }).codex.ensureImage).toBe(false);
-    expect(resolve({ codex: { ensureImage: false } }, { PCUBE_CODEX_ENSURE_IMAGE: "1" }).codex.ensureImage).toBe(true);
+    expect(resolve({}, { P3_CODEX_ENSURE_IMAGE: "0" }).codex.ensureImage).toBe(false);
+    expect(resolve({}, { P3_CODEX_ENSURE_IMAGE: "false" }).codex.ensureImage).toBe(false);
+    expect(resolve({ codex: { ensureImage: false } }, { P3_CODEX_ENSURE_IMAGE: "1" }).codex.ensureImage).toBe(true);
     expect(resolve({ codex: { ensureImage: false } }).codex.ensureImage).toBe(false);
-    expect(() => resolve({}, { PCUBE_CODEX_ENSURE_IMAGE: "maybe" })).toThrow(/PCUBE_CODEX_ENSURE_IMAGE.*maybe/);
+    expect(() => resolve({}, { P3_CODEX_ENSURE_IMAGE: "maybe" })).toThrow(/P3_CODEX_ENSURE_IMAGE.*maybe/);
     expect(() => resolve({ codex: { ensureImage: "maybe" } })).toThrow(/個人設定 codex.ensureImage/);
   });
 
   it("読めない値は、どこの何を直せばよいかをエラーにする", () => {
-    expect(() => resolve({}, { PCUBE_PREFLIGHT_ENGINE: "fake" })).toThrow(SettingsError);
-    expect(() => resolve({}, { PCUBE_PREFLIGHT_ENGINE: "fake" })).toThrow(/環境変数 PCUBE_PREFLIGHT_ENGINE.*codex \/ mock/);
+    expect(() => resolve({}, { P3_PREFLIGHT_ENGINE: "fake" })).toThrow(SettingsError);
+    expect(() => resolve({}, { P3_PREFLIGHT_ENGINE: "fake" })).toThrow(/環境変数 P3_PREFLIGHT_ENGINE.*codex \/ mock/);
     expect(() => resolve({ codex: { auth: "chatgpt" } })).toThrow(/個人設定 codex.auth.*auto \/ legacy/);
-    expect(() => resolve({}, { PCUBE_PORT: "http" })).toThrow(/PCUBE_PORT/);
+    expect(() => resolve({}, { P3_PORT: "http" })).toThrow(/P3_PORT/);
     expect(() => resolve({}, {}, { port: "70000" })).toThrow(/--port/);
     expect(() => resolve({ codex: { model: ["a"] } })).toThrow(/codex.model/);
   });
 
   it("パスの対応は環境変数（a=b,c=d）でも個人設定（対応表）でも書け、不正な指定は直し方を出す", () => {
-    expect(resolve({}, { PCUBE_CODEX_PATH_MAP: " /workspaces=/root/workspaces , /a=/b " }).codex.pathMap).toEqual([
+    expect(resolve({}, { P3_CODEX_PATH_MAP: " /workspaces=/root/workspaces , /a=/b " }).codex.pathMap).toEqual([
       ["/workspaces", "/root/workspaces"],
       ["/a", "/b"],
     ]);
     expect(resolve({ codex: { pathMap: { "/w": "C:\\Users\\me\\w" } } }).codex.pathMap).toEqual([["/w", "C:\\Users\\me\\w"]]);
-    expect(() => resolve({}, { PCUBE_CODEX_PATH_MAP: "/workspaces" })).toThrow(/「\/workspaces」が読めません.*例: /);
-    expect(() => resolve({}, { PCUBE_CODEX_PATH_MAP: "workspaces=/root/w" })).toThrow(/絶対パス/);
+    expect(() => resolve({}, { P3_CODEX_PATH_MAP: "/workspaces" })).toThrow(/「\/workspaces」が読めません.*例: /);
+    expect(() => resolve({}, { P3_CODEX_PATH_MAP: "workspaces=/root/w" })).toThrow(/絶対パス/);
     expect(() => resolve({ codex: { pathMap: ["/a=/b"] } })).toThrow(/codex.pathMap/);
     expect(() => resolve({ codex: { pathMap: { "/a": 1 } } })).toThrow(/パスの文字列/);
   });
 
   it("環境変数の名前と個人設定の項目は1対1", () => {
     expect(new Set(Object.values(SETTING_KEYS)).size).toBe(Object.keys(SETTING_KEYS).length);
-    expect(Object.values(SETTING_KEYS).every((n) => n.startsWith("PCUBE_"))).toBe(true);
+    expect(Object.values(SETTING_KEYS).every((n) => n.startsWith("P3_"))).toBe(true);
   });
 });
 
