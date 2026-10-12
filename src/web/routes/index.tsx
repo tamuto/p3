@@ -4,12 +4,13 @@ import { localToday } from "../../shared/dates.ts";
 import type { RequestProgress, TaskMark } from "../../shared/types.ts";
 import { Hint, Picker } from "../components/Hint.tsx";
 import { DoingMark, DoneMark, Flag, TodoMark } from "../components/Marks.tsx";
+import { TagFilter } from "../components/TagFilter.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
 import { TaskDrawer } from "../components/TaskDrawer.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
-import { CLOSED_STATUSES, filterRequests, parseShow, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
+import { CLOSED_STATUSES, filterRequests, parseShow, parseTagsSearch, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
 import {
   addDays,
@@ -38,9 +39,10 @@ import {
  * 狭い画面（スマートフォン）では左の一覧を縮め（lib/timeline.ts の leftWidth）、ステータスとタイトルを2段で出す。
  */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show; tag?: string; task?: string; zoom?: Zoom } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom } => ({
     show: parseShow(s.show),
-    tag: optionalString(s.tag),
+    /** 選んだタグ（JSON の配列）。以前の ?tag= も読む（lib/requestFilter.ts の parseTagsSearch） */
+    tags: parseTagsSearch(s.tags, s.tag),
     /** 詳細を開いているタスク（<要望ID>/T003） */
     task: optionalString(s.task),
     zoom: s.zoom === "week" || s.zoom === "month" ? s.zoom : undefined,
@@ -59,15 +61,23 @@ const dateOf = (iso: string) => localToday(new Date(iso));
 
 type MarkKind = "checked" | "done" | "doing";
 
+/** URL に残っている以前の ?tag= を外す */
+const withoutLegacyTag = <T extends object>(search: T): T => {
+  const { tag: _legacy, ...rest } = search as T & { tag?: unknown };
+  return rest as T;
+};
+
 function ProgressPage() {
   const ctx = useAppCtx();
-  const { show = "open", tag, task, zoom = "day" } = Route.useSearch();
+  const { show = "open", tags, task, zoom = "day" } = Route.useSearch();
+  // URL から読むたびに別の配列になるので、中身で決める
+  const tagsKey = JSON.stringify(tags ?? []);
+  const selectedTags = useMemo<string[]>(() => JSON.parse(tagsKey), [tagsKey]);
   const navigate = Route.useNavigate();
   const openTask = useCallback((ref: string) => void navigate({ search: (prev) => ({ ...prev, task: ref }) }), [navigate]);
   const closeTask = () => void navigate({ search: (prev) => ({ ...prev, task: undefined }) });
   const { milestones } = ctx.info.project;
   const today = localToday();
-  const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
 
   // マイルストーンの順 → 期限の順。既定（未完了）では対応済・完了済・見送りを隠す
   const rows = useMemo(() => {
@@ -75,8 +85,8 @@ function ProgressPage() {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
-    return filterRequests(ctx.requests, show, tag).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
-  }, [ctx.requests, milestones, show, tag]);
+    return filterRequests(ctx.requests, show, selectedTags).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
+  }, [ctx.requests, milestones, show, selectedTags]);
 
   // 描く期間: データのある全期間（上限なし）
   const range = useMemo(() => {
@@ -174,23 +184,12 @@ function ProgressPage() {
             </Link>
           ))}
         </nav>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {tags.map((x) => (
-              <Link
-                key={x}
-                to="/"
-                search={(prev) => ({ ...prev, tag: tag === x ? undefined : x })}
-                className={cx(
-                  "rounded px-1.5 py-0.5 text-sm ring-1 ring-inset",
-                  tag === x ? "bg-indigo-600 text-white ring-indigo-600" : "text-slate-600 ring-slate-200 hover:bg-slate-50 dark:text-slate-300 dark:ring-slate-700",
-                )}
-              >
-                #{x}
-              </Link>
-            ))}
-          </div>
-        )}
+        <TagFilter
+          requests={ctx.requests}
+          selected={selectedTags}
+          // 以前の ?tag= は書き直すときに外す（選択は tags に移っている）
+          onChange={(next) => void navigate({ search: (prev) => ({ ...withoutLegacyTag(prev), tags: next.length ? next : undefined }) })}
+        />
         <div className="flex items-center gap-2">
           <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" aria-label="ズーム">
             {ZOOMS.map((z) => (

@@ -643,3 +643,24 @@ describe("個人設定のプロジェクト（データはリポジトリの外�
     expect(pcube(tempDir(), ["project", "add", "x", tempDir()]).err).toContain("まだ p3 のプロジェクトではありません");
   });
 });
+
+describe("タグ（外部 ID・分類）", () => {
+  it("--tag は値ごと（カンマで分けない）。request set --tag で置き換え、tags= はカンマで分ける。両方は使えない", async () => {
+    const { root, rid } = await initialized();
+    const made = pcube(root, ["request", "new", "外部 ID つき", "--tag", "jira:PROJ-123", "--tag", " group:顧客A ", "--tag", "a,b", "--tag", "jira:PROJ-123", "--tag", " ", "--json"]).json();
+    expect(made.tags).toEqual(["jira:PROJ-123", "group:顧客A", "a,b"]);
+    const set = pcube(root, ["request", "set", rid, "--tag", "release/2026Q4", "--tag", "顧客 A, 東京", "--json"]);
+    expect(set.code, set.err).toBe(0);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.tags).toEqual(["release/2026Q4", "顧客 A, 東京"]);
+    expect(pcube(root, ["request", "set", rid, "tags=x, y"]).code).toBe(0);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.tags).toEqual(["x", "y"]);
+    const both = pcube(root, ["request", "set", rid, "tags=x", "--tag", "y"]);
+    expect(both.code).not.toBe(0);
+    expect(both.err).toContain("一緒に使えません");
+    expect(pcube(root, ["request", "set", rid, "tags="]).code).toBe(0);
+    expect(pcube(root, ["request", "show", rid, "--json"]).json().item.tags).toEqual([]);
+    // 繰り返した --tag はどれか（完全一致）
+    expect(pcube(root, ["request", "ls", "--tag", "a,b", "--tag", "nothing", "--json"]).json().map((r: any) => r.id)).toEqual([made.id]);
+    expect(pcube(root, ["request", "ls", "--tag", "JIRA:PROJ-123", "--json"]).json()).toEqual([]);
+  });
+});

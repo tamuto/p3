@@ -132,7 +132,7 @@ export interface Request {
   due?: string;
   /** まとめてリリースする単位（project.yaml の milestones の id） */
   milestone?: string;
-  /** カテゴリやタグ（例: feature, bug, ui） */
+  /** タグ: 外部 ID・分類の自由な文字列（例: jira:PROJ-123、group:顧客A、feature）。shared/tags.ts */
   tags: string[];
   workstream?: Workstream;
   /** 最新 preflight run */

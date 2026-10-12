@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { REQUEST_STATUSES, type GraphEdge, type RequestStatus } from "../src/shared/types.ts";
 import { byCheckedDesc } from "../src/web/lib/order.ts";
 import { relationItems } from "../src/web/lib/relations.ts";
-import { filterRequests, matchesShow, parseShow, SHOW_OPTIONS, type Show } from "../src/web/lib/requestFilter.ts";
+import { filterRequests, matchesShow, parseShow, parseTagsSearch, SHOW_OPTIONS, tagCandidates, toggleTag, type Show } from "../src/web/lib/requestFilter.ts";
 
 const pick = (show: Parameters<typeof matchesShow>[1]) => REQUEST_STATUSES.filter((s: RequestStatus) => matchesShow(s, show));
 
@@ -44,7 +44,7 @@ describe("進捗の絞り込み", () => {
   it("行の絞り込み: URL の省略・open・不正な値はどれも既定（未完了）になり、対応済は入らない。タグと併せても同じ", () => {
     const row = (id: string, status: RequestStatus, tags: string[] = []) => ({ id, request: { status, tags } });
     const items = REQUEST_STATUSES.flatMap((s) => [row(`${s}-a`, s, ["a"]), row(`${s}-b`, s, ["b"])]);
-    const ids = (show?: Show, tag?: string) => filterRequests(items, show, tag).map((p) => p.id);
+    const ids = (show?: Show, tag?: string) => filterRequests(items, show, tag ? [tag] : []).map((p) => p.id);
     const open = ["draft-a", "draft-b", "preflight-a", "preflight-b", "reviewed-a", "reviewed-b", "active-a", "active-b"];
     expect(ids()).toEqual(open);
     expect(ids(parseShow(undefined))).toEqual(open);
@@ -55,6 +55,60 @@ describe("進捗の絞り込み", () => {
     expect(ids("closed", "b")).toEqual(["done-b", "rejected-b"]);
     expect(ids("all", "a")).toEqual(REQUEST_STATUSES.map((s) => `${s}-a`));
     expect(ids("open", "none")).toEqual([]);
+  });
+});
+
+
+describe("タグの複数選択", () => {
+  const row = (id: string, status: RequestStatus, tags: string[]) => ({ id, request: { status, tags } });
+  const items = [
+    row("j1", "active", ["jira:PROJ-1", "group:顧客A"]),
+    row("j2", "draft", ["jira:PROJ-2"]),
+    row("g", "resolved", ["group:顧客A"]),
+    row("c", "done", ["a,b", "Group:顧客A"]),
+    row("n", "active", []),
+  ];
+  const ids = (show: Show, tags: string[]) => filterRequests(items, show, tags).map((p) => p.id);
+
+  it("未選択は絞らない。選んだ中はどれか（OR）、状態とはかつ（AND）。完全一致（大小文字を区別）", () => {
+    expect(ids("all", [])).toEqual(["j1", "j2", "g", "c", "n"]);
+    expect(ids("all", ["group:顧客A"])).toEqual(["j1", "g"]);
+    expect(ids("all", ["jira:PROJ-2", "a,b"])).toEqual(["j2", "c"]);
+    expect(ids("open", ["group:顧客A"])).toEqual(["j1"]); // 未完了から対応済を除く
+    expect(ids("resolved", ["group:顧客A", "jira:PROJ-1"])).toEqual(["g"]);
+    expect(ids("closed", ["group:顧客A"])).toEqual([]); // 大小文字が違う
+    expect(ids("all", ["jira"])).toEqual([]); // 部分一致では絞らない
+    expect(ids("all", ["無いタグ"])).toEqual([]);
+    expect(ids("all", ["group:顧客A", "group:顧客A"])).toEqual(["j1", "g"]);
+  });
+
+  it("候補はすべての状態の要望から（数つき、名前の順）。検索は部分一致で大小文字を区別しない", () => {
+    expect(tagCandidates(items)).toEqual([
+      { tag: "a,b", count: 1 },
+      { tag: "group:顧客A", count: 2 },
+      { tag: "Group:顧客A", count: 1 },
+      { tag: "jira:PROJ-1", count: 1 },
+      { tag: "jira:PROJ-2", count: 1 },
+    ].sort((x, y) => x.tag.localeCompare(y.tag, "ja")));
+    expect(tagCandidates(items, " GROUP ").map((c) => c.tag).sort()).toEqual(["Group:顧客A", "group:顧客A"].sort());
+    expect(tagCandidates(items, "proj-").map((c) => c.tag)).toEqual(["jira:PROJ-1", "jira:PROJ-2"]);
+    expect(tagCandidates(items, "無い")).toEqual([]);
+    // 要望が消えたら候補からも消える（選択は呼ぶ側に残る）
+    expect(tagCandidates(items.filter((p) => p.id !== "c")).map((c) => c.tag)).not.toContain("a,b");
+    expect(toggleTag(["a"], "b")).toEqual(["a", "b"]);
+    expect(toggleTag(["a", "b"], "a")).toEqual(["b"]);
+  });
+
+  it("URL: ?tags= の配列を読み、以前の ?tag= は1つ選んだものとして読む。不正な値は捨て、重複はまとめる", () => {
+    expect(parseTagsSearch(["jira:PROJ-1", "a,b", "記号 & ? # / %"])).toEqual(["jira:PROJ-1", "a,b", "記号 & ? # / %"]);
+    expect(parseTagsSearch(undefined, "feature")).toEqual(["feature"]);
+    expect(parseTagsSearch(undefined, 123)).toEqual(["123"]); // 以前の URL の数に見える値
+    expect(parseTagsSearch(["x"], "legacy")).toEqual(["x"]); // tags を優先
+    expect(parseTagsSearch(["x", "x", "", 1, null, ["y"], "y"])).toEqual(["x", "y"]);
+    expect(parseTagsSearch("not-array")).toBeUndefined();
+    expect(parseTagsSearch(undefined, "")).toBeUndefined();
+    expect(parseTagsSearch([])).toBeUndefined();
+    expect(parseTagsSearch(undefined)).toBeUndefined();
   });
 });
 

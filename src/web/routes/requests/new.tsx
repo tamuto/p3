@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { TagInput } from "../../components/TagInput.tsx";
 import { Button, Field, inputCls } from "../../components/ui.tsx";
+import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 
@@ -20,7 +22,9 @@ function NewRequest() {
   const [areas, setAreas] = useState("");
   const [due, setDue] = useState("");
   const [milestone, setMilestone] = useState("");
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  /** タグの入力欄の、まだ足していない文字（作成するときに足す） */
+  const [tagText, setTagText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
@@ -52,9 +56,12 @@ function NewRequest() {
             ))}
           </select>
         </Field>
-        <Field label="タグ（任意・カンマ区切り）">
-          <input className={`${inputCls} !w-64`} value={tags} placeholder="feature, ui" onChange={(e) => setTags(e.target.value)} />
-        </Field>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="new-request-tags" className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          タグ（任意。外部 ID や分類。値ごとに Enter で足す）
+        </label>
+        <TagInput id="new-request-tags" tags={tags} onChange={setTags} text={tagText} onText={setTagText} />
       </div>
       {error && <p className="text-rose-600">{error}</p>}
       <Button
@@ -62,7 +69,7 @@ function NewRequest() {
         disabled={!title.trim()}
         onClick={async () => {
           try {
-            const r = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: list(tags) });
+            const r = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] });
             onCreated(r.id);
           } catch (e) {
             setError((e as Error).message);
