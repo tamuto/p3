@@ -102,8 +102,8 @@ export function currentRequest(ctx: PcubeContext, explicit: string | undefined, 
   return undefined;
 }
 
-/** init で主なフォルダの候補にするドキュメントのフォルダと、その入口の候補 */
-const DOC_FOLDERS = ["docs", "doc"];
+/** init で本体の主なフォルダ（最初に読むもの）の候補にするドキュメントと、フォルダの入口の候補 */
+const DOC_CANDIDATES = ["docs", "doc", "README.md", "ARCHITECTURE.md", "DESIGN.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
 const DOC_ENTRIES = ["README.md", "index.md"];
 
 const AGENTS_MARK = "タスク管理（infodb p3）";
@@ -247,14 +247,15 @@ export async function init(o: InitOptions): Promise<string> {
     }
 
     // 既定値: git とリポジトリの中身から推測する
-    const docFolders = DOC_FOLDERS.filter((d) => existsSync(join(root, d)));
+    const docsFound = DOC_CANDIDATES.filter((d) => existsSync(join(root, d)));
     const name = o.name ?? key;
     const description = await ask("何を作っているプロジェクトか（Preflight の前提になります）", o.description ?? "");
-    // ドキュメントのフォルダは本体の主なフォルダにする（入口はその中の README.md / index.md）
-    const folders = splitList(await ask("主なフォルダ（カンマ区切り。Preflight がどこから読むかの案内）", docFolders.join(", ")));
-    const map = folders.map((f) => {
-      const entry = DOC_ENTRIES.map((e) => `${f}/${e}`).find((e) => existsSync(join(root, e)));
-      return { path: f, role: DOC_FOLDERS.includes(f) ? "ドキュメント" : "", ...(entry ? { entry } : {}) };
+    // ドキュメントは本体（最初に読む）の主なフォルダにする。Preflight は評価の前に必要な範囲で読む。
+    // フォルダの入口は、その中に README.md / index.md があればそれ（任意）
+    const docs = splitList(await ask("最初に読むドキュメント（カンマ区切り。Preflight が評価の前に読みます）", docsFound.join(", ")));
+    const map = docs.map((d) => {
+      const entry = DOC_ENTRIES.map((e) => `${d}/${e}`).find((e) => existsSync(join(root, e)));
+      return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
     const addAgents = await askAgents();

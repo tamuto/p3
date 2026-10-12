@@ -82,10 +82,17 @@ describe("複数の参照先を Preflight に渡す", () => {
     expect(instructions).toContain("- /workspace/docs — docs（ドキュメント）");
     expect(instructions).toContain("読むだけで、書き込めません");
     expect(instructions).toContain("見ていない参照先: gone（");
-    expect(prompt).not.toContain("最初に読むドキュメント");
-    // 主なフォルダ（案内であって全部読む指示ではない）
-    expect(prompt).toContain("## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）");
-    expect(prompt).toContain("- /workspace/app/src/server — API（入口 /workspace/app/src/server/main.ts）");
+    expect(instructions).toContain("［最初に読む］の参照先から調べ始めてください");
+    // 最初に読む参照先の主なフォルダは評価の前に読むもの、ほかの参照先のものは案内（全部読む指示ではない）
+    const first = prompt.indexOf("## 最初に読むもの");
+    const guide = prompt.indexOf("## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません。入口があればそこから）");
+    expect(first).toBeGreaterThan(-1);
+    expect(guide).toBeGreaterThan(first);
+    expect(prompt).toContain("評価の前に、必要な範囲で読んでください（入口があればそこから）。");
+    const appLine = prompt.indexOf("- /workspace/app/src/server — API（入口 /workspace/app/src/server/main.ts）");
+    expect(appLine).toBeGreaterThan(first);
+    expect(appLine).toBeLessThan(guide);
+    expect(prompt.indexOf("- /workspace/infra/terraform")).toBeGreaterThan(guide);
     expect(prompt).toContain("- /workspace/docs/chapters — 章（入口 /workspace/docs/MAP.md。ファイルがありません）");
     expect(prompt).toContain("- /workspace/infra/terraform — 環境の定義");
   });

@@ -145,7 +145,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
 
   /** outside: データディレクトリをリポジトリの外に置く（project.yaml の repo は絶対パス） */
   async function setup(scenario = "", { outside = false } = {}) {
-    const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
+    const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }, { path: "README.md", role: "README" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
     const repo = await makeRepo(config);
     if (outside) {
       repo.dataDir = tempDir("pcube-data-");
@@ -183,8 +183,11 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(thread.developerInstructions).toContain("外部 SaaS の追加は要相談");
     expect(thread.developerInstructions).toContain(`/data/requests/${req.id}/preflight/${id}/`);
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
-    expect(prompt).toContain("## 主なフォルダ");
+    // 最初に読む参照先の主なフォルダは、以前のプロジェクトの docs と同じく評価の前に読ませる（入口は任意）
+    expect(prompt).toContain("## 最初に読むもの\nプロジェクトの方針・用語・設計などが書かれています。評価の前に、必要な範囲で読んでください（入口があればそこから）。");
     expect(prompt).toContain("- /workspace/main/docs — 設計（入口 /workspace/main/docs/design.md");
+    expect(prompt).toContain("- /workspace/main/README.md — README\n");
+    expect(prompt).not.toContain("## 主なフォルダ"); // 案内だけの参照先は無い
     expect(prompt).toContain(existing.ref); // 文脈として選ばれた既存タスク
     expect(prompt).toContain("drafts/D1.md");
 

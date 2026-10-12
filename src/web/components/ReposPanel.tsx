@@ -148,7 +148,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          主なフォルダ <span className="font-normal text-slate-400">— Preflight がどこから読むかの案内。入口はそのフォルダで最初に読むファイル（参照先の中のパス）</span>
+          主なフォルダ <span className="font-normal text-slate-400">— フォルダかファイル。「最初に読む」参照先のものは Preflight が評価の前に読み、ほかは案内。入口は任意（そのフォルダで最初に読むファイル）</span>
         </p>
         {draft.map.length > 0 && (
           <div className="hidden grid-cols-[repeat(3,minmax(0,1fr))_2.5rem] gap-2 text-sm text-slate-500 sm:grid dark:text-slate-400" aria-hidden>

@@ -445,19 +445,27 @@ ${c.text.trim()}
 `;
 }
 
-/** 主なフォルダ（どこから読むかの案内）。入口のファイルが無ければ印を付ける */
+/**
+ * 参照先の主なフォルダ。「最初に読む」参照先のものは、評価の前に必要な範囲で読ませる（以前のプロジェクトの docs と同じ指示）。
+ * それ以外の参照先のものは、どこから読むかの案内。入口は任意で、あればそこから読ませる。入口のファイルが無ければ印を付ける
+ */
 function codeMapSection(job: PreflightJob) {
-  const parts = job.refs
-    .filter((r) => r.status === "ok" && r.map.length)
-    .map((r) => {
-      const base = `${CONTAINER_WORKSPACE}/${r.mount}`;
-      const lines = r.map.map(
-        (m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}${entryMissing(r, m.entry) ? "。ファイルがありません" : ""}）` : ""}`,
-      );
-      return `### ${r.name}${r.role ? `（${r.role}）` : ""}\n${lines.join("\n")}`;
-    });
-  if (!parts.length) return "";
-  return `\n## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
+  const block = (r: ResolvedRef) => {
+    const base = `${CONTAINER_WORKSPACE}/${r.mount}`;
+    const lines = r.map.map(
+      (m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}${entryMissing(r, m.entry) ? "。ファイルがありません" : ""}）` : ""}`,
+    );
+    return `### ${r.name}${r.role ? `（${r.role}）` : ""}\n${lines.join("\n")}`;
+  };
+  const listed = job.refs.filter((r) => r.status === "ok" && r.map.length);
+  const first = listed.filter((r) => r.readFirst).map(block);
+  const guide = listed.filter((r) => !r.readFirst).map(block);
+  return [
+    first.length
+      ? `\n## 最初に読むもの\nプロジェクトの方針・用語・設計などが書かれています。評価の前に、必要な範囲で読んでください（入口があればそこから）。\n${first.join("\n\n")}\n`
+      : "",
+    guide.length ? `\n## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません。入口があればそこから）\n${guide.join("\n\n")}\n` : "",
+  ].join("");
 }
 
 const entryMissing = (r: ResolvedRef, entry: string) => !!r.local && !existsSync(join(r.local, entry));
@@ -473,7 +481,9 @@ function refsSection(job: PreflightJob) {
   const skipped = job.refs.filter((r) => r.status !== "ok").map((r) => `${r.name}（${refScope(r).reason}）`);
   return [
     ok.length
-      ? `- 調べる対象（参照先。読むだけで、書き込めません）:\n${lines.join("\n")}`
+      ? `- 調べる対象（参照先。読むだけで、書き込めません）:\n${lines.join("\n")}${
+          ok.some((r) => r.readFirst) ? "\n  ［最初に読む］の参照先から調べ始めてください（その主なフォルダは、プロンプトの「最初に読むもの」に挙げています）。" : ""
+        }`
       : "- 読める参照先（リポジトリ・フォルダ）はありません。コードは確かめられないので、要望と /data の資料だけで評価し、その制約を評価に書いてください。",
     ...(skipped.length ? [`- 見ていない参照先: ${skipped.join(" / ")}。中身は確かめられないので、これに関わる判断は推測として扱ってください。`] : []),
     `- タスク案の repo（作業先）に書けるのは ${writable.join(" / ")} か none だけです。1つのタスクの作業先は1つにし、複数のリポジトリにまたがる作業はタスクを分けてください。`,
@@ -514,7 +524,7 @@ ${contextList(job.context)}
 
 ## やること
 1. 要望の妥当性（目的・価値・既存方針との整合）を評価する。
-2. 参照先のコードを必要な範囲で調べ（主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
+2. 参照先のコードを必要な範囲で調べ（「最初に読むもの」を先に読み、主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
 3. 既存のタスク/要望との関係（依存・影響・重複など）を洗い出す。関係は1対1とは限らない。
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。
