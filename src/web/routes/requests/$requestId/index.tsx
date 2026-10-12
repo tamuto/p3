@@ -77,7 +77,8 @@ function RequestPanel({
 
   useEffect(() => {
     if (!runId) return setRun(undefined);
-    void api.run(request.id, runId).then(setRun);
+    // 取れなければ前の表示のまま（要望が消えた・通信の失敗は要望の枠が知らせる）
+    void api.run(request.id, runId).then(setRun, () => undefined);
   }, [runId, request.id, ctx.tick]);
 
   // ログはストリームで追記
@@ -85,7 +86,7 @@ function RequestPanel({
     if (e.type === "preflight-log" && e.runId === runId) {
       setRun((r) => (r ? { ...r, log: [...r.log, e.entry] } : r));
     } else if (e.type === "preflight-status" && e.runId === runId) {
-      void api.run(request.id, runId).then(setRun);
+      void api.run(request.id, runId).then(setRun, () => undefined);
       data.reload();
     }
   });
@@ -592,7 +593,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           ? "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください"
           : (e as Error).message,
       );
-      void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates));
+      void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates), () => setCandidates([]));
     } finally {
       setBusy(false);
     }

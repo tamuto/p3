@@ -1,6 +1,6 @@
 import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { Logo } from "../components/Logo.tsx";
-import { buttonCls, Empty } from "../components/ui.tsx";
+import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 
 /**
@@ -61,7 +61,8 @@ function Layout() {
             </Link>
           ))}
         </nav>
-        <Link to="/requests/new" className={buttonCls("primary", "ml-auto whitespace-nowrap")}>
+        <RefreshButton running={ctx.refreshing.running} onClick={() => void ctx.refresh()} />
+        <Link to="/requests/new" className={buttonCls("primary", "whitespace-nowrap")}>
           ＋ 新しい要望
         </Link>
         {errors.length > 0 && (
@@ -70,6 +71,15 @@ function Layout() {
           </span>
         )}
       </header>
+
+      {ctx.refreshing.error && (
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <span className="min-w-0 break-words">再読み込みできませんでした（表示は前の内容のまま）: {ctx.refreshing.error}</span>
+          <button type="button" className={buttonCls("ghost", "underline")} onClick={() => void ctx.refresh()}>
+            もう一度
+          </button>
+        </div>
+      )}
 
       {!ctx.info.project.description && !pathname.startsWith("/settings") && (
         <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
@@ -84,5 +94,27 @@ function Layout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+/**
+ * データのフォルダを全部読み直して画面を取り直す（CLI など外での変更を取り込む。ブラウザのリロードはしない）。
+ * 読み直している間も押せる（終わってからもう1回だけ読む）。狭い画面ではアイコンだけ
+ */
+function RefreshButton({ running, onClick }: { running: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-busy={running}
+      title="データのフォルダを読み直して、外（CLI など）での変更を取り込みます"
+      className={buttonCls("secondary", "ml-auto px-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none sm:px-3")}
+    >
+      <svg aria-hidden viewBox="0 0 16 16" className={cx("size-4", running && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+        <path d="M13.5 2.5v3h-3" />
+      </svg>
+      <span className="sr-only sm:not-sr-only">{running ? "読み込み中…" : "再読み込み"}</span>
+    </button>
   );
 }
