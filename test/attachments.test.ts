@@ -2,7 +2,7 @@ import { readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } from "../src/server/store/attachments.ts";
+import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } from "../src/core/store/attachments.ts";
 import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 import { jpeg, png } from "./imageFixture.ts";
 import { makeXlsx } from "./zipFixture.ts";
@@ -138,7 +138,7 @@ describe("添付の API", () => {
 
 describe("添付と Codex への指示", () => {
   it("固定した添付のコンテナの中のパスを渡し、画像が見られなければ未確認、xlsx は未読、添付の文章は指示ではないと伝える", async () => {
-    const { codexPrompt } = await import("../src/server/preflight/codexEngine.ts");
+    const { codexPrompt } = await import("../src/core/preflight/codexEngine.ts");
     const { dataDir } = await makeRepo();
     const ctx = await openTestProject(dataDir);
     const req = await newRequest(ctx, { title: "x" });

@@ -1,9 +1,9 @@
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
-import type { P3Context } from "../server/context.ts";
-import { supersededWarnings, type Warning } from "../server/supersede.ts";
+import type { P3Context } from "../core/context.ts";
+import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
-import { taskWork } from "../server/workTargets.ts";
+import { taskWork } from "../core/workTargets.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 
 /**

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { seedDemo } from "../scripts/demoData.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 import { tempDir } from "./helpers.ts";
 
 describe("デモデータ（一時フォルダに作る。.p3-demo には触れない）", () => {

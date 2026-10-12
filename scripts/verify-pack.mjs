@@ -85,7 +85,7 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    for (const f of ["bin/p3.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs"]) {
+    for (const f of ["bin/p3.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/core/preflight/render-image/Dockerfile", "src/core/preflight/render-image/render.mjs"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/web\/|node_modules\/)/.test(f));

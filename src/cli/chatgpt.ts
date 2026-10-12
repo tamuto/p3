@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { ChatGptAccount, type ChatGptStatus } from "../server/chatgpt/account.ts";
+import { ChatGptAccount, type ChatGptStatus } from "../core/chatgpt/account.ts";
 import { UsageError } from "./project.ts";
 
 /**

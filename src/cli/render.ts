@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import type { MachineSettings } from "../server/machineSettings.ts";
-import { ensureRenderImage, RenderError, renderHtml } from "../server/preflight/render.ts";
+import type { MachineSettings } from "../core/machineSettings.ts";
+import { ensureRenderImage, RenderError, renderHtml } from "../core/preflight/render.ts";
 import { UsageError } from "./project.ts";
 
 const USAGE = [

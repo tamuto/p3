@@ -4,7 +4,7 @@ import type { PreflightInput, PreflightRun } from "./types.ts";
  * Preflight の評価対象（要望のタイトルと本文）の規則。サーバ（固定・比較・タスク化の判定）と画面（下書き）で同じものを使う。
  *
  * 正規化: 改行を LF にそろえ、前後の空白・空行を除く。要望のファイルは保存するときに本文の前後を除くので
- * （server/store/frontmatter.ts）、保存の形の違いだけで変わったことにしない。行末の空白（Markdown の改行）や途中の空行は残して比べる。
+ * （core/store/frontmatter.ts）、保存の形の違いだけで変わったことにしない。行末の空白（Markdown の改行）や途中の空行は残して比べる。
  */
 export function normalizeText(s: string): string {
   return s.replace(/\r\n?/g, "\n").trim();

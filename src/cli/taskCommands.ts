@@ -1,12 +1,12 @@
 import { relative } from "node:path";
 import { RELATION_TYPES, relationTypes, type Relation, type RelationType, type Task } from "../shared/types.ts";
-import { listTasks, resolve, resolveRef, titleOf } from "../server/ops.ts";
-import { addRelation, archiveTask, createTask, removeRelation, updateTask } from "../server/requestOps.ts";
-import { NotFoundError } from "../server/store/collection.ts";
-import { supersededMarks } from "../server/supersede.ts";
+import { listTasks, resolve, resolveRef, titleOf } from "../core/ops.ts";
+import { addRelation, archiveTask, createTask, removeRelation, updateTask } from "../core/requestOps.ts";
+import { NotFoundError } from "../core/store/collection.ts";
+import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
-import { addRepoOutputs, parseRepoOutput, repoArg } from "../server/workTargets.ts";
+import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
 import { briefTask, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
 import { parseTaskAssignments, checkStatus, num, readBody, type CommandEnv } from "./args.ts";

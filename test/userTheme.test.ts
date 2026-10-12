@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { connectionPath, loadConnection, saveConnection } from "../src/server/chatgpt/store.ts";
-import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../src/server/userConfig.ts";
-import { readTheme, ThemeInputError, writeTheme } from "../src/server/userTheme.ts";
+import { connectionPath, loadConnection, saveConnection } from "../src/core/chatgpt/store.ts";
+import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../src/core/userConfig.ts";
+import { readTheme, ThemeInputError, writeTheme } from "../src/core/userTheme.ts";
 import { makeProject, tempDir } from "./helpers.ts";
 
 const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
@@ -275,7 +275,7 @@ describe("/api/user-theme", () => {
 
 describe("describeSettings（p3 user-config の表示）", () => {
   it("環境変数・個人設定・既定のどれから来た値かを出し、読めない値は理由を添える", async () => {
-    const { describeSettings } = await import("../src/server/machineSettingsEdit.ts");
+    const { describeSettings } = await import("../src/core/machineSettingsEdit.ts");
     const user = { settings: { codex: { model: "gpt-x", effort: "high" } } };
     const { rows, error } = describeSettings(user, { P3_CODEX_MODEL: "gpt-env", P3_CODEX_EFFORT: "" });
     expect(error).toBeUndefined();

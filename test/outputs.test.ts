@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 import { Outputs } from "../src/web/components/Outputs.tsx";
 import { outputHref } from "../src/web/lib/outputs.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";

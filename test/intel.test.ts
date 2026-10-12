@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { areaOverlap, TfIdf, tokenize } from "../src/server/intel/text.ts";
+import { areaOverlap, TfIdf, tokenize } from "../src/core/intel/text.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 import { join } from "node:path";
-import { writeRepoEntry } from "../src/server/store/projectFile.ts";
+import { writeRepoEntry } from "../src/core/store/projectFile.ts";
 
 describe("tokenize", () => {
   it("日本語は bigram、ひらがなだけの bigram は捨てる。パスは区切りでも分割する", () => {

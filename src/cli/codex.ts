@@ -1,4 +1,4 @@
-import { CodexImageError, updateCodexImage, type ImageUpdate } from "../server/preflight/codexImage.ts";
+import { CodexImageError, updateCodexImage, type ImageUpdate } from "../core/preflight/codexImage.ts";
 import { UsageError } from "./project.ts";
 
 /**

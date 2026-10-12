@@ -2,9 +2,9 @@ import { cp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import type { PreflightEngine } from "../src/server/preflight/engine.ts";
-import { MockEngine } from "../src/server/preflight/mockEngine.ts";
-import { applyUiShortage, imageInfo, loadUiMaterials, safeRelative, UI_LIMITS } from "../src/server/preflight/uiMaterials.ts";
+import type { PreflightEngine } from "../src/core/preflight/engine.ts";
+import { MockEngine } from "../src/core/preflight/mockEngine.ts";
+import { applyUiShortage, imageInfo, loadUiMaterials, safeRelative, UI_LIMITS } from "../src/core/preflight/uiMaterials.ts";
 import type { PreflightAssessment } from "../src/shared/types.ts";
 import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 import { jpeg, png } from "./imageFixture.ts";
@@ -241,7 +241,7 @@ describe("再評価と画面資料", () => {
   });
 
   it("「P3 が描いた」はエンジンが書いても消す", async () => {
-    const { renderManuscripts } = await import("../src/server/preflight/uiRender.ts");
+    const { renderManuscripts } = await import("../src/core/preflight/uiRender.ts");
     const runDir = await runDirWith({ needed: true, items: [item({ rendered: { by: "p3" } })] }, { "U1.png": png(), "src/U1.html": "<p>a</p>" });
     await renderManuscripts(runDir, { log: () => {}, render: async () => [] });
     const ui = await loadUiMaterials(runDir, "PF-1", ["D1"]);

@@ -3,22 +3,22 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
-import type { P3Context } from "../context.ts";
-import { listTasks, progress, resolve } from "../ops.ts";
-import { ConflictError, NotFoundError } from "../store/collection.ts";
-import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../store/attachments.ts";
+import type { P3Context } from "../../core/context.ts";
+import { listTasks, progress, resolve } from "../../core/ops.ts";
+import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
+import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import type { AttachmentFormat } from "../../shared/types.ts";
 import { bodyLimit } from "hono/body-limit";
-import { ReloadError } from "../store/workspace.ts";
-import { resolvedIssue } from "../requestStatus.ts";
-import { supersededMarks } from "../supersede.ts";
+import { ReloadError } from "../../core/store/workspace.ts";
+import { resolvedIssue } from "../../core/requestStatus.ts";
+import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
-import { UserConfigError } from "../userConfig.ts";
+import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
-import { addRelation, archiveTask, createRequest, createTask, removeRelation, updateRequest, updateTask } from "../requestOps.ts";
-import { StaleInputError } from "../preflight/input.ts";
+import { addRelation, archiveTask, createRequest, createTask, removeRelation, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { StaleInputError } from "../../core/preflight/input.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。

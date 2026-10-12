@@ -1,8 +1,8 @@
 import { basename, relative } from "node:path";
 import { REQUEST_STATUSES, type Request, type Attachment } from "../shared/types.ts";
-import { type P3Context } from "../server/context.ts";
-import { archiveRequest, checkMilestone, createRequest, updateRequest } from "../server/requestOps.ts";
-import { resolvedIssue } from "../server/requestStatus.ts";
+import { type P3Context } from "../core/context.ts";
+import { archiveRequest, checkMilestone, createRequest, updateRequest } from "../core/requestOps.ts";
+import { resolvedIssue } from "../core/requestStatus.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest } from "./showView.ts";

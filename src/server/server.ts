@@ -4,8 +4,8 @@ import { Hono } from "hono";
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { apiRoutes } from "./api/routes.ts";
-import { openProject, P3_ROOT } from "./context.ts";
-import type { MachineSettings, SettingsSource } from "./machineSettings.ts";
+import { openProject, P3_ROOT } from "../core/context.ts";
+import type { MachineSettings, SettingsSource } from "../core/machineSettings.ts";
 
 export interface ServeOptions {
   dataDir: string;

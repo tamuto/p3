@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { extractXlsx, unescapeXml, XLSX_LIMITS } from "../src/server/preflight/xlsx.ts";
-import { codexPrompt } from "../src/server/preflight/codexEngine.ts";
+import { extractXlsx, unescapeXml, XLSX_LIMITS } from "../src/core/preflight/xlsx.ts";
+import { codexPrompt } from "../src/core/preflight/codexEngine.ts";
 import { makeRepo, newRequest, openTestProject } from "./helpers.ts";
 import { jpeg, png } from "./imageFixture.ts";
 import { makeXlsx } from "./zipFixture.ts";

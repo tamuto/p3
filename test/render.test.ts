@@ -3,7 +3,7 @@ import { chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkHtml, diagnoseRender, RENDER_IMAGE_DIR, RENDER_LIMITS, renderArgs, renderHtml, renderImageTag } from "../src/server/preflight/render.ts";
+import { checkHtml, diagnoseRender, RENDER_IMAGE_DIR, RENDER_LIMITS, renderArgs, renderHtml, renderImageTag } from "../src/core/preflight/render.ts";
 import { tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-render-docker.mjs", import.meta.url));

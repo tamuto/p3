@@ -7,15 +7,15 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { REQUEST_ID } from "../shared/refs.ts";
 import type { ProjectConfig } from "../shared/types.ts";
-import type { P3Context } from "../server/context.ts";
-import { resolveRequestId } from "../server/ops.ts";
-import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
+import type { P3Context } from "../core/context.ts";
+import { resolveRequestId } from "../core/ops.ts";
+import { writeProjectFile, writeRepoEntry } from "../core/store/projectFile.ts";
 import { repoNameProblem } from "../shared/repos.ts";
-import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../server/repoAdmin.ts";
-import { Workspace as WorkspaceStore } from "../server/store/workspace.ts";
+import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../core/repoAdmin.ts";
+import { Workspace as WorkspaceStore } from "../core/store/workspace.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
-import type { Workspace } from "../server/store/workspace.ts";
-import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../server/userConfig.ts";
+import type { Workspace } from "../core/store/workspace.ts";
+import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
 
 /** プロジェクトの初期設定・設定変更、変更者と「今の要望」の判定（CLI） */
 

@@ -2,10 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
-import { CodexWorkspaceEngine } from "../src/server/preflight/codexEngine.ts";
-import { parseAssessment } from "../src/server/preflight/service.ts";
-import { writeRepoEntry } from "../src/server/store/projectFile.ts";
+import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
+import { parseAssessment } from "../src/core/preflight/service.ts";
+import { writeRepoEntry } from "../src/core/store/projectFile.ts";
 import { makeProject, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
