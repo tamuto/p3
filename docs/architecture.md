@@ -399,6 +399,23 @@ P3 が使う公開 API と約束:
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のまま。2026-10-11 に codex-cli 0.162.1 で約40秒）
 
+### 画面イメージの描画のイメージ
+
+画面イメージの描画（`src/server/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
+Dockerfile（`src/server/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
+Playwright が入っても、それだけでは描画の安全の条件（ネットワークなし・認証情報なし・リポジトリなし・原稿は読むだけ）を
+満たさないので、描画は別のコンテナで行う。
+
+- 版: Playwright 1.63.0（Chromium の headless shell）、Node 22（`node:22-bookworm-slim`）、`fonts-noto-cjk`。
+  Playwright はイメージの中で npm から入れる（P3 の依存には足さない）。版は公開から1日を過ぎたものに固定する
+- イメージの名前は Dockerfile と `render.mjs` の中身の hash（`infodb-p3-render:<12桁>`）。中身が変われば次の描画で作り直す。
+  大きさは約 1.4GB（amd64 で確かめた）
+- Chromium の sandbox は使わない。コンテナを囲いにする（`--network none`・`--read-only`・`--cap-drop ALL`・
+  `no-new-privileges`・root ではない利用者・メモリ / CPU / プロセス数・時間の上限）。読み込みを止めるのは二重目の囲い
+- 確かめたこと（2026-10-12、DevContainer の中からホストの Docker 29.3 へ。パスの対応あり）: 日本語の表・入力欄・ボタンの
+  HTML が読める PNG になる。`http://` の読み込みは止まって記録され、`file:///etc/passwd` の画像は読めない（setContent で
+  開くので file: の起点が無い）。ホストで直接動かす経路は、パスの対応が要らないだけで同じ引数（この環境では確かめていない）
+
 手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
 
 ```bash

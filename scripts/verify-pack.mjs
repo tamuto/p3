@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // 配布物（npm pack の tarball）を、このチェックアウト・隣の llmcs・今の個人設定に頼らずに確かめる。
 //
-//   node scripts/verify-pack.mjs [--tgz <tarball>] [--docker] [--keep]
+//   node scripts/verify-pack.mjs [--tgz <tarball>] [--docker [--render-dir <フォルダ>]] [--keep]
 //
 //   1. npm pack（prepack で画面をビルドする）。--tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
 //      init --agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
-//   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）
+//   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
+//      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
+//      --render-dir <Docker のホストから見えるフォルダ> と環境変数 PCUBE_CODEX_PATH_MAP を渡す
 //
 // 依存を使わない（Node だけで動く）。CI には入れない。公開の前に人が実行する（docs/publishing.md）。
 import { execFileSync, spawn } from "node:child_process";
@@ -26,6 +28,8 @@ const option = (name) => {
 };
 
 const work = mkdtempSync(join(tmpdir(), "p3-verify-"));
+/** 終わったら消すもの（work の外に作ったもの） */
+const cleanup = [];
 const results = [];
 const step = async (name, f) => {
   process.stderr.write(`… ${name}\n`);
@@ -81,7 +85,7 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    for (const f of ["bin/pcube.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md"]) {
+    for (const f of ["bin/pcube.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.pcube|\.claude\/|test\/|scripts\/|src\/web\/|node_modules\/)/.test(f));
@@ -169,15 +173,26 @@ try {
       check(r.ok && /\d+\.\d+/.test(r.version), `版を読めません: ${JSON.stringify(r)}`);
       return `${r.version}（前 ${r.previous ?? "なし"}）`;
     });
+    await step("p3 render（本物の Docker。配布物の資材だけでイメージを作り、日本語の HTML を PNG にする）", () => {
+      // DevContainer の中では、一時フォルダは Docker のホストから見えない。--render-dir と PCUBE_CODEX_PATH_MAP で渡す
+      const dir = option("render-dir") ? resolve(option("render-dir"), `p3-verify-render-${process.pid}`) : join(work, "render");
+      mkdirSync(dir, { recursive: true });
+      cleanup.push(dir);
+      writeFileSync(join(dir, "page.html"), '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="font-family:sans-serif"><h1>要望一覧</h1><p>絞り込み</p></body></html>');
+      const renderEnv = { ...env, ...(process.env.PCUBE_CODEX_PATH_MAP ? { PCUBE_CODEX_PATH_MAP: process.env.PCUBE_CODEX_PATH_MAP } : {}) };
+      const r = JSON.parse(p3(["render", join(dir, "page.html"), "--width", "800", "--json"], { cwd: dir, env: renderEnv, stdio: ["ignore", "pipe", "inherit"] }));
+      check(r.ok && readFileSync(r.file).subarray(1, 4).toString() === "PNG", `描画できません: ${JSON.stringify(r)}`);
+      return r.file;
+    });
   } else {
-    results.push({ name: "p3 codex update（本物の Docker）", ok: null, detail: "--docker を付けていないので実行していない" });
+    results.push({ name: "p3 codex update / p3 render（本物の Docker）", ok: null, detail: "--docker を付けていないので実行していない" });
   }
 } catch {
   // 結果は下でまとめて出す
 } finally {
   const failed = results.some((r) => r.ok === false);
   process.stdout.write(`${JSON.stringify({ ok: !failed, node: process.version, work, results }, null, 2)}\n`);
-  if (!flag("keep") && !failed) rmSync(work, { recursive: true, force: true });
+  if (!flag("keep") && !failed) for (const d of [work, ...cleanup]) rmSync(d, { recursive: true, force: true });
   process.exitCode = failed ? 1 : 0;
 }
 

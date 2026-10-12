@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
+import { renderCommand } from "./render.ts";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS } from "../shared/types.ts";
@@ -65,6 +66,8 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                logout: --forget（このマシンの登録ごと消す）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す
+  render <原稿.html>             自己完結した HTML / CSS を PNG にする（画面イメージと同じ描画。Docker が要る）
+                               --out 画像.png --width 1280。render update で描画のイメージを作り直す
 
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
@@ -156,6 +159,8 @@ const OPTIONS = {
   "repo-name": { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
+  out: { type: "string" },
+  width: { type: "string" },
 } as const;
 
 const parse = (argv: string[]) => parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });
@@ -212,6 +217,13 @@ async function main(argv: string[]): Promise<number> {
   // Codex のイメージはこのマシンの Docker のもの。プロジェクト・認証が無くても更新できる
   if (cmd === "codex") {
     const r = await codexCommand(args);
+    out.result(r.data, () => r.text);
+    return r.code ?? 0;
+  }
+
+  // 描画はこのマシンの Docker のもの。プロジェクトが決まらなくても使える（パスの対応は個人設定から）
+  if (cmd === "render") {
+    const r = await renderCommand(args, o, resolveMachineSettings(await loadUserConfig(), process.env));
     out.result(r.data, () => r.text);
     return r.code ?? 0;
   }

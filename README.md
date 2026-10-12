@@ -610,6 +610,31 @@ p3 codex update
 
 Docker が無い・デーモンに繋がらない・作れない（ネットワークなど）・版を読めないときは、次にすることを出して終了コード 1。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
 
+#### 画面イメージの描画（`p3 render`）
+
+画面イメージは、自己完結した HTML / CSS の原稿を、P3 が専用のコンテナ（Codex のものとは別）で PNG にする。
+Playwright 1.63.0 の Chromium（headless shell）と日本語のフォント（Noto CJK）を入れたイメージ（`infodb-p3-render:<中身の版>`）を、
+配布物の `src/server/preflight/render-image/` から初回に作る（数分。中身が変われば名前が変わり、作り直す）。
+開発ツールや API キー・画像生成のサービスは要らない。Docker があればよい。
+
+```bash
+p3 render 画面.html --width 1280            # 画面.png ができる（--out で出力先）
+p3 render update                            # 描画のイメージを今すぐ作り直す
+```
+
+- 描画のコンテナは、ネットワークなし・認証情報なし・リポジトリなし。原稿のコピー（読むだけ）と出力のフォルダだけを
+  マウントし、ルートは読むだけ、権限（capability）は全部外し、メモリ 1GB・CPU 1・プロセス 256・時間に上限を付ける。
+  Codex のコンテナに Docker のソケットは渡さない（描画は P3 のプロセスが行う）
+- 原稿に使えるもの: `<style>` の CSS、`data:` の画像（PNG / JPEG / GIF / WebP / SVG）とフォント（woff2 / woff / ttf / otf）、
+  ページの中の `#id`。使えないもの: スクリプト・`onclick` などの属性・`javascript:`・外のファイルや通信を指す参照
+  （`http(s):`・`file:`・相対パス・`@import`）・`iframe` / `object` / `embed` / `link` / `base` / `meta http-equiv`。
+  描画の前に断り、描画するときもスクリプトは無効、`data:` 以外の読み込みは止めて記録する
+- 幅は 320〜2560 px、原稿は 2MB まで、高さ 16384 px を超えるところは切る
+- DevContainer の中から使うときは、出力先のフォルダにもパスの対応（`codex.pathMap`）が要る（一時のフォルダを出力先の隣に作る）。
+  ホストで直接動かすときは要らない
+- 日本語のフォントは Debian の `fonts-noto-cjk`（Noto Sans / Serif CJK。SIL Open Font License 1.1）。イメージの中にだけ入り、
+  P3 の配布物には含めない
+
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
 - 存在しない要望・タスクへの関係はタスク化のときに捨てる
@@ -892,7 +917,7 @@ pnpm typecheck
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm check                   # 型検査 + テスト + ビルド
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
-pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update も）
+pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 ```
 
 `pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
@@ -919,7 +944,7 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設�
 
 | 何を | どうする |
 | --- | --- |
-| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
+| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/server/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.pcube-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
@@ -929,6 +954,8 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設�
 ```bash
 pnpm -s check                       # 型検査・テスト・画面のビルド
 pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
+# DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
+PCUBE_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
 
 公開の手順とチェックリストは [docs/publishing.md](docs/publishing.md)。
