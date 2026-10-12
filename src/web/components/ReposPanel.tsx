@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodeMapEntry } from "../../shared/repos.ts";
 import { api, type RepoInfo } from "../lib/api.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -17,8 +17,21 @@ const STATUS: Record<RepoInfo["status"], { label: string; tone: "emerald" | "amb
  *   このマシンのパスは個人設定に書く（このマシンのローカルの画面からだけ見せ・変える）
  * CLI の p3 repo と同じ操作（server/repoAdmin.ts）。
  */
-export function ReposPanel({ tick, onChanged }: { tick: number; onChanged: () => void }) {
+export function ReposPanel({ tick, onChanged, onDirtyChange }: { tick: number; onChanged: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [data, setData] = useState<{ local: boolean; registered: boolean; repos: RepoInfo[] }>();
+  // 保存していない入力がある参照先（と「足す」の欄）。設定画面のタブの印に使う
+  const [dirtyKeys, setDirtyKeys] = useState<ReadonlySet<string>>(new Set());
+  const markDirty = useCallback((key: string, dirty: boolean) => {
+    setDirtyKeys((prev) => {
+      if (prev.has(key) === dirty) return prev;
+      const next = new Set(prev);
+      if (dirty) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  const anyDirty = [...dirtyKeys].some((k) => k === ADD_KEY || data?.repos.some((r) => r.name === k));
+  useEffect(() => onDirtyChange?.(anyDirty), [anyDirty, onDirtyChange]);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(latestOnly());
   const load = () =>
@@ -62,19 +75,21 @@ export function ReposPanel({ tick, onChanged }: { tick: number; onChanged: () =>
       )}
       <ul className="space-y-3">
         {data?.repos.map((r) => (
-          <RepoCard key={r.name} repo={r} local={data.local && data.registered} act={act} />
+          <RepoCard key={r.name} repo={r} local={data.local && data.registered} act={act} onDirty={markDirty} />
         ))}
       </ul>
-      {data && <AddRepo local={data.local && data.registered} act={act} />}
+      {data && <AddRepo local={data.local && data.registered} act={act} onDirty={markDirty} />}
     </Section>
   );
 }
 
 type Act = (f: () => Promise<unknown>) => Promise<boolean>;
+type OnDirty = (key: string, dirty: boolean) => void;
+const ADD_KEY = "\0add";
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: Act }) {
+function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolean; act: Act; onDirty: OnDirty }) {
   const saved = { role: repo.role, readFirst: repo.readFirst, writable: repo.writable, map: repo.map };
   const [draft, setDraft] = useState(saved);
   const [path, setPath] = useState(repo.local ?? "");
@@ -89,6 +104,8 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
   }, [savedKey]);
   useEffect(() => setPath(repo.local ?? ""), [repo.local]);
   const dirty = !same(draft, saved);
+  const pathEdited = local && path !== (repo.local ?? "");
+  useEffect(() => onDirty(repo.name, dirty || pathEdited), [onDirty, repo.name, dirty, pathEdited]);
   const setMap = (i: number, patch: Partial<CodeMapEntry>) => setDraft((d) => ({ ...d, map: d.map.map((m, j) => (j === i ? { ...m, ...patch } : m)) }));
   const st = STATUS[repo.status];
 
@@ -186,9 +203,11 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
   );
 }
 
-function AddRepo({ local, act }: { local: boolean; act: Act }) {
+function AddRepo({ local, act, onDirty }: { local: boolean; act: Act; onDirty: OnDirty }) {
   const empty = { name: "", role: "", readFirst: false, writable: false, path: "" };
   const [f, setF] = useState(empty);
+  const typed = !same(f, empty);
+  useEffect(() => onDirty(ADD_KEY, typed), [onDirty, typed]);
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">参照先を足す</p>
