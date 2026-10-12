@@ -35,8 +35,8 @@ export const normalizeTaskIn =
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
-    // 無い（以前のタスク）は undefined のまま。null / "" は作業先なし
-    ...("repo" in d ? { repo: str(d.repo) ?? null } : {}),
+    // 作業先（null / "" / 無いは作業先なし。以前の形式は p3 migrate で付ける）
+    repo: str(d.repo) ?? null,
     ...(Array.isArray(d.repoOutputs) ? { repoOutputs: normalizeRepoOutputs(d.repoOutputs) } : {}),
     startedAt: d.startedAt ? iso(d.startedAt) : undefined,
     doneAt: d.doneAt ? iso(d.doneAt) : undefined,
@@ -55,7 +55,6 @@ export const TASK_KEY_ORDER: (keyof Task)[] = [
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
-  const ws = d.workstream as Record<string, unknown> | undefined;
   const status = str(d.status) as RequestStatus;
   return {
     id,
@@ -66,7 +65,6 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     due: date(d.due),
     milestone: str(d.milestone),
     tags: strs(d.tags),
-    workstream: ws && ws.branch ? { branch: String(ws.branch), worktree: String(ws.worktree ?? "") } : undefined,
     ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
     rev: num(d.rev) ?? 1,
@@ -78,7 +76,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "due", "milestone", "tags", "areas", "workstream", "workstreams", "relations", "lastPreflight",
+  "id", "title", "status", "due", "milestone", "tags", "areas", "workstreams", "relations", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
@@ -87,7 +85,6 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
   return {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
-    repo: str(d.repo) ?? "", // 空なら個人設定のリポジトリ（無ければデータのフォルダ）
     repos: normalizeRepos(d.repos),
     docs: strs(d.docs),
     milestones: Array.isArray(d.milestones)
@@ -96,7 +93,6 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
           .map((m) => ({ id: String(m.id), title: str(m.title) ?? String(m.id), due: date(m.due), done: m.done === true ? true : undefined }))
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
-    worktreeDir: str(d.worktreeDir) ?? ".worktrees",
     preflight: { instructions: str(preflight.instructions) ?? "" },
   };
 }
@@ -156,7 +152,7 @@ function normalizeWorkstreams(v: object): Record<string, Workstream> {
   const out: Record<string, Workstream> = {};
   for (const [name, w] of Object.entries(v as Record<string, unknown>)) {
     const o = w && typeof w === "object" ? (w as Record<string, unknown>) : {};
-    if (!repoNameProblem(name) && str(o.branch)) out[name] = { branch: str(o.branch)!, worktree: str(o.worktree) ?? "" };
+    if (!repoNameProblem(name) && str(o.branch)) out[name] = { branch: str(o.branch)! };
   }
   return out;
 }

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { slugify } from "./store/fsutil.ts";
 import type { Workspace } from "./store/workspace.ts";
 import type { RepoOutput, Task, Workstream } from "../shared/types.ts";
-import { primaryRepo, repoTargetProblem, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
+import { repoTargetProblem, requestWorkstreams } from "../shared/workTarget.ts";
 
 /** 作業先にできない（参照先に無い・参照だけ）。何も変えていない */
 export class RepoTargetError extends Error {}
@@ -45,7 +45,7 @@ export interface WorkstreamPlan {
  */
 export function planWorkstreams(ws: Workspace, requestId: string, repos: readonly string[]): WorkstreamPlan {
   const request = ws.requests.require(requestId);
-  const existing = requestWorkstreams(request, ws.project);
+  const existing = requestWorkstreams(request);
   const refs = new Map(ws.refs().map((r) => [r.name, r]));
   const identity = (name: string) => {
     const r = refs.get(name);
@@ -75,25 +75,15 @@ export function planWorkstreams(ws: Workspace, requestId: string, repos: readonl
       }
       seen.set(id, name);
     }
-    plan.add[name] = { branch, worktree: `${ws.project.worktreeDir}/${requestId}` };
+    plan.add[name] = { branch };
   }
   return plan;
 }
 
-/**
- * 割当を要望に書く（足すだけ。既存は消さない）。共有の参照先が無いプロジェクトの主リポジトリは、今までどおり workstream に書く
- */
-export function workstreamPatch(ws: Workspace, requestId: string, plan: WorkstreamPlan) {
+/** 割当を要望に書く（足すだけ。既存は消さない） */
+export function workstreamPatch(ws: Workspace, requestId: string, plan: WorkstreamPlan): { workstreams?: Record<string, Workstream> } {
   const request = ws.requests.require(requestId);
-  const add = { ...plan.add };
-  const patch: { workstream?: Workstream; workstreams?: Record<string, Workstream> } = {};
-  const primary = primaryRepo(ws.project);
-  if (!ws.project.repos.length && add[primary] && !request.workstream) {
-    patch.workstream = add[primary];
-    delete add[primary];
-  }
-  if (Object.keys(add).length) patch.workstreams = { ...(request.workstreams ?? {}), ...add };
-  return patch;
+  return Object.keys(plan.add).length ? { workstreams: { ...(request.workstreams ?? {}), ...plan.add } } : {};
 }
 
 /** 作業先を足したタスク（手で足した・作業先を変えた）に要る割当を書く */
@@ -105,12 +95,12 @@ export async function ensureWorkstreams(ws: Workspace, requestId: string, repos:
 }
 
 /** タスクの作業先と、そのリポジトリのブランチ（CLI・画面に出す）。作業先なしは repo: null */
-export function taskWork(ws: Workspace, t: Task): { repo: string | null; branch?: string; worktree?: string; registered?: boolean } {
-  const repo = taskRepo(t, ws.project) ?? null;
+export function taskWork(ws: Workspace, t: Task): { repo: string | null; branch?: string; registered?: boolean } {
+  const repo = t.repo ?? null;
   if (!repo) return { repo: null };
-  const w = requestWorkstreams(ws.requests.require(t.request), ws.project)[repo];
+  const w = requestWorkstreams(ws.requests.require(t.request))[repo];
   const ref = ws.refs().find((r) => r.name === repo);
-  return { repo, ...(w ? { branch: w.branch, worktree: w.worktree } : {}), registered: ref?.status === "ok" };
+  return { repo, ...(w ? { branch: w.branch } : {}), registered: ref?.status === "ok" };
 }
 
 /** CLI の --repo の値: none / 空 → null（作業先なし）、それ以外は名前 */

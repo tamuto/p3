@@ -27,7 +27,6 @@ import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
 import { hideConfigPath } from "../userConfig.ts";
-import { taskRepo } from "../../shared/workTarget.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -236,7 +235,6 @@ export class PreflightService {
     after: (ok: boolean) => Request["status"],
     refs: ResolvedRef[],
   ) {
-    const repoRoot = this.ws.repoRoot;
     try {
       this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
       const outcome = await engine.run(
@@ -244,7 +242,6 @@ export class PreflightService {
           project: this.ws.project,
           request: this.ws.requests.require(run.requestId),
           context: run.context,
-          repoRoot,
           refs,
           dataDir: this.ws.dataDir,
           runDir,
@@ -329,16 +326,15 @@ export class PreflightService {
     if (!drafts.length) throw new Error("採用したタスク案がありません");
 
     // 作業先: 手で直した案も、変える前に確かめる。割り当てるブランチもここで決めて run に残す（やり直しでも同じ）
-    const legacy = !this.ws.project.repos.length;
     for (const d of drafts) checkRepoTarget(this.ws, d.repo);
-    const draftRepo = (d: ProposedTask) => (legacy ? (d.repo === null ? null : undefined) : (d.repo ?? null));
+    const draftRepo = (d: ProposedTask) => d.repo ?? null;
     const plan =
       resuming && run.materialization!.workstreams
         ? run.materialization!.workstreams
         : planWorkstreams(
             this.ws,
             requestId,
-            drafts.map((d) => taskRepo({ repo: draftRepo(d) }, this.ws.project)).filter((r): r is string => !!r),
+            drafts.map(draftRepo).filter((r): r is string => !!r),
           );
 
     const candidates = supersedeCandidates(this.ws, run);
@@ -379,7 +375,7 @@ export class PreflightService {
           {
             title: d.title,
             status: "todo",
-            ...(draftRepo(d) !== undefined ? { repo: draftRepo(d) } : {}),
+            repo: draftRepo(d),
             labels: [],
             areas: d.areas,
             outputs: [],

@@ -12,9 +12,8 @@ import { redact } from "../src/server/redact.ts";
 import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/server/preflight/codexEngine.ts";
 import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
-import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
-import { makeProject, makeRepo, newRequest, newTask, openTestProject, projectConfig, tempDir } from "./helpers.ts";
+import { makeProject, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 
@@ -83,7 +82,7 @@ describe("PreflightService（mock エンジン）", () => {
     expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T001", origin: "preflight" }]);
     const r = ctx.ws.requests.get(req.id)!;
     expect(r.status).toBe("active");
-    expect(r.workstream).toEqual({ branch: `req/${req.id}-add-export`, worktree: `.worktrees/${req.id}` });
+    expect(r.workstreams).toEqual({ main: { branch: `req/${req.id}-add-export` } });
     // 別の要望のタスクへの影響は絶対参照で要望に記録する
     expect(r.relations).toEqual([expect.objectContaining({ type: "impacts", target: existing.ref, origin: "preflight" })]);
     await expect(ctx.preflight.materialize(req.id, id)).rejects.toThrow("タスク化済み");
@@ -99,7 +98,7 @@ describe("PreflightService（mock エンジン）", () => {
     expect(tasks.map((t) => [t.id, t.title])).toEqual([["T001", "受ける"]]);
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
-    expect(ctx.ws.requests.get(req.id)?.workstream?.branch).toBe(`req/${req.id}`);
+    expect(ctx.ws.requests.get(req.id)?.workstreams?.main.branch).toBe(`req/${req.id}`);
   });
 
   it("タスク化済みの要望で再評価しても、要望のステータスは変えない（進行中のまま）", async () => {
@@ -151,14 +150,15 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     if (outside) {
       repo.dataDir = tempDir("pcube-data-");
       await mkdir(join(repo.dataDir, "requests"));
-      await writeProjectFile(join(repo.dataDir, "project.yaml"), projectConfig({ ...config, repo: repo.root }));
+      await writeTestProject(repo.dataDir, config);
     }
+    const local = { main: repo.root };
     const logFile = join(tempDir(), "codex.jsonl");
     // 既存のタスクは engine を作る前に用意する（偽サーバが参照として書く）
-    const pre = await openTestProject(repo.dataDir);
+    const pre = await openTestProject(repo.dataDir, undefined, { repos: local });
     const past = await newRequest(pre, { title: "過去", status: "done" });
     const existing = await newTask(pre, past.id, { title: "既存", areas: ["src/a"] });
-    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) });
+    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) }, { repos: local });
     const req = await newRequest(ctx, { title: "x", status: "draft", areas: ["src/a"], body: "本文" });
     const sent = () => readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     return { ctx, req, existing, sent };
@@ -224,7 +224,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const repo = await makeRepo();
     const dataDir = tempDir("pcube-data-");
     await mkdir(join(dataDir, "requests"));
-    await writeProjectFile(join(dataDir, "project.yaml"), projectConfig({ repo: repo.root }));
+    await writeTestProject(dataDir);
     let supersede = "";
     const codex = new CodexWorkspaceEngine({
       authVolume: "vol",
@@ -233,7 +233,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
       ensureImage: false,
       command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
     });
-    const ctx = await openTestProject(dataDir, { codex });
+    const ctx = await openTestProject(dataDir, { codex }, { repos: { main: repo.root } });
     const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
     const run = async () => {
       const { id } = await ctx.preflight.start(req.id, { actor: "human:a" });

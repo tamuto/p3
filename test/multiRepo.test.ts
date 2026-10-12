@@ -14,7 +14,7 @@ const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.met
  * 偽の app-server で、マウント・指示文・記録を確かめる
  */
 async function setup(opts: { missingAll?: boolean; docs?: string[] } = {}) {
-  const repo = await makeRepo({ docs: opts.docs ?? ["README.md", "docs:intro.md", "gone:x.md", "unknown:y.md"] });
+  const repo = await makeRepo({ repos: [], docs: opts.docs ?? ["README.md", "docs:intro.md", "gone:x.md", "unknown:y.md"] });
   const docsRepo = tempDir("docsrepo-");
   gitInit(docsRepo);
   await mkdir(join(docsRepo, "guide"));
@@ -100,7 +100,7 @@ describe("複数の参照先を Preflight に渡す", () => {
     expect(s.log).toContain("読める参照先がありません。要望と P3 のデータだけで評価します");
   });
 
-  it("共有の参照先が無い今までのプロジェクトは main だけ（docs は今までの書き方のまま）", async () => {
+  it("本体だけのプロジェクト: docs は名前なしで本体の中", async () => {
     const repo = await makeRepo({ docs: ["README.md"] });
     const launched: HostMount[][] = [];
     const codex = new CodexWorkspaceEngine({
@@ -119,6 +119,6 @@ describe("複数の参照先を Preflight に渡す", () => {
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run.status).toBe("completed");
     expect(launched[0]).toEqual([{ name: "main", host: repo.root, container: "/workspace/main" }]);
-    expect(run.scope).toEqual([{ name: "main", mount: "main", role: "", readFirst: true, status: "ok" }]);
+    expect(run.scope).toEqual([{ name: "main", mount: "main", role: "本体", readFirst: true, status: "ok" }]);
   });
 });

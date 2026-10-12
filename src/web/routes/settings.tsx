@@ -129,15 +129,10 @@ function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="作業ツリー">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="ブランチ名（{id} {slug} を置換）">
-            <input className={`${inputCls} font-mono`} value={draft.branchPattern} onChange={(e) => set("branchPattern", e.target.value)} />
-          </Field>
-          <Field label="作業ツリーの置き場所（リポジトリ相対）">
-            <input className={`${inputCls} font-mono`} value={draft.worktreeDir} onChange={(e) => set("worktreeDir", e.target.value)} />
-          </Field>
-        </div>
+      <Section title="ブランチ">
+        <Field label="ブランチ名（{id} {slug} を置換。作業先のリポジトリごとに同じ名前で割り当てる）">
+          <input className={`${inputCls} font-mono`} value={draft.branchPattern} onChange={(e) => set("branchPattern", e.target.value)} />
+        </Field>
       </Section>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">

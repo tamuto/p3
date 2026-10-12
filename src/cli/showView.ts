@@ -4,7 +4,7 @@ import type { PcubeContext } from "../server/context.ts";
 import { supersededWarnings, type Warning } from "../server/supersede.ts";
 import { table } from "./format.ts";
 import { taskWork } from "../server/workTargets.ts";
-import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
+import { requestWorkstreams } from "../shared/workTarget.ts";
 
 /**
  * show の短い出力（--brief）と、通常の出力と共通の項目。
@@ -12,7 +12,7 @@ import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
  * 短い出力は、AI がタスクを進めるのに要るものだけにする（本文は切り詰めない）:
  *   タスク: id・ref・request・title・status・body・rev・outputs・repoOutputs・依存（relations の depends_on）
  *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・superseded・warnings
- *   要望:   id・title・status・body・rev・workstream・workstreams + branches（作業先ごとのブランチ）+
+ *   要望:   id・title・status・body・rev・workstreams + branches（作業先ごとのブランチ）+
  *          タスクの一覧（id・ref・title・status・repo）・issue
  * 省くもの: 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・関係しそう（暗黙の近さ）・影響範囲。
  * JSON の項目名と階層は通常の --json と同じで、項目を省くだけ（短い出力だけの別名は作らない）。
@@ -71,28 +71,27 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
 }
 
 export function briefRequest(ctx: PcubeContext, r: Request, issue: string | undefined) {
-  const item: Pick<Request, "id" | "title" | "status" | "body" | "rev" | "workstream" | "workstreams"> = {
+  const item: Pick<Request, "id" | "title" | "status" | "body" | "rev" | "workstreams"> = {
     id: r.id,
     title: r.title,
     status: r.status,
     body: r.body,
     rev: r.rev,
-    ...(r.workstream ? { workstream: r.workstream } : {}),
     ...(r.workstreams ? { workstreams: r.workstreams } : {}),
   };
-  const branches = requestWorkstreams(r, ctx.ws.project);
+  const branches = requestWorkstreams(r);
   const tasks = ctx.ws
     .tasksOf(r.id)
     .list()
-    .map((t) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: taskRepo(t, ctx.ws.project) ?? null }));
+    .map((t) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: t.repo }));
   return { item, branches, tasks, ...(issue ? { issue } : {}) };
 }
 
 export function formatBriefRequest(view: ReturnType<typeof briefRequest>): string {
   const { item, branches, tasks, issue } = view;
   const names = Object.keys(branches);
-  // 1つのリポジトリだけなら今までどおり1行。複数なら作業先ごと
-  const branchLine = names.length === 1 && !item.workstreams ? `  branch ${branches[names[0]].branch}` : "";
+  // ブランチは作業先ごと
+  const branchLine = "";
   return [
     issue ? `※ ${issue}` : "",
     `${item.id}  ${item.title}`,
@@ -101,7 +100,7 @@ export function formatBriefRequest(view: ReturnType<typeof briefRequest>): strin
     item.body.trim() ? `\n${item.body.trim()}` : "",
     "",
     `タスク (${tasks.length}):`,
-    table(tasks.map((t) => [`  ${t.id}`, t.status, ...(item.workstreams || names.length > 1 ? [t.repo ?? "（なし）"] : []), t.title])) || "  （なし）",
+    table(tasks.map((t) => [`  ${t.id}`, t.status, t.repo ?? "（作業先なし）", t.title])) || "  （なし）",
   ]
     .filter((l, i) => l !== "" || i > 1)
     .join("\n");

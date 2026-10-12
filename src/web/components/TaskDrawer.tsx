@@ -10,7 +10,7 @@ import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { relationItems } from "../lib/relations.ts";
-import { NO_REPO, repoChoices, requestWorkstreams, taskRepo } from "../../shared/workTarget.ts";
+import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { RelationRow } from "./RelationRow.tsx";
@@ -423,8 +423,8 @@ function WorkTarget({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const current = taskRepo(task, ctx.info.project) ?? null;
-  const branch = current ? requestWorkstreams(data.request, ctx.info.project)[current] : undefined;
+  const current = task.repo;
+  const branch = current ? requestWorkstreams(data.request)[current] : undefined;
   const change = async (value: string) => {
     try {
       await api.patchTask(`${task.request}/${task.id}`, { repo: value === NO_REPO ? null : value, rev: task.rev });
@@ -446,7 +446,6 @@ function WorkTarget({
       </Field>
       <p className="pb-2 text-sm text-slate-500">
         {current ? (branch ? <>ブランチ <code className="font-mono break-all">{branch.branch}</code></> : "ブランチなし（git でないフォルダ・まだ割り当てていない）") : "作業先なし（調査・人の判断など）"}
-        {task.repo === undefined && current && "（以前のタスク: 主リポジトリ）"}
       </p>
     </div>
   );
@@ -455,7 +454,7 @@ function WorkTarget({
 /** リポジトリごとの成果物を足す・外す（すぐ保存） */
 function RepoOutputsEditor({ ctx, task, disabled, onSaved, onError }: { ctx: AppCtx; task: Task; disabled: boolean; onSaved: () => void; onError: (m: string) => void }) {
   const choices = repoChoices(ctx.info.project, null).filter((c) => c.value !== NO_REPO);
-  const [repo, setRepo] = useState(taskRepo(task, ctx.info.project) ?? choices[0]?.value ?? "");
+  const [repo, setRepo] = useState(task.repo ?? choices[0]?.value ?? "");
   const [value, setValue] = useState("");
   const save = async (next: RepoOutput[]) => {
     try {

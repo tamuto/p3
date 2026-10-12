@@ -1,4 +1,3 @@
-import { taskRepo } from "../shared/workTarget.ts";
 import { absRef, normalizeTaskId, parseRef, relRef } from "../shared/refs.ts";
 import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { PcubeContext } from "./context.ts";
@@ -23,8 +22,8 @@ export function listTasks({ ws }: PcubeContext, f: TaskFilter = {}): Task[] {
   let tasks = f.request ? ws.tasksOf(f.request).list() : ws.allTasks();
   if (f.status?.length) tasks = tasks.filter((t) => f.status!.includes(t.status));
   if (f.area) tasks = tasks.filter((t) => t.areas.some((a) => a.startsWith(f.area!)));
-  // 作業先で絞る（none は作業先なし。以前のタスクは主リポジトリ）
-  if (f.repo !== undefined) tasks = tasks.filter((t) => (taskRepo(t, ws.project) ?? null) === (f.repo === "none" ? null : f.repo));
+  // 作業先で絞る（none は作業先なし）
+  if (f.repo !== undefined) tasks = tasks.filter((t) => (t.repo ?? null) === (f.repo === "none" ? null : f.repo));
   if (f.q) {
     const q = f.q.toLowerCase();
     tasks = tasks.filter((t) => `${t.ref} ${t.title} ${t.body}`.toLowerCase().includes(q));

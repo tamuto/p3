@@ -9,9 +9,9 @@ import { REQUEST_ID } from "../shared/refs.ts";
 import type { ProjectConfig } from "../shared/types.ts";
 import type { PcubeContext } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
-import { mainWorktree } from "../server/store/locate.ts";
 import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
-import { LEGACY_REPO, repoNameProblem, type RepoRef } from "../shared/repos.ts";
+import { repoNameProblem, type RepoRef } from "../shared/repos.ts";
+import { Workspace as WorkspaceStore } from "../server/store/workspace.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../server/store/workspace.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../server/userConfig.ts";
@@ -69,7 +69,7 @@ const inside = (path: string, dir: string) => path === dir || path.startsWith(di
 
 /**
  * 今の要望。明示（--req / PCUBE_REQUEST）→ 今いる参照先のブランチ（その参照先の割当だけと照らす）→
- * 割り当てた作業ツリーの中（detached HEAD や git でないときも）→ ブランチ名に要望 ID が入っている。
+ * ブランチ名に要望 ID が入っている（detached HEAD などで決まらなければ --req で指定してもらう）。
  * パスに要望 ID が入っているだけでは決めない。候補が複数なら --req を案内する。
  * AI が要望の作業ツリーで作業していれば、`pcube new "..."` だけでその要望のタスクになる。
  */
@@ -89,26 +89,11 @@ export function currentRequest(ctx: PcubeContext, explicit: string | undefined, 
   if (branch) {
     // 今いる参照先の割当だけと照らす（別のリポジトリの同じ名前のブランチと取り違えない）。参照先の外なら全部と照らす
     const byBranch = requests
-      .filter((r) => Object.entries(requestWorkstreams(r, ctx.ws.project)).some(([name, w]) => w.branch === branch && (!hereRepos.length || hereRepos.includes(name))))
+      .filter((r) => Object.entries(requestWorkstreams(r)).some(([name, w]) => w.branch === branch && (!hereRepos.length || hereRepos.includes(name))))
       .map((r) => r.id);
     const hit = pick(byBranch, `ブランチ ${branch} `);
     if (hit) return hit;
   }
-  // 割り当てた作業ツリーの中（参照先のパスがこのマシンで分かるものだけ）
-  const refs = new Map(ctx.ws.refs().filter((r) => r.status === "ok" && r.local).map((r) => [r.name, r.local!]));
-  const here = resolve(cwd);
-  const byTree = requests
-    .filter((r) =>
-      Object.entries(requestWorkstreams(r, ctx.ws.project)).some(([name, w]) => {
-        const local = refs.get(name);
-        if (!local || !w.worktree) return false;
-        const top = git(local, "rev-parse", "--show-toplevel") ?? local;
-        return inside(here, resolve(top, w.worktree));
-      }),
-    )
-    .map((r) => r.id);
-  const tree = pick(byTree, "この作業ツリー");
-  if (tree) return tree;
   if (branch) {
     const m = new RegExp(REQUEST_ID.source.slice(1, -1)).exec(branch);
     if (m && ctx.ws.requests.get(m[0])) return m[0];
@@ -188,6 +173,8 @@ export interface InitOptions {
   instructions?: string;
   agents?: boolean;
   yes?: boolean;
+  /** このリポジトリの参照先の名前（既定はフォルダ名） */
+  repoName?: string;
 }
 
 /**
@@ -199,7 +186,6 @@ export interface InitOptions {
  */
 export async function init(o: InitOptions): Promise<string> {
   const root = repoRoot(o.cwd);
-  const inRepo = !!mainWorktree(o.cwd);
   const user = await loadUserConfig();
 
   const interactive = !o.yes && process.stdin.isTTY && process.stdout.isTTY;
@@ -220,12 +206,19 @@ export async function init(o: InitOptions): Promise<string> {
 
     const registered = user.projects[key];
     if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
+    // このリポジトリを参照先として登録する名前（新しく作るときは本体として共有の定義も書く。参加するときは同じ名前の参照先か、
+    // 参照先が1つならそれ。決まらなければ登録せず p3 repo path を案内する）
+    const joining = existsSync(join(dir, "project.yaml"));
+    const shared = joining ? (await (async () => { const ws = new WorkspaceStore(dir); await ws.load(); return ws.project.repos; })()) : [];
+    const derived = o.repoName ?? slugifyName(basename(root)) ?? "app";
+    const refName = joining ? (shared.find((r) => r.name === derived) ?? (shared.length === 1 ? shared[0] : undefined))?.name : derived;
+    if (!joining && repoNameProblem(refName!)) throw new UsageError(`参照先の名前: ${repoNameProblem(refName!)}（--repo-name で指定してください）`);
     // 最新の個人設定の上で、このプロジェクトの登録だけを書く（聞いている間にほかで変わっていても消さない）
     const register = () =>
       updateUserConfig((doc, now) => {
         const prev = now.projects[key];
         if (prev && prev.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${prev.dir}`);
-        setProjectNode(doc, key, { dir, repos: inRepo ? { ...prev?.repos, main: root } : (prev?.repos ?? {}) });
+        setProjectNode(doc, key, { dir, repos: refName ? { ...prev?.repos, [refName]: root } : (prev?.repos ?? {}) });
       });
 
     const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
@@ -234,13 +227,15 @@ export async function init(o: InitOptions): Promise<string> {
       (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} と .claude/skills/ に AI 向けの p3 の使い方を置きますか (y/n)`, agentsFile ? "y" : "n")) : false);
 
     // 既に作られたフォルダなら参加だけ
-    if (existsSync(join(dir, "project.yaml"))) {
-      if (registered && (!inRepo || registered.repos.main === root)) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config）`);
+    if (joining) {
+      if (registered && (!refName || registered.repos[refName] === root)) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config）`);
       const addAgents = await askAgents();
       await register();
       return [
         `参加しました: ${key} → ${dir}`,
-        inRepo ? `  リポジトリ  ${root}` : "",
+        refName
+          ? `  参照先 ${refName}  ${root}`
+          : `  このリポジトリを参照先として登録していません。p3 repo ls で名前を確かめ、p3 repo path <名前> ${root} で登録してください`,
         ...(addAgents ? await placeAgents(root, o.cwd) : []),
         "",
         "次に: p3 request ls  /  p3 serve",
@@ -260,23 +255,22 @@ export async function init(o: InitOptions): Promise<string> {
     const cfg: ProjectConfig = {
       name,
       description,
-      // 手元のリポジトリの場所は個人設定に持つ。共有するデータには、リポジトリの中に置く（.pcube/）ときの相対パスだけ書く
-      repo: dir.startsWith(`${root}/`) ? relative(dir, root) : "",
-      repos: [],
+      // このリポジトリを本体の参照先にする（このマシンのパスは個人設定に持ち、共有するデータには書かない）
+      repos: [{ name: refName!, role: "本体", readFirst: true, writable: true, map: [] }],
       docs,
       milestones: [],
       branchPattern: "req/{id}-{slug}",
-      worktreeDir: ".worktrees",
       preflight: { instructions },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
+    await writeRepoEntry(join(dir, "project.yaml"), refName!, cfg.repos[0]);
     await register();
 
     const agentLines = addAgents ? await placeAgents(root, o.cwd) : [];
     return [
       `作りました: ${key} → ${dir}`,
-      inRepo ? `  リポジトリ    ${root}` : "",
+      `  参照先        ${refName}（本体） → ${root}`,
       `  ドキュメント  ${cfg.docs.join(", ") || "（なし）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
       ...agentLines,
@@ -307,24 +301,27 @@ export async function projectCommand(
     return {
       data: rows,
       text: rows.length
-        ? rows.map((r) => `${r.current ? "*" : " "} ${r.name.padEnd(w)}  ${r.dir}${r.repos.main ? `  （リポジトリ ${r.repos.main}）` : ""}`).join("\n")
+        ? rows.map((r) => `${r.current ? "*" : " "} ${r.name.padEnd(w)}  ${r.dir}${Object.keys(r.repos).length ? `  （参照先 ${Object.keys(r.repos).join(", ")}）` : ""}`).join("\n")
         : "登録済みのプロジェクトはありません。管理したいリポジトリの中で p3 init --project <名前> --dir <フォルダ>",
     };
   }
   if (sub === "add") {
-    if (!name || !dirRaw) throw new UsageError("p3 project add <名前> <フォルダ> [--repo <リポジトリ>]");
+    if (!name || !dirRaw) throw new UsageError("p3 project add <名前> <フォルダ>");
+    if (o.repo) throw new UsageError("--repo は使えなくなりました。登録したあと、p3 repo path <参照先の名前> <パス> でこのマシンのパスを登録してください");
     if (!PROJECT_NAME.test(name)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${name}`);
     const dir = resolvePath(cwd, dirRaw);
     if (!existsSync(join(dir, "project.yaml"))) throw new UsageError(`${dir} はまだ p3 のプロジェクトではありません。作るときは管理したいリポジトリの中で p3 init`);
-    const repo = o.repo ? resolvePath(cwd, o.repo) : mainWorktree(cwd);
     const saved = await updateUserConfig((doc, now) => {
       const prev = now.projects[name];
       if (prev && prev.dir !== dir) throw new UsageError(`「${name}」は別のフォルダで登録済みです: ${prev.dir}`);
-      const next = { dir, repos: repo ? { ...prev?.repos, main: repo } : (prev?.repos ?? {}) };
+      const next = { dir, repos: prev?.repos ?? {} };
       setProjectNode(doc, name, next);
       return next;
     });
-    return { data: { name, ...saved }, text: `登録しました: ${name} → ${dir}${repo ? `（リポジトリ ${repo}）` : ""}` };
+    return {
+      data: { name, ...saved },
+      text: `登録しました: ${name} → ${dir}\n  参照先のこのマシンのパスは p3 --project ${name} repo ls で確かめ、p3 repo path <名前> <パス> で登録してください`,
+    };
   }
   if (sub === "rm") {
     if (!name) throw new UsageError("p3 project rm <名前>");
@@ -342,7 +339,7 @@ export const resolvePath = (cwd: string, p: string) => resolve(cwd, p === "~" ? 
 
 const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 
-const CONFIG_KEYS = ["name", "description", "docs", "branchPattern", "worktreeDir", "instructions", "repo"] as const;
+const CONFIG_KEYS = ["name", "description", "docs", "branchPattern", "instructions"] as const;
 
 /** pcube config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
@@ -356,7 +353,7 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
       if (key === "docs") patch.docs = splitList(value);
       else if (key === "instructions") patch.preflight = { instructions: value };
       else if (key === "branchPattern" && !value.includes("{id}")) throw new UsageError("branchPattern には {id} を含めてください");
-      else if ((key === "name" || key === "repo" || key === "worktreeDir") && !value) throw new UsageError(`${key} は空にできません`);
+      else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
     }
     if (!Object.keys(patch).length) throw new UsageError("pcube config set キー=値 ...");
@@ -368,11 +365,10 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
   const text = [
     `name           ${p.name}`,
     `description    ${p.description || "（なし）"}`,
-    `repo           ${ws.repoRoot}${p.repo ? `  (project.yaml: ${p.repo})` : "  (個人設定)"}`,
+    `repos          ${p.repos.map((r) => r.name).join(", ") || "（なし）"}  (p3 repo ls)`,
     `docs           ${p.docs.join(", ") || "（なし）"}`,
     `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
-    `worktreeDir    ${p.worktreeDir}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
     "",
     `ファイル: ${join(ws.dataDir, "project.yaml")}`,
@@ -443,10 +439,9 @@ export async function repoCommand(
 
   if (sub === "ls") {
     const refs = ws.refs();
-    const legacy = !ws.project.repos.length;
     const rows = refs.map((r) => ({ ...r, local: r.local ?? null }));
     const text = [
-      ...(legacy ? ["（共有の参照先はまだありません。今までの1リポジトリ main を読みます。足すときは p3 repo add <名前> <パス> role=…）"] : []),
+      ...(!refs.length ? ["（参照先はまだありません。足すときは p3 repo add <名前> <パス> role=…）"] : []),
       ...refs.map((r) => {
         const flags = [r.readFirst && "最初に読む", r.writable && "作業先候補"].filter(Boolean).join("・");
         const where =
@@ -467,16 +462,12 @@ export async function repoCommand(
     const maybePath = rest[0] && !rest[0].includes("=") ? rest[0] : undefined;
     const entry = pairs(maybePath ? rest.slice(1) : rest, { name, role: "", readFirst: false, writable: false, map: [] });
     const path = maybePath ? folder(maybePath) : undefined;
-    const wasLegacy = !ws.project.repos.length;
     await writeRepoEntry(file, name, entry);
     if (path) await setLocal(name, path);
     return {
       data: { ...entry, local: path ?? null },
       text: [
         `参照先を足しました: ${name}${entry.role ? `（${entry.role}）` : ""}${path ? ` → ${path}` : "（このマシンのパスは未登録: p3 repo path " + name + " <パス>）"}`,
-        ...(wasLegacy
-          ? ["共有の参照先を書いたので、今までの1リポジトリ（main）は Preflight で読まなくなります。本体も読ませるなら p3 repo add <名前> <パス> role=本体 readFirst=true で足してください"]
-          : []),
       ].join("\n"),
     };
   }
@@ -489,7 +480,7 @@ export async function repoCommand(
     return { data: next, text: `参照先を変えました: ${name}` };
   }
   if (sub === "path") {
-    if (!shared() && !(name === LEGACY_REPO && !ws.project.repos.length)) {
+    if (!shared()) {
       throw new UsageError(`「${name}」は共有の参照先にありません（p3 repo ls）。足すときは p3 repo add ${name} <パス>`);
     }
     if (!rest[0]) throw new UsageError(`p3 repo path ${name} <このマシンのパス>`);

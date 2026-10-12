@@ -845,7 +845,7 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         </label>
         <TagInput id="request-tags" tags={tagsD.value} onChange={(next) => void changeTags(next)} disabled={tagsBusy || data.gone} text={tagText} onText={setTagText} />
       </div>
-      <Branches request={request} ctx={ctx} />
+      <Branches request={request} />
       <ExternalChange
         label="タグ"
         draft={tagsD}
@@ -902,9 +902,9 @@ function ExternalChange<V>({
   );
 }
 
-/** 作業先のリポジトリごとのブランチ（タスク化・作業先を足したときに割り当てたもの。git のブランチや作業ツリーは作業する人が作る） */
-function Branches({ request, ctx }: { request: Request; ctx: AppCtx }) {
-  const branches = Object.entries(requestWorkstreams(request, ctx.info.project));
+/** 作業先のリポジトリごとのブランチ（タスク化・作業先を足したときに割り当てた名前。git のブランチや作業ツリーは作業する人・AI が作る） */
+function Branches({ request }: { request: Request }) {
+  const branches = Object.entries(requestWorkstreams(request));
   if (!branches.length) return null;
   return (
     <div className="space-y-1">
@@ -914,7 +914,6 @@ function Branches({ request, ctx }: { request: Request; ctx: AppCtx }) {
           <li key={name} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium break-all">{name}</span>
             <code className="font-mono break-all text-slate-600 dark:text-slate-300">{w.branch}</code>
-            <span className="text-slate-400">作業ツリー <code className="font-mono break-all">{w.worktree}</code></span>
           </li>
         ))}
       </ul>

@@ -50,10 +50,10 @@ PCUBE_ACTOR=ai:<エージェント名> p3 <コマンド> [引数] --json
 ## タスクを進める
 
 作業は **作業先のリポジトリの、要望のブランチ** で行う。タスクごとの作業先とブランチは
-`show <要望ID>/T003 --brief --json` の `work`（`repo`・`branch`・`worktree`）に出る（要望全体は `request show <要望ID> --brief --json` の `branches`）。
+`show <要望ID>/T003 --brief --json` の `work`（`repo`・`branch`）に出る（要望全体は `request show <要望ID> --brief --json` の `branches`）。
 
-1. 作業先に入る: `work.repo` のリポジトリ（場所は `repo ls`）で、`work.branch` に切り替える（無ければ最新の既定のブランチから作るか、
-   `work.worktree` に作業ツリーを作る）。`work.repo` が `null`（作業先なし: 調査・人の判断など）なら移動は要らない。ブランチの無い
+1. 作業先に入る: `work.repo` のリポジトリ（場所は `repo ls`）で、`work.branch` に切り替える（無ければ最新の既定のブランチから作る。
+   作業ツリーを使うかどうかと置き場所は任せる）。`work.repo` が `null`（作業先なし: 調査・人の判断など）なら移動は要らない。ブランチの無い
    作業先（git でないフォルダ）はそのフォルダで作業する。このマシンのパスが未登録（`work.registered` が false）なら、場所をユーザーに
    聞いて登録してもらい（`repo path <名前> <パス>`）、`whoami` で今の要望と今いる参照先を確かめてから始める
 2. `ls --req <要望ID>` で一覧、`show <要望ID>/T003 --brief --json` で中身と依存を読む。`dependencies` の `status` が

@@ -108,8 +108,8 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   - 開いた中が、スケジュールの左の列（sticky, z-30）の下に隠れていたので z-50 にした
 - Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
   名前・役割・readFirst・writable・コードの地図 map / mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
-  `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。共有の `repos` が無ければ今までの
-  1リポジトリ（`main`）。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
+  `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。`p3 init` が本体を参照先として
+  登録する。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
   設定の保存（画面・`p3 config`）は `repos` を書き換えない。コンテナの中の名前（mount）は論理名から英数字と `. _ -` だけで作り、
   重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は docs・areas・evidence で共通。名前なしは先頭の参照先。
   - マウント（`withMounts`）: dockerCommand の `/workspace` の bind を tmpfs に替え、参照先を `/workspace/<mount>` に
@@ -227,13 +227,17 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   参照先の名前に置き換える。個人設定のエラーは `hideConfigPath` で「個人設定（config.yaml）」にする。想定外の変更は
   `<参照先>:<パス>`）。画面のエンジンの状態（共有しない）には個人設定の場所を出してよい
 - タスクの作業先とリポジトリごとのブランチ（`shared/workTarget.ts`・`server/workTargets.ts`）: タスクとタスク案の `repo`
-  （名前 / null = 作業先なし / 無い = 以前のタスクで主リポジトリ）、要望の `workstreams`（名前 → branch・worktree。以前の
-  `workstream` は主リポジトリの分として読む）、タスクの `repoOutputs`。作業先は writable の参照先だけで、API・CLI・タスク化の
+  （名前 / null = 作業先なし。書かずに足すと、作業先にできる参照先が1つならそれ）、要望の `workstreams`（名前 → branch。
+  作業ツリーの置き場所は記録しない）、タスクの `repoOutputs`。作業先は writable の参照先だけで、API・CLI・タスク化の
   前に `checkRepoTarget` で確かめ、変える前に断る。割当は `planWorkstreams`（既存は残す・git でないフォルダはブランチなし・
   同じ git の実体を指す2つの名前は断る。git の実体は `--git-common-dir` で見る）で決め、タスク化では計画を run の
-  materialization に残してやり直しでも同じにする。共有の参照先が無いプロジェクトは今までどおり `workstream` に書き、タスクに
-  `repo` を書かない。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先（`locateHere`）の割当のブランチ →
-  割り当てた作業ツリーの中 → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない。git のブランチ・作業ツリーは作らない
+  materialization に残してやり直しでも同じにする。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先
+  （`locateHere`）の割当のブランチ → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない（detached HEAD では決めない）。
+  git のブランチ・作業ツリーは作らない
+- 以前の形式（project.yaml の `repo`・`worktreeDir`、参照先が無い、個人設定の `repos.main`、要望の `workstream`、作業先の無い
+  タスク・タスク案）は読まない。`cli/migrate.ts` の `migrate`（`p3 migrate`）が一度に移す（本体の参照先を足す・以前の項目を外す・
+  `repos.main` を付け替える・`workstream` を本体の `workstreams` にする・作業先を本体にする。何度実行してもよい）。CLI と serve は
+  `assertMigrated` で以前の形式を見つけたら `p3 migrate` を案内して止まる（`whoami` と `migrate` だけは動く）
   - ブラウザでの確認（2026-10-12、Chromium。app・infra（git、作業先にできる）と lib（参照だけ）の一時プロジェクト）: 案のレビューの
     作業先の選択肢は app・infra・作業先なし（lib は出ない）で、選ぶと保存される。タスク化で app・infra の2つにブランチが割り当たり、
     概要に「ブランチ（作業先ごと）」、ボードのカードに作業先（作業先なしも）が出る。タスク詳細で作業先を作業先なしから infra に変え、

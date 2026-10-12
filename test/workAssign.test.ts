@@ -55,8 +55,7 @@ describe("タスク化で作業先の分だけブランチを割り当てる", (
     ]);
     const r = ctx.ws.requests.require(rid);
     expect(Object.keys(r.workstreams ?? {})).toEqual(["app", "infra"]);
-    expect(r.workstreams!.app).toEqual({ branch: `req/${rid}-multi`, worktree: `.worktrees/${rid}` });
-    expect(r.workstream).toBeUndefined();
+    expect(r.workstreams!.app).toEqual({ branch: `req/${rid}-multi` });
   });
 
   it("作業先なしだけならブランチは割り当てない。git でないフォルダは作業先を残してブランチなし", async () => {
@@ -94,20 +93,20 @@ describe("タスク化で作業先の分だけブランチを割り当てる", (
     expect(ctx.ws.tasksOf(rid).list()).toEqual([]);
     const one = await evaluate(["guide-sub"]);
     await ctx.preflight.materialize(one.rid, one.run);
-    expect(ctx.ws.requests.require(one.rid).workstreams).toEqual({ "guide-sub": { branch: expect.any(String), worktree: `.worktrees/${one.rid}` } });
+    expect(ctx.ws.requests.require(one.rid).workstreams).toEqual({ "guide-sub": { branch: expect.any(String) } });
   });
 
   it("後から作業先を足す（タスクを足す・作業先を変える）と、足りない分だけ割り当て、既存の割当は変えない", async () => {
     const { ctx, call, evaluate } = await setup();
     const { rid, run } = await evaluate(["app"]);
     await ctx.preflight.materialize(rid, run);
-    await ctx.ws.requests.update(rid, { workstreams: { app: { branch: "手で変えたブランチ", worktree: "wt" } } });
+    await ctx.ws.requests.update(rid, { workstreams: { app: { branch: "手で変えたブランチ" } } });
     const added = await call("POST", `/requests/${rid}/tasks`, { title: "基盤", repo: "infra" });
     expect(added.status).toBe(201);
     expect(added.body.repo).toBe("infra");
     expect(ctx.ws.requests.require(rid).workstreams).toEqual({
-      app: { branch: "手で変えたブランチ", worktree: "wt" },
-      infra: { branch: `req/${rid}-multi`, worktree: `.worktrees/${rid}` },
+      app: { branch: "手で変えたブランチ" },
+      infra: { branch: `req/${rid}-multi` },
     });
     expect((await call("POST", `/requests/${rid}/tasks`, { title: "x", repo: "docs" })).status).toBe(400);
     const t = added.body;
@@ -131,20 +130,5 @@ describe("タスク化で作業先の分だけブランチを割り当てる", (
     const { tasks } = await ctx.preflight.materialize(rid, run);
     expect(tasks.map((t) => t.id)).toEqual(["T001", "T002"]);
     expect(Object.keys(ctx.ws.requests.require(rid).workstreams!)).toEqual(["app", "infra"]);
-  });
-});
-
-describe("共有の参照先が無い今までのプロジェクト", () => {
-  it("今までどおり workstream（1つのブランチ）を割り当て、タスクに作業先は書かない", async () => {
-    const repo = await makeRepo();
-    const ctx = await openTestProject(repo.dataDir);
-    const req = await newRequest(ctx, { title: "legacy", status: "draft", body: "- a\n- b" });
-    const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
-    await ctx.preflight.wait(req.id, id);
-    const { tasks } = await ctx.preflight.materialize(req.id, id);
-    expect(tasks.every((t) => !("repo" in t))).toBe(true);
-    const r = ctx.ws.requests.require(req.id);
-    expect(r.workstream).toEqual({ branch: `req/${req.id}-legacy`, worktree: `.worktrees/${req.id}` });
-    expect(r.workstreams).toBeUndefined();
   });
 });

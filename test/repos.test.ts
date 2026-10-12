@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { effectiveRepos, LEGACY_REPO, mountNames, parseRepoPath, repoNameProblem } from "../src/shared/repos.ts";
+import { mountNames, parseRepoPath, repoNameProblem } from "../src/shared/repos.ts";
 import { normalizeProject, normalizeRepos } from "../src/server/store/normalize.ts";
 import { writeProjectFile, writeRepoEntry } from "../src/server/store/projectFile.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
@@ -30,8 +30,7 @@ describe("参照先の定義（project.yaml の repos）", () => {
     for (const bad of ["", "a b", "a:b", "a/b", "a\\b", ".", ".."]) expect(repoNameProblem(bad)).toBeDefined();
   });
 
-  it("共有の repos が無ければ今までの1リポジトリ main。コンテナの中の名前は論理名と分ける", () => {
-    expect(effectiveRepos([]).map((r) => [r.name, r.readFirst, r.writable])).toEqual([[LEGACY_REPO, true, true]]);
+  it("コンテナの中の名前は論理名と分ける", () => {
     expect(mountNames(["app", "ガイド", "app-doc", "a b", "App", "...", "x", "x"])).toEqual(["app", "repo2", "app-doc", "a-b", "App", "repo6", "x", "x-2"]);
   });
 });
@@ -57,7 +56,7 @@ describe("参照の書き方（<名前>:<パス>）", () => {
 
 describe("project.yaml への読み書き", () => {
   it("p3 repo の書き込みは1件だけを変え、コメント・ほかの項目・知らない項目を残す。設定の保存は repos を消さない", async () => {
-    const { dataDir } = await makeRepo();
+    const { dataDir } = await makeRepo({ repos: [] });
     const file = join(dataDir, "project.yaml");
     await writeFile(file, `${await readFile(file, "utf8")}# 参照先\nrepos:\n  # 本体のリポジトリ\n  app:\n    role: システム本体\n    owner: team-a   # 知らない項目\n  legacy-list-ok: 基盤\n`);
     await writeRepoEntry(file, "app", { name: "app", role: "本体（更新）", readFirst: true, writable: true, map: [{ path: "src", role: "コード", entry: "src/main.ts" }] });
@@ -83,7 +82,7 @@ describe("project.yaml への読み書き", () => {
   });
 
   it("repos が対応でない（並びで書かれた）ときは書き換えずにエラーにする", async () => {
-    const { dataDir } = await makeRepo();
+    const { dataDir } = await makeRepo({ repos: [] });
     const file = join(dataDir, "project.yaml");
     await writeFile(file, `${await readFile(file, "utf8")}repos:\n  - name: a\n`);
     await expect(writeRepoEntry(file, "b", { name: "b", role: "", readFirst: false, writable: false, map: [] })).rejects.toThrow("対応で書いてください");

@@ -8,6 +8,7 @@ import { addRelation, listTasks, progress, removeRelation, resolve } from "../op
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { ReloadError } from "../store/workspace.ts";
 import { checkRepoTarget, ensureWorkstreams } from "../workTargets.ts";
+import { defaultRepo } from "../../shared/workTarget.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
@@ -72,7 +73,6 @@ const projectPatch = z
       }),
     ),
     branchPattern: z.string().includes("{id}"),
-    worktreeDir: z.string().min(1),
     preflight: z.object({ instructions: z.string() }),
   })
   .partial()
@@ -202,8 +202,10 @@ export function apiRoutes(ctx: PcubeContext) {
     // 作業先は null（作業先なし）を残す。作業先にできるものだけ（変える前に断る）
     checkRepoTarget(ws, raw.repo);
     for (const o of raw.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
-    const t = await ws.tasksOf(id).create({ ...b, ...("repo" in raw ? { repo: raw.repo } : {}), status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
-    if (raw.repo) await ensureWorkstreams(ws, id, [raw.repo], actorOf(c));
+    // 作業先を書かなければ、作業先にできる参照先が1つならそれ（ほかは作業先なし）
+    const repo = "repo" in raw ? (raw.repo ?? null) : defaultRepo(ws.project);
+    const t = await ws.tasksOf(id).create({ ...b, repo, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    if (repo) await ensureWorkstreams(ws, id, [repo], actorOf(c));
     // 対応済の要望に未完了のタスクを足したら進行中に戻す
     const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);

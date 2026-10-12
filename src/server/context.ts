@@ -21,19 +21,19 @@ export interface PcubeContext {
 
 /**
  * サーバと CLI が共有する組み立て。どちらもデータのフォルダのファイルを直接読み書きする。
- * repoRoot: 手元のリポジトリ（個人設定）。省くと project.yaml の repo
+ * repos: 参照先の名前 → このマシンのパス（個人設定）
  * settings: マシンごとの設定（環境変数と個人設定から。.env は読まない）。省くと個人設定から、Preflight を始めるたび・
  *   エンジンの状態を見るたびに読み直す（serve を起動し直さずに効く）。MachineSettings を渡すとその値に決める（テストなど）。
  *   プロジェクト（データのフォルダ）側には置かない: 認証情報をプロジェクトの git に入れないため
  */
 export async function openProject(
   dataDir: string,
-  opts: { repoRoot?: string; repos?: Record<string, string>; settings?: MachineSettings | SettingsSource } = {},
+  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource } = {},
 ): Promise<PcubeContext> {
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
   const initial = await source.get().catch(() => undefined);
-  const ws = new Workspace(dataDir, opts.repoRoot, opts.repos);
+  const ws = new Workspace(dataDir, opts.repos);
   await ws.load();
   const index = new ProjectIndex(ws);
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。

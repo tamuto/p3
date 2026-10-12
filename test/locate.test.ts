@@ -12,7 +12,7 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
   it("--dir はデータのフォルダを直接指す。登録済みなら名前とリポジトリも付く", () => {
     expect(resolveProject({ cwd: "/somewhere", dir: "../data", user: user() })).toEqual({ dataDir: "/data", repos: {}, via: "dir" });
     const u = user({ p: { dir: "/data", repos: { main: "/repo" } } });
-    expect(resolveProject({ cwd: "/", dir: "/data", user: u })).toMatchObject({ name: "p", repoRoot: "/repo" });
+    expect(resolveProject({ cwd: "/", dir: "/data", user: u })).toMatchObject({ name: "p", repos: { main: "/repo" } });
   });
 
   it("--project は登録した名前。無ければ登録済みの一覧を添えて断る", () => {
@@ -30,7 +30,7 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
     const data = tempDir();
     const u = user({ a: { dir: data, repos: { main: root } }, b: { dir: tempDir() } });
     await mkdir(join(root, "src", "deep"), { recursive: true });
-    expect(resolveProject({ cwd: join(root, "src", "deep"), user: u })).toMatchObject({ name: "a", repoRoot: root, via: "cwd" });
+    expect(resolveProject({ cwd: join(root, "src", "deep"), user: u })).toMatchObject({ name: "a", repos: { main: root }, via: "cwd" });
     expect(resolveProject({ cwd: wt, user: u }).name).toBe("a");
     expect(resolveProject({ cwd: join(data), user: u }).name).toBe("a");
     // 名前の前方一致で取り違えない（/x/data と /x/data2）

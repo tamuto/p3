@@ -18,10 +18,11 @@ import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
-import { effectiveRepos } from "../shared/repos.ts";
-import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
+import { defaultRepo, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, checkRepoTarget, ensureWorkstreams, parseRepoOutput, repoArg, taskWork } from "../server/workTargets.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
+import { assertMigrated, migrate } from "./migrate.ts";
+import { Workspace } from "../server/store/workspace.ts";
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 
@@ -42,10 +43,13 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
 使い方: p3 <コマンド> [引数] [オプション]   （pcube でも同じ）
 
 プロジェクト
-  init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する
-                               --project 名前 --dir フォルダ --description --docs a,b --instructions 観点 --agents --yes
-  project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
-  config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
+  init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する。
+                               このリポジトリを本体の参照先として登録する
+                               --project 名前 --dir フォルダ --repo-name 参照先の名前（既定はフォルダ名）--description --docs a,b
+                               --instructions 観点 --agents --yes
+  migrate                      以前の形式のプロジェクトを新しい形式に一度で移す（--name 本体の参照先の名前）
+  project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
+  config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern instructions）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
                                add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
@@ -149,6 +153,7 @@ const OPTIONS = {
   forget: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   local: { type: "boolean" },
+  "repo-name": { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
 } as const;
@@ -192,6 +197,7 @@ async function main(argv: string[]): Promise<number> {
         instructions: o.instructions,
         agents: o.agents,
         yes: o.yes,
+        repoName: o["repo-name"],
       }),
     );
     return 0;
@@ -236,11 +242,20 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, repos: target.repos, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
+    const check = new Workspace(target.dataDir);
+    await check.load();
+    await assertMigrated(check);
+    await startServer({ dataDir: target.dataDir, repos: target.repos, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot, repos: target.repos, settings });
+  const ctx = await openProject(target.dataDir, { repos: target.repos, settings });
+  if (cmd === "migrate") {
+    const r = await migrate(ctx.ws, target.name, cwd, { name: o.name });
+    return out.result(r.data, () => r.text);
+  }
+  // 以前の形式のままなら、p3 migrate を案内して止める（読み違えたまま書かない）
+  if (cmd !== "whoami") await assertMigrated(ctx.ws);
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
@@ -281,10 +296,9 @@ async function main(argv: string[]): Promise<number> {
 
     case "whoami": {
       const here = locateHere(ctx, cwd);
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, repo: ctx.ws.repoRoot, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
-          `リポジトリ    ${ctx.ws.repoRoot}`,
           `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
@@ -338,7 +352,7 @@ async function main(argv: string[]): Promise<number> {
     // --- タスク -------------------------------------------------------------
     case "ls":
     case "list": {
-      if (o.repo !== undefined && o.repo !== "none" && !effectiveRepos(ctx.ws.project.repos).some((r) => r.name === o.repo)) {
+      if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
         throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
       }
       const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo };
@@ -352,7 +366,7 @@ async function main(argv: string[]): Promise<number> {
           tasks.map((t) => [
             o.all ? t.ref : t.id,
             t.status,
-            ...(multi ? [taskRepo(t, ctx.ws.project) ?? "（なし）"] : []),
+            ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
             t.title,
             [deps(t), replacedBy(t, marks)].filter(Boolean).join("  "),
           ]),
@@ -401,14 +415,14 @@ async function main(argv: string[]): Promise<number> {
       const status = o.status ?? "todo";
       checkStatus(status);
       // 作業先（--repo <名前>|none）。作業先にできるものだけ。書く前に確かめる
-      const repo = repoArg(o.repo);
+      const repo = repoArg(o.repo) ?? defaultRepo(ctx.ws.project);
       checkRepoTarget(ctx.ws, repo);
       const repoOutputs = (o["repo-output"] ?? []).map((x) => parseRepoOutput(ctx.ws, x));
       const t = await ctx.ws.tasksOf(rid).create(
         {
           title,
           status,
-          ...(repo !== undefined ? { repo } : {}),
+          repo,
           labels: o.label ?? [],
           areas: o.area ?? [],
           outputs: o.output ?? [],
@@ -632,7 +646,7 @@ async function requestCommand(
       const graph = ctx.index.neighborhood(rid);
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);
-      const branches = requestWorkstreams(r, ctx.ws.project);
+      const branches = requestWorkstreams(r);
       const multi = ctx.ws.project.repos.length > 0;
       return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), graph, file, ...(issue ? { issue } : {}) }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
@@ -640,11 +654,11 @@ async function requestCommand(
           issue ? `※ ${issue}\n` : "",
           formatEntity(ctx, r, graph, file),
           ...(Object.keys(branches).length
-            ? ["", "ブランチ（作業先のリポジトリごと）:", ...Object.entries(branches).map(([name, w]) => `  ${name}  ${w.branch}  （作業ツリー ${w.worktree}）`)]
+            ? ["", "ブランチ（作業先のリポジトリごと）:", ...Object.entries(branches).map(([name, w]) => `  ${name}  ${w.branch}`)]
             : []),
           "",
           `タスク (${tasks.length}):`,
-          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t, ctx.ws.project) ?? "（なし）"] : []), t.title, deps(t)])) || "  （なし）",
+          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, deps(t)])) || "  （なし）",
         ].join("\n");
       });
     }

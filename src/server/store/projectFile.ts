@@ -5,24 +5,20 @@ import type { ProjectConfig } from "../../shared/types.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
 /** 設定の保存（画面・p3 config）で書き換える項目。repos は p3 repo だけが項目ごとに書く（writeRepoEntry） */
-const ORDER: (keyof ProjectConfig)[] = [
-  "name", "description", "repo", "docs", "milestones", "branchPattern", "worktreeDir", "preflight",
-];
+const ORDER: (keyof ProjectConfig)[] = ["name", "description", "docs", "milestones", "branchPattern", "preflight"];
 /** ファイルの中の並び */
-const RANK: (keyof ProjectConfig)[] = ["name", "description", "repo", "repos", "docs", "milestones", "branchPattern", "worktreeDir", "preflight"];
+const RANK: (keyof ProjectConfig)[] = ["name", "description", "repos", "docs", "milestones", "branchPattern", "preflight"];
 
 /** project.yaml に書く形。既定値のままの項目や空の項目は省き、人が読み書きしやすく保つ */
 function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknown>> {
   return {
     name: cfg.name,
     description: cfg.description || undefined,
-    repo: cfg.repo || undefined,
     docs: cfg.docs.length ? cfg.docs : undefined,
     milestones: cfg.milestones.length
       ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
       : undefined,
     branchPattern: cfg.branchPattern,
-    worktreeDir: cfg.worktreeDir,
     preflight: cfg.preflight.instructions ? { instructions: cfg.preflight.instructions } : undefined,
   };
 }

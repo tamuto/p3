@@ -1,5 +1,5 @@
 import { readdir, readFile, watch } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
@@ -63,13 +63,9 @@ export class Workspace {
   private listeners = new Set<Listener>();
   private abort = new AbortController();
 
-  /**
-   * repoOverride: 個人設定にある手元のリポジトリの場所（project.yaml の repo より優先。タスクの作業ツリーの元）
-   * localRepos: 個人設定の参照先の名前 → このマシンのパス（Preflight が読む。repoRefs.ts）
-   */
+  /** localRepos: 個人設定の参照先の名前 → このマシンのパス（repoRefs.ts） */
   constructor(
     readonly dataDir: string,
-    private readonly repoOverride?: string,
     readonly localRepos: Record<string, string> = {},
   ) {
     this.requests = new MarkdownCollection<Request>({
@@ -85,15 +81,16 @@ export class Workspace {
     return join(this.dataDir, "requests");
   }
 
-  /** 管理対象リポジトリの絶対パス（Codex の cwd） */
-  get repoRoot(): string {
-    if (this.repoOverride) return this.repoOverride;
-    return isAbsolute(this.project.repo) ? this.project.repo : resolve(this.dataDir, this.project.repo);
+  /** project.yaml に残っている以前の形式の項目（repo・worktreeDir。p3 migrate で移す） */
+  async legacyProjectKeys(): Promise<string[]> {
+    const text = await readFile(join(this.dataDir, "project.yaml"), "utf8").catch(() => "");
+    const raw = (YAML.parse(text) ?? {}) as Record<string, unknown>;
+    return ["repo", "worktreeDir"].filter((k) => k in raw);
   }
 
   /** Preflight が読む参照先（共有の定義と、このマシンのパス）。呼ぶたびにパスがあるかを確かめる */
   refs(): ResolvedRef[] {
-    return resolveRefs(this.project, { dataDir: this.dataDir, localRepos: this.localRepos, repoOverride: this.repoOverride });
+    return resolveRefs(this.project, { localRepos: this.localRepos });
   }
 
   async load(): Promise<void> {

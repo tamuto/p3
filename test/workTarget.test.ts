@@ -3,42 +3,32 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeRepoEntry } from "../src/server/store/projectFile.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
-import { primaryRepo, repoTargetProblem, requestWorkstreams, taskRepo, writableRepos } from "../src/shared/workTarget.ts";
+import { repoTargetProblem, requestWorkstreams, taskRepo, writableRepos } from "../src/shared/workTarget.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 const base = { role: "", readFirst: false, writable: false, map: [] };
 
 describe("作業先とリポジトリごとのブランチ（データの形）", () => {
-  it("以前のタスク・要望はそのまま読み、作業先は主リポジトリ、ブランチは主リポジトリの分", async () => {
-    const legacy = { repos: [] };
-    expect(primaryRepo(legacy)).toBe("main");
-    expect(writableRepos(legacy)).toEqual(["main"]);
-    expect(taskRepo({}, legacy)).toBe("main");
-    expect(taskRepo({ repo: null }, legacy)).toBeUndefined();
+  it("作業先は作業先にできる参照先か作業先なし。ブランチは作業先ごと", () => {
     const multi = { repos: [{ ...base, name: "docs" }, { ...base, name: "app", writable: true }, { ...base, name: "infra", writable: true }] };
-    expect(primaryRepo(multi)).toBe("app");
     expect(writableRepos(multi)).toEqual(["app", "infra"]);
-    expect(taskRepo({}, multi)).toBe("app");
-    expect(taskRepo({ repo: "infra" }, multi)).toBe("infra");
-    expect(requestWorkstreams({ workstream: { branch: "req/a", worktree: ".worktrees/a" }, workstreams: { infra: { branch: "req/a", worktree: ".worktrees/a" } } }, multi)).toEqual({
-      app: { branch: "req/a", worktree: ".worktrees/a" },
-      infra: { branch: "req/a", worktree: ".worktrees/a" },
-    });
+    expect(taskRepo({ repo: "infra" })).toBe("infra");
+    expect(taskRepo({ repo: null })).toBeUndefined();
+    expect(requestWorkstreams({ workstreams: { infra: { branch: "req/a" } } })).toEqual({ infra: { branch: "req/a" } });
+    expect(requestWorkstreams({})).toEqual({});
     expect(repoTargetProblem("docs", multi)).toContain("参照だけ");
     expect(repoTargetProblem("nope", multi)).toContain("登録されていません");
     expect(repoTargetProblem(null, multi)).toBeUndefined();
-    expect(repoTargetProblem("main", legacy)).toBeUndefined();
+    expect(repoTargetProblem("app", multi)).toBeUndefined();
   });
 
-  it("ファイルとの往復: 作業先なし（null）・任意の名前・複数の PR を残し、以前のファイルは更新しても項目を落とさない", async () => {
+  it("ファイルとの往復: 作業先なし（null）・任意の名前・複数の PR・作業先ごとのブランチを残す", async () => {
     const repo = await makeRepo();
     const file = join(repo.dataDir, "project.yaml");
     await writeRepoEntry(file, "ガイド", { ...base, name: "ガイド", writable: true });
     await writeRepoEntry(file, "app", { ...base, name: "app", writable: true });
     const ctx = await openTestProject(repo.dataDir);
     const r = await newRequest(ctx, { title: "要望" });
-    // 以前のタスク（repo が無い）
-    const old = await newTask(ctx, r.id, { title: "以前", outputs: ["https://example.com/pull/1"] });
     const none = await newTask(ctx, r.id, { title: "調査", repo: null });
     const named = await newTask(ctx, r.id, {
       title: "ドキュメント",
@@ -48,25 +38,23 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
         { repo: "app", output: "https://example.com/app/pull/3" },
       ],
     });
-    await ctx.ws.requests.update(r.id, { workstream: { branch: "req/x", worktree: ".worktrees/x" }, workstreams: { ガイド: { branch: "req/x", worktree: ".worktrees/x" } } });
+    await ctx.ws.requests.update(r.id, { workstreams: { ガイド: { branch: "req/x" }, app: { branch: "req/x" } } });
     const text = await readFile(join(repo.dataDir, "requests", r.id, "tasks", `${none.id}.md`), "utf8");
     expect(text).toContain("repo: null");
     const fresh = new Workspace(repo.dataDir);
     await fresh.load();
     const col = fresh.tasksOf(r.id);
-    expect("repo" in col.require(old.id)).toBe(false);
     expect(col.require(none.id).repo).toBeNull();
     expect(col.require(named.id)).toMatchObject({ repo: "ガイド", repoOutputs: [{ repo: "ガイド" }, { repo: "app" }] });
-    expect(fresh.requests.require(r.id)).toMatchObject({ workstream: { branch: "req/x" }, workstreams: { ガイド: { branch: "req/x" } } });
-    // 以前のタスクを更新しても repo は付かない（主リポジトリのまま）、outputs も残る
-    await col.update(old.id, { status: "doing" });
+    expect(fresh.requests.require(r.id).workstreams).toEqual({ ガイド: { branch: "req/x" }, app: { branch: "req/x" } });
+    // 更新しても項目を落とさない
+    await col.update(named.id, { status: "doing" });
     const again = new Workspace(repo.dataDir);
     await again.load();
-    expect("repo" in again.tasksOf(r.id).require(old.id)).toBe(false);
-    expect(again.tasksOf(r.id).require(old.id).outputs).toEqual(["https://example.com/pull/1"]);
+    expect(again.tasksOf(r.id).require(named.id).repoOutputs).toHaveLength(2);
   });
 
-  it("タスク案の作業先: none・空・null は作業先なし、無いものは指定なし", async () => {
+  it("タスク案の作業先: none・空・null は作業先なし、無いものは指定なし（タスク化では作業先なし）", async () => {
     const repo = await makeRepo();
     const ctx = await openTestProject(repo.dataDir);
     const r = await newRequest(ctx, { title: "要望", status: "draft" });
@@ -76,10 +64,10 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     const d1 = join(dir, "D1.md");
     const t = await readFile(d1, "utf8");
     for (const [v, expected] of [["none", null], ['""', null], ["null", null], ["app", "app"]] as const) {
-      await writeFile(d1, t.replace(/^key: D1$/m, `key: D1\nrepo: ${v}`));
+      await writeFile(d1, t.replace(/^repo: main$/m, `repo: ${v}`));
       expect((await ctx.ws.preflight.loadDrafts(r.id, id)).find((d) => d.key === "D1")!.repo).toBe(expected);
     }
-    await writeFile(d1, t);
+    await writeFile(d1, t.replace(/^repo: main\n/m, ""));
     expect("repo" in (await ctx.ws.preflight.loadDrafts(r.id, id)).find((d) => d.key === "D1")!).toBe(false);
   });
 });
@@ -92,7 +80,7 @@ describe("画面の作業先の選択肢と成果物の表示", () => {
     expect(repoChoices(p, null).map((c) => c.label)).toEqual(["app", "作業先なし"]);
     expect(repoChoices(p, "lib")[0]).toEqual({ value: "lib", label: "lib（作業先にできません）", invalid: true });
     expect(repoChoices(p, "消えた名前")[0]).toMatchObject({ value: "消えた名前", invalid: true });
-    expect(repoChoices({ repos: [] }, undefined).map((c) => c.value)).toEqual(["main", ""]);
+    expect(repoChoices({ repos: [] }, undefined).map((c) => c.value)).toEqual([""]);
   });
 
   it("リポジトリごとの成果物は、どのリポジトリのものかを付けて出す（URL はリンク）", async () => {

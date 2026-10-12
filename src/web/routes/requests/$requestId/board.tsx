@@ -4,7 +4,6 @@ import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../share
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { useAppData } from "../../../lib/appData.tsx";
-import { taskRepo } from "../../../../shared/workTarget.ts";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
 import { markText, warningText } from "../../../lib/supersede.ts";
@@ -180,7 +179,7 @@ function Card({
   const aiRels = t.relations.filter((r) => r.origin === "ai" || r.origin === "preflight").length;
   const { info } = useAppData();
   // 共有の参照先があるときだけ作業先を出す
-  const repo = info.project.repos.length ? (taskRepo(t, info.project) ?? null) : undefined;
+  const repo = info.project.repos.length ? t.repo : undefined;
   return (
     <article
       draggable

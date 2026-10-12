@@ -27,7 +27,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
   const configPath = join(configDir, "config.yaml");
   const source = machineSettingsSource({ path: configPath, env });
   const launched: { workspace: string; data: string }[] = [];
-  const ws = new Workspace(repo.dataDir);
+  const ws = new Workspace(repo.dataDir, { main: repo.root });
   await ws.load();
   const index = new ProjectIndex(ws);
   const initial = await source.get().catch(() => undefined);
