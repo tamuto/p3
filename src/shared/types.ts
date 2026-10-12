@@ -410,6 +410,24 @@ export interface Attachment {
 /** run に固定した添付（path は run のフォルダからの相対） */
 export interface FixedAttachment extends Omit<Attachment, "requestId"> {
   path: string;
+  /** xlsx から取り出したもの（無ければまだ取り出していない） */
+  extract?: XlsxExtractRecord;
+}
+
+/** xlsx から取り出した範囲と、取り出せなかったもの */
+export interface XlsxExtractRecord {
+  /** 取り出した内容（Markdown。run のフォルダからの相対） */
+  text?: string;
+  sheets: number;
+  cells: number;
+  /** 値が保存されていない数式など（未確認） */
+  unknownCells: number;
+  /** 埋め込みの画像（画面資料の「仕様書から」。file は run の ui/ からの相対） */
+  images: { id: string; file: string; sheet: string; anchor: string; format: "png" | "jpeg"; width: number; height: number; bytes: number }[];
+  truncated: string[];
+  unsupported: string[];
+  /** ブックとして読めなかった理由（このときは中身は未読） */
+  error?: string;
 }
 
 export interface PreflightLogEntry {

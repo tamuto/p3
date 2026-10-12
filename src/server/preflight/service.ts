@@ -1,4 +1,4 @@
-import { lstat, readFile, rm } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
@@ -28,6 +28,7 @@ import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
 import { hideConfigPath } from "../userConfig.ts";
+import { extractXlsx, XlsxError } from "./xlsx.ts";
 import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
@@ -249,6 +250,7 @@ export class PreflightService {
   ) {
     try {
       this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
+      await this.extractAttachments(run, runDir);
       const outcome = await engine.run(
         {
           project: this.ws.project,
@@ -344,6 +346,35 @@ export class PreflightService {
       throw new NotFoundError(`${id}（run に固定した原本が無いか、変わっています）`);
     }
     return { meta, data };
+  }
+
+  /** 固定した xlsx から、セルの文字と標準の埋め込み画像を取り出して run の中に置く（読めなくても評価は続ける） */
+  private async extractAttachments(run: PreflightRun, runDir: string) {
+    const xlsx = (run.attachments ?? []).filter((a) => a.format === "xlsx" && !a.extract);
+    for (const a of xlsx) {
+      try {
+        const x = extractXlsx(await readFile(join(runDir, a.path)), `${a.name}（${a.id}）`);
+        const text = `attachments/${a.id}.md`;
+        await writeFileAtomic(join(runDir, text), x.text);
+        const images = [];
+        for (const [i, img] of x.images.entries()) {
+          const file = `spec/${a.id}-${i + 1}.${img.format === "png" ? "png" : "jpg"}`;
+          await mkdir(join(runDir, UI_DIR, "spec"), { recursive: true });
+          await writeFile(join(runDir, UI_DIR, file), img.data);
+          images.push({ id: `${a.id}-${i + 1}`, file, sheet: img.sheet, anchor: img.anchor, format: img.format, width: img.width, height: img.height, bytes: img.data.length });
+        }
+        a.extract = { text, sheets: x.sheets, cells: x.cells, unknownCells: x.unknownCells, images, truncated: x.truncated, unsupported: x.unsupported };
+        this.log(run, {
+          kind: "info",
+          text: `${a.name}: シート ${x.sheets}・セル ${x.cells}・画像 ${images.length} を取り出しました${x.truncated.length ? `（打ち切り ${x.truncated.length}）` : ""}${x.unsupported.length ? `（扱っていないもの ${x.unsupported.length}）` : ""}`,
+        });
+      } catch (e) {
+        const error = e instanceof XlsxError ? e.message : `読めません: ${(e as Error).message}`;
+        a.extract = { sheets: 0, cells: 0, unknownCells: 0, images: [], truncated: [], unsupported: [], error };
+        this.log(run, { kind: "error", text: `${a.name} の中身を取り出せません（未読として渡します）: ${error}` });
+      }
+    }
+    if (xlsx.length) await this.ws.preflight.save(run);
   }
 
   async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>) {
@@ -526,7 +557,24 @@ function withCurrent(ui: NonNullable<PreflightRun["ui"]>, run: PreflightRun): No
       assumptions: [],
       run: run.id,
     }));
-  return current.length ? { ...ui, items: [...ui.items.filter((m) => m.kind !== "current"), ...current] } : ui;
+  const spec = (run.attachments ?? []).flatMap((a) =>
+    (a.extract?.images ?? []).map((img) => ({
+      id: img.id,
+      kind: "spec" as const,
+      file: img.file,
+      format: img.format,
+      width: img.width,
+      height: img.height,
+      bytes: img.bytes,
+      title: `${a.name} のシート「${img.sheet}」${img.anchor} の画像`,
+      source: `添付 ${a.name} / シート「${img.sheet}」${img.anchor}`,
+      drafts: [],
+      assumptions: [],
+      run: run.id,
+    })),
+  );
+  const added = [...current, ...spec];
+  return added.length ? { ...ui, items: [...ui.items.filter((m) => m.kind === "proposal"), ...added] } : ui;
 }
 
 function clampScore(v: unknown) {
