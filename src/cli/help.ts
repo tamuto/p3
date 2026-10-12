@@ -24,6 +24,15 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
+  release-notes [ls]           マイルストーンごとのリリースノートの有無と要望の数
+  release-notes show <id>       保存したノート（本文・版）と、対象の要望（収録 / 対象外）・警告（未完了・記録なし など）
+  release-notes generate <id>   変更の記録から機能の要約を Codex で生成し、本文の案を stdout に出す（保存しない。進み具合と出典は stderr。
+                               Ctrl-C で取り消す。材料が無ければ Codex を呼ばずに断る）--engine codex|mock（mock は要約しない試し用）
+  release-notes save <id>       本文を保存する  --body 本文|- / --file 本文.md  --based-on <材料の hash>（生成の案を元にしたとき）
+                               既にあるノートの更新は --version <版>（show で見る。違えば競合で終了コード 3）
+  release-notes export <id>     保存した本文だけを stdout に出す（出典・frontmatter は出さない）
+                               例: p3 release-notes generate v0.2 > draft.md → 直す → p3 release-notes save v0.2 --file draft.md
+                                   p3 release-notes export v0.2 > RELEASE.md
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）

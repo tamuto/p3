@@ -47,28 +47,37 @@ export class GenerationRejected extends Error {
   }
 }
 
+export type SummaryEngine = "codex" | "mock";
+
 export class ReleaseGenerator {
   private jobs = new Map<string, ReleaseGeneration>();
   private aborts = new Map<string, AbortController>();
   private done = new Map<string, Promise<ReleaseGeneration>>();
 
+  /**
+   * summarizers: 頼む先（codex は Preflight と同じ接続、mock は明示したときだけ）。
+   * engine: 既定の頼む先（Preflight と同じ個人設定の preflight.engine。読むたびに今の設定）
+   */
   constructor(
     private ws: Workspace,
-    private summarizer: Summarizer | undefined,
-    private opts: { timeoutMs?: number } = {},
+    private summarizers: Partial<Record<SummaryEngine, Summarizer>>,
+    private opts: { timeoutMs?: number; engine?: () => Promise<SummaryEngine> } = {},
   ) {}
 
   /** 生成を始める（終わるのは wait で待つ）。材料はここで固定する */
-  async start(material: ReleaseMaterial, actor?: string): Promise<ReleaseGeneration> {
+  async start(material: ReleaseMaterial, actor?: string, engine?: SummaryEngine): Promise<ReleaseGeneration> {
     const mid = material.milestone.id;
     if ([...this.jobs.values()].some((j) => j.milestone === mid && j.status === "running")) {
       throw new GenerationRejected("running", `${mid} の要約は生成中です（終わるのを待つか取り消してください）`);
     }
     const input = summaryInput(material);
-    if (!this.summarizer) throw new GenerationRejected("unavailable", "要約を頼む先（Codex）がありません");
+    const name = engine ?? (await this.opts.engine?.().catch(() => "codex" as const)) ?? "codex";
+    const summarizer = this.summarizers[name];
+    if (!summarizer) throw new GenerationRejected("unavailable", `要約を頼む先（${name}）がありません`);
     const job: ReleaseGeneration = {
       id: `RG-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}-${randomBytes(2).toString("hex")}`,
       milestone: mid,
+      engine: name,
       status: "running",
       startedAt: new Date().toISOString(),
       startedBy: actor,
@@ -80,7 +89,7 @@ export class ReleaseGenerator {
     const abort = new AbortController();
     this.aborts.set(job.id, abort);
     this.emit(job);
-    this.done.set(job.id, this.execute(job, material, input, abort));
+    this.done.set(job.id, this.execute(job, summarizer, material, input, abort));
     return { ...job };
   }
 
@@ -112,13 +121,19 @@ export class ReleaseGenerator {
     this.ws.emit({ type: "release-generation", id: j.id, milestone: j.milestone, status: j.status });
   }
 
-  private async execute(job: ReleaseGeneration, material: ReleaseMaterial, input: { instructions: string; prompt: string }, abort: AbortController): Promise<ReleaseGeneration> {
+  private async execute(
+    job: ReleaseGeneration,
+    summarizer: Summarizer,
+    material: ReleaseMaterial,
+    input: { instructions: string; prompt: string },
+    abort: AbortController,
+  ): Promise<ReleaseGeneration> {
     const log = (e: Omit<PreflightLogEntry, "at">) => job.log.push({ at: new Date().toISOString(), ...e });
     const timeout = AbortSignal.timeout(this.opts.timeoutMs ?? SUMMARY_TIMEOUT_MS);
     const signal = AbortSignal.any([abort.signal, timeout]);
     try {
       log({ kind: "info", text: `材料: 要望 ${material.sources.length} 件・変更の記録 ${material.sources.reduce((n, s) => n + s.tasks.length, 0)} 件（${input.prompt.length} 文字）` });
-      const r = await this.summarizer!.ask({ ...input, label: "リリースノートの要約" }, log, signal);
+      const r = await summarizer.ask({ ...input, label: "リリースノートの要約" }, log, signal);
       if (signal.aborted) throw signal.reason;
       const { items, warnings } = parseSummary(r.message, material);
       job.items = items;

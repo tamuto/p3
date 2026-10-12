@@ -7,6 +7,7 @@ import { MockEngine } from "./preflight/mockEngine.ts";
 import { PreflightService } from "./preflight/service.ts";
 import { Workspace } from "./store/workspace.ts";
 import { ReleaseGenerator } from "./releaseNotes/generate.ts";
+import { MockSummarizer } from "./releaseNotes/mockSummarizer.ts";
 
 /** p3 本体（パッケージ）のルート */
 export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -47,5 +48,7 @@ export async function openProject(
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  return { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, codex), chatgpt, projectName: opts.projectName };
+  // 要約の生成も Preflight と同じ接続と既定のエンジン（preflight.engine）を使う
+  const releaseGenerator = new ReleaseGenerator(ws, { codex, mock: new MockSummarizer() }, { engine: async () => (await source.get()).preflight.engine });
+  return { ws, preflight, releaseGenerator, chatgpt, projectName: opts.projectName };
 }

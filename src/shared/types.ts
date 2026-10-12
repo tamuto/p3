@@ -598,6 +598,8 @@ export type ReleaseGenerationFailure = "unavailable" | "usage_limit" | "timeout"
 export interface ReleaseGeneration {
   id: string;
   milestone: string;
+  /** 頼んだ先（mock は明示したときだけ。要約はしない） */
+  engine: "codex" | "mock";
   status: ReleaseGenerationStatus;
   startedAt: string;
   finishedAt?: string;

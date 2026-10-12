@@ -1,6 +1,7 @@
 import type { ReleaseGeneration, ReleaseMaterial, ReleaseNote, ReleaseNoteSummary, ReleaseWarning } from "../../shared/types.ts";
 import type { P3Context } from "../context.ts";
 import { extractMaterial } from "./material.ts";
+import type { SummaryEngine } from "./generate.ts";
 import { checkMilestoneId, ReleaseNoteError } from "./store.ts";
 
 /**
@@ -100,6 +101,6 @@ export async function exportReleaseNote(ctx: P3Context, mid: string): Promise<st
 }
 
 /** 要約の生成を始める（材料はここで固定する。保存はしない）。材料が無ければ Codex を呼ばずに GenerationRejected */
-export async function startGeneration(ctx: P3Context, mid: string, actor?: string): Promise<ReleaseGeneration> {
-  return ctx.releaseGenerator.start(await releaseMaterial(ctx, mid), actor);
+export async function startGeneration(ctx: P3Context, mid: string, actor?: string, engine?: SummaryEngine): Promise<ReleaseGeneration> {
+  return ctx.releaseGenerator.start(await releaseMaterial(ctx, mid), actor, engine);
 }

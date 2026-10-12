@@ -19,6 +19,8 @@ async function setup() {
   const p = await makeProject({ milestones: MS });
   /** 要望とタスクを作る（作成日時の順を決めるため1件ずつ） */
   const add = async (title: string, status: string, tasks: { status: string; record?: string }[], milestone = "v1") => {
+    // 作成日時が同じミリ秒にならないように（同じなら ID の順になる）
+    await new Promise((r) => setTimeout(r, 3));
     const r = await newRequest(p.ctx, { title, status: status as never, milestone });
     for (const [i, t] of tasks.entries()) await newTask(p.ctx, r.id, { title: `${title}-${i + 1}`, status: t.status as never, record: t.record });
     return r.id;

@@ -44,7 +44,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  const ctx = { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, undefined) };
+  const ctx = { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, {}) };
   const write = (yaml: string) => writeFile(configPath, yaml);
   const legacy = "codex:\n  authVolume: vol\n  ensureImage: false\n";
   const runOnce = async (opts: { engine?: "codex" | "mock" } = {}) => {

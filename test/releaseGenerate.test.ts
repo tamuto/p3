@@ -28,7 +28,7 @@ function codex(scenario: string, logFile: string, launched: unknown[], opts: { c
 async function setup(summarizer?: Summarizer, timeoutMs?: number) {
   const repo = await makeRepo({ milestones: [{ id: "v1", title: "最初のリリース" }] });
   const ctx = await openTestProject(repo.dataDir, undefined, { summarizer });
-  if (timeoutMs) ctx.releaseGenerator = new ReleaseGenerator(ctx.ws, summarizer, { timeoutMs });
+  if (timeoutMs) ctx.releaseGenerator = new ReleaseGenerator(ctx.ws, { codex: summarizer }, { timeoutMs });
   const a = await newRequest(ctx, { title: "検索", status: "done", milestone: "v1", body: "要望の本文: 社外秘のメモ" });
   await newTask(ctx, a.id, { title: "索引を作る", status: "done", record: "検索の索引を足した。応答が速くなった", body: "タスクの本文: 作業の手順" });
   await newTask(ctx, a.id, { title: "記録なし", status: "done" });

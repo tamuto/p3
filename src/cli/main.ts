@@ -19,6 +19,9 @@ import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
 import { taskCommand } from "./taskCommands.ts";
 import { preflightCommand } from "./preflightCommands.ts";
+import { releaseNotesCommand } from "./releaseNotesCommands.ts";
+import { ReleaseNoteError } from "../core/releaseNotes/store.ts";
+import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -202,6 +205,10 @@ async function main(argv: string[]): Promise<number> {
     case "milestones":
       return milestoneCommand(ctx, out, args, o);
 
+    case "release-notes":
+    case "release-note":
+      return releaseNotesCommand(env);
+
     // --- 要望 ---------------------------------------------------------------
     case "request":
     case "req":
@@ -228,6 +235,16 @@ main(process.argv.slice(2)).then(
       process.exit(1);
     }
     if (e instanceof ProjectNotResolvedError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(1);
+    }
+    // リリースノート: 無い → 2、版の競合・既にある → 3、読めない・ID が使えない → 1
+    if (e instanceof ReleaseNoteError) {
+      process.stderr.write(`${e.code === "conflict" ? "競合: " : ""}${e.message}\n`);
+      process.exit(e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1);
+    }
+    // 生成を始められない（材料が無い・上限・実行中）。Codex は呼んでいない
+    if (e instanceof GenerationRejected) {
       process.stderr.write(`${e.message}\n`);
       process.exit(1);
     }
