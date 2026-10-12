@@ -6,6 +6,7 @@ import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/typ
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
+import { AttachmentStore } from "./attachments.ts";
 import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
@@ -51,6 +52,7 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  *   <data>/requests/<要望ID>/tasks/T001.md
  *   <data>/requests/<要望ID>/preflight/PF-.../{run.json, assessment.json, carryover.md, drafts/D1.md}
  *   <data>/requests/<要望ID>/notes/N-....md   Preflight へのメモ
+ *   <data>/requests/<要望ID>/attachments/A-.../{meta.json, file.*}   添付（画像・xlsx）
  *
  * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */
@@ -59,6 +61,7 @@ export class Workspace {
   readonly requests: MarkdownCollection<Request>;
   readonly preflight: PreflightStore;
   readonly notes: NoteStore;
+  readonly attachments: AttachmentStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private abort = new AbortController();
@@ -75,6 +78,7 @@ export class Workspace {
     });
     this.preflight = new PreflightStore(this.requestsDir);
     this.notes = new NoteStore(this.requestsDir);
+    this.attachments = new AttachmentStore(this.requestsDir);
   }
 
   get requestsDir() {
@@ -304,6 +308,8 @@ export class Workspace {
       this.emit({ type: "changed", kind: "preflight", request: rid });
     } else if (kind === "notes") {
       this.emit({ type: "changed", kind: "note", request: rid });
+    } else if (kind === "attachments") {
+      this.emit({ type: "changed", kind: "attachment", request: rid });
     }
   }
 

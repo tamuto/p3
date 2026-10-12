@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { basename, join, relative, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
 import { renderCommand } from "./render.ts";
+import { AttachmentError, safeFileName } from "../server/store/attachments.ts";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
 import { openProject, type PcubeContext } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
@@ -98,6 +100,9 @@ Preflight
                                前回の結果とまだ渡していないメモを引き継ぐ
                                --note 本文|-  メモ（確認事項への回答・方針の変更）を書き足してから実行  --note-only 書くだけ
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
+  attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）
+  attach add <ファイル>           添付を足す  --description 説明 --source 出典。次の Preflight を始めるときに run に固定して渡す
+  attach get <A-ID> / rm <A-ID>  原本を書き出す（--out ファイル、--run PF-... でその run に固定した原本）/ 外す
   drafts [<要望>]               最新の評価とタスク案  --run PF-...
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
                                置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
@@ -160,6 +165,7 @@ const OPTIONS = {
   port: { type: "string" },
   host: { type: "string" },
   out: { type: "string" },
+  source: { type: "string" },
   width: { type: "string" },
 } as const;
 
@@ -537,6 +543,55 @@ async function main(argv: string[]): Promise<number> {
       if (!run) throw new Error("preflight の結果が読めません");
       out.result(run, () => formatRun(ctx, rid, run));
       return run.status === "completed" ? 0 : 1;
+    }
+
+    case "attach": {
+      // 要望は --req（か今の要望）。serve なしでファイルを直接扱う（API と同じ確かめ方）
+      const rid = requestArg(undefined);
+      const [sub = "ls", target] = args;
+      const fmt = (a: Attachment) => [a.id, ATTACHMENT_FORMATS[a.format], `${Math.ceil(a.bytes / 1024)}KB`, a.name, a.description ?? "", a.source ? `出典: ${a.source}` : ""];
+      if (sub === "ls") {
+        const { items, invalid } = await ctx.ws.attachments.list(rid);
+        return out.result({ items, invalid }, () =>
+          [
+            items.length ? table(items.map(fmt)) : "添付はありません",
+            ...invalid.map((i) => `[読めない] ${i.id}: ${i.error}`),
+            "",
+            "次の Preflight を始めるときに、この添付を run に固定して渡します（後で足し・消ししても過去の run の資料は変わりません）",
+          ].join("\n"),
+        );
+      }
+      if (sub === "add") {
+        if (!target) throw new UsageError("p3 attach add <ファイル> [--description 説明] [--source 出典] --req <要望>");
+        const data = await readFile(resolvePath(cwd, target)).catch(() => {
+          throw new UsageError(`ファイルが読めません: ${target}`);
+        });
+        try {
+          const a = await ctx.preflight.addAttachment(rid, { data, name: basename(target), description: o.description, source: o.source }, actor);
+          return out.result(a, () => `添付しました: ${table([fmt(a)])}\n次の Preflight に渡します`);
+        } catch (e) {
+          throw e instanceof AttachmentError ? new UsageError(e.message) : e;
+        }
+      }
+      if (sub === "get") {
+        if (!target) throw new UsageError("p3 attach get <A-ID> [--out ファイル] [--run PF-...]（--run でその run に固定した原本）");
+        const got = o.run ? await ctx.preflight.fixedAttachment(rid, o.run, target) : await ctx.ws.attachments.content(rid, target).catch((e) => {
+          throw e instanceof AttachmentError ? new NotFoundError(e.message) : e;
+        });
+        const file = resolvePath(cwd, o.out ?? safeFileName(got.meta.name, got.meta.format));
+        await writeFile(file, got.data, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => {
+          throw e.code === "EEXIST" ? new UsageError(`${file} は既にあります（--out で別の名前に）`) : e;
+        });
+        return out.result({ ...got.meta, file }, () => `書き出しました: ${file}`);
+      }
+      if (sub === "rm") {
+        if (!target) throw new UsageError("p3 attach rm <A-ID>");
+        await ctx.preflight.removeAttachment(rid, target).catch((e) => {
+          throw e instanceof AttachmentError ? new NotFoundError(target) : e;
+        });
+        return out.result({ removed: target }, () => `添付を外しました: ${target}（固定済みの過去の run の資料は残ります）`);
+      }
+      throw new UsageError("p3 attach [ls | add <ファイル> | get <A-ID> | rm <A-ID>] --req <要望>");
     }
 
     case "notes": {

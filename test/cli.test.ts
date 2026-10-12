@@ -879,3 +879,28 @@ describe("作業先とリポジトリごとのブランチ（CLI）", () => {
     expect(pcube(root, ["drafts", rid]).out).toMatch(/D2\s+infra/);
   });
 });
+
+describe("p3 attach", () => {
+  it("serve なしで添付を足し・一覧し・書き出し・外す。不正な形式は使い方の誤り", async () => {
+    const { root, rid } = await initialized();
+    const { png } = await import("./imageFixture.ts");
+    writeFileSync(join(root, "今の画面.png"), png(640, 480));
+    writeFileSync(join(root, "偽物.png"), "<html>");
+    const added = pcube(root, ["attach", "add", "今の画面.png", "--description", "今の一覧", "--source", "利用者", "--req", rid, "--json"]);
+    expect(added.code, added.err).toBe(0);
+    const a = added.json();
+    expect(a).toMatchObject({ name: "今の画面.png", format: "png", description: "今の一覧", source: "利用者" });
+    const ls = pcube(root, ["attach", "--req", rid]);
+    expect(ls.out).toContain(a.id);
+    expect(ls.out).toContain("次の Preflight を始めるときに");
+    const bad = pcube(root, ["attach", "add", "偽物.png", "--req", rid]);
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain("PNG / JPEG として読めません");
+    const got = pcube(root, ["attach", "get", a.id, "--out", "out.png", "--req", rid]);
+    expect(got.code, got.err).toBe(0);
+    expect(readFileSync(join(root, "out.png"))).toEqual(png(640, 480));
+    expect(pcube(root, ["attach", "get", a.id, "--out", "out.png", "--req", rid]).code).toBe(1);
+    expect(pcube(root, ["attach", "rm", a.id, "--req", rid]).code).toBe(0);
+    expect(pcube(root, ["attach", "--req", rid]).out).toContain("添付はありません");
+  });
+});

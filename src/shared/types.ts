@@ -335,6 +335,8 @@ export interface PreflightRun {
   scope?: RefScope[];
   /** 画面資料（ui/）。無ければ以前の run（記録なし） */
   ui?: UiMaterials;
+  /** 始めるときに固定した添付（run の attachments/ と ui/current/）。無ければ添付なし */
+  attachments?: FixedAttachment[];
 }
 
 /** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */
@@ -376,6 +378,38 @@ export interface PreflightNote {
   createdAt: string;
   createdBy?: string;
   body: string;
+}
+
+/** 添付の形式（初期は画像と Excel だけ） */
+export const ATTACHMENT_FORMATS = { png: "PNG 画像", jpeg: "JPEG 画像", xlsx: "Excel（xlsx）" } as const;
+export type AttachmentFormat = keyof typeof ATTACHMENT_FORMATS;
+
+/**
+ * 要望の添付（requests/<要望ID>/attachments/<ID>/）。原本は内部の名前で保存し、元の名前・説明・出典を残す。
+ * Preflight を始めるときに run の中へコピーして固定する（後で足し・消ししても、過去の run の資料は変わらない）
+ */
+export interface Attachment {
+  /** A-20261012-123456-ab12 */
+  id: string;
+  requestId: string;
+  /** 元のファイル名（表示とダウンロードの名前にだけ使う） */
+  name: string;
+  format: AttachmentFormat;
+  bytes: number;
+  sha256: string;
+  description?: string;
+  /** 出典（どこから持ってきたか） */
+  source?: string;
+  /** 画像の大きさ */
+  width?: number;
+  height?: number;
+  createdAt: string;
+  createdBy?: string;
+}
+
+/** run に固定した添付（path は run のフォルダからの相対） */
+export interface FixedAttachment extends Omit<Attachment, "requestId"> {
+  path: string;
 }
 
 export interface PreflightLogEntry {
@@ -441,7 +475,7 @@ export interface Neighborhood {
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
 

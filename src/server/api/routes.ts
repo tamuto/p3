@@ -6,6 +6,9 @@ import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type Serv
 import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
+import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../store/attachments.ts";
+import type { AttachmentFormat } from "../../shared/types.ts";
+import { bodyLimit } from "hono/body-limit";
 import { ReloadError } from "../store/workspace.ts";
 import { checkRepoTarget, ensureWorkstreams } from "../workTargets.ts";
 import { defaultRepo } from "../../shared/workTarget.ts";
@@ -94,6 +97,18 @@ const actorOf = (c: Context) => c.req.header("x-pcube-actor") ?? "human:web";
 
 /** 楽観ロック: body.rev か If-Match ヘッダ */
 const expectedRev = (c: Context, body: { rev?: number }) => body.rev ?? (c.req.header("if-match") ? Number(c.req.header("if-match")) : undefined);
+
+/** 原本を返す。xlsx は必ずダウンロードにし、画像も中身を推測させない */
+function download(c: Context, data: Buffer, format: AttachmentFormat, name: string) {
+  const file = safeFileName(name, format);
+  return c.body(new Uint8Array(data), 200, {
+    "Content-Type": ATTACHMENT_TYPES[format],
+    "Content-Disposition": `${format === "xlsx" ? "attachment" : "inline"}; filename="${file.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'",
+    "Cache-Control": "private, no-cache",
+  });
+}
 
 export function apiRoutes(ctx: PcubeContext) {
   const { ws, index, preflight } = ctx;
@@ -313,6 +328,40 @@ export function apiRoutes(ctx: PcubeContext) {
       "Content-Security-Policy": "default-src 'none'",
       "Cache-Control": "private, max-age=3600",
     });
+  });
+  // 添付（画像・xlsx）。原本はダウンロードとして返す（画像も画面には ui の資料として出す）
+  app.get("/requests/:rid/attachments", async (c) => c.json({ ...(await ws.attachments.list(rid(c))), limits: ATTACHMENT_LIMITS }));
+  app.post("/requests/:rid/attachments", bodyLimit({ maxSize: ATTACHMENT_LIMITS.xlsxBytes + 1024 * 1024, onError: (c) => c.json({ error: "大きすぎます" }, 413) }), async (c) => {
+    const id = rid(c);
+    const form = await c.req.parseBody();
+    const file = form.file;
+    if (!(file instanceof File)) return c.json({ error: "file（ファイル）を付けてください" }, 400);
+    const text = (v: unknown) => (typeof v === "string" ? v : undefined);
+    try {
+      const a = await preflight.addAttachment(id, { data: Buffer.from(await file.arrayBuffer()), name: file.name, description: text(form.description), source: text(form.source) }, actorOf(c));
+      return c.json(a, 201);
+    } catch (e) {
+      if (e instanceof AttachmentError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  });
+  app.get("/requests/:rid/attachments/:aid", async (c) => {
+    const { meta, data } = await ws.attachments.content(rid(c), c.req.param("aid")).catch((e) => {
+      throw e instanceof AttachmentError ? new NotFoundError(e.message) : e;
+    });
+    return download(c, data, meta.format, meta.name);
+  });
+  app.delete("/requests/:rid/attachments/:aid", async (c) => {
+    try {
+      await preflight.removeAttachment(rid(c), c.req.param("aid"));
+    } catch (e) {
+      throw e instanceof AttachmentError ? new NotFoundError(e.message) : e;
+    }
+    return c.json({ ok: true });
+  });
+  app.get("/requests/:rid/preflight/:run/attachments/:aid", async (c) => {
+    const { meta, data } = await preflight.fixedAttachment(rid(c), c.req.param("run"), c.req.param("aid"));
+    return download(c, data, meta.format, meta.name);
   });
   app.post("/requests/:rid/preflight/:run/cancel", (c) => {
     preflight.cancel(c.req.param("run"));

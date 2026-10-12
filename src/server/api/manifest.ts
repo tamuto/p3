@@ -44,6 +44,13 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/preflight/:run/ui/:material",
       desc: "画面資料の画像（PNG / JPEG）。資料の一覧は run の ui（items の id・対象のタスク案・説明・前提）。原稿（HTML）は返さない",
     },
+    {
+      method: "GET|POST",
+      path: "/api/requests/:rid/attachments",
+      desc: "要望の添付（PNG / JPEG / xlsx）。POST は multipart {file, description?, source?}。中身で形式を確かめ、件数・容量に上限。次の Preflight を始めるときに run に固定する",
+    },
+    { method: "GET|DELETE", path: "/api/requests/:rid/attachments/:aid", desc: "添付の原本（xlsx はダウンロード）・外す（固定済みの過去の run の資料は残る）" },
+    { method: "GET", path: "/api/requests/:rid/preflight/:run/attachments/:aid", desc: "その run に固定した添付の原本（run の attachments に一覧）" },
     { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補。何も変えない）" },
     { method: "POST", path: "/api/requests/:rid/preflight/:run/materialize", desc: "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}" },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },

@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   RELATION_TYPES,
   type PreflightAssessment,
@@ -14,6 +14,7 @@ import {
   type MaterializeResult,
   type Task,
   type Evidence,
+  type FixedAttachment,
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
@@ -166,12 +167,21 @@ export class PreflightService {
       ui: { status: "generating", targets: [], items: [], problems: [] },
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
+    // 添付は始める時点のものを run の中にコピーして固定する。途中で変わったら始めない（原本は残るので、そのまま再試行できる）
+    try {
+      const fixed = await this.ws.attachments.snapshot(requestId, runDir);
+      if (fixed.length) run.attachments = fixed;
+    } catch (e) {
+      await rm(runDir, { recursive: true, force: true });
+      throw e;
+    }
     await this.ws.preflight.save(run);
     if (carryover) await writeFileAtomic(join(runDir, "carryover.md"), carryover);
     const carried = carryover ? { text: carryover, previous: carry.previous, notes: carry.notes } : undefined;
     if (carry.previous) this.log(run, { kind: "info", text: `前回 ${carry.previous.id} の結果を引き継ぎます` });
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
+    if (run.attachments) this.log(run, { kind: "info", text: `添付 ${run.attachments.length} 件を固定して渡します: ${run.attachments.map((a) => `${a.id}（${a.name}）`).join(", ")}` });
     for (const n of carry.invalidNotes) this.log(run, { kind: "error", text: `読めないメモを除きました: ${n.file}（${n.error}）` });
     for (const s of run.scope ?? []) if (s.status !== "ok") this.log(run, { kind: "info", text: `見ていない参照先: ${s.name}（${s.reason}）` });
     if (refs.length && !refs.some((r) => r.status === "ok")) {
@@ -248,6 +258,7 @@ export class PreflightService {
           dataDir: this.ws.dataDir,
           runDir,
           carryover,
+          attachments: run.attachments ?? [],
         },
         (e) => this.log(run, e),
         signal,
@@ -262,11 +273,12 @@ export class PreflightService {
       run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, run.drafts.map((d) => d.key)));
       for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
       if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
+      run.ui = withCurrent(run.ui, run);
       if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
       run.status = "completed";
     } catch (e) {
       run.status = "failed";
-      run.ui = { status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] };
+      run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
       run.error = redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
@@ -302,6 +314,36 @@ export class PreflightService {
       if (e instanceof UiMaterialError) throw new NotFoundError(`${materialId}（${e.message}）`);
       throw e;
     }
+  }
+
+  /** 要望の添付を足す（CLI と API で同じ確かめ方） */
+  async addAttachment(requestId: string, input: { data: Buffer; name: string; description?: string; source?: string }, actor?: string) {
+    this.ws.requests.require(requestId);
+    const a = await this.ws.attachments.add(requestId, input, actor);
+    this.ws.emit({ type: "changed", kind: "attachment", request: requestId });
+    return a;
+  }
+
+  async removeAttachment(requestId: string, id: string) {
+    this.ws.requests.require(requestId);
+    await this.ws.attachments.remove(requestId, id);
+    this.ws.emit({ type: "changed", kind: "attachment", request: requestId });
+  }
+
+  /** run に固定した添付の原本（その run の資料。後で添付を消しても変わらない） */
+  async fixedAttachment(requestId: string, runId: string, id: string): Promise<{ meta: FixedAttachment; data: Buffer }> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(runId);
+    this.ws.requests.require(requestId);
+    const run = await this.get(requestId, runId);
+    const meta = run?.attachments?.find((a) => a.id === id);
+    if (!meta) throw new NotFoundError(`${requestId}/${runId}/${id}`);
+    const file = join(this.ws.preflight.runDir(requestId, runId), meta.path);
+    const st = await lstat(file).catch(() => undefined);
+    const data = st?.isFile() ? await readFile(file) : undefined;
+    if (!data || data.length !== meta.bytes || createHash("sha256").update(data).digest("hex") !== meta.sha256) {
+      throw new NotFoundError(`${id}（run に固定した原本が無いか、変わっています）`);
+    }
+    return { meta, data };
   }
 
   async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>) {
@@ -464,6 +506,27 @@ export class PreflightService {
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
     return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
   }
+}
+
+/** 固定した添付の画像を、現状（添付）の画面資料として足す（対象のタスク案は無し） */
+function withCurrent(ui: NonNullable<PreflightRun["ui"]>, run: PreflightRun): NonNullable<PreflightRun["ui"]> {
+  const current = (run.attachments ?? [])
+    .filter((a) => a.format !== "xlsx" && a.path.startsWith(`${UI_DIR}/`))
+    .map((a) => ({
+      id: a.id,
+      kind: "current" as const,
+      file: a.path.slice(UI_DIR.length + 1),
+      format: a.format as "png" | "jpeg",
+      width: a.width ?? 0,
+      height: a.height ?? 0,
+      bytes: a.bytes,
+      title: a.description ?? a.name,
+      source: `添付 ${a.name}${a.source ? `（${a.source}）` : ""}`,
+      drafts: [],
+      assumptions: [],
+      run: run.id,
+    }));
+  return current.length ? { ...ui, items: [...ui.items.filter((m) => m.kind !== "current"), ...current] } : ui;
 }
 
 function clampScore(v: unknown) {

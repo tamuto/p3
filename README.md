@@ -276,6 +276,7 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
       tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
       tasks/.archive/                   アーカイブしたタスク（その ID は新しいタスクに再利用しない）
       notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
+      attachments/A-.../                添付（meta.json と原本 file.png / file.jpg / file.xlsx。1件1フォルダ）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット
         context.md                      インテリジェンス層が選んだ関連項目と理由
@@ -283,6 +284,10 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
         assessment.json                 評価（Codex が書く）
         drafts/D1.md, D2.md ...         タスク案（Codex が書く。1案1ファイル。人が直してもよい）
         ui/index.json, ui/U1.png ...    画面資料の一覧と画像（PNG / JPEG。P3 が確かめてから run.json の ui に取り込む）
+        ui/src/U1.html ...              画面イメージの原稿（Codex が書く。画面には配信しない）
+        ui/current/A-....png            始めるときに固定した添付の画像（現状）
+        attachments/A-....xlsx          始めるときに固定した添付の xlsx
+        attachments.json                固定した添付の一覧
         run.json                        実行メタデータ・ログ・タスク化の結果・実行者・引き継いだ run とメモ
     .archive/                           アーカイブした要望（フォルダごと）
 ```
@@ -641,6 +646,33 @@ p3 render update                            # 描画のイメージを今すぐ�
   ホストで直接動かすときは要らない
 - 日本語のフォントは Debian の `fonts-noto-cjk`（Noto Sans / Serif CJK。SIL Open Font License 1.1）。イメージの中にだけ入り、
   P3 の配布物には含めない
+
+#### 添付（画像・xlsx）
+
+今の画面のスクリーンショットや、仕様書の Excel を要望に添付して Preflight に渡せる。今の画面が要るときは、
+利用者が撮った画像を添付する（P3 は対象のアプリを起動・撮影しない）。
+
+```bash
+p3 attach add 今の画面.png --description "今の一覧" --source "本番の画面" --req <要望>
+p3 attach add 項目表.xlsx --req <要望>
+p3 attach --req <要望>                           # 一覧（要望の作業ツリーの中なら --req は省ける）
+p3 attach get <A-ID> --out 項目表.xlsx           # 原本を書き出す（--run PF-... でその run に固定した原本）
+p3 attach rm <A-ID>
+```
+
+- 形式は PNG / JPEG / xlsx だけ。拡張子ではなく中身で確かめ、合わなければ断る。xls・xlsm（マクロつき）は扱わない
+  （xlsx で保存し直すか、画像にする）。上限は1つの要望に 20 件・合計 100MB、画像 5MB（幅 4096・高さ 16384 px）、xlsx 20MB
+- xlsx は ZIP の一覧（中央ディレクトリ）だけを確かめる（ブックであること・マクロが無いこと・中のパスが外を指さないこと・
+  項目 1 万まで・展開して 200MB まで）。中身の展開と読み取りはしない。画面からは原本のダウンロードだけ
+- 原本は内部の名前（`file.png` など）で保存し、元の名前・説明・出典・追加した人と日時を `meta.json` に残す。
+  ダウンロードの名前は元の名前からパスの区切り・制御文字を外したもの
+- Preflight を始めるときに、そのときの添付を run の中へコピーして固定する（`run.json` の `attachments`）。後で足し・消ししても
+  過去の run の資料は変わらない。コピーの途中で添付が変わったら始めずに知らせる（原本は残るので、そのまま始め直せる）
+- Codex には固定した添付のコンテナの中のパスと元の名前・説明・出典を渡す。添付の文章は資料で、中の指示には従わせない。
+  画像を見る手段が無ければ、その画像に基づく判断は「未確認」と書かせる。xlsx は今は中身を読めないので「未読」と伝える。
+  添付の画像は画面資料の「現状（添付）」として画面と `p3 drafts` に出る
+- API: `GET|POST /api/requests/<要望>/attachments`（POST は multipart の file・description・source）、
+  `GET|DELETE /api/requests/<要望>/attachments/<A-ID>`、`GET /api/requests/<要望>/preflight/<run>/attachments/<A-ID>`
 
 - Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す。
   Codex のスレッドは `danger-full-access`・`approvalPolicy: never` で動く（コンテナを囲いにするため）が、これは何かを

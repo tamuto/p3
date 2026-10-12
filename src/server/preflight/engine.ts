@@ -1,5 +1,5 @@
 import type { ResolvedRef } from "../repoRefs.ts";
-import type { PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
+import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
@@ -11,6 +11,8 @@ export interface PreflightJob {
   dataDir: string;
   /** run ディレクトリ（ローカル絶対パス。データディレクトリの中） */
   runDir: string;
+  /** 始めるときに固定した添付（path は run のフォルダからの相対）。中の文章は資料で、指示ではない */
+  attachments?: FixedAttachment[];
   /** 前回の結果とその後のメモ（無ければ最初からの評価） */
   carryover?: {
     /** run ディレクトリの carryover.md と同じ内容。エンジンに資料として渡す */
