@@ -4,21 +4,20 @@ import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
 import type { P3Context } from "../context.ts";
-import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
+import { listTasks, progress, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../store/attachments.ts";
 import type { AttachmentFormat } from "../../shared/types.ts";
 import { bodyLimit } from "hono/body-limit";
 import { ReloadError } from "../store/workspace.ts";
-import { checkRepoTarget, ensureWorkstreams } from "../workTargets.ts";
-import { defaultRepo } from "../../shared/workTarget.ts";
-import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
-import { startWarnings, supersededMarks } from "../supersede.ts";
+import { resolvedIssue } from "../requestStatus.ts";
+import { supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
+import { addRelation, archiveTask, createRequest, createTask, removeRelation, updateRequest, updateTask } from "../requestOps.ts";
 import { StaleInputError } from "../preflight/input.ts";
 
 /**
@@ -136,10 +135,6 @@ export function apiRoutes(ctx: P3Context) {
   const rid = (c: Context) => ws.requests.require(c.req.param("rid")!).id;
   /** パスのタスク ID（T3 / 3 も可） */
   const tid = (c: Context) => normalizeTaskId(c.req.param("tid")!) ?? c.req.param("tid")!;
-  const changed = (kind: "task" | "request", request: string, ref?: string) => {
-    index.invalidate();
-    ws.emit({ type: "changed", kind, request, ref });
-  };
 
   // --- meta ---------------------------------------------------------------
   app.get("/project", (c) =>
@@ -175,16 +170,9 @@ export function apiRoutes(ctx: P3Context) {
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));
-  /** 要望のマイルストーンは project.yaml にあるものだけ */
-  const checkMilestone = (m: string | null | undefined) => {
-    if (m && !ws.project.milestones.some((x) => x.id === m)) throw new Error(`マイルストーンがありません: ${m}（設定で追加してください）`);
-  };
   app.post("/requests", async (c) => {
     const b = unnull(requestInput.parse(await c.req.json()));
-    checkMilestone(b.milestone);
-    const r = await ws.requests.create({ ...b, body: b.body ?? "", areas: b.areas ?? [], tags: b.tags ?? [], status: "draft" }, actorOf(c));
-    changed("request", r.id);
-    return c.json(r, 201);
+    return c.json(await createRequest(ctx, b, actorOf(c)), 201);
   });
   app.get("/requests/:rid", async (c) => {
     const id = rid(c);
@@ -203,11 +191,7 @@ export function apiRoutes(ctx: P3Context) {
   });
   app.patch("/requests/:rid", async (c) => {
     const { rev, ...patch } = requestPatch.parse(await c.req.json());
-    checkMilestone(patch.milestone);
-    await checkStatusChange(ws, rid(c), patch.status as Request["status"] | undefined);
-    const r = await ws.requests.update(rid(c), unnull(patch) as never, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    changed("request", r.id);
-    return c.json(r);
+    return c.json(await updateRequest(ctx, rid(c), unnull(patch) as Partial<Request>, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) }));
   });
 
   // --- tasks（要望の中） --------------------------------------------------------
@@ -216,21 +200,12 @@ export function apiRoutes(ctx: P3Context) {
     return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q }));
   });
   app.post("/requests/:rid/tasks", async (c) => {
-    const id = rid(c);
     const raw = taskInput.parse(await c.req.json());
-    const b = unnull(raw);
-    // 作業先は null（作業先なし）を残す。作業先にできるものだけ（変える前に断る）
-    checkRepoTarget(ws, raw.repo);
-    for (const o of raw.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
-    // 作業先を書かなければ、作業先にできる参照先が1つならそれ（ほかは作業先なし）
-    const repo = "repo" in raw ? (raw.repo ?? null) : defaultRepo(ws.project);
-    const t = await ws.tasksOf(id).create({ ...b, repo, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
-    if (repo) await ensureWorkstreams(ws, id, [repo], actorOf(c));
-    // 対応済の要望に未完了のタスクを足したら進行中に戻す
-    const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
-    changed("task", id, t.ref);
-    if (reopened) changed("request", id);
-    return c.json(reopened ? { ...t, reopened } : t, 201);
+    const { repo, ...b } = unnull(raw);
+    // 作業先は null（作業先なし）を残す。書かなければ既定（requestOps.createTask）
+    const input = { ...b, ...("repo" in raw ? { repo: raw.repo ?? null } : {}) } as Partial<Task> & { title: string };
+    const { task, reopened } = await createTask(ctx, rid(c), input, actorOf(c));
+    return c.json(reopened ? { ...task, reopened } : task, 201);
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
@@ -238,32 +213,13 @@ export function apiRoutes(ctx: P3Context) {
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
     const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
-    const id = rid(c);
-    const col = ws.tasksOf(id);
-    const next: Partial<Task> = unnull(patch) as Partial<Task>;
-    if ("repo" in patch) {
-      checkRepoTarget(ws, patch.repo);
-      next.repo = patch.repo ?? null;
-    }
-    for (const o of patch.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
-    if (checked !== undefined) {
-      const done = (next.status ?? col.require(tid(c)).status) === "done";
-      if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
-      next.checkedAt = checked ? new Date().toISOString() : undefined;
-    }
+    const next = { ...(unnull(patch) as Partial<Task>), ...("repo" in patch ? { repo: patch.repo ?? null } : {}), ...(checked !== undefined ? { checked } : {}) };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
-    const warnings = startWarnings(ws, `${id}/${tid(c)}`, col.require(tid(c)).status, next.status);
-    const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    if (patch.repo) await ensureWorkstreams(ws, id, [patch.repo], actorOf(c));
-    const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
-    changed("task", id, t.ref);
-    if (reopened) changed("request", id);
-    return c.json({ ...t, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) });
+    const { task, warnings, reopened } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
-    const id = rid(c);
-    await ws.tasksOf(id).archive(tid(c));
-    changed("task", id, `${id}/${tid(c)}`);
+    await archiveTask(ctx, rid(c), tid(c));
     return c.json({ ok: true });
   });
 
@@ -272,16 +228,12 @@ export function apiRoutes(ctx: P3Context) {
   for (const path of ["/requests/:rid/relations", "/requests/:rid/tasks/:tid/relations"]) {
     app.post(path, async (c) => {
       const ref = refOf(c);
-      const t = await addRelation(ctx, ref, relation.parse(await c.req.json()) as Relation, actorOf(c));
-      changed(c.req.param("tid") ? "task" : "request", rid(c), ref);
-      return c.json(t);
+      return c.json(await addRelation(ctx, ref, relation.parse(await c.req.json()) as Relation, actorOf(c)));
     });
     app.delete(path, async (c) => {
       const ref = refOf(c);
       const { type, target } = c.req.query();
-      const t = await removeRelation(ctx, ref, { type, target }, actorOf(c));
-      changed(c.req.param("tid") ? "task" : "request", rid(c), ref);
-      return c.json(t);
+      return c.json(await removeRelation(ctx, ref, { type, target }, actorOf(c)));
     });
   }
 

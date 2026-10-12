@@ -1046,7 +1046,8 @@ src/
   shared/            型定義・参照の解き方・日付（サーバ/Web 共通）
   cli/               p3 CLI（ファイルを直接操作。serve でサーバも起動する）
   server/
-    ops.ts           CLI と API で共通の操作（参照・関係の規則・進捗の集計など）
+    requestOps.ts    要望・タスク・関係の変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
+    ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
     store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
     intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化

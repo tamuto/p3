@@ -9,11 +9,12 @@ import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type InputMatch, type MaterializeResult, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
 import { openProject, type P3Context } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
-import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
+import { listTasks, progress, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
+import { addRelation, archiveRequest, archiveTask, checkMilestone, createRequest, createTask, OpRuleError, removeRelation, updateRequest, updateTask } from "../server/requestOps.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
-import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../server/requestStatus.ts";
-import { startWarnings, supersededMarks, type Warning } from "../server/supersede.ts";
+import { resolvedIssue } from "../server/requestStatus.ts";
+import { supersededMarks, type Warning } from "../server/supersede.ts";
 import { ProjectNotResolvedError, resolveProject } from "../server/store/locate.ts";
 import { loadUserConfig, UserConfigError } from "../server/userConfig.ts";
 import { codexCommand } from "./codex.ts";
@@ -21,8 +22,8 @@ import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
-import { defaultRepo, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
-import { addRepoOutputs, checkRepoTarget, ensureWorkstreams, parseRepoOutput, repoArg, taskWork } from "../server/workTargets.ts";
+import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
+import { addRepoOutputs, parseRepoOutput, repoArg, taskWork } from "../server/workTargets.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
@@ -432,14 +433,15 @@ async function main(argv: string[]): Promise<number> {
       const status = o.status ?? "todo";
       checkStatus(status);
       // 作業先（--repo <名前>|none）。作業先にできるものだけ。書く前に確かめる
-      const repo = repoArg(o.repo) ?? defaultRepo(ctx.ws.project);
-      checkRepoTarget(ctx.ws, repo);
+      const repo = repoArg(o.repo);
       const repoOutputs = (o["repo-output"] ?? []).map((x) => parseRepoOutput(ctx.ws, x));
-      const t = await ctx.ws.tasksOf(rid).create(
+      const r = await createTask(
+        ctx,
+        rid,
         {
           title,
           status,
-          repo,
+          ...(repo !== undefined ? { repo } : {}),
           labels: o.label ?? [],
           areas: o.area ?? [],
           outputs: o.output ?? [],
@@ -448,8 +450,8 @@ async function main(argv: string[]): Promise<number> {
         },
         actor,
       );
-      if (repo) await ensureWorkstreams(ctx.ws, rid, [repo], actor);
-      const reopened = await reopened_(ctx, rid, actor);
+      const t = r.task;
+      const reopened = reopenedNote(r.reopened);
       return out.result(reopened ? { ...t, reopened } : t, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
     }
 
@@ -458,17 +460,15 @@ async function main(argv: string[]): Promise<number> {
       const patch = parseTaskAssignments(args.slice(1));
       if (o.body !== undefined) patch.body = readBody(o.body);
       const { col, tid } = split(ref);
-      if ("repo" in patch) checkRepoTarget(ctx.ws, patch.repo);
       if (o["repo-output"]?.length) {
         const add = o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x));
         patch.repoOutputs = addRepoOutputs(patch.repoOutputs ?? col.require(tid).repoOutputs ?? [], add);
       }
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
-      const warnings = startWarnings(ctx.ws, ref, col.require(tid).status, patch.status);
-      const next = await col.update(tid, patch, { expectedRev, actor });
-      if (patch.repo) await ensureWorkstreams(ctx.ws, next.request, [patch.repo], actor);
+      const r = await updateTask(ctx, ref.split("/")[0], tid, patch, { expectedRev, actor });
+      const { task: next, warnings } = r;
       warn(warnings);
-      const reopened = await reopened_(ctx, next.request, actor);
+      const reopened = reopenedNote(r.reopened);
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
         [`更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
@@ -485,10 +485,10 @@ async function main(argv: string[]): Promise<number> {
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
       // リポジトリごとの成果物（最後のタスクに、関係するリポジトリの PR を全部残せる）
       if (o["repo-output"]?.length) patch.repoOutputs = addRepoOutputs(cur.repoOutputs ?? [], o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x)));
-      const warnings = startWarnings(ctx.ws, ref, cur.status, status);
-      const next = await col.update(tid, patch, { expectedRev, actor });
+      const r = await updateTask(ctx, cur.request, tid, patch, { expectedRev, actor });
+      const { task: next, warnings } = r;
       warn(warnings);
-      const reopened = await reopened_(ctx, next.request, actor);
+      const reopened = reopenedNote(r.reopened);
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
         `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
@@ -496,12 +496,8 @@ async function main(argv: string[]): Promise<number> {
 
     case "check": {
       const ref = taskArg(args[0]);
-      const { col, tid } = split(ref);
-      const cur = col.require(tid);
-      if (!o.off && cur.status !== "done") {
-        throw new UsageError(`${ref} はまだ完了していません（済みにできるのは完了したタスクだけ）`);
-      }
-      const next = await col.update(tid, { checkedAt: o.off ? undefined : new Date().toISOString() }, { expectedRev, actor });
+      const { tid } = split(ref);
+      const { task: next } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
@@ -524,8 +520,8 @@ async function main(argv: string[]): Promise<number> {
 
     case "archive": {
       const ref = taskArg(args[0]);
-      const { col, tid } = split(ref);
-      await col.archive(tid);
+      const { tid } = split(ref);
+      await archiveTask(ctx, ref.split("/")[0], tid);
       return out.result({ archived: ref }, () => `アーカイブ: ${ref}`);
     }
 
@@ -692,10 +688,11 @@ async function requestCommand(
     case "add": {
       const title = rest.join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
-      if (o.milestone) checkMilestone(ctx, o.milestone);
+      checkMilestone(ctx, o.milestone);
       const files = await readAttachFiles(o.attach ?? []);
-      const r = await ctx.ws.requests.create(
-        { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
+      const r = await createRequest(
+        ctx,
+        { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone },
         actor,
       );
       const head = `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`;
@@ -769,10 +766,7 @@ async function requestCommand(
         else if (key === "areas") patch.areas = list(value);
         else if (key === "tags") patch.tags = list(value);
         else if (key === "due") patch.due = value ? date(value) : undefined;
-        else if (key === "milestone") {
-          if (value) checkMilestone(ctx, value);
-          patch.milestone = value || undefined;
-        }
+        else if (key === "milestone") patch.milestone = value || undefined;
         else if (key === "status") {
           if (!REQUEST_STATUSES.includes(value as Request["status"])) throw new UsageError(`要望のステータスは ${REQUEST_STATUSES.join(", ")}`);
           patch.status = value as Request["status"];
@@ -784,13 +778,12 @@ async function requestCommand(
         patch.tags = tagsFrom(o.tag);
       }
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
-      await checkStatusChange(ctx.ws, rid, patch.status);
-      const next = await ctx.ws.requests.update(rid, patch, { expectedRev, actor });
+      const next = await updateRequest(ctx, rid, patch, { expectedRev, actor });
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
     case "archive": {
       const rid = requestArg(rest[0]);
-      await ctx.ws.requests.archive(rid);
+      await archiveRequest(ctx, rid);
       return out.result({ archived: rid }, () => `アーカイブ: ${rid}（requests/.archive/ へ）`);
     }
     default:
@@ -800,9 +793,6 @@ async function requestCommand(
 
 // --- マイルストーン -----------------------------------------------------------
 
-function checkMilestone(ctx: P3Context, id: string) {
-  if (!ctx.ws.project.milestones.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id}（p3 milestone add ${id}）`);
-}
 
 /** マイルストーン（リリース）。複数の要望をまとめる単位で、project.yaml に書く */
 async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
@@ -1027,10 +1017,9 @@ const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
   return m?.length ? `※置換 ← ${m.map((x) => (x.from.startsWith(`${t.request}/`) ? x.from.slice(t.request.length + 1) : x.from)).join(",")}` : "";
 };
 
-/** タスクを変えた後: 対応済の要望に未完了のタスクができたら進行中に戻し、そう知らせる。戻した要望の ID を返す */
-async function reopened_(ctx: P3Context, rid: string, actor: string): Promise<string | undefined> {
-  if (!(await reopenIfNeeded(ctx.ws, rid, actor))) return undefined;
-  process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
+/** タスクを変えた後、対応済の要望を進行中に戻していたら知らせる（requestOps が戻す）。戻した要望の ID を返す */
+function reopenedNote(rid: string | undefined): string | undefined {
+  if (rid) process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
   return rid;
 }
 
@@ -1094,7 +1083,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );

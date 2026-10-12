@@ -1,11 +1,10 @@
-import { absRef, normalizeTaskId, parseRef, relRef } from "../shared/refs.ts";
-import { RELATION_TYPES, type Relation, type RelationType, type Request, type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
+import { normalizeTaskId, parseRef } from "../shared/refs.ts";
+import { type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
 import { NotFoundError } from "./store/collection.ts";
 
 /**
- * API と CLI で共通の操作。どちらもファイルを直接読み書きするので、ここに置いた規則
- * （参照の解き方、循環の禁止、由来の記録など）はどの経路から変更しても同じように効く。
+ * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。
  */
 
 export interface TaskFilter {
@@ -92,49 +91,10 @@ export function titleOf({ ws }: P3Context, ref: string): string {
 }
 
 /** 参照の指す要望かタスクのコレクションと ID */
-function entityOf({ ws }: P3Context, ref: string) {
+export function entityOf({ ws }: P3Context, ref: string) {
   const r = parseRef(ref);
   if (!r || !ws.exists(ref)) throw new NotFoundError(ref);
   return r.task ? { col: ws.tasksOf(r.request), id: r.task, request: r.request } : { col: ws.requests, id: r.request, request: r.request };
-}
-
-/**
- * 関係を張る。ref と target は絶対参照か相対参照（ref の要望の中）。
- * ファイルには、同じ要望のタスクなら T003、それ以外は <要望ID>/T003 の形で書く。
- */
-export async function addRelation(ctx: P3Context, ref: string, rel: Relation, actor: string): Promise<Task | Request> {
-  if (!(rel.type in RELATION_TYPES)) throw new Error(`関係の種類が不正です: ${rel.type}`);
-  const { col, id, request } = entityOf(ctx, ref);
-  const from = absRef(ref)!;
-  const to = absRef(rel.target, request);
-  if (!to || !ctx.ws.exists(to)) throw new NotFoundError(rel.target);
-  if (to === from) throw new Error("自分自身には関係を張れません");
-  if (rel.type === "depends_on" && ctx.index.wouldCycle(from, to)) throw new Error(`${from} → ${to} は依存の循環になります`);
-  const cur = col.require(id);
-  const target = relRef(to, request)!;
-  const relations = [
-    ...cur.relations.filter((r) => !(r.type === rel.type && absRef(r.target, request) === to)),
-    { ...rel, target, origin: rel.origin ?? (actor.startsWith("ai") ? "ai" : "human") },
-  ];
-  const next = await col.update(id, { relations } as never, { actor });
-  ctx.index.invalidate();
-  return next;
-}
-
-export async function removeRelation(
-  ctx: P3Context,
-  ref: string,
-  r: { type: RelationType | string; target: string },
-  actor: string,
-): Promise<Task | Request> {
-  const { col, id, request } = entityOf(ctx, ref);
-  const to = absRef(r.target, request);
-  const cur = col.require(id);
-  const relations = cur.relations.filter((x) => !(x.type === r.type && absRef(x.target, request) === to));
-  if (relations.length === cur.relations.length) throw new NotFoundError(`${ref} の ${r.type} ${r.target}`);
-  const next = await col.update(id, { relations } as never, { actor });
-  ctx.index.invalidate();
-  return next;
 }
 
 /**
