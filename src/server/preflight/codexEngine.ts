@@ -16,6 +16,8 @@ import { APP_NAME } from "../chatgpt/oauth.ts";
 import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
+import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
+import { prepareLaunch } from "./launch.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -49,6 +51,8 @@ export interface CodexWorkspaceConfig {
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
+  /** 個人設定のファイルの場所（直す場所の案内に出す） */
+  configPath?: string;
   /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
   command?: (workspace: string, data: string, auth: CodexAuth["mode"]) => string[];
 }
@@ -176,10 +180,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   hostPath(local: string): string {
-    for (const [from, to] of this.cfg.pathMap) {
-      if (local === from || local.startsWith(`${from}/`)) return to + local.slice(from.length);
-    }
-    return local;
+    return mapPath(this.cfg.pathMap, local).host;
   }
 
   async run(job: PreflightJob, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
@@ -215,12 +216,21 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     log: Log,
     signal: AbortSignal,
   ): Promise<EngineOutcome> {
-    const workspace = this.hostPath(job.repoRoot);
-    const data = this.hostPath(job.dataDir);
-    log({ kind: "info", text: `codex-workspace: ${CONTAINER_WORKSPACE} <= ${workspace}, ${CONTAINER_DATA} <= ${data}` });
+    const mappings: PathMapping[] = [
+      { label: "リポジトリ", local: job.repoRoot, ...mapPath(this.cfg.pathMap, job.repoRoot), container: CONTAINER_WORKSPACE },
+      { label: "データ", local: job.dataDir, ...mapPath(this.cfg.pathMap, job.dataDir), container: CONTAINER_DATA },
+    ];
+    const [workspace, data] = mappings.map((m) => m.host);
+    log({ kind: "info", text: `パスの対応（個人設定の codex.pathMap${this.cfg.configPath ? `、${this.cfg.configPath}` : ""}）:` });
+    for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, this.cfg.pathMap.length)}` });
     if (this.cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
-      log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
+      try {
+        log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
+      } catch (e) {
+        // docker run の前（イメージの用意）で失敗した
+        throw new Error(`Codex のイメージを用意できません（app-server を起こす前）: ${(e as Error).message}`, { cause: e });
+      }
     }
 
     const command =
@@ -233,14 +243,60 @@ export class CodexWorkspaceEngine implements PreflightEngine {
         workspace,
         data,
       );
-    await using session = await WorkspaceSession.open(command, {
-      model: this.cfg.model,
-      effort: this.cfg.effort,
-      env,
-      // ChatGPT プランでは、登録のときの agent_name_hint と同じ名前で名乗る
-      clientInfo: { name: APP_NAME, title: "infodb p3", version: P3_VERSION },
-      onEvent: (e) => logEvent(e, log),
-    });
+    // 中継ごしに起こして、すぐ終わったときの Docker の出力と終わり方を残す（launcher.mjs）
+    const launch = await prepareLaunch(command);
+    const diag = { image: DEFAULT_IMAGE, mappings, rules: this.cfg.pathMap.length, configPath: this.cfg.configPath };
+    /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
+    const diagnosed = async (e: unknown, phase: "start" | "run") => {
+      if (signal.aborted) return undefined;
+      const ended = /app-server が終わりました/.test((e as Error)?.message ?? "");
+      if (phase === "run" && !ended) return undefined;
+      const r = await launch.result({ waitMs: 3000, stopIfRunning: phase === "start" });
+      if (phase === "run" && !r.exit) return undefined;
+      const d = diagnoseLaunch(r, { ...diag, phase });
+      if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
+      log({ kind: "error", text: d.message });
+      return new Error(d.message, { cause: e });
+    };
+    try {
+      return await this.session(launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+    } finally {
+      await launch.cleanup();
+    }
+  }
+
+  /** 起こして、スレッドを立てて、1回頼む。失敗は onError で診断をつけてから投げる */
+  private async session(
+    command: string[],
+    job: PreflightJob,
+    auth: Exclude<CodexAuth, { mode: "none" }>,
+    env: Record<string, string> | undefined,
+    log: Log,
+    signal: AbortSignal,
+    onError: (e: unknown, phase: "start" | "run") => Promise<unknown>,
+  ): Promise<EngineOutcome> {
+    let opened: WorkspaceSession;
+    try {
+      opened = await WorkspaceSession.open(command, {
+        model: this.cfg.model,
+        effort: this.cfg.effort,
+        env,
+        // ChatGPT プランでは、登録のときの agent_name_hint と同じ名前で名乗る
+        clientInfo: { name: APP_NAME, title: "infodb p3", version: P3_VERSION },
+        onEvent: (e) => logEvent(e, log),
+      });
+    } catch (e) {
+      throw await onError(e, "start");
+    }
+    await using session = opened;
+    try {
+      return await this.turn(session, job, auth, log, signal);
+    } catch (e) {
+      throw await onError(e, "run");
+    }
+  }
+
+  private async turn(session: WorkspaceSession, job: PreflightJob, auth: Exclude<CodexAuth, { mode: "none" }>, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
     if (auth.mode === "legacy") {
       const usage = await session.usage();
       log({
