@@ -57,6 +57,12 @@ export function renderCarryover(c: Carryover): string | undefined {
       a.summary,
       `### 確認事項\n${list(a.questions)}`,
       `### リスク\n${list(a.risks)}`,
+      // 前回の根拠は前回の時点のもの。今回の確かめた根拠としてそのまま写させない
+      `### 前回の根拠（前回の時点のもの。使うなら今回あらためて確かめ、確かめていなければ assumed にする）\n${
+        a.evidence === undefined
+          ? "（記録なし）"
+          : list(a.evidence.map((e) => `${e.kind === "verified" ? "確かめた" : "推測"}: ${e.claim}${e.repo && e.file ? `（${e.repo}:${e.file}${e.location ? ` ${e.location}` : ""}）` : ""}`))
+      }`,
       `## 前回のタスク案（人の編集と採否を含む）`,
       ...(p.drafts.length
         ? p.drafts.map(

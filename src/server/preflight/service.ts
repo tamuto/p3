@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import {
@@ -12,6 +13,7 @@ import {
   type RelationType,
   type MaterializeResult,
   type Task,
+  type Evidence,
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
@@ -22,6 +24,7 @@ import { supersedeCandidates } from "../supersede.ts";
 import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
+import { refScope, type ResolvedRef } from "../repoRefs.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -142,6 +145,8 @@ export class PreflightService {
     // 前回の結果とその後のメモ。開始の時点で選んで固定する（実行中に足されたメモは次回に回る）
     const carry = await selectCarryover(this.ws, requestId);
     const carryover = renderCarryover(carry);
+    // 読む参照先は始めるときに決める（読めないものは理由を記録に残す。このマシンのパスは残さない）
+    const refs = this.ws.refs();
     const run: PreflightRun = {
       id,
       requestId,
@@ -154,6 +159,7 @@ export class PreflightService {
       context,
       log: [],
       drafts: [],
+      scope: refs.map(refScope),
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
     await this.ws.preflight.save(run);
@@ -163,6 +169,10 @@ export class PreflightService {
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
     for (const n of carry.invalidNotes) this.log(run, { kind: "error", text: `読めないメモを除きました: ${n.file}（${n.error}）` });
+    for (const s of run.scope ?? []) if (s.status !== "ok") this.log(run, { kind: "info", text: `見ていない参照先: ${s.name}（${s.reason}）` });
+    if (refs.length && !refs.some((r) => r.status === "ok")) {
+      this.log(run, { kind: "info", text: "読める参照先がありません。要望と P3 のデータだけで評価します（コードは確かめられません）" });
+    }
     // 要望のスナップショットと文脈をファイルとして残す（後から「何を根拠に判断したか」を辿れる）
     await writeFileAtomic(join(runDir, "request.md"), `# ${request.id} ${request.title}\n\n${request.body}`);
     await writeFileAtomic(
@@ -177,7 +187,7 @@ export class PreflightService {
 
     const abort = new AbortController();
     const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
-    const done = this.execute(engine, run, runDir, carried, abort.signal, after);
+    const done = this.execute(engine, run, runDir, carried, abort.signal, after, refs);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -206,6 +216,7 @@ export class PreflightService {
     carryover: PreflightJob["carryover"],
     signal: AbortSignal,
     after: (ok: boolean) => Request["status"],
+    refs: ResolvedRef[],
   ) {
     const repoRoot = this.ws.repoRoot;
     try {
@@ -216,6 +227,7 @@ export class PreflightService {
           request: this.ws.requests.require(run.requestId),
           context: run.context,
           repoRoot,
+          refs,
           dataDir: this.ws.dataDir,
           runDir,
           carryover,
@@ -231,7 +243,7 @@ export class PreflightService {
         this.log(run, { kind: "error", text: `想定外の変更: ${shown}（確認して必要なら元に戻してください）` });
       }
 
-      run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"));
+      run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
       run.status = "completed";
     } catch (e) {
@@ -414,7 +426,36 @@ function clampScore(v: unknown) {
 const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
 
 /** LLM の出力は形が揺れるので、厳密に弾かず正規化する */
-export function parseAssessment(text: string): PreflightAssessment {
+/**
+ * evidence を取り込む。verified は、読めた参照先・その中の相対パス・あるファイルを指すときだけ認める
+ * （refs を渡したとき。ほかは assumed に直して理由を note に書く）。項目は消さない
+ */
+export function parseEvidence(v: unknown, refs?: readonly ResolvedRef[]): Evidence[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const text = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined);
+  return v
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
+    .map((e) => {
+      const ev: Evidence = { claim: text(e.claim) ?? "（判断の説明がありません）", kind: e.kind === "verified" ? "verified" : "assumed" };
+      for (const k of ["repo", "file", "location"] as const) if (text(e[k])) ev[k] = text(e[k]);
+      if (ev.kind !== "verified" || !refs) return ev;
+      const problem = verifiedProblem(ev, refs);
+      return problem ? { ...ev, kind: "assumed" as const, note: problem } : ev;
+    });
+}
+
+function verifiedProblem(ev: Evidence, refs: readonly ResolvedRef[]): string | undefined {
+  if (!ev.repo || !ev.file) return "参照先とファイルが書かれていないので、確かめた根拠として扱いません";
+  const ref = refs.find((r) => r.name === ev.repo);
+  if (!ref) return `参照先「${ev.repo}」は登録されていません`;
+  if (ref.status !== "ok" || !ref.local) return `参照先 ${ev.repo} はこの評価で見ていません`;
+  const file = ev.file.replace(/^(\.\/)+/, "");
+  if (file.startsWith("/") || file.split("/").includes("..")) return "参照先の中の相対パスではありません";
+  if (!existsSync(join(ref.local, file))) return `${ev.repo}:${file} がありません`;
+  return undefined;
+}
+
+export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): PreflightAssessment {
   let a: Record<string, any>;
   try {
     a = JSON.parse(text);
@@ -438,5 +479,6 @@ export function parseAssessment(text: string): PreflightAssessment {
         reason: String(i.reason ?? ""),
         confidence: Math.max(0, Math.min(1, Number(i.confidence ?? 0.5))),
       })),
+    ...(Array.isArray(a.evidence) ? { evidence: parseEvidence(a.evidence, refs) } : {}),
   };
 }

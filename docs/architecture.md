@@ -106,6 +106,22 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     知らせて足さない。× はキーボードでも押せる。書きかけの値は「再読み込み」しても残る。長い値（108 文字）は折り返して全文を
     出し、横にはみ出さない。新しい要望は Enter で足した値と書きかけの値（`x/y, z`）の両方を付けて作る
   - 開いた中が、スケジュールの左の列（sticky, z-30）の下に隠れていたので z-50 にした
+- Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
+  名前・役割・readFirst・writable・コードの地図 map / mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
+  `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。共有の `repos` が無ければ今までの
+  1リポジトリ（`main`）。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
+  設定の保存（画面・`p3 config`）は `repos` を書き換えない。コンテナの中の名前（mount）は論理名から英数字と `. _ -` だけで作り、
+  重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は docs・areas・evidence で共通。名前なしは先頭の参照先。
+  タスクの作業先（`repoRoot`・workstream）はこの段階では多重化しない
+  - マウント（`withMounts`）: dockerCommand の `/workspace` の bind を tmpfs に替え、参照先を `/workspace/<mount>` に
+    `readonly` で、データを `/data` に置く。Codex の cwd は `/workspace` のまま。変更のパスは参照先の対応で戻す
+  - 調べた範囲（`run.scope`）は P3 が始めるときに決めて残す（パスは入れない）。根拠（`assessment.evidence`）は Codex が書き、
+    P3 が `parseEvidence` で確かめる（verified は読めた参照先の中の、ある相対パスを指すときだけ）
+  - 本物の Docker（29.3.0）での確認（2026-10-12）: 生成した docker run の引数で、`/workspaces/allesc`・
+    `/workspaces/allescdoc/standard_guide`（リポジトリの中のサブフォルダ）・`/workspaces/allescinfra` の3つを `codex.pathMap`
+    （`/workspaces=/root/workspaces`）で対応させてマウントし、コンテナの中で3つとも読め（27・16・12 項目）、それぞれへの書き込みは
+    `Read-only file system` で拒まれ、`/workspace`（tmpfs）には書けた。ホストのフォルダには何もできていない。イメージの
+    entrypoint を sh にして確かめたので、本物の Codex に評価させてはいない（認証が要る）
 - タスクの成果物（`outputs: string[]`）は URL・文章・パスを1項目ずつ混ぜてよい。画面は `components/Outputs.tsx` で、
   項目全体が絶対の http(s) URL（`web/lib/outputs.ts` の `outputHref`。前後の空白は判定でだけ除く）ならリンク、ほかは文字。
   保存の形を変えないので、既存のデータの移し替えはしない（実データの読み取り確認: 2026-10-12、要望 24・タスク 51・

@@ -17,8 +17,9 @@ import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
+import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
-import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 
 /**
@@ -42,6 +43,10 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                --project 名前 --dir フォルダ --description --docs a,b --instructions 観点 --agents --yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
+  repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
+                               add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…]  共有の定義を足す
+                               set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
+                               rm <名前>  共有の定義ごと消す（--local はこのマシンのパスだけ）
   user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
@@ -136,6 +141,7 @@ const OPTIONS = {
   "no-browser": { type: "boolean" },
   forget: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
+  local: { type: "boolean" },
   port: { type: "string" },
   host: { type: "string" },
 } as const;
@@ -223,11 +229,11 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
+    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, repos: target.repos, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot, settings });
+  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot, repos: target.repos, settings });
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
@@ -258,6 +264,11 @@ async function main(argv: string[]): Promise<number> {
   switch (cmd) {
     case "config": {
       const r = await config(ctx.ws, args);
+      return out.result(r.data, () => r.text);
+    }
+
+    case "repo": {
+      const r = await repoCommand(ctx.ws, target.name, cwd, args, { local: o.local });
       return out.result(r.data, () => r.text);
     }
 
@@ -741,6 +752,9 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
     if (a.questions.length) lines.push("", "確認事項:", ...a.questions.map((x) => `  - ${x}`));
     if (a.impacts.length) lines.push("", "既存項目への影響:", ...a.impacts.map((i) => `  ${i.type} ${i.target} (${i.confidence})  ${i.reason}`));
   }
+  lines.push("", ...scopeLines(run.scope));
+  if (a) lines.push("", ...evidenceLines(a.evidence));
+  if (run.scope?.some((s) => s.status === "unregistered")) lines.push("  → このマシンのパスは p3 repo path <名前> <パス> で登録します");
   if (run.drafts.length) {
     lines.push("", `タスク案 (${run.drafts.filter((d) => d.include).length}/${run.drafts.length} 件を採用):`);
     lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));

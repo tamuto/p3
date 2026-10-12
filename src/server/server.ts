@@ -11,6 +11,8 @@ export interface ServeOptions {
   dataDir: string;
   /** 手元のリポジトリ（個人設定） */
   repoRoot?: string;
+  /** 参照先の名前 → このマシンのパス（個人設定） */
+  repos?: Record<string, string>;
   port: number;
   host: string;
   /** ビルド済みの画面 (dist/web) も配信する */
@@ -21,7 +23,7 @@ export interface ServeOptions {
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions) {
-  const ctx = await openProject(opts.dataDir, { repoRoot: opts.repoRoot, settings: opts.settings });
+  const ctx = await openProject(opts.dataDir, { repoRoot: opts.repoRoot, repos: opts.repos, settings: opts.settings });
   const { ws, preflight } = ctx;
   void ws.watch();
 

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { appendFile, copyFile, mkdir } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -10,7 +10,8 @@ import type { ProjectConfig } from "../shared/types.ts";
 import type { PcubeContext } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
 import { mainWorktree } from "../server/store/locate.ts";
-import { writeProjectFile } from "../server/store/projectFile.ts";
+import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
+import { LEGACY_REPO, repoNameProblem, type RepoRef } from "../shared/repos.ts";
 import type { Workspace } from "../server/store/workspace.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../server/userConfig.ts";
 
@@ -207,6 +208,7 @@ export async function init(o: InitOptions): Promise<string> {
       description,
       // 手元のリポジトリの場所は個人設定に持つ。共有するデータには、リポジトリの中に置く（.pcube/）ときの相対パスだけ書く
       repo: dir.startsWith(`${root}/`) ? relative(dir, root) : "",
+      repos: [],
       docs,
       milestones: [],
       branchPattern: "req/{id}-{slug}",
@@ -326,4 +328,130 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
 
 function splitList(s: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * p3 repo: Preflight が読む参照先（リポジトリ・フォルダ）。共有の定義（project.yaml の repos）と、このマシンのパス
+ * （個人設定の projects.<プロジェクト>.repos）を分けて扱う。
+ *
+ *   ls                               一覧（このマシンのパスが無いものは登録の仕方を出す）
+ *   add <名前> [<パス>] [キー=値 ...]  共有の定義を足す（パスを渡せばこのマシンのパスも登録する）
+ *   set <名前> キー=値 ...            共有の定義を変える（role readFirst writable mapFile）
+ *   path <名前> <パス>               このマシンのパスだけを登録する（ほかの人が足した参照先に）
+ *   rm <名前> [--local]              共有の定義とこのマシンのパスを消す（--local はこのマシンのパスだけ）
+ */
+export async function repoCommand(
+  ws: Workspace,
+  projectName: string | undefined,
+  cwd: string,
+  args: string[],
+  o: { local?: boolean },
+): Promise<{ data: unknown; text: string }> {
+  const [sub = "ls", name, ...rest] = args;
+  const file = join(ws.dataDir, "project.yaml");
+  const shared = () => ws.project.repos.find((r) => r.name === name);
+  const usage = "p3 repo [ls | add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…] | set <名前> キー=値 … | path <名前> <パス> | rm <名前> [--local]]";
+
+  /** このマシンのパスを書く（null で外す）。プロジェクトが個人設定に登録されていること */
+  const setLocal = async (ref: string, path: string | null) => {
+    if (!projectName) throw new UsageError("このプロジェクトは個人設定に登録されていません。先に p3 project add <名前> <フォルダ> で登録してください");
+    await updateUserConfig((doc, now) => {
+      const prev = now.projects[projectName];
+      if (!prev) throw new UsageError(`プロジェクト「${projectName}」は個人設定に登録されていません`);
+      const repos = { ...prev.repos };
+      if (path === null) delete repos[ref];
+      else repos[ref] = path;
+      setProjectNode(doc, projectName, { dir: prev.dir, repos });
+    });
+  };
+  /** 渡されたパス（フォルダであること。git でなくてよい） */
+  const folder = (raw: string) => {
+    const p = resolvePath(cwd, raw);
+    if (!existsSync(p)) throw new UsageError(`パスがありません: ${p}`);
+    if (!statSync(p).isDirectory()) throw new UsageError(`フォルダではありません: ${p}`);
+    return p;
+  };
+  const pairs = (list: string[], base: RepoRef): RepoRef => {
+    const next = { ...base };
+    for (const pair of list) {
+      const eq = pair.indexOf("=");
+      const key = pair.slice(0, eq);
+      const value = pair.slice(eq + 1).trim();
+      if (key === "role") next.role = value;
+      else if (key === "readFirst" || key === "writable") {
+        if (!["true", "false"].includes(value)) throw new UsageError(`${key} は true か false`);
+        next[key] = value === "true";
+      } else if (key === "mapFile") next.mapFile = value || undefined;
+      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（コードの地図 map は project.yaml に直接書く）`);
+    }
+    return next;
+  };
+
+  if (sub === "ls") {
+    const refs = ws.refs();
+    const legacy = !ws.project.repos.length;
+    const rows = refs.map((r) => ({ ...r, local: r.local ?? null }));
+    const text = [
+      ...(legacy ? ["（共有の参照先はまだありません。今までの1リポジトリ main を読みます。足すときは p3 repo add <名前> <パス> role=…）"] : []),
+      ...refs.map((r) => {
+        const flags = [r.readFirst && "最初に読む", r.writable && "作業先候補"].filter(Boolean).join("・");
+        const where =
+          r.status === "ok" ? r.local : r.status === "unregistered" ? `未登録 → p3 repo path ${r.name} <このマシンのパス>` : `${r.reason}`;
+        return `${r.name}${r.role ? `（${r.role}）` : ""}${flags ? ` [${flags}]` : ""}  /workspace/${r.mount}\n    ${where}${
+          r.map.length || r.mapFile ? `\n    地図: ${[...r.map.map((m) => m.path), ...(r.mapFile ? [`${r.mapFile}（Markdown）`] : [])].join(", ")}` : ""
+        }`;
+      }),
+    ].join("\n");
+    return { data: rows, text };
+  }
+  if (!name) throw new UsageError(usage);
+  const problem = repoNameProblem(name);
+  if (problem && sub !== "rm") throw new UsageError(`参照先の名前: ${problem}`);
+
+  if (sub === "add") {
+    if (shared()) throw new UsageError(`「${name}」は既にあります。変えるときは p3 repo set ${name} キー=値、このマシンのパスは p3 repo path ${name} <パス>`);
+    const maybePath = rest[0] && !rest[0].includes("=") ? rest[0] : undefined;
+    const entry = pairs(maybePath ? rest.slice(1) : rest, { name, role: "", readFirst: false, writable: false, map: [] });
+    const path = maybePath ? folder(maybePath) : undefined;
+    const wasLegacy = !ws.project.repos.length;
+    await writeRepoEntry(file, name, entry);
+    if (path) await setLocal(name, path);
+    return {
+      data: { ...entry, local: path ?? null },
+      text: [
+        `参照先を足しました: ${name}${entry.role ? `（${entry.role}）` : ""}${path ? ` → ${path}` : "（このマシンのパスは未登録: p3 repo path " + name + " <パス>）"}`,
+        ...(wasLegacy
+          ? ["共有の参照先を書いたので、今までの1リポジトリ（main）は Preflight で読まなくなります。本体も読ませるなら p3 repo add <名前> <パス> role=本体 readFirst=true で足してください"]
+          : []),
+      ].join("\n"),
+    };
+  }
+  if (sub === "set") {
+    const cur = shared();
+    if (!cur) throw new UsageError(`「${name}」はありません。足すときは p3 repo add ${name} <パス>`);
+    if (!rest.length) throw new UsageError("キー=値 を指定してください（role readFirst writable mapFile）");
+    const next = pairs(rest, cur);
+    await writeRepoEntry(file, name, next);
+    return { data: next, text: `参照先を変えました: ${name}` };
+  }
+  if (sub === "path") {
+    if (!shared() && !(name === LEGACY_REPO && !ws.project.repos.length)) {
+      throw new UsageError(`「${name}」は共有の参照先にありません（p3 repo ls）。足すときは p3 repo add ${name} <パス>`);
+    }
+    if (!rest[0]) throw new UsageError(`p3 repo path ${name} <このマシンのパス>`);
+    const path = folder(rest[0]);
+    await setLocal(name, path);
+    return { data: { name, local: path }, text: `このマシンのパスを登録しました: ${name} → ${path}（共有の定義は変えていません）` };
+  }
+  if (sub === "rm") {
+    if (o.local) {
+      await setLocal(name, null);
+      return { data: { name, local: null }, text: `このマシンのパスを外しました: ${name}（共有の定義は残しています。ほかの人には影響しません）` };
+    }
+    if (!shared()) throw new UsageError(`「${name}」は共有の参照先にありません。このマシンのパスだけを外すときは --local`);
+    await writeRepoEntry(file, name, null);
+    if (projectName) await setLocal(name, null).catch(() => undefined);
+    return { data: { name }, text: `参照先を消しました: ${name}（共有の定義。ほかの人の Preflight でも読まなくなります。ファイルやフォルダは消していません）` };
+  }
+  throw new UsageError(usage);
 }

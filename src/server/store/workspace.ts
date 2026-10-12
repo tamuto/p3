@@ -9,6 +9,7 @@ import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER,
 import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
+import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -62,10 +63,14 @@ export class Workspace {
   private listeners = new Set<Listener>();
   private abort = new AbortController();
 
-  /** repoOverride: 個人設定にある手元のリポジトリの場所（project.yaml の repo より優先） */
+  /**
+   * repoOverride: 個人設定にある手元のリポジトリの場所（project.yaml の repo より優先。タスクの作業ツリーの元）
+   * localRepos: 個人設定の参照先の名前 → このマシンのパス（Preflight が読む。repoRefs.ts）
+   */
   constructor(
     readonly dataDir: string,
     private readonly repoOverride?: string,
+    readonly localRepos: Record<string, string> = {},
   ) {
     this.requests = new MarkdownCollection<Request>({
       layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
@@ -84,6 +89,11 @@ export class Workspace {
   get repoRoot(): string {
     if (this.repoOverride) return this.repoOverride;
     return isAbsolute(this.project.repo) ? this.project.repo : resolve(this.dataDir, this.project.repo);
+  }
+
+  /** Preflight が読む参照先（共有の定義と、このマシンのパス）。呼ぶたびにパスがあるかを確かめる */
+  refs(): ResolvedRef[] {
+    return resolveRefs(this.project, { dataDir: this.dataDir, localRepos: this.localRepos, repoOverride: this.repoOverride });
   }
 
   async load(): Promise<void> {

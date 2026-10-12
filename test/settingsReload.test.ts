@@ -36,8 +36,8 @@ async function setup(env: Record<string, string | undefined> = {}) {
     load: async () => ({
       ...codexConfig(await source.get()),
       configPath: source.path,
-      command: (workspace, data) => {
-        launched.push({ workspace, data });
+      command: ({ repos, data }) => {
+        launched.push({ workspace: repos[0]?.host ?? "", data });
         return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", process.execPath, FAKE_CODEX];
       },
     }),
@@ -67,7 +67,7 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
     const second = await s.runOnce();
     expect(second.run.status).toBe("completed");
     expect(s.launched.map((l) => l.workspace)).toEqual(["/wrong/host", "/right/host"]);
-    expect(second.log).toContain(`リポジトリ: ${s.repo.root} → Docker のホスト /right/host（対応 ${s.repo.root}=/right/host）`);
+    expect(second.log).toContain(`参照先 main: ${s.repo.root} → Docker のホスト /right/host（対応 ${s.repo.root}=/right/host）`);
     expect(second.log).toContain(s.configPath);
   });
 

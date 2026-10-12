@@ -33,6 +33,7 @@ export function projectConfig(patch: Partial<ProjectConfig> = {}): ProjectConfig
     name: "test",
     description: "テスト用のプロジェクト",
     repo: "..",
+    repos: [],
     docs: [],
     milestones: [],
     branchPattern: "req/{id}-{slug}",
@@ -56,8 +57,9 @@ export async function makeRepo(config: Partial<ProjectConfig> = {}) {
 export async function openTestProject(
   dataDir: string,
   engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { mock: new MockEngine({ delay: 0 }) },
+  opts: { repos?: Record<string, string> } = {},
 ): Promise<PcubeContext> {
-  const ws = new Workspace(dataDir);
+  const ws = new Workspace(dataDir, undefined, opts.repos);
   await ws.load();
   const index = new ProjectIndex(ws);
   const preflight = new PreflightService(ws, index, engines, engines.codex ? "codex" : "mock");

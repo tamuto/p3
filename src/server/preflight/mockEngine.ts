@@ -88,6 +88,8 @@ export class MockEngine implements PreflightEngine {
       questions: clarity < 55 && !notes.length ? ["完了条件をより具体的にしてください"] : [],
       areas,
       impacts,
+      // Mock は参照先を読まないので、根拠はすべて推測
+      evidence: [{ claim: "mock: 要望の本文の箇条書きからタスク案を作った（コードは読んでいない）", kind: "assumed" }],
     };
 
     await writeFileAtomic(join(job.runDir, "assessment.json"), JSON.stringify(assessment, null, 2) + "\n");

@@ -25,6 +25,7 @@ import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
 import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
 import { TagInput } from "../../../components/TagInput.tsx";
+import { PreflightScope } from "../../../components/PreflightScope.tsx";
 import { sameTags } from "../../../../shared/tags.ts";
 import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
 
@@ -335,6 +336,8 @@ function RunView({
 
       {/* 評価の下。評価が無い間（実行中・失敗）も同じ並びの位置なので、作り直されず入力も消えない */}
       {notes}
+
+      {(a || run.scope) && <PreflightScope scope={run.scope} repos={ctx.info.project.repos} evidence={a ? a.evidence : null} />}
 
       {a && (
         <>

@@ -56,7 +56,7 @@ describe("app-server（docker run）がすぐ終わったときの診断", () =>
     // 診断はエラーのログに1回だけ
     expect(run.log.filter((l) => l.text.includes("codex.pathMap を確かめてください"))).toHaveLength(1);
     expect(run.error).toContain("Docker のホストにこのパス（/host/repo）がありません。個人設定の codex.pathMap を確かめてください（/home/u/.config/infodb-p3/config.yaml）");
-    expect(run.error).toContain(`リポジトリ: ${repo.root} → Docker のホスト /host/repo（対応 ${repo.root}=/host/repo）→ コンテナ /workspace`);
+    expect(run.error).toContain(`参照先 main: ${repo.root} → Docker のホスト /host/repo（対応 ${repo.root}=/host/repo）→ コンテナ /workspace/main`);
     expect(run.error).toContain(`データ: ${repo.dataDir} → Docker のホスト /host/repo/.pcube（対応 ${repo.root}=/host/repo）→ コンテナ /data`);
     expect(log).toContain('error: Docker の出力:\ndocker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /host/repo');
     // 開始のログにパスの対応

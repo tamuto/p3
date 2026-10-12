@@ -1,14 +1,18 @@
 import { readFile } from "node:fs/promises";
 import YAML from "yaml";
+import type { RepoRef } from "../../shared/repos.ts";
 import type { ProjectConfig } from "../../shared/types.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
+/** 設定の保存（画面・p3 config）で書き換える項目。repos は p3 repo だけが項目ごとに書く（writeRepoEntry） */
 const ORDER: (keyof ProjectConfig)[] = [
   "name", "description", "repo", "docs", "milestones", "branchPattern", "worktreeDir", "preflight",
 ];
+/** ファイルの中の並び */
+const RANK: (keyof ProjectConfig)[] = ["name", "description", "repo", "repos", "docs", "milestones", "branchPattern", "worktreeDir", "preflight"];
 
 /** project.yaml に書く形。既定値のままの項目や空の項目は省き、人が読み書きしやすく保つ */
-function toPlain(cfg: ProjectConfig): Record<string, unknown> {
+function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknown>> {
   return {
     name: cfg.name,
     description: cfg.description || undefined,
@@ -36,13 +40,59 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
     if (value === undefined) doc.delete(key);
     else doc.set(key, doc.createNode(value));
   }
-  // 後から足した項目も決まった順に並べる（コメントは項目に付いているので一緒に動く）
-  if (YAML.isMap(doc.contents)) {
-    const rank = (k: unknown) => {
-      const i = ORDER.indexOf(String(YAML.isScalar(k) ? k.value : k) as keyof ProjectConfig);
-      return i < 0 ? ORDER.length : i;
-    };
-    doc.contents.items.sort((x, y) => rank(x.key) - rank(y.key));
+  sortKeys(doc);
+  await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
+}
+
+/** 後から足した項目も決まった順に並べる（コメントは項目に付いているので一緒に動く） */
+function sortKeys(doc: YAML.Document) {
+  if (!YAML.isMap(doc.contents)) return;
+  const rank = (k: unknown) => {
+    const i = RANK.indexOf(String(YAML.isScalar(k) ? k.value : k) as keyof ProjectConfig);
+    return i < 0 ? RANK.length : i;
+  };
+  doc.contents.items.sort((x, y) => rank(x.key) - rank(y.key));
+}
+
+/** project.yaml の repos の1件の形（既定のままの項目は省く） */
+function repoPlain(r: RepoRef): Record<string, unknown> {
+  const map = r.map.length
+    ? Object.fromEntries(r.map.map((m) => [m.path, m.entry ? { role: m.role, entry: m.entry } : m.role]))
+    : undefined;
+  return Object.fromEntries(
+    Object.entries({ role: r.role || undefined, readFirst: r.readFirst || undefined, writable: r.writable || undefined, map, mapFile: r.mapFile }).filter(
+      ([, v]) => v !== undefined,
+    ),
+  );
+}
+
+/**
+ * project.yaml の repos の1件だけを書く（null で消す）。ほかの参照先・項目・コメントは変えない。
+ * repos が無ければ作る（名前をキーにした対応で書く）
+ */
+export async function writeRepoEntry(path: string, name: string, entry: RepoRef | null): Promise<void> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  const doc = text.trim() ? YAML.parseDocument(text) : new YAML.Document({});
+  if (doc.errors.length) throw new Error(`project.yaml が壊れています: ${path}（${doc.errors[0].message.split("\n")[0]}）`);
+  const repos = doc.get("repos");
+  if (repos !== undefined && !YAML.isMap(repos)) {
+    throw new Error(`project.yaml の repos は「名前: 定義」の対応で書いてください（今の形では p3 repo で書き換えられません）: ${path}`);
   }
+  if (entry === null) {
+    doc.deleteIn(["repos", name]);
+    if (YAML.isMap(doc.get("repos")) && !(doc.get("repos") as YAML.YAMLMap).items.length) doc.delete("repos");
+  } else {
+    if (!YAML.isMap(doc.get("repos"))) doc.set("repos", doc.createNode({}));
+    const node = doc.getIn(["repos", name]);
+    const plain = repoPlain(entry);
+    if (YAML.isMap(node)) {
+      // 既にあれば項目ごとに書く（人が書いたコメントや、ここで扱わない項目を残す）
+      for (const key of ["role", "readFirst", "writable", "map", "mapFile"]) {
+        if (plain[key] === undefined) node.delete(key);
+        else node.set(key, doc.createNode(plain[key]));
+      }
+    } else doc.setIn(["repos", name], doc.createNode(plain));
+  }
+  sortKeys(doc);
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
 }

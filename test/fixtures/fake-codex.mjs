@@ -5,6 +5,7 @@
 //   FAKE_DATA     データディレクトリ（コンテナの /data に当たる）
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
 //   FAKE_SUPERSEDE 置き換えられるタスクの参照（<要望ID>/T001）。評価の影響と D2 の関係に supersedes として書く
+//   FAKE_EVIDENCE  assessment.json の evidence（JSON の配列）
 //   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く）
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,6 +42,8 @@ function runTurn(id, text) {
       { target: "261001-nopee/T009", type: "impacts", reason: "存在しない相手はタスク化で捨てられる" },
       ...(supersede ? [{ target: supersede, type: "supersedes", reason: "新しい方式に置き換える", confidence: 0.9 }] : []),
     ],
+    // FAKE_EVIDENCE: 判断の根拠（JSON の配列）。無ければ書かない（以前の結果と同じ）
+    ...(process.env.FAKE_EVIDENCE ? { evidence: JSON.parse(process.env.FAKE_EVIDENCE) } : {}),
   };
   writeFileSync(join(abs, "assessment.json"), scenario === "broken" ? "{ not json" : JSON.stringify(assessment));
   writeFileSync(join(abs, "drafts", "D1.md"), "---\nkey: D1\ntitle: 下準備\ndependsOn: []\n---\n\n準備する\n");
@@ -50,7 +53,7 @@ function runTurn(id, text) {
   );
   notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];
-  if (scenario === "stray") changes.push("/workspace/src/main.ts");
+  if (scenario === "stray") changes.push("/workspace/main/src/main.ts");
   notify("item/completed", { item: { type: "fileChange", id: "p1", changes: changes.map((path) => ({ path, kind: "add" })) } });
   notify("item/completed", { item: { type: "agentMessage", id: "m1", text: "書きました" } });
   notify("turn/completed", { turn: { id, status: "completed" } });

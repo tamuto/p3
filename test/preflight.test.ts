@@ -9,7 +9,7 @@ import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
 import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";
 import { saveConnection } from "../src/server/chatgpt/store.ts";
 import { redact } from "../src/server/redact.ts";
-import { CodexWorkspaceEngine, codexConfig, withDataMount } from "../src/server/preflight/codexEngine.ts";
+import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/server/preflight/codexEngine.ts";
 import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { writeProjectFile } from "../src/server/store/projectFile.ts";
@@ -135,9 +135,9 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
         [data, "/host/data"],
       ],
       ensureImage: false,
-      command: (workspace, hostData) => {
+      command: ({ repos, data: hostData }) => {
         // Docker デーモンから見たパスに変換されている（データディレクトリがリポジトリの中なら、その下）
-        expect(workspace).toBe("/host/repo");
+        expect(repos).toEqual([{ name: "main", host: "/host/repo", container: "/workspace/main" }]);
         expect(hostData).toBe(data.startsWith(`${repo}/`) ? `/host/repo${data.slice(repo.length)}` : "/host/data");
         return ["env", `FAKE_REPO=${repo}`, `FAKE_DATA=${data}`, `FAKE_LOG=${logFile}`, `FAKE_SCENARIO=${scenario}`, `FAKE_TARGET=${target}`, process.execPath, FAKE_CODEX];
       },
@@ -184,7 +184,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(thread.developerInstructions).toContain(`/data/requests/${req.id}/preflight/${id}/`);
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
     expect(prompt).toContain("## 最初に読むドキュメント");
-    expect(prompt).toContain("- docs/design.md");
+    expect(prompt).toContain("- /workspace/main/docs/design.md");
     expect(prompt).toContain(existing.ref); // 文脈として選ばれた既存タスク
     expect(prompt).toContain("drafts/D1.md");
 
@@ -302,11 +302,25 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: src/main.ts")]);
   });
 
-  it("codex-workspace の docker run にデータディレクトリのマウントを足す", () => {
-    const command = withDataMount(dockerCommand("/host/repo", { authVolume: "vol" }), "/host/repo", "/host/data");
-    const mounts = command.flatMap((a, i) => (command[i - 1] === "--mount" ? [a] : []));
-    expect(mounts).toEqual(expect.arrayContaining(["type=bind,src=/host/repo,dst=/workspace", "type=bind,src=/host/data,dst=/data"]));
+  it("codex-workspace の docker run を、/workspace は tmpfs・参照先は /workspace/<名前> に読むだけ・データは /data にする", () => {
+    const repos = [
+      { name: "allesc", host: "/host/allesc", container: "/workspace/allesc" },
+      { name: "docs", host: "/host/allescdoc/standard_guide", container: "/workspace/docs" },
+      { name: "infra", host: "/host/infra", container: "/workspace/infra" },
+    ];
+    const command = withMounts(dockerCommand("/p3-placeholder", { authVolume: "vol" }), repos, "/host/data");
+    const mounts = command.flatMap((a: string, i: number) => (command[i - 1] === "--mount" ? [a] : []));
+    expect(mounts).toEqual([
+      "type=tmpfs,dst=/workspace",
+      "type=bind,src=/host/allesc,dst=/workspace/allesc,readonly",
+      "type=bind,src=/host/allescdoc/standard_guide,dst=/workspace/docs,readonly",
+      "type=bind,src=/host/infra,dst=/workspace/infra,readonly",
+      "type=bind,src=/host/data,dst=/data",
+      expect.stringContaining("volume"),
+    ]);
+    expect(command.join(" ")).not.toContain("p3-placeholder");
     expect(command.indexOf("type=bind,src=/host/data,dst=/data")).toBeLessThan(command.indexOf(DEFAULT_IMAGE));
+    expect(withMounts(dockerCommand("/p3-placeholder", { authVolume: "vol" }), [], "/host/data")).toContain("type=tmpfs,dst=/workspace");
   });
 
   it("マシンの設定から旧来の認証・旧来の明示・パス対応を読む", () => {
@@ -383,7 +397,7 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
       account: await account(),
       pathMap: [],
       ensureImage: false,
-      command: (_w, _d, auth) => {
+      command: ({ auth }) => {
         mode = auth;
         return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, `FAKE_LOG=${logFile}`, process.execPath, FAKE_CODEX];
       },
