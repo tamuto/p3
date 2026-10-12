@@ -959,7 +959,9 @@ Preflight の評価の下には **画面資料** の欄を置き、提案（Code
 ID をクリックして選び、手でコピーする。
 
 ページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる。
-ページの中身もそのファイルに書き、複数のページで使う部品だけを `src/web/components/` に置く
+小さいページは中身もそのファイルに書く。大きいページは、ルートのファイルを組み立て（状態と並び）だけにし、部品を
+`src/web/components/<ページ>/` に分ける（要望の画面は `components/request/`: 管理情報・本文・run・メモ・タスク案。下書きは
+`lib/requestDrafts.ts`）。複数のページで使う部品は `src/web/components/` に置く
 （`requests/$requestId.tsx` は要望の枠、`requests/$requestId/board.tsx` → `/requests/:id/board`、`__root.tsx` は全画面共通の枠）。
 ルート一覧 `src/web/routeTree.gen.ts` は `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される
 （設定は `tsr.config.json`。生成物だが、型検査のためにコミットしておく）。

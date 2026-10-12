@@ -379,8 +379,8 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - **限界**: 比べるのは「始めたとき」と「タスク化の直前」。タスク化の途中に別のプロセスが本文を書き換えることまでは排他しない
   （同じ要望を同時に触るときの調整は、これまでどおり人が行う）
 - **戻し方**: 古い評価でタスク化したいときは、要望を評価した時点の内容（`request.md`）に戻す。今の内容でよければ再評価する
-- **画面**（`web/routes/requests/$requestId/index.tsx` の `BodyEditor`、`web/lib/requestEdit.ts`）: 本文は明示の保存だけ。
-  タイトル・タグ・本文の下書きは親（`useRequestDrafts`）が持ち、取り直しは項目ごとに比べる（`syncFieldDraft`: その項目が変わって
+- **画面**（`web/components/request/BodyEditor.tsx`、`web/lib/requestDrafts.ts`、`web/lib/requestEdit.ts`）: 本文は明示の保存だけ。
+  タイトル・タグ・本文の下書きは要望の画面（`useRequestDrafts`）が持ち、取り直しは項目ごとに比べる（`syncFieldDraft`: その項目が変わって
   いなければ baseRev を進め、変わっていれば競合として知らせる）。未保存のタイトル・本文がある間は Preflight の実行とタスク化を止める。
   タスク化の 409 は `code` で分ける（`stale_input` はサーバの理由をそのまま、`rev_conflict` は置き換えの候補の読み直し）
   - 確かめたこと（`.p3-demo` で serve、Chromium）: 1280 / 375px、ライト・ダークで、キーボードで「本文を編集」を開いて入力すると
