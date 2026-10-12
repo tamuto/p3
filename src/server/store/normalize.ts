@@ -1,5 +1,5 @@
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
-import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type Request, type RequestStatus, type Task } from "../../shared/types.ts";
+import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
 const num = (v: unknown): number | undefined => (v === undefined || v === null || v === "" ? undefined : Number(v));
@@ -35,6 +35,9 @@ export const normalizeTaskIn =
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
+    // 無い（以前のタスク）は undefined のまま。null / "" は作業先なし
+    ...("repo" in d ? { repo: str(d.repo) ?? null } : {}),
+    ...(Array.isArray(d.repoOutputs) ? { repoOutputs: normalizeRepoOutputs(d.repoOutputs) } : {}),
     startedAt: d.startedAt ? iso(d.startedAt) : undefined,
     doneAt: d.doneAt ? iso(d.doneAt) : undefined,
     checkedAt: d.checkedAt ? iso(d.checkedAt) : undefined,
@@ -47,7 +50,7 @@ export const normalizeTaskIn =
   });
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
-  "id", "title", "status", "labels", "areas", "outputs",
+  "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs",
   "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
 ];
 
@@ -64,6 +67,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     milestone: str(d.milestone),
     tags: strs(d.tags),
     workstream: ws && ws.branch ? { branch: String(ws.branch), worktree: String(ws.worktree ?? "") } : undefined,
+    ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -74,7 +78,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "due", "milestone", "tags", "areas", "workstream", "relations", "lastPreflight",
+  "id", "title", "status", "due", "milestone", "tags", "areas", "workstream", "workstreams", "relations", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
@@ -139,4 +143,20 @@ function normalizeCodeMap(v: unknown): CodeMapEntry[] {
       ? Object.entries(v as Record<string, unknown>).map(([k, x]) => one(k, x))
       : [];
   return list.filter((x): x is CodeMapEntry => !!x);
+}
+
+/** リポジトリごとの成果物。repo と output のどちらかが無い項目は読まない */
+export function normalizeRepoOutputs(v: unknown): RepoOutput[] {
+  return (Array.isArray(v) ? v : [])
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .flatMap((x) => (str(x.repo) && str(x.output) ? [{ repo: str(x.repo)!, output: str(x.output)! }] : []));
+}
+
+function normalizeWorkstreams(v: object): Record<string, Workstream> {
+  const out: Record<string, Workstream> = {};
+  for (const [name, w] of Object.entries(v as Record<string, unknown>)) {
+    const o = w && typeof w === "object" ? (w as Record<string, unknown>) : {};
+    if (!repoNameProblem(name) && str(o.branch)) out[name] = { branch: str(o.branch)!, worktree: str(o.worktree) ?? "" };
+  }
+  return out;
 }

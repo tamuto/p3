@@ -86,6 +86,14 @@ export interface Task {
   /** 成果物。1項目ずつ URL（PR / MR）・文章・ドキュメントのパスのどれでもよい。項目全体が http(s) の URL なら画面でリンクにする */
   outputs: string[];
   /**
+   * 作業先（参照先の名前。作業先になりうる writable のものだけ）。shared/workTarget.ts
+   *   名前 → そのリポジトリ・フォルダで作業する / null → 作業先なし（調査・人の判断など）/
+   *   無い（以前のタスク）→ 今までの主リポジトリ
+   */
+  repo?: string | null;
+  /** リポジトリごとの成果物（PR など）。最後のタスクに、関係するリポジトリの PR を全部残せる。outputs とは別に持つ */
+  repoOutputs?: RepoOutput[];
+  /**
    * 作業中にした日時（着手を指示した目安）と、完了にした日時。
    * 予定ではなく、ステータスを変えたときに pcube が記録する（AI や人が書くものではない）
    */
@@ -121,6 +129,12 @@ export interface Workstream {
   worktree: string;
 }
 
+/** リポジトリ（参照先の名前）ごとの成果物 */
+export interface RepoOutput {
+  repo: string;
+  output: string;
+}
+
 export interface Request {
   /** フォルダ名（作成日 + 乱数。例: 261009-k7m3x） */
   id: string;
@@ -135,7 +149,10 @@ export interface Request {
   milestone?: string;
   /** タグ: 外部 ID・分類の自由な文字列（例: jira:PROJ-123、group:顧客A、feature）。shared/tags.ts */
   tags: string[];
+  /** 今までの1つのブランチ（主リポジトリの分）。読み続ける。新しい割当は workstreams に書く */
   workstream?: Workstream;
+  /** 作業先のリポジトリごとのブランチ（参照先の名前 → ブランチと作業ツリー）。タスク化・作業先を足したときに要る分だけ割り当てる */
+  workstreams?: Record<string, Workstream>;
   /** 最新 preflight run */
   lastPreflight?: string;
   rev: number;
@@ -178,6 +195,8 @@ export interface ProposedTask {
   relations: Relation[];
   /** 取り込み対象か（UI で切り替え） */
   include: boolean;
+  /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
+  repo?: string | null;
 }
 
 export interface PreflightAssessment {
