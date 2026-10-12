@@ -1,3 +1,4 @@
+import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type Request, type RequestStatus, type Task } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
@@ -83,6 +84,7 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
     repo: str(d.repo) ?? "", // 空なら個人設定のリポジトリ（無ければデータのフォルダ）
+    repos: normalizeRepos(d.repos),
     docs: strs(d.docs),
     milestones: Array.isArray(d.milestones)
       ? (d.milestones as unknown[])
@@ -93,4 +95,48 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
     worktreeDir: str(d.worktreeDir) ?? ".worktrees",
     preflight: { instructions: str(preflight.instructions) ?? "" },
   };
+}
+
+/**
+ * project.yaml の repos。名前をキーにした対応（推奨）か、name を持つ項目の並び。名前が使えない項目・重複は読まない
+ * （書き戻すときも p3 repo で変えた項目のほかは触らないので、ファイルからは消えない）。
+ * map は「パス: 役割」か「パス: { role, entry }」の対応、または { path, role, entry } の並び
+ */
+export function normalizeRepos(v: unknown): RepoRef[] {
+  const entries: [string, Record<string, unknown>][] = Array.isArray(v)
+    ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object").map((x) => [String(x.name ?? ""), x])
+    : v && typeof v === "object"
+      ? Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, x && typeof x === "object" ? (x as Record<string, unknown>) : { role: x }])
+      : [];
+  const out: RepoRef[] = [];
+  for (const [name, x] of entries) {
+    if (repoNameProblem(name) || out.some((r) => r.name === name)) continue;
+    out.push({
+      name,
+      role: str(x.role) ?? "",
+      readFirst: x.readFirst === true,
+      writable: x.writable === true,
+      map: normalizeCodeMap(x.map),
+      mapFile: str(x.mapFile),
+    });
+  }
+  return out;
+}
+
+function normalizeCodeMap(v: unknown): CodeMapEntry[] {
+  const one = (path: string, x: unknown): CodeMapEntry | undefined => {
+    if (!path) return undefined;
+    if (typeof x === "string") return { path, role: x };
+    if (x && typeof x === "object") {
+      const o = x as Record<string, unknown>;
+      return { path, role: str(o.role) ?? "", ...(str(o.entry) ? { entry: str(o.entry) } : {}) };
+    }
+    return { path, role: "" };
+  };
+  const list = Array.isArray(v)
+    ? v.map((x) => (x && typeof x === "object" ? one(String((x as Record<string, unknown>).path ?? ""), x) : undefined))
+    : v && typeof v === "object"
+      ? Object.entries(v as Record<string, unknown>).map(([k, x]) => one(k, x))
+      : [];
+  return list.filter((x): x is CodeMapEntry => !!x);
 }

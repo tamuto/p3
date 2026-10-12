@@ -33,6 +33,7 @@ export function projectConfig(patch: Partial<ProjectConfig> = {}): ProjectConfig
     name: "test",
     description: "テスト用のプロジェクト",
     repo: "..",
+    repos: [],
     docs: [],
     milestones: [],
     branchPattern: "req/{id}-{slug}",

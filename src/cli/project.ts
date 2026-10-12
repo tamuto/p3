@@ -207,6 +207,7 @@ export async function init(o: InitOptions): Promise<string> {
       description,
       // 手元のリポジトリの場所は個人設定に持つ。共有するデータには、リポジトリの中に置く（.pcube/）ときの相対パスだけ書く
       repo: dir.startsWith(`${root}/`) ? relative(dir, root) : "",
+      repos: [],
       docs,
       milestones: [],
       branchPattern: "req/{id}-{slug}",

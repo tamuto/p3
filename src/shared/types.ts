@@ -1,3 +1,4 @@
+import type { RepoRef } from "./repos.ts";
 /**
  * pcube のドメイン型。サーバ・CLI・Web で共有する。
  *
@@ -297,9 +298,14 @@ export interface ProjectConfig {
   name: string;
   /** 何を作っているプロジェクトか。Preflight の前提になる */
   description: string;
-  /** 管理対象リポジトリのルート（data dir からの相対 or 絶対）。Codex の cwd になる */
+  /** 管理対象リポジトリのルート（data dir からの相対 or 絶対）。タスクの作業ツリーの元。以前は Preflight もここだけを読んだ */
   repo: string;
-  /** プロジェクトのドキュメント（リポジトリ相対のファイル/フォルダ）。Preflight で最初に読ませる */
+  /**
+   * Preflight が読む参照先（共有の定義。名前・役割・最初に読むか・作業先になりうるか・コードの地図）。
+   * 空なら今までの1リポジトリ（名前 main）。手元のパスは個人設定に置く。shared/repos.ts
+   */
+  repos: RepoRef[];
+  /** プロジェクトのドキュメント（`<参照先>:<パス>` か、先頭の参照先の中のパス）。Preflight で最初に読ませる */
   docs: string[];
   /** マイルストーン（リリース）。複数の要望をまとめる */
   milestones: Milestone[];
