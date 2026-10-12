@@ -38,3 +38,17 @@ export const discardDraft = <V>(d: Draft<V>): Draft<V> => (d.external ? draftOf(
 /** 平らなオブジェクトの比較（タスク詳細の下書き） */
 export const shallowEqual = <V extends object>(a: V, b: V) =>
   Object.keys({ ...a, ...b }).every((k) => Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+
+/**
+ * 1つのファイルの中の1項目の下書き（要望のタイトル・本文・タグは同じ rev を共有する）。syncDraft と同じだが、
+ * 編集中に rev が上がっても、この項目の値が編集を始めたときのままなら（ほかの項目・ステータスの変更、Preflight の開始・終了、
+ * 自分のほかの項目の保存）、競合にせず baseRev を進める。この項目が外で変わっていれば syncDraft と同じく知らせる
+ * （最新の rev に差し替えて通さない）
+ */
+export function syncFieldDraft<V>(d: Draft<V>, value: V, rev: number, eq: Eq<V> = Object.is): Draft<V> {
+  if (rev > d.baseRev && isDirty(d, eq) && !d.external && eq(value, d.base)) return { ...d, baseRev: rev };
+  return syncDraft(d, value, rev, eq);
+}
+
+/** 本文の比較（改行の形と前後の空白は保存で変わるので比べない。サーバの評価対象の比べ方と同じ） */
+export const sameBody: Eq<string> = (a, b) => a.replace(/\r\n?/g, "\n").trim() === b.replace(/\r\n?/g, "\n").trim();

@@ -12,7 +12,7 @@ import {
 } from "../../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api, ApiError, type NotesInfo } from "../../../lib/api.ts";
+import { api, ApiError, type NotesInfo, type RunInfo } from "../../../lib/api.ts";
 import { archiveSelection } from "../../../lib/supersede.ts";
 import { nextRunLabel, notesPanelState, PLAIN_RUN_BLOCKED, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
@@ -31,7 +31,8 @@ import { UiMaterialsPanel } from "../../../components/UiMaterials.tsx";
 import { draftAnchor, uiShortage } from "../../../lib/uiMaterials.ts";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../../../shared/workTarget.ts";
 import { sameTags } from "../../../../shared/tags.ts";
-import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
+import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft, type Draft } from "../../../lib/draft.ts";
+import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../../../lib/requestEdit.ts";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
 export const Route = createFileRoute("/requests/$requestId/")({
@@ -75,7 +76,13 @@ function RequestPanel({
 }) {
   const { request, runs } = data;
   const runId = selectedRun ?? request.lastPreflight ?? null;
-  const [run, setRun] = useState<PreflightRun>();
+  const [run, setRun] = useState<RunInfo>();
+  const drafts = useRequestDrafts(request);
+  // 本文は「本文を編集」で開いたときだけ入力欄にする（ぼかしただけでは保存しない）
+  const [editingBody, setEditingBody] = useState(false);
+  // 未保存のタイトル・本文がある間は、Preflight の開始とタスク化を止める（保存していない内容は評価にもタスクにも渡らない）
+  const unsaved = unsavedFields({ title: isDirty(drafts.titleD), body: editingBody && isDirty(drafts.bodyD, sameBody) });
+  const blocked = unsaved.length ? UNSAVED_BLOCKED : null;
   const [error, setError] = useState<string | null>(null);
   // 個人設定を直したら、取り直したとき（タブに戻った・「再読み込み」など）に反映する
   const engine = useEngineStatus(ctx.tick);
@@ -117,6 +124,8 @@ function RequestPanel({
   // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
   const hasHistory = runs.length > 0 || !!run;
   const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: false, pending: 0 });
+  // 本文を保存したら、表示中の run の評価対象との比較も取り直す
+  const refreshRun = () => runId && void api.run(request.id, runId).then(setRun, () => undefined);
   // メモ欄は評価の下（評価を読んでから書くため）。入力中の文はここで持つので、表示が変わっても消えない
   const notes = (
     <Notes
@@ -129,15 +138,32 @@ function RequestPanel({
       onDraft={setDraft}
       onStarted={started}
       gone={data.gone}
+      blocked={blocked}
     />
   );
 
   return (
     // ブラウザの幅をそのまま使う（上限なし）。狭い画面では左右の余白を縮める
     <div className="w-full space-y-8 px-4 py-6 sm:px-6 lg:p-8">
-      <RequestMeta ctx={ctx} data={data} />
+      <RequestMeta ctx={ctx} data={data} drafts={drafts} />
 
       <section className="space-y-3">
+        <BodyEditor
+          request={request}
+          draft={drafts.bodyD}
+          setDraft={drafts.setBodyD}
+          editing={editingBody}
+          setEditing={setEditingBody}
+          gone={data.gone}
+          running={running}
+          hasRuns={runs.length > 0}
+          onSaved={() => {
+            data.reload();
+            ctx.reload();
+            refreshRun();
+          }}
+          onConflict={() => data.reload()}
+        />
         {request.areas.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {request.areas.map((a) => (
@@ -148,15 +174,12 @@ function RequestPanel({
             ))}
           </div>
         )}
-        <pre className="font-sans whitespace-pre-wrap break-words rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-          {request.body || "（本文なし）"}
-        </pre>
       </section>
 
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun}>
+        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
           {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
         {engine && (
@@ -181,16 +204,18 @@ function RequestPanel({
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.id} · {r.engine} · {r.status}
+                {r.inputMatch && r.inputMatch.status !== "same" ? " · 今の要望と違う" : ""}
               </option>
             ))}
           </select>
         )}
+        {blocked && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{blocked}</p>}
         {notesState.blockPlainRun && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
 
       {run ? (
-        <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} />
+        <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} blocked={blocked} />
       ) : (
         // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
         notes
@@ -207,17 +232,22 @@ function RunView({
   onChanged,
   onOpenRun,
   notes,
+  blocked,
 }: {
   ctx: AppCtx;
   request: Request;
-  run: PreflightRun;
-  onChanged: (r: PreflightRun) => void;
+  run: RunInfo;
+  onChanged: (r: RunInfo) => void;
   onOpenRun: (runId: string) => void;
   /** メモ欄。評価の下の決まった場所に置く（評価が無い間＝実行中・失敗も同じ場所。入れ替えて作り直さない） */
   notes: ReactNode;
+  /** タスク化を止める理由（未保存のタイトル・本文） */
+  blocked: string | null;
 }) {
   const a = run.assessment;
   const steps = preflightSteps(run);
+  // 実行中の run は始めたときの内容で評価している（比べるのは終わってから見せる）
+  const stale = run.status === "running" ? null : staleNotice(run.inputMatch, { done: !!run.materialized?.length && run.materialization?.done !== false });
 
   return (
     <div className="space-y-8">
@@ -246,6 +276,13 @@ function RunView({
           </li>
         ))}
       </ol>
+
+      {stale && (
+        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-4 py-3 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+          <p className="font-semibold">{stale.title}</p>
+          <p className="break-words">{stale.text}</p>
+        </div>
+      )}
 
       <p className="text-sm text-slate-600 dark:text-slate-400">
         {run.previous ? (
@@ -373,7 +410,7 @@ function RunView({
             </Section>
           )}
 
-          <Drafts ctx={ctx} request={request} run={run} onChanged={onChanged} />
+          <Drafts ctx={ctx} request={request} run={run} onChanged={onChanged} blocked={blocked} />
         </>
       )}
     </div>
@@ -406,9 +443,12 @@ function Notes({
   draft,
   onDraft,
   onStarted,
+  blocked,
 }: {
   ctx: AppCtx;
   request: Request;
+  /** 実行を止める理由（未保存のタイトル・本文）。メモだけの保存は止めない */
+  blocked: string | null;
   hasHistory: boolean;
   running: boolean;
   engineOk: boolean;
@@ -497,7 +537,7 @@ function Notes({
               onChange={(e) => onDraft(e.target.value)}
             />
             <div className="flex flex-wrap items-center gap-3">
-              <Button variant="primary" disabled={!st.canSaveAndRun || gone} onClick={() => void submit(true)}>
+              <Button variant="primary" disabled={!st.canSaveAndRun || gone || !!blocked} title={blocked ?? undefined} onClick={() => void submit(true)}>
                 保存して再実行
               </Button>
               <Button disabled={!st.canSaveOnly || gone} onClick={() => void submit(false)}>
@@ -572,10 +612,25 @@ function levels(drafts: ProposedTask[]) {
   return out.filter(Boolean);
 }
 
-function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Request; run: PreflightRun; onChanged: (r: PreflightRun) => void }) {
+function Drafts({
+  ctx,
+  request,
+  run,
+  onChanged,
+  blocked,
+}: {
+  ctx: AppCtx;
+  request: Request;
+  run: RunInfo;
+  onChanged: (r: RunInfo) => void;
+  blocked: string | null;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const done = !!run.materialized?.length && run.materialization?.done !== false;
+  // 評価のあとでタイトル・本文が変わった（か確かめられない）run からはタスク化しない。評価・案は読める
+  const stale = !!run.inputMatch && run.inputMatch.status !== "same";
+  const stopped = stale ? "この評価は今の要望と違うので、タスク化できません。もう一度 Preflight を実行してください" : blocked;
   const included = run.drafts.filter((d) => d.include);
   // 置き換えられる既存タスク。採否を変えたら・外で変わったら読み直す。アーカイブは選んだものだけ（既定は残す）
   const [candidates, setCandidates] = useState<SupersedeCandidate[]>([]);
@@ -606,12 +661,9 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
       onChanged(await api.run(request.id, run.id));
       ctx.reload();
     } catch (e) {
-      // 確定の時点で候補が変わっていたら、読み直してもう一度選んでもらう
-      setError(
-        e instanceof ApiError && e.status === 409
-          ? "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください"
-          : (e as Error).message,
-      );
+      // 評価のあとで要望が変わった（stale_input）か、確定の時点で置き換えの候補が変わった（rev_conflict）。どちらも読み直す
+      setError(materializeErrorText(e));
+      void api.run(request.id, run.id).then(onChanged, () => undefined);
       void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates), () => setCandidates([]));
     } finally {
       setBusy(false);
@@ -728,7 +780,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           {uiShortage(run)}
         </p>
       )}
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex flex-wrap items-center gap-3 pt-2">
         {done ? (
           <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
             ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
@@ -739,10 +791,12 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           </p>
         ) : (
           <>
-            <Button variant="primary" disabled={busy || !included.length} onClick={materialize}>
+            <Button variant="primary" disabled={busy || !included.length || !!stopped} onClick={materialize}>
               {included.length} 件をタスク化{selected.size && candidates.some((c) => selected.has(c.id)) ? `（${archiveSelection(candidates, selected).length} 件をアーカイブ）` : ""}
             </Button>
-            <span className="text-slate-500">依存関係・影響関係も一緒に登録され、作業ツリー（ブランチ）が割り当てられます。</span>
+            <span className={stopped ? "text-amber-700 dark:text-amber-400" : "text-slate-500"}>
+              {stopped ?? "依存関係・影響関係も一緒に登録され、作業ツリー（ブランチ）が割り当てられます。"}
+            </span>
           </>
         )}
         {error && <span className="text-rose-600">{error}</span>}
@@ -752,22 +806,14 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
 }
 
 /** 要望の管理情報（ID・タイトル・ステータス・期限・マイルストーン・タグ）。変えるとすぐ保存する。期限〜タグは Preflight には渡さない */
-function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
+function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestData; drafts: RequestDrafts }) {
   const { request } = data;
-  // タイトル・タグの入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で）
-  const [titleD, setTitleD] = useState(() => draftOf(request.title, request.rev));
-  const [tagsD, setTagsD] = useState(() => draftOf<string[]>(request.tags, request.rev));
+  // タイトル・タグの入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で）。本文と一緒に親が持つ
+  const { titleD, setTitleD, tagsD, setTagsD } = drafts;
   const [tagsBusy, setTagsBusy] = useState(false);
   /** タグの入力欄の、まだ足していない文字（取り直しても残す） */
   const [tagText, setTagText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  // 値に何が入っていても区切りにならない文字でつなぐ（配列は取り直すたびに別物になるので、中身で比べる）
-  const tagsKey = request.tags.join("\u0000");
-  useEffect(() => {
-    setTitleD((d) => syncDraft(d, request.title, request.rev));
-    setTagsD((d) => syncDraft(d, request.tags, request.rev, sameTags));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.title, tagsKey, request.rev]);
 
   async function save(
     patch: { title?: string; status?: RequestStatus; due?: string | null; milestone?: string | null; tags?: string[] },
@@ -931,6 +977,148 @@ function Branches({ request }: { request: Request }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+type RequestDrafts = ReturnType<typeof useRequestDrafts>;
+
+/**
+ * 要望のタイトル・タグ・本文の下書き。3つは同じファイル（同じ rev）なので、取り直したときは項目ごとに比べ、
+ * ほかの項目の変更（自分の保存・Preflight のステータスなど）では競合にしない。項目が外で変わったときだけ知らせる
+ */
+function useRequestDrafts(request: Request) {
+  const [titleD, setTitleD] = useState(() => draftOf(request.title, request.rev));
+  const [tagsD, setTagsD] = useState(() => draftOf<string[]>(request.tags, request.rev));
+  const [bodyD, setBodyD] = useState(() => draftOf(request.body, request.rev));
+  // 値に何が入っていても区切りにならない文字でつなぐ（配列は取り直すたびに別物になるので、中身で比べる）
+  const tagsKey = request.tags.join("\u0000");
+  useEffect(() => {
+    setTitleD((d) => syncFieldDraft(d, request.title, request.rev));
+    setTagsD((d) => syncFieldDraft(d, request.tags, request.rev, sameTags));
+    setBodyD((d) => syncFieldDraft(d, request.body, request.rev, sameBody));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.title, tagsKey, request.body, request.rev]);
+  return { titleD, setTitleD, tagsD, setTagsD, bodyD, setBodyD };
+}
+
+/**
+ * 要望の本文。「本文を編集」で入力欄にし、「本文を保存」で保存する（ぼかしただけでは保存しない）。どの状態でも編集でき、空にもできる。
+ * 保存は編集を始めたときの rev で行い、外で変わっていれば競合として入力を残す。評価のあとで変えると、その評価からはタスク化できない
+ */
+function BodyEditor({
+  request,
+  draft,
+  setDraft,
+  editing,
+  setEditing,
+  gone,
+  running,
+  hasRuns,
+  onSaved,
+  onConflict,
+}: {
+  request: Request;
+  draft: Draft<string>;
+  setDraft: Dispatch<SetStateAction<Draft<string>>>;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  gone: boolean;
+  running: boolean;
+  hasRuns: boolean;
+  onSaved: () => void;
+  onConflict: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const dirty = isDirty(draft, sameBody);
+  const id = `request-body-${request.id}`;
+
+  function open() {
+    // 編集を始めるときは今の本文から
+    setDraft((d) => (isDirty(d, sameBody) ? d : draftOf(request.body, request.rev)));
+    setMessage(null);
+    setEditing(true);
+  }
+
+  function cancel() {
+    setDraft((d) => discardDraft(d));
+    setMessage(null);
+    setEditing(false);
+  }
+
+  async function save() {
+    if (busy) return;
+    if (gone) return setMessage({ error: true, text: bodySaveErrorText(new ApiError(404, "", null)) });
+    if (!dirty) return cancel();
+    setBusy(true);
+    setMessage(null);
+    try {
+      const saved = await api.patchRequest(request.id, { body: draft.value, rev: draft.baseRev });
+      setDraft(draftOf(saved.body, saved.rev));
+      setEditing(false);
+      setMessage({
+        error: false,
+        text: hasRuns
+          ? "本文を保存しました。今の内容で評価するには「もう一度 Preflight」を実行してください（既存のタスク・成果物・ステータスはそのまま残ります）"
+          : "本文を保存しました。次の Preflight でこの内容を評価します",
+      });
+      onSaved();
+    } catch (e) {
+      setMessage({ error: true, text: bodySaveErrorText(e) });
+      if (e instanceof ApiError && e.status === 409) onConflict();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {editing ? (
+          <label htmlFor={id} className="font-semibold">
+            要望の本文
+          </label>
+        ) : (
+          <h2 className="font-semibold">要望の本文</h2>
+        )}
+        {editing ? dirty && <Badge tone="amber">未保存</Badge> : <Button onClick={open}>本文を編集</Button>}
+      </div>
+      {editing ? (
+        <>
+          <textarea
+            id={id}
+            rows={8}
+            className={inputCls}
+            value={draft.value}
+            readOnly={busy}
+            onChange={(e) => setDraft((d) => editDraft(d, e.target.value))}
+            onKeyDown={(e) => e.key === "Escape" && !dirty && cancel()}
+          />
+          <ExternalChange label="本文" draft={draft} eq={sameBody} show={(v) => excerpt(v)} onDiscard={() => (setDraft((d) => discardDraft(d)), setMessage(null))} />
+          <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-600 dark:text-slate-400">
+            <li>保存すると、この内容が次の Preflight の評価対象になります。</li>
+            {running && <li>実行中の評価には、始めたときの内容が使われます。</li>}
+            {hasRuns && <li>保存しても既存のタスク・成果物・ステータスは残ります。評価のあとで変えると、その評価からはタスク化できません（もう一度 Preflight）。</li>}
+            {hasRuns && <li>再評価では保存済みのメモも渡します。置き換えるタスクは、タスク化のときに選びます。</li>}
+          </ul>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="primary" disabled={busy || gone} onClick={() => void save()}>
+              {busy ? "保存中…" : "本文を保存"}
+            </Button>
+            <Button disabled={busy} onClick={cancel}>
+              キャンセル
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="break-words whitespace-pre-wrap">{request.body.trim() ? request.body : <span className="text-slate-400">（本文なし）</span>}</p>
+      )}
+      {message && (
+        <p role={message.error ? "alert" : "status"} className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }
