@@ -220,9 +220,10 @@ describe("読み直しと他の操作が重なるとき", () => {
 
     expect((await call("PATCH", `/requests/${rid}/tasks/T001`, { status: "doing", rev: 1 })).status).toBe(200);
     expect((await call("DELETE", `/requests/${rid}/tasks/T002`)).status).toBe(200);
-    expect((await call("PATCH", `/requests/${rid}`, { title: "読み込み中に変えた" })).status).toBe(200);
+    // タスク化してからタイトルを変える（評価のあとで変えたタイトルの run からはタスク化しないので、この順）
     const materialized = await call("POST", `/requests/${rid}/preflight/${started.body.id}/materialize`, {});
     expect(materialized.status).toBe(201);
+    expect((await call("PATCH", `/requests/${rid}`, { title: "読み込み中に変えた" })).status).toBe(200);
     // 監視が拾った外の変更（1件の読み直し）
     const ext = await cli();
     await ext.tasksOf(rid).update("T001", { title: "外で変えた題名" });

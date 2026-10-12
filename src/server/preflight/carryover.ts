@@ -1,5 +1,6 @@
-import type { PreflightNote, PreflightRun } from "../../shared/types.ts";
+import type { InputMatch, PreflightInput, PreflightNote, PreflightRun } from "../../shared/types.ts";
 import type { Workspace } from "../store/workspace.ts";
+import { compareInput, runInput } from "./input.ts";
 
 /** 次の Preflight に引き継ぐもの: 前回の結果と、その後に書き足されたメモ */
 export interface Carryover {
@@ -11,6 +12,11 @@ export interface Carryover {
   notes: PreflightNote[];
   /** 読めなかったメモ（渡さない） */
   invalidNotes: { file: string; error: string }[];
+  /**
+   * 前回の評価のあとで要望（タイトル・本文）が変わったか。前回を引き継ぐときだけ。
+   * before は前回が評価した内容（読めなければ無し）
+   */
+  requestChange?: { match: InputMatch; before?: PreflightInput };
 }
 
 /**
@@ -36,7 +42,26 @@ export async function selectCarryover(ws: Workspace, requestId: string): Promise
     seen.add(r.id);
     for (const n of r.notes ?? []) used.add(n);
   }
-  return { previous, previousSkipped, notes: notes.filter((n) => !used.has(n.id)), invalidNotes: invalid };
+  let requestChange: Carryover["requestChange"];
+  if (previous) {
+    const before = await runInput(previous, ws.preflight.runDir(requestId, previous.id));
+    const match = compareInput(before, ws.requests.require(requestId));
+    if (match.status !== "same") requestChange = { match, ...("error" in before ? {} : { before }) };
+  }
+  return { previous, previousSkipped, notes: notes.filter((n) => !used.has(n.id)), invalidNotes: invalid, ...(requestChange ? { requestChange } : {}) };
+}
+
+/** 前回の評価のあとの要望の変更。今の要望を基準にし、前回の評価・案・メモとの食い違いは確認事項にさせる */
+function requestChangeSection(c: NonNullable<Carryover["requestChange"]>, previousId: string): string {
+  const quote = (s: string) => (s ? s.split("\n").map((l) => `> ${l}`).join("\n") : "> （空）");
+  const head = "## 前回の評価のあとで変わった要望（評価の基準は今の要望。前回の評価・タスク案・メモと食い違う点は確認事項に）";
+  if (c.match.status === "unknown" || !c.before) {
+    return `${head}\n前回 ${previousId} が何を評価したか確かめられません（${c.match.reason ?? "不明"}）。前回の評価は今の要望に合っていないものとして扱ってください。`;
+  }
+  const parts = [head, `前回 ${previousId} の後で、要望の${(c.match.changed ?? []).map((k) => (k === "title" ? "タイトル" : "本文")).join("と")}が書き換えられました。前回が評価した内容:`];
+  if (c.match.changed?.includes("title")) parts.push(`### 前回の時点のタイトル\n${quote(c.before.title)}`);
+  if (c.match.changed?.includes("body")) parts.push(`### 前回の時点の本文\n${quote(c.before.body)}`);
+  return parts.join("\n\n");
 }
 
 /**
@@ -72,6 +97,7 @@ export function renderCarryover(c: Carryover): string | undefined {
   if (p?.assessment) {
     const a = p.assessment;
     const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "（なし）");
+    if (c.requestChange) out.push(requestChangeSection(c.requestChange, p.id));
     out.push(
       `## 前回の評価（${p.id}）`,
       `判定: ${a.verdict} / 妥当性 ${a.validity.score} / 実現可能性 ${a.feasibility.score}`,

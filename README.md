@@ -187,6 +187,8 @@ p3 notes k7m3x                      # メモの一覧と、次の Preflight に�
                                        # 画面では評価の下のメモ欄から書いて「保存して再実行」できる（初回の実行の後から）
 p3 accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/tasks/T001.md ...
                                        # 再評価で古いタスクが置き換えられるなら表示して残す（--archive-superseded でアーカイブ）
+p3 request set k7m3x --body - --rev 3 < body.md   # 本文の書き換え（いつでも。rev は request show --brief で見る）
+                                       # 評価のあとでタイトル・本文を変えたら、その評価からはタスク化できない → もう一度 preflight
 p3 serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
 
@@ -277,7 +279,7 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
       notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
       attachments/A-.../                添付（meta.json と原本 file.png / file.jpg / file.xlsx。1件1フォルダ）
       preflight/PF-.../
-        request.md                      評価時点の要望のスナップショット
+        request.md                      評価時点の要望のスナップショット（run.json の input と同じ。タスク化の前に今の要望と比べる）
         context.md                      インテリジェンス層が選んだ関連項目と理由
         carryover.md                    引き継いだ前回の評価・タスク案と、渡したメモ（開始時点で固定）
         assessment.json                 評価（Codex が書く）
@@ -696,6 +698,11 @@ p3 attach rm <A-ID>
   上限に当たったら「Usage limit reached」として失敗させ、Manage usage（https://chatgpt.com/settings/usage）を案内する
 - 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
   Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
+- 要望のタイトル・本文はいつでも書き換えられる。Preflight は始めたときの内容を run に固定し（実行中に書き換えても、その run は
+  固定した内容で評価する）、**評価のあとでタイトル・本文が変わった run からはタスク化しない**（タグ・期限・ステータスだけの変更は
+  比べない。元に戻せばタスク化できる）。`p3 drafts` と API の run の `inputMatch`（same / changed / unknown）で分かる。
+  再評価では、前回の時点の内容を「前回の評価のあとで変わった要望」として渡し、食い違いは確認事項にさせる。
+  比べ方・以前の run の扱い・戻し方は [docs/architecture.md](docs/architecture.md)「評価対象の固定と、評価のあとの要望の変更」
 
 ### マシンごとの設定
 

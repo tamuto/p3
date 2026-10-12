@@ -19,6 +19,7 @@ import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
+import { StaleInputError } from "../preflight/input.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -116,9 +117,11 @@ export function apiRoutes(ctx: P3Context) {
 
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
+    // 409 は code で分ける: rev_conflict（読み直してやり直す）/ stale_input（評価のあとで要望が変わった。再評価する）
+    if (err instanceof StaleInputError) return c.json({ error: err.message, code: err.code, inputMatch: err.match }, 409);
     if (err instanceof ConflictError) {
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
-      return c.json({ error: err.message, current }, 409);
+      return c.json({ error: err.message, code: "rev_conflict", current }, 409);
     }
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
@@ -188,7 +191,7 @@ export function apiRoutes(ctx: P3Context) {
     return c.json({
       request: ws.requests.get(id),
       tasks: ws.tasksOf(id).list(),
-      runs: await preflight.list(id),
+      runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
       graph: index.neighborhood(id),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
       issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
@@ -313,11 +316,16 @@ export function apiRoutes(ctx: P3Context) {
     const { body } = z.object({ body: z.string() }).parse(await c.req.json());
     return c.json(await preflight.addNote(rid(c), body, actorOf(c)), 201);
   });
-  app.get("/requests/:rid/preflight", async (c) => c.json(await preflight.list(rid(c))));
+  // run ごとに、評価対象と今の要望が同じか（inputMatch）を添える
+  app.get("/requests/:rid/preflight", async (c) => {
+    const id = rid(c);
+    return c.json(await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))));
+  });
   app.get("/requests/:rid/preflight/:run", async (c) => {
-    const run = await preflight.get(rid(c), c.req.param("run"));
+    const id = rid(c);
+    const run = await preflight.get(id, c.req.param("run"));
     if (!run) throw new NotFoundError(c.req.param("run"));
-    return c.json(run);
+    return c.json(await preflight.withInputMatch(id, run));
   });
   // 画面資料の画像（PNG / JPEG）。要望 / run / 資料 ID で決め、パスは受け取らない。原稿（HTML）は配信しない
   app.get("/requests/:rid/preflight/:run/ui/:material", async (c) => {
