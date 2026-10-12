@@ -65,9 +65,9 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
   show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
-  new <タイトル>                 --body 本文|- --area a --label l --status
-  set <T003> キー=値 ...         title status labels areas outputs（空で消す）
-  move <T003> <ステータス>        --output URL/パス（成果物を足す）
+  new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
+  set <T003> キー=値 ...         title status labels areas outputs（空で消す。outputs= はカンマ区切りで置き換える）
+  move <T003> <ステータス>        --output URL・文章・パス（成果物を足す。繰り返し可。カンマで分けない）
   check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
   link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
   unlink <T003> <種類> <相手>

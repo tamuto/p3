@@ -82,7 +82,7 @@ export interface Task {
   labels: string[];
   /** 影響するコード領域（例: "src/server/store"）。暗黙の関連の根拠になる */
   areas: string[];
-  /** 成果物（PR / MR の URL、ドキュメントのパスなど） */
+  /** 成果物。1項目ずつ URL（PR / MR）・文章・ドキュメントのパスのどれでもよい。項目全体が http(s) の URL なら画面でリンクにする */
   outputs: string[];
   /**
    * 作業中にした日時（着手を指示した目安）と、完了にした日時。

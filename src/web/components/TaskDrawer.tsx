@@ -7,6 +7,7 @@ import { markFrom, warningText } from "../lib/supersede.ts";
 import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
+import { Outputs } from "./Outputs.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { relationItems } from "../lib/relations.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
@@ -257,8 +258,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </div>
           )}
 
-          <Field label="成果物（PR / MR の URL、ドキュメントのパス。1行に1つ）">
-            <textarea rows={2} className={`${inputCls} font-mono`} value={fields.outputs} onChange={(e) => set("outputs", e.target.value)} />
+          <Section title="成果物">
+            {task.outputs.length ? (
+              // 保存済みのもの（URL はリンク。編集中の内容は下の欄で、保存するとここに出る）
+              <Outputs outputs={task.outputs} />
+            ) : (
+              <p className="text-sm text-slate-400">まだありません</p>
+            )}
+          </Section>
+          <Field label="成果物を編集（1行に1つ。PR / MR の URL・文章・ドキュメントのパスを混ぜてよい。http(s) の URL はリンクになる）">
+            <textarea rows={3} className={inputCls} value={fields.outputs} onChange={(e) => set("outputs", e.target.value)} />
           </Field>
           <Field label="本文 (Markdown)">
             <textarea rows={6} className={`${inputCls} font-mono`} value={fields.body} onChange={(e) => set("body", e.target.value)} />

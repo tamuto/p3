@@ -664,3 +664,17 @@ describe("タグ（外部 ID・分類）", () => {
     expect(pcube(root, ["request", "ls", "--tag", "JIRA:PROJ-123", "--json"]).json()).toEqual([]);
   });
 });
+
+describe("成果物（URL・文章・パス）", () => {
+  it("--output は繰り返して足せ、カンマで分けない。outputs= はカンマで分けて置き換える", async () => {
+    const { root, rid } = await initialized();
+    const made = pcube(root, ["new", "成果物つき", "--req", rid, "--output", "https://example.com/pull/1", "--output", "設計の要点, 判断の理由は docs/x.md に", "--json"]).json();
+    expect(made.outputs).toEqual(["https://example.com/pull/1", "設計の要点, 判断の理由は docs/x.md に"]);
+    expect(pcube(root, ["move", made.id, "done", "--req", rid, "--output", "docs/x.md", "--output", "https://example.com/pull/1"]).code).toBe(0);
+    const shown = pcube(root, ["show", made.id, "--req", rid, "--json"]).json();
+    expect(shown.item.outputs).toEqual(["https://example.com/pull/1", "設計の要点, 判断の理由は docs/x.md に", "docs/x.md"]);
+    expect(pcube(root, ["show", made.id, "--req", rid, "--brief", "--json"]).json().item.outputs).toEqual(shown.item.outputs);
+    expect(pcube(root, ["set", made.id, "--req", rid, "outputs=a, b"]).code).toBe(0);
+    expect(pcube(root, ["show", made.id, "--req", rid, "--json"]).json().item.outputs).toEqual(["a", "b"]);
+  });
+});
