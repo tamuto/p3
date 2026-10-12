@@ -51,7 +51,11 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                add <名前> [<パス>] [role=… readFirst=true writable=true]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
                                rm <名前>  共有の定義ごと消す（--local はこのマシンのパスだけ）
-  user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
+  user-config [set キー=値 ...]  個人設定（このマシン・この人。全プロジェクト共通）の値と出どころ（環境変数 / 個人設定 / 既定）
+                               set ui.theme=system|light|dark / codex.auth / codex.authVolume / codex.authFile / codex.model
+                                   codex.effort / codex.ensureImage / preflight.engine / serve.host / serve.port（キー= で消す）
+                               set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>  パスの対応を足す
+                               set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
