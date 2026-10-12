@@ -201,6 +201,7 @@ export function apiRoutes(ctx: PcubeContext) {
     const b = unnull(raw);
     // 作業先は null（作業先なし）を残す。作業先にできるものだけ（変える前に断る）
     checkRepoTarget(ws, raw.repo);
+    for (const o of raw.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
     const t = await ws.tasksOf(id).create({ ...b, ...("repo" in raw ? { repo: raw.repo } : {}), status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
     if (raw.repo) await ensureWorkstreams(ws, id, [raw.repo], actorOf(c));
     // 対応済の要望に未完了のタスクを足したら進行中に戻す
@@ -222,6 +223,7 @@ export function apiRoutes(ctx: PcubeContext) {
       checkRepoTarget(ws, patch.repo);
       next.repo = patch.repo ?? null;
     }
+    for (const o of patch.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
     if (checked !== undefined) {
       const done = (next.status ?? col.require(tid(c)).status) === "done";
       if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");

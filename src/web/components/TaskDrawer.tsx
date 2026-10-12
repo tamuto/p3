@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { RELATION_TYPES, relationTypes, type GraphEdge, type RepoOutput, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, ApiError } from "../lib/api.ts";
 import { markFrom, warningText } from "../lib/supersede.ts";
@@ -10,6 +10,7 @@ import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { relationItems } from "../lib/relations.ts";
+import { NO_REPO, repoChoices, requestWorkstreams, taskRepo } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { RelationRow } from "./RelationRow.tsx";
@@ -93,6 +94,8 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
   if (!task || !draft || !graph) return null;
   const fields = draft.value;
+  // 共有の参照先があるときだけ、作業先とリポジトリごとの成果物を扱う
+  const multi = ctx.info.project.repos.length > 0;
 
   const set = <K extends keyof Fields>(k: K, v: Fields[K]) => setDraft((d) => d && editDraft(d, { ...d.value, [k]: v }));
   /** 同じ要望の中は T003 と短く見せる */
@@ -258,13 +261,15 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </div>
           )}
 
+          {multi && <WorkTarget ctx={ctx} data={data} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           <Section title="成果物">
-            {task.outputs.length ? (
+            {task.outputs.length || task.repoOutputs?.length ? (
               // 保存済みのもの（URL はリンク。編集中の内容は下の欄で、保存するとここに出る）
-              <Outputs outputs={task.outputs} />
+              <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} />
             ) : (
               <p className="text-sm text-slate-400">まだありません</p>
             )}
+            {multi && <RepoOutputsEditor ctx={ctx} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           </Section>
           <Field label="成果物を編集（1行に1つ。PR / MR の URL・文章・ドキュメントのパスを混ぜてよい。http(s) の URL はリンクになる）">
             <textarea rows={3} className={inputCls} value={fields.outputs} onChange={(e) => set("outputs", e.target.value)} />
@@ -399,5 +404,111 @@ function Origin({ e }: { e: GraphEdge }) {
       {label}
       {e.weight !== undefined && ` ${Math.round(e.weight * 100)}%`}
     </Badge>
+  );
+}
+
+/** 作業先（選ぶとすぐ保存。足りないブランチはサーバが割り当てる）とそのブランチ */
+function WorkTarget({
+  ctx,
+  data,
+  task,
+  disabled,
+  onSaved,
+  onError,
+}: {
+  ctx: AppCtx;
+  data: RequestData;
+  task: Task;
+  disabled: boolean;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const current = taskRepo(task, ctx.info.project) ?? null;
+  const branch = current ? requestWorkstreams(data.request, ctx.info.project)[current] : undefined;
+  const change = async (value: string) => {
+    try {
+      await api.patchTask(`${task.request}/${task.id}`, { repo: value === NO_REPO ? null : value, rev: task.rev });
+      onSaved();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <Field label="作業先（すぐ保存）">
+        <select className={`${inputCls} !w-56`} value={current ?? NO_REPO} disabled={disabled} onChange={(e) => void change(e.target.value)}>
+          {repoChoices(ctx.info.project, current).map((c) => (
+            <option key={c.value} value={c.value} disabled={c.invalid}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="pb-2 text-sm text-slate-500">
+        {current ? (branch ? <>ブランチ <code className="font-mono break-all">{branch.branch}</code></> : "ブランチなし（git でないフォルダ・まだ割り当てていない）") : "作業先なし（調査・人の判断など）"}
+        {task.repo === undefined && current && "（以前のタスク: 主リポジトリ）"}
+      </p>
+    </div>
+  );
+}
+
+/** リポジトリごとの成果物を足す・外す（すぐ保存） */
+function RepoOutputsEditor({ ctx, task, disabled, onSaved, onError }: { ctx: AppCtx; task: Task; disabled: boolean; onSaved: () => void; onError: (m: string) => void }) {
+  const choices = repoChoices(ctx.info.project, null).filter((c) => c.value !== NO_REPO);
+  const [repo, setRepo] = useState(taskRepo(task, ctx.info.project) ?? choices[0]?.value ?? "");
+  const [value, setValue] = useState("");
+  const save = async (next: RepoOutput[]) => {
+    try {
+      await api.patchTask(`${task.request}/${task.id}`, { repoOutputs: next, rev: task.rev });
+      setValue("");
+      onSaved();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  const list = task.repoOutputs ?? [];
+  return (
+    <div className="mt-2 space-y-2">
+      {list.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label="リポジトリごとの成果物">
+          {list.map((o, i) => (
+            <li key={`${i}:${o.repo}:${o.output}`} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-sm dark:bg-slate-800">
+              <span className="min-w-0 break-all">
+                {o.repo}: {o.output}
+              </span>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label={`${o.repo} の成果物「${o.output}」を外す`}
+                onClick={() => void save(list.filter((_, j) => j !== i))}
+                className="shrink-0 rounded px-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <select className={`${inputCls} !w-40`} value={repo} disabled={disabled} aria-label="成果物のリポジトリ" onChange={(e) => setRepo(e.target.value)}>
+          {choices.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <input
+          className={`${inputCls} min-w-0 flex-1`}
+          value={value}
+          disabled={disabled}
+          placeholder="リポジトリごとの成果物（PR の URL など）"
+          aria-label="リポジトリごとの成果物"
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button disabled={disabled || !repo || !value.trim()} onClick={() => void save([...list, { repo, output: value.trim() }])}>
+          足す
+        </Button>
+      </div>
+    </div>
   );
 }

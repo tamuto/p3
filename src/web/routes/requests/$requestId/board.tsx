@@ -3,6 +3,8 @@ import { useState, type ReactNode } from "react";
 import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
+import { useAppData } from "../../../lib/appData.tsx";
+import { taskRepo } from "../../../../shared/workTarget.ts";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, ApiError } from "../../../lib/api.ts";
 import { markText, warningText } from "../../../lib/supersede.ts";
@@ -176,6 +178,9 @@ function Card({
   const blocking = t.relations.filter((r) => r.type === "depends_on" && !r.target.includes("/") && !doneIds.has(r.target));
   const deps = tasks.filter((x) => x.relations.some((r) => r.type === "depends_on" && r.target === t.id)).length;
   const aiRels = t.relations.filter((r) => r.origin === "ai" || r.origin === "preflight").length;
+  const { info } = useAppData();
+  // 共有の参照先があるときだけ作業先を出す
+  const repo = info.project.repos.length ? (taskRepo(t, info.project) ?? null) : undefined;
   return (
     <article
       draggable
@@ -187,7 +192,14 @@ function Card({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <Id id={t.id} />
+        <span className="flex min-w-0 items-center gap-2">
+          <Id id={t.id} />
+          {repo !== undefined && (
+            <Badge tone={repo ? "emerald" : "slate"} className="max-w-full" title="作業先">
+              <span className="truncate">{repo ?? "作業先なし"}</span>
+            </Badge>
+          )}
+        </span>
         {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
       </div>
       <p className="mt-1 leading-snug font-medium">{t.title}</p>
@@ -210,7 +222,7 @@ function Card({
           ))}
         </div>
       )}
-      {t.outputs.length > 0 && <Outputs outputs={t.outputs} compact />}
+      {(t.outputs.length > 0 || !!t.repoOutputs?.length) && <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} compact />}
       <div className="mt-2 flex items-center gap-2">
         {(t.doneAt || t.startedAt) && (
           <span className="text-sm text-slate-400" title="ステータスを変えたときに記録された日時">

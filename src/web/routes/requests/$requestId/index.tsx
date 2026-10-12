@@ -26,6 +26,7 @@ import { RelationRow } from "../../../components/RelationRow.tsx";
 import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
 import { TagInput } from "../../../components/TagInput.tsx";
 import { PreflightScope } from "../../../components/PreflightScope.tsx";
+import { NO_REPO, repoChoices, requestWorkstreams } from "../../../../shared/workTarget.ts";
 import { sameTags } from "../../../../shared/tags.ts";
 import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
 
@@ -578,9 +579,16 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
   }, [request.id, run.id, includeKey, done, ctx.tick]);
 
   async function patch(d: ProposedTask, p: Partial<ProposedTask>) {
-    const next = await api.patchDraft(request.id, run.id, d.key, p);
-    onChanged({ ...run, drafts: run.drafts.map((x) => (x.key === d.key ? next : x)) });
+    try {
+      const next = await api.patchDraft(request.id, run.id, d.key, p);
+      setError(null);
+      onChanged({ ...run, drafts: run.drafts.map((x) => (x.key === d.key ? next : x)) });
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
+  // 共有の参照先があるときだけ、案ごとに作業先を選ぶ
+  const multi = ctx.info.project.repos.length > 0;
 
   async function materialize() {
     setBusy(true);
@@ -627,6 +635,23 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
                   <span className="font-mono text-sm text-slate-500">{d.key}</span>
                   {d.dependsOn.length > 0 && <span className="text-sm text-slate-400">← {d.dependsOn.join(", ")}</span>}
                 </div>
+                {multi && (
+                  <label className="flex items-center gap-2 text-sm text-slate-500">
+                    作業先
+                    <select
+                      className={`${inputCls} !w-auto min-w-0 flex-1 py-0.5 text-sm`}
+                      disabled={done}
+                      value={d.repo ?? NO_REPO}
+                      onChange={(e) => void patch(d, { repo: e.target.value === NO_REPO ? null : e.target.value })}
+                    >
+                      {repoChoices(ctx.info.project, d.repo).map((c) => (
+                        <option key={c.value} value={c.value} disabled={c.invalid}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <textarea
                   rows={2}
                   disabled={done}
@@ -820,6 +845,7 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         </label>
         <TagInput id="request-tags" tags={tagsD.value} onChange={(next) => void changeTags(next)} disabled={tagsBusy || data.gone} text={tagText} onText={setTagText} />
       </div>
+      <Branches request={request} ctx={ctx} />
       <ExternalChange
         label="タグ"
         draft={tagsD}
@@ -873,5 +899,25 @@ function ExternalChange<V>({
       </span>
       <Button onClick={onDiscard}>入力を捨てて最新にする</Button>
     </p>
+  );
+}
+
+/** 作業先のリポジトリごとのブランチ（タスク化・作業先を足したときに割り当てたもの。git のブランチや作業ツリーは作業する人が作る） */
+function Branches({ request, ctx }: { request: Request; ctx: AppCtx }) {
+  const branches = Object.entries(requestWorkstreams(request, ctx.info.project));
+  if (!branches.length) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">ブランチ（作業先ごと）</p>
+      <ul className="space-y-0.5 text-sm">
+        {branches.map(([name, w]) => (
+          <li key={name} className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-medium break-all">{name}</span>
+            <code className="font-mono break-all text-slate-600 dark:text-slate-300">{w.branch}</code>
+            <span className="text-slate-400">作業ツリー <code className="font-mono break-all">{w.worktree}</code></span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

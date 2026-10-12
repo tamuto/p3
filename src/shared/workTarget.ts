@@ -36,3 +36,20 @@ export function repoTargetProblem(repo: string | null | undefined, p: Pick<Proje
   if (!writableRepos(p).includes(repo)) return `「${repo}」は参照だけの参照先なので作業先にできません（作業先にするなら p3 repo set ${repo} writable=true）`;
   return undefined;
 }
+
+/** 画面の作業先の選択肢（作業先にできる参照先と「作業先なし」）。今の値が選べないもの（登録から消えた・参照だけ）でも、黙って置き換えずに選択肢に残す */
+export interface RepoChoice {
+  value: string;
+  label: string;
+  /** 今の値だが、作業先にはできない */
+  invalid?: boolean;
+}
+
+export const NO_REPO = "";
+
+export function repoChoices(p: Pick<ProjectConfig, "repos">, current: string | null | undefined): RepoChoice[] {
+  const writable = writableRepos(p);
+  const out: RepoChoice[] = [...writable.map((name) => ({ value: name, label: name })), { value: NO_REPO, label: "作業先なし" }];
+  if (current && !writable.includes(current)) out.unshift({ value: current, label: `${current}（作業先にできません）`, invalid: true });
+  return out;
+}

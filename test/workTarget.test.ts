@@ -83,3 +83,45 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     expect("repo" in (await ctx.ws.preflight.loadDrafts(r.id, id)).find((d) => d.key === "D1")!).toBe(false);
   });
 });
+
+describe("画面の作業先の選択肢と成果物の表示", () => {
+  it("作業先にできるものと「作業先なし」。今の値が選べないものでも黙って置き換えずに残す", async () => {
+    const { repoChoices } = await import("../src/shared/workTarget.ts");
+    const p = { repos: [{ ...base, name: "app", writable: true }, { ...base, name: "lib" }] };
+    expect(repoChoices(p, "app").map((c) => c.value)).toEqual(["app", ""]);
+    expect(repoChoices(p, null).map((c) => c.label)).toEqual(["app", "作業先なし"]);
+    expect(repoChoices(p, "lib")[0]).toEqual({ value: "lib", label: "lib（作業先にできません）", invalid: true });
+    expect(repoChoices(p, "消えた名前")[0]).toMatchObject({ value: "消えた名前", invalid: true });
+    expect(repoChoices({ repos: [] }, undefined).map((c) => c.value)).toEqual(["main", ""]);
+  });
+
+  it("リポジトリごとの成果物は、どのリポジトリのものかを付けて出す（URL はリンク）", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { Outputs } = await import("../src/web/components/Outputs.tsx");
+    const html = renderToStaticMarkup(createElement(Outputs, { outputs: ["メモ"], repoOutputs: [{ repo: "infra", output: "https://example.com/infra/pull/2" }] }));
+    expect(html).toContain(">infra</span>");
+    expect(html).toContain('href="https://example.com/infra/pull/2"');
+    expect(html).toContain("メモ");
+  });
+
+  it("API: タスクの成果物の参照先も作業先にできるものだけ。値は往復で変わらない", async () => {
+    const { apiRoutes } = await import("../src/server/api/routes.ts");
+    const repo = await makeRepo();
+    const file = join(repo.dataDir, "project.yaml");
+    await writeRepoEntry(file, "app", { ...base, name: "app", writable: true });
+    await writeRepoEntry(file, "lib", { ...base, name: "lib" });
+    const ctx = await openTestProject(repo.dataDir, undefined, { repos: { app: repo.root } });
+    const app = apiRoutes(ctx);
+    const call = async (method: string, path: string, body: unknown) => {
+      const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    const r = await newRequest(ctx, { title: "要望" });
+    const made = await call("POST", `/requests/${r.id}/tasks`, { title: "t", repo: "app", repoOutputs: [{ repo: "app", output: "https://x/pull/1" }] });
+    expect(made.status).toBe(201);
+    expect(made.body.repoOutputs).toEqual([{ repo: "app", output: "https://x/pull/1" }]);
+    expect((await call("PATCH", `/requests/${r.id}/tasks/${made.body.id}`, { repoOutputs: [{ repo: "lib", output: "x" }], rev: made.body.rev })).status).toBe(400);
+    expect(ctx.ws.tasksOf(r.id).require(made.body.id).repoOutputs).toEqual([{ repo: "app", output: "https://x/pull/1" }]);
+  });
+});
