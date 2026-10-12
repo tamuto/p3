@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { apiRoutes } from "./api/routes.ts";
 import { openProject, PCUBE_ROOT } from "./context.ts";
-import type { MachineSettings } from "./machineSettings.ts";
+import type { MachineSettings, SettingsSource } from "./machineSettings.ts";
 
 export interface ServeOptions {
   dataDir: string;
@@ -15,8 +15,8 @@ export interface ServeOptions {
   host: string;
   /** ビルド済みの画面 (dist/web) も配信する */
   static: boolean;
-  /** マシンごとの設定（省くと環境変数と個人設定から読む） */
-  settings?: MachineSettings;
+  /** マシンごとの設定（省くと環境変数と個人設定から、Preflight を始めるたびに読む） */
+  settings?: MachineSettings | SettingsSource;
 }
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */

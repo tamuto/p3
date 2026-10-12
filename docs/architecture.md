@@ -180,6 +180,24 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 - マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`PCUBE_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
+- serve の Codex と Preflight の設定は `SettingsSource`（`machineSettingsSource`）から、Preflight を始めるたび・エンジンの状態を
+  見るたびに読み直す（`loadUserSettings` で厳密に読み、形が違えば空にせずエラー）。Codex エンジンは `snapshot()` で始めるときの
+  設定に決めたエンジンを作り、その run の間はそれを使う。既定のエンジンも始めるたびに決める。読めなければ、その run を
+  設定のエラーで失敗にする（`PreflightService` の failing エンジン。Docker は起こさない）。エンジンの状態のため込み（1分）は、
+  ChatGPT の接続のファイルと設定の中身が変われば確かめ直す。待ち受けとプロジェクトは起動のときに決めたまま。CLI の1回の
+  操作は起動のときに一度だけ読む。テストは MachineSettings をそのまま渡して決まった設定にする
+- app-server の診断（`preflight/launcher.mjs`・`launch.ts`・`diagnose.ts`）: codex-workspace は子の stderr を捨てるので、
+  docker run の前に中継を挟む（`node launcher.mjs <一時フォルダ> -- docker run ...`）。中継は stdin / stdout をそのまま通し、
+  stderr（先頭 8KB と末尾 56KB。間は省略を明示）と `{code, signal}` か `{spawnError}` を一時フォルダ（所有者だけが読める）に
+  書く。初期化で失敗したら（stopIfRunning で応答しない中継を止めてから）、途中で「app-server が終わりました」となったら、
+  その内容で診断する。中止（signal.aborted）とほかの失敗には付けない。うまくいったときは stdin を閉じて中継から子へ伝わる。
+  最後に中継が残っていれば止め、一時フォルダを消す。伏せるのは今までどおり Codex エンジンの log とエラーの包みで行う
+  （チャンクをまたいだ値も、まとめてから伏せる）
+  ブラウザと本物の Docker での確認（2026-10-12、Docker 29.3.0）: 旧来の認証（中身の無いファイル）と、無いホストのパスへの
+  `codex.pathMap` で Preflight を実行すると、Docker の出力（`bind source path does not exist: /nonexistent/p3-host`）と終了コード 125、
+  pathMap の案内と今の対応（リポジトリは当たった対応、データは「どれにも当たらない」）がエラーとログに出た。開いたままの
+  概要ページで個人設定を壊してタブに戻ると、エンジンの状態に YAML の行と直すファイルが出て実行のボタンが止まり、直して戻ると
+  元に戻った（serve は起動し直していない）。直した後の成功は、偽の app-server で確かめた（test/settingsReload.test.ts）
 
 複数のリポジトリへの対応（`project.yaml` の `repos`、タスクの作業先、リポジトリをまたぐ Preflight）と、
 1人1つのサーバで画面からプロジェクトを切り替える形（決定済み）は、次の段階で入れる。

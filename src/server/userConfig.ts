@@ -81,6 +81,26 @@ export async function loadUserConfig(path = userConfigPath()): Promise<UserConfi
   return normalizeUserConfig(asRecord(parse(await readText(path), path).toJS()));
 }
 
+/**
+ * マシンごとの設定（codex / preflight / serve）のために、個人設定を厳密に読む（Preflight を始めるたび・エンジンの状態を見るたび）。
+ * ファイルが無ければ空（既定値）。読めない・壊れた YAML・ファイル全体や項目の形が違うときは、空にせずエラーにする。
+ */
+export async function loadUserSettings(path = userConfigPath()): Promise<Pick<UserConfig, "settings">> {
+  const js = parse(await readText(path), path).toJS() as unknown;
+  if (js !== null && js !== undefined && (typeof js !== "object" || Array.isArray(js))) {
+    throw new UserConfigError(`個人設定の形が違います: ${path}（「項目: 値」の対応で書いてください）`);
+  }
+  const d = (js ?? {}) as Record<string, unknown>;
+  const settings: UserConfig["settings"] = {};
+  for (const s of SETTINGS_SECTIONS) {
+    const v = d[s];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "object" || Array.isArray(v)) throw new UserConfigError(`個人設定の ${s} の形が違います: ${path}（「項目: 値」の対応で書いてください）`);
+    settings[s] = v as Record<string, unknown>;
+  }
+  return { settings };
+}
+
 const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /**

@@ -48,6 +48,11 @@ export interface PreflightEngine {
   readonly name: "codex" | "mock";
   status(): Promise<EngineStatus>;
   run(job: PreflightJob, log: (e: Omit<PreflightLogEntry, "at">) => void, signal: AbortSignal): Promise<EngineOutcome>;
+  /**
+   * 今の設定に決めたエンジン（Preflight を始めるときに呼ぶ。その run の間は設定が変わっても使い続ける）。
+   * 設定を読めなければ失敗する（その run は設定のエラーになる）。無ければそのまま使う
+   */
+  snapshot?(): Promise<PreflightEngine>;
 }
 
 export const ASSESSMENT_SPEC = `{

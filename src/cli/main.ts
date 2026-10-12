@@ -5,7 +5,7 @@ import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { openProject, type PcubeContext } from "../server/context.ts";
-import { resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
+import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../server/store/collection.ts";
@@ -221,7 +221,9 @@ async function main(argv: string[]): Promise<number> {
   const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
 
   if (cmd === "serve") {
-    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, port: settings.serve.port, host: settings.serve.host, static: true, settings });
+    // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
+    const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
+    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 

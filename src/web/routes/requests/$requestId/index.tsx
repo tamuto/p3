@@ -12,13 +12,14 @@ import {
 } from "../../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api, ApiError, type EngineStatus, type NotesInfo } from "../../../lib/api.ts";
+import { api, ApiError, type NotesInfo } from "../../../lib/api.ts";
 import { archiveSelection } from "../../../lib/supersede.ts";
 import { nextRunLabel, notesPanelState, PLAIN_RUN_BLOCKED, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
 import { useServerEvents } from "../../../lib/live.ts";
+import { useEngineStatus } from "../../../lib/engineStatus.ts";
 import { optionalString } from "../../../lib/search.ts";
 import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
@@ -71,11 +72,8 @@ function RequestPanel({
   const runId = selectedRun ?? request.lastPreflight ?? null;
   const [run, setRun] = useState<PreflightRun>();
   const [error, setError] = useState<string | null>(null);
-  const [engine, setEngine] = useState<EngineStatus>();
-
-  useEffect(() => {
-    void api.engine().then(setEngine);
-  }, []);
+  // 個人設定を直したら、取り直したとき（タブに戻った・「再読み込み」など）に反映する
+  const engine = useEngineStatus(ctx.tick);
 
   useEffect(() => {
     if (!runId) return setRun(undefined);
