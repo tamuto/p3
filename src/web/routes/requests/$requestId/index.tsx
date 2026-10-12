@@ -23,6 +23,8 @@ import { optionalString } from "../../../lib/search.ts";
 import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
 import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
+import { TagInput } from "../../../components/TagInput.tsx";
+import { sameTags } from "../../../../shared/tags.ts";
 import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -714,13 +716,18 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   const { request } = data;
   // タイトル・タグの入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で）
   const [titleD, setTitleD] = useState(() => draftOf(request.title, request.rev));
-  const [tagsD, setTagsD] = useState(() => draftOf(request.tags.join(", "), request.rev));
+  const [tagsD, setTagsD] = useState(() => draftOf<string[]>(request.tags, request.rev));
+  const [tagsBusy, setTagsBusy] = useState(false);
+  /** タグの入力欄の、まだ足していない文字（取り直しても残す） */
+  const [tagText, setTagText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const tagsText = request.tags.join(", ");
+  // 値に何が入っていても区切りにならない文字でつなぐ（配列は取り直すたびに別物になるので、中身で比べる）
+  const tagsKey = request.tags.join("\u0000");
   useEffect(() => {
     setTitleD((d) => syncDraft(d, request.title, request.rev));
-    setTagsD((d) => syncDraft(d, tagsText, request.rev));
-  }, [request.title, tagsText, request.rev]);
+    setTagsD((d) => syncDraft(d, request.tags, request.rev, sameTags));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.title, tagsKey, request.rev]);
 
   async function save(
     patch: { title?: string; status?: RequestStatus; due?: string | null; milestone?: string | null; tags?: string[] },
@@ -752,13 +759,15 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
     if (saved) setTitleD(draftOf(saved.title, saved.rev));
   }
 
-  async function commitTags() {
-    if (tagList(tagsD.value).join() === tagList(tagsD.base).join()) return;
-    const saved = await save({ tags: tagList(tagsD.value) }, tagsD.baseRev);
-    if (saved) setTagsD(draftOf(saved.tags.join(", "), saved.rev));
+  /** タグは足す・外すたびに保存する（編集を始めたときの rev で。保存中は次の操作を待たせる） */
+  async function changeTags(next: string[]) {
+    setTagsD((d) => editDraft(d, next));
+    setTagsBusy(true);
+    const saved = await save({ tags: next }, tagsD.baseRev);
+    if (saved) setTagsD(draftOf(saved.tags, saved.rev));
+    setTagsBusy(false);
   }
 
-  const tagList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
     <section className="space-y-4">
       <div className="space-y-1">
@@ -772,7 +781,7 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           />
         </Field>
-        <ExternalChange label="タイトル" draft={titleD} onDiscard={() => (setTitleD(discardDraft), setError(null))} />
+        <ExternalChange label="タイトル" draft={titleD} onDiscard={() => (setTitleD((d) => discardDraft(d)), setError(null))} />
       </div>
       <div className="flex flex-wrap items-start gap-4">
         <Field label="ステータス">
@@ -798,22 +807,25 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
             ))}
           </select>
         </Field>
-        <Field label="タグ（カンマ区切り）">
-          <input
-            className={`${inputCls} !w-64`}
-            value={tagsD.value}
-            placeholder="feature, ui"
-            onChange={(e) => setTagsD((d) => editDraft(d, e.target.value))}
-            onBlur={() => void commitTags()}
-          />
-        </Field>
         {ctx.info.project.milestones.length === 0 && (
           <Link to="/settings" className={buttonCls("ghost", "mt-7 text-sm underline")}>
             マイルストーンを設定で作る
           </Link>
         )}
       </div>
-      <ExternalChange label="タグ" draft={tagsD} onDiscard={() => (setTagsD(discardDraft), setError(null))} />
+      <div className="flex flex-col gap-1">
+        <label htmlFor="request-tags" className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          タグ（外部 ID や分類。値ごとに Enter で足し、× で外す。すぐ保存）
+        </label>
+        <TagInput id="request-tags" tags={tagsD.value} onChange={(next) => void changeTags(next)} disabled={tagsBusy || data.gone} text={tagText} onText={setTagText} />
+      </div>
+      <ExternalChange
+        label="タグ"
+        draft={tagsD}
+        eq={sameTags}
+        show={(v) => (v.length ? v.join("、") : "なし")}
+        onDiscard={() => (setTagsD((d) => discardDraft(d)), setError(null))}
+      />
       {data.issue && (
         <p className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {data.issue}
@@ -839,12 +851,24 @@ function titleIn(ctx: AppCtx, ref: string): string | undefined {
 }
 
 /** 編集中に外で変わったことを知らせる（入力はそのまま。捨てると最新の値にする） */
-function ExternalChange({ label, draft, onDiscard }: { label: string; draft: Draft<string>; onDiscard: () => void }) {
-  if (!draft.external || !isDirty(draft)) return null;
+function ExternalChange<V>({
+  label,
+  draft,
+  eq,
+  show = String,
+  onDiscard,
+}: {
+  label: string;
+  draft: Draft<V>;
+  eq?: (a: V, b: V) => boolean;
+  show?: (v: V) => string;
+  onDiscard: () => void;
+}) {
+  if (!draft.external || !isDirty(draft, eq)) return null;
   return (
     <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
       <span className="min-w-0 break-words">
-        編集中に{label}が他で変わりました（rev {draft.external.rev}: 「{draft.external.value}」）。このまま保存すると競合になります。
+        編集中に{label}が他で変わりました（rev {draft.external.rev}: 「{show(draft.external.value)}」）。このまま保存すると競合になります。
       </span>
       <Button onClick={onDiscard}>入力を捨てて最新にする</Button>
     </p>

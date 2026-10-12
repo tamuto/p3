@@ -19,6 +19,7 @@ import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
 import { config, currentRequest, init, projectCommand, resolveActor, UsageError } from "./project.ts";
+import { tagsFrom } from "../shared/tags.ts";
 
 /**
  * pcube CLI。人も AI エージェントも使う。
@@ -53,10 +54,11 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                Preflight の前は、作ってから1日より古いときだけ作り直す
 
 要望
-  request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag t
-  request ls                   一覧（--status draft,active ... --milestone id --tag t）
+  request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
+  request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか）
   request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
   request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
+                               --tag 値 ...  タグをこの値の並びに置き換える（カンマで分けない。tags=a,b はカンマで分ける）
   request archive <要望>
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
@@ -551,7 +553,7 @@ async function requestCommand(
       if (!title) throw new UsageError("タイトルを指定してください");
       if (o.milestone) checkMilestone(ctx, o.milestone);
       const r = await ctx.ws.requests.create(
-        { title, body: readBody(o.body), areas: o.area ?? [], tags: o.tag ?? [], due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
+        { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
         actor,
       );
       return out.result(r, () => `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`);
@@ -611,6 +613,10 @@ async function requestCommand(
         } else throw new UsageError("変更できるキー: title status due milestone tags areas");
       }
       if (o.body !== undefined) patch.body = readBody(o.body);
+      if (o.tag) {
+        if (patch.tags) throw new UsageError("tags= と --tag は一緒に使えません（カンマを含む値は --tag で）");
+        patch.tags = tagsFrom(o.tag);
+      }
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       await checkStatusChange(ctx.ws, rid, patch.status);
       const next = await ctx.ws.requests.update(rid, patch, { expectedRev, actor });
