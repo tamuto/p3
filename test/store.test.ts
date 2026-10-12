@@ -83,7 +83,7 @@ describe("normalize", () => {
 
   it("プロジェクト設定の既定値を補う", () => {
     const p = normalizeProject({ statuses: [{ id: "hold", label: "保留" }] });
-    expect(p.name).toBe("pcube project");
+    expect(p.name).toBe("p3 project");
     expect(p).not.toHaveProperty("statuses"); // 列は 未着手 / 作業中 / 完了 で固定
     expect(p.preflight.instructions).toBe("");
   });

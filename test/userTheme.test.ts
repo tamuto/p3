@@ -10,7 +10,7 @@ import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, user
 import { readTheme, ThemeInputError, writeTheme } from "../src/server/userTheme.ts";
 import { makeProject, tempDir } from "./helpers.ts";
 
-const BIN = fileURLToPath(new URL("../bin/pcube.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 
 /** 個人設定の置き場所（XDG_CONFIG_HOME）をテストごとに分ける */
 let home = "";
@@ -31,7 +31,7 @@ const write = (text: string) => {
 };
 
 function p3(cwd: string, args: string[]) {
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_"))), XDG_CONFIG_HOME: home };
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: home };
   const r = spawnSync(process.execPath, [BIN, ...args], { cwd, encoding: "utf8", env });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
@@ -116,7 +116,7 @@ describe("画面のテーマ（個人設定の ui.theme）", () => {
       writeFileSync(join(d, "project.yaml"), "name: x\n");
       return d;
     });
-    const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_"))), XDG_CONFIG_HOME: home };
+    const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: home };
     const run = (args: string[]) =>
       new Promise<number | null>((res) => spawn(process.execPath, [BIN, ...args], { cwd, env, stdio: "ignore" }).on("exit", res));
     const codes = await Promise.all([
@@ -277,9 +277,9 @@ describe("describeSettings（p3 user-config の表示）", () => {
   it("環境変数・個人設定・既定のどれから来た値かを出し、読めない値は理由を添える", async () => {
     const { describeSettings } = await import("../src/server/machineSettingsEdit.ts");
     const user = { settings: { codex: { model: "gpt-x", effort: "high" } } };
-    const { rows, error } = describeSettings(user, { PCUBE_CODEX_MODEL: "gpt-env", PCUBE_CODEX_EFFORT: "" });
+    const { rows, error } = describeSettings(user, { P3_CODEX_MODEL: "gpt-env", P3_CODEX_EFFORT: "" });
     expect(error).toBeUndefined();
-    expect(rows.find((r) => r.key === "codex.model")).toMatchObject({ value: "gpt-env", from: "環境変数", env: "PCUBE_CODEX_MODEL" });
+    expect(rows.find((r) => r.key === "codex.model")).toMatchObject({ value: "gpt-env", from: "環境変数", env: "P3_CODEX_MODEL" });
     expect(rows.find((r) => r.key === "codex.effort")).toMatchObject({ value: "（なし）", from: "既定" }); // 空の環境変数は既定に戻す
     expect(rows.find((r) => r.key === "codex.auth")).toMatchObject({ value: "auto", from: "既定" });
     const bad = describeSettings({ settings: { serve: { port: "x" } } }, {});

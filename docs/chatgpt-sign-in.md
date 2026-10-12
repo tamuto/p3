@@ -113,11 +113,11 @@ llmcs の `restart` / `resumeThread` は、記録を残す使い方（`ephemeral
 
 認証の選び方（上から）:
 
-1. `codex.auth: legacy`（`PCUBE_CODEX_AUTH=legacy`）と `codex.authVolume` / `codex.authFile` → 旧来の `auth.json`（明示したときだけ）
+1. `codex.auth: legacy`（`P3_CODEX_AUTH=legacy`）と `codex.authVolume` / `codex.authFile` → 旧来の `auth.json`（明示したときだけ）
 2. ChatGPT に接続していてプラン利用が許可されている → Sign in with ChatGPT
-3. 旧来の `codex.authVolume` / `codex.authFile`（`PCUBE_CODEX_AUTH_VOLUME` / `PCUBE_CODEX_AUTH_FILE`）だけがある → 旧来の `auth.json`（移行期間の互換）
+3. 旧来の `codex.authVolume` / `codex.authFile`（`P3_CODEX_AUTH_VOLUME` / `P3_CODEX_AUTH_FILE`）だけがある → 旧来の `auth.json`（移行期間の互換）
 4. どれも無い → Codex は使えない。画面と CLI で「ChatGPT でサインインしてください」と案内する
-   （`preflight.engine: mock` か `PCUBE_PREFLIGHT_ENGINE=mock` を明示したときだけ Mock。**認証の失敗を Mock の成功に見せない**）
+   （`preflight.engine: mock` か `P3_PREFLIGHT_ENGINE=mock` を明示したときだけ Mock。**認証の失敗を Mock の成功に見せない**）
 
 - 状態の表示は、未接続 / プラン利用が未許可 / 期限切れで更新できない / 使用量の上限 / Docker が無い / 旧方式 / Mock を分けて、次にすることを出す。
 - 接続の変化（CLI でサインインした・解除した）を、起動中の serve にもすぐ反映する（状態のキャッシュは接続のファイルの更新日時が変わったら捨てる）。

@@ -54,7 +54,7 @@ function BoardPage() {
   if (!tasks.length) {
     return (
       <div className="mx-auto max-w-xl p-10">
-        <Empty>タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、CLI の `pcube new` で追加してください。</Empty>
+        <Empty>タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、CLI の `p3 new` で追加してください。</Empty>
       </div>
     );
   }

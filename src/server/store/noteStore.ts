@@ -13,7 +13,7 @@ export const NOTE_ID = /^N-\d{8}-\d{6}-[0-9a-f]{4}$/;
  * 誰がいつ書いたかを frontmatter に残す。ファイルを分けるので、複数人が同時に書いても衝突しない。
  */
 export class NoteStore {
-  /** requestsDir: .pcube/requests */
+  /** requestsDir: .p3/requests */
   constructor(readonly requestsDir: string) {}
 
   dir(requestId: string) {

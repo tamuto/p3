@@ -1,6 +1,6 @@
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
-import type { PcubeContext } from "../server/context.ts";
+import type { P3Context } from "../server/context.ts";
 import { supersededWarnings, type Warning } from "../server/supersede.ts";
 import { table } from "./format.ts";
 import { taskWork } from "../server/workTargets.ts";
@@ -25,7 +25,7 @@ export interface DependencyState {
   status: string | null;
 }
 
-export function dependencyStates(ctx: PcubeContext, task: Task): DependencyState[] {
+export function dependencyStates(ctx: P3Context, task: Task): DependencyState[] {
   return task.relations
     .filter((r) => r.type === "depends_on")
     .map((r) => {
@@ -37,7 +37,7 @@ export function dependencyStates(ctx: PcubeContext, task: Task): DependencyState
 }
 
 /** タスクの詳細で共通に出す項目（通常・短い出力の両方） */
-export function taskExtras(ctx: PcubeContext, task: Task, marks: Map<string, SupersededMark[]>) {
+export function taskExtras(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
   const superseded = marks.get(task.ref) ?? [];
   const warnings: Warning[] = supersededWarnings(superseded, task.ref);
   return { superseded, dependencies: dependencyStates(ctx, task), warnings };
@@ -45,7 +45,7 @@ export function taskExtras(ctx: PcubeContext, task: Task, marks: Map<string, Sup
 
 const BRIEF_TASK_KEYS = ["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"] as const;
 
-export function briefTask(ctx: PcubeContext, task: Task, marks: Map<string, SupersededMark[]>) {
+export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
   const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
@@ -70,7 +70,7 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   return lines.join("\n");
 }
 
-export function briefRequest(ctx: PcubeContext, r: Request, issue: string | undefined) {
+export function briefRequest(ctx: P3Context, r: Request, issue: string | undefined) {
   const item: Pick<Request, "id" | "title" | "status" | "body" | "rev" | "workstreams"> = {
     id: r.id,
     title: r.title,

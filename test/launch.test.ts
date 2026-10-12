@@ -118,14 +118,14 @@ describe("パスの対応の説明", () => {
   it("前から順に境界の合う最初の対応。当たらない・同じパス・空を見分ける", () => {
     const map: [string, string][] = [
       ["/workspaces", "/home/u/ws"],
-      ["/workspaces/pcube", "/never"],
+      ["/workspaces/p3", "/never"],
       ["/mnt/assets", "/mnt/assets"],
     ];
-    expect(mapPath(map, "/workspaces/pcube")).toEqual({ host: "/home/u/ws/pcube", rule: map[0] });
+    expect(mapPath(map, "/workspaces/p3")).toEqual({ host: "/home/u/ws/p3", rule: map[0] });
     expect(mapPath(map, "/workspacesX/a")).toEqual({ host: "/workspacesX/a" });
     const m = (local: string) => ({ label: "データ", local, ...mapPath(map, local), container: "/data" });
     expect(describeMapping(m("/mnt/assets/p"), 3)).toBe("データ → コンテナ /data（codex.pathMap の対応あり（パスは変わらない））");
-    expect(describeMapping(m("/workspaces/pcube"), 3)).toBe("データ → コンテナ /data（codex.pathMap の対応あり）");
+    expect(describeMapping(m("/workspaces/p3"), 3)).toBe("データ → コンテナ /data（codex.pathMap の対応あり）");
     expect(describeMapping(m("/srv/x"), 3)).toContain("対応なし（3 件のどれにも当たらない。このマシンのパスのまま渡す）");
     expect(describeMapping({ label: "データ", local: "/srv/x", host: "/srv/x", container: "/data" }, 0)).toBe("データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））");
   });

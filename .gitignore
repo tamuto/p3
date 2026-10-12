@@ -147,6 +147,6 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 
-# pcube
-.pcube-demo/
+# p3
+.p3-demo/
 .worktrees/

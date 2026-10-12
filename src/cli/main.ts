@@ -7,7 +7,7 @@ import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } f
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
-import { openProject, type PcubeContext } from "../server/context.ts";
+import { openProject, type P3Context } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
 import { startServer } from "../server/server.ts";
@@ -28,20 +28,20 @@ import { config, currentRequest, init, locateHere, projectCommand, repoCommand, 
 import { tagsFrom } from "../shared/tags.ts";
 
 /**
- * pcube CLI。人も AI エージェントも使う。
+ * p3 CLI。人も AI エージェントも使う。
  *
  * サーバを経由せず、プロジェクトのデータのフォルダのファイルを直接読み書きする。
  * 操作するプロジェクトは --project、今いる場所（登録したリポジトリの中か）、個人設定から決める（store/locate.ts）。
  * だから認証は要らず、サーバが動いていれば変更は監視経由でそのまま画面に反映される。
- * AI は `--json` で機械可読な出力を得て、`PCUBE_ACTOR=ai:<name>` で変更者を名乗る。
+ * AI は `--json` で機械可読な出力を得て、`P3_ACTOR=ai:<name>` で変更者を名乗る。
  *
- * 作業の単位は要望。タスクの操作は「今の要望」に対して行う。今の要望は --req、PCUBE_REQUEST、
+ * 作業の単位は要望。タスクの操作は「今の要望」に対して行う。今の要望は --req、P3_REQUEST、
  * または要望の作業ツリー（ブランチ req/<要望ID>-...）から決まる。
  */
 
 const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理するファイルベースのタスク管理
 
-使い方: p3 <コマンド> [引数] [オプション]   （pcube でも同じ）
+使い方: p3 <コマンド> [引数] [オプション]
 
 プロジェクト
   init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する。
@@ -62,7 +62,7 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
-  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $PCUBE_PORT / $PCUBE_HOST）
+  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
@@ -111,9 +111,9 @@ Preflight
 共通オプション
   --project 名前 操作するプロジェクト（既定: 今いるリポジトリに登録したもの → 登録が1つならそれ）
   --dir パス     データのフォルダを直接指す
-  --req 要望     今の要望（既定: $PCUBE_REQUEST → 要望の作業ツリー）。ID の一部（k7m3x）でもよい
+  --req 要望     今の要望（既定: $P3_REQUEST → 要望の作業ツリー）。ID の一部（k7m3x）でもよい
   --json        JSON で出力（AI 向け）
-  --actor 名前   変更者（既定: $PCUBE_ACTOR → human:<git の user.name>）
+  --actor 名前   変更者（既定: $P3_ACTOR → human:<git の user.name>）
   --rev 番号     楽観ロック。指定した rev でなければ更新しない（set / move）
 
 関係の種類（A → B と張る。A の詳細には「相手の役割 B」、B の詳細には「相手の役割 A」と出る）:
@@ -266,8 +266,8 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const ctx = await openProject(target.dataDir, { repos: target.repos, settings, projectName: target.name });
-  const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
-  const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
+  const actor = resolveActor(o.actor ?? process.env.P3_ACTOR, cwd);
+  const current = currentRequest(ctx, o.req ?? o.request ?? process.env.P3_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
 
   /** 要望の引数（省略時は今の要望） */
@@ -654,14 +654,14 @@ async function main(argv: string[]): Promise<number> {
     }
 
     default:
-      throw new UsageError(`不明なコマンド: ${cmd}（pcube help）`);
+      throw new UsageError(`不明なコマンド: ${cmd}（p3 help）`);
   }
 }
 
 // --- 要望 -----------------------------------------------------------------
 
 async function requestCommand(
-  ctx: PcubeContext,
+  ctx: P3Context,
   out: Output,
   args: string[],
   o: ReturnType<typeof parse>["values"],
@@ -777,25 +777,25 @@ async function requestCommand(
       return out.result({ archived: rid }, () => `アーカイブ: ${rid}（requests/.archive/ へ）`);
     }
     default:
-      throw new UsageError("pcube request [new | ls | show | set | archive]");
+      throw new UsageError("p3 request [new | ls | show | set | archive]");
   }
 }
 
 // --- マイルストーン -----------------------------------------------------------
 
-function checkMilestone(ctx: PcubeContext, id: string) {
-  if (!ctx.ws.project.milestones.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id}（pcube milestone add ${id}）`);
+function checkMilestone(ctx: P3Context, id: string) {
+  if (!ctx.ws.project.milestones.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id}（p3 milestone add ${id}）`);
 }
 
 /** マイルストーン（リリース）。複数の要望をまとめる単位で、project.yaml に書く */
-async function milestoneCommand(ctx: PcubeContext, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
+async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
   const [sub, id] = args;
   const ms = ctx.ws.project.milestones;
   const count = (mid: string) => ctx.ws.requests.list().filter((r) => r.milestone === mid).length;
   if (sub === "add" || sub === "set") {
-    if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) throw new UsageError(`pcube milestone ${sub} <id>（英数字と . _ -）`);
+    if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) throw new UsageError(`p3 milestone ${sub} <id>（英数字と . _ -）`);
     const cur = ms.find((m) => m.id === id);
-    if (sub === "add" && cur) throw new UsageError(`既にあります: ${id}（変えるなら pcube milestone set）`);
+    if (sub === "add" && cur) throw new UsageError(`既にあります: ${id}（変えるなら p3 milestone set）`);
     if (sub === "set" && !cur) throw new UsageError(`マイルストーンがありません: ${id}`);
     const next = {
       id,
@@ -812,12 +812,12 @@ async function milestoneCommand(ctx: PcubeContext, out: Output, args: string[], 
     await ctx.ws.saveProject({ milestones: ms.filter((m) => m.id !== id) });
     return out.result({ removed: id }, () => `外しました: ${id}`);
   }
-  if (sub && sub !== "ls" && sub !== "list") throw new UsageError("pcube milestone [ls | add <id> | set <id> | rm <id>]");
+  if (sub && sub !== "ls" && sub !== "list") throw new UsageError("p3 milestone [ls | add <id> | set <id> | rm <id>]");
   return out.result(
     ms,
     () =>
       table(ms.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`])) ||
-      "マイルストーンはありません（pcube milestone add v0.1 --title 最初のリリース --due 2026-11-30）",
+      "マイルストーンはありません（p3 milestone add v0.1 --title 最初のリリース --due 2026-11-30）",
   );
 }
 
@@ -831,7 +831,7 @@ class Output {
   }
 }
 
-function formatEntity(ctx: PcubeContext, item: Task | Request, graph: ReturnType<PcubeContext["index"]["neighborhood"]>, file: string): string {
+function formatEntity(ctx: P3Context, item: Task | Request, graph: ReturnType<P3Context["index"]["neighborhood"]>, file: string): string {
   const head = "ref" in item ? item.ref : item.id;
   const home = "ref" in item ? item.request : item.id;
   /** 同じ要望の中は T003 と短く見せる */
@@ -861,7 +861,7 @@ function formatEntity(ctx: PcubeContext, item: Task | Request, graph: ReturnType
   return lines.join("\n");
 }
 
-function ambiguous(out: Output, ctx: PcubeContext, query: string, current?: string): number {
+function ambiguous(out: Output, ctx: P3Context, query: string, current?: string): number {
   const r = resolve(ctx, query, current);
   out.result(r, () =>
     r.candidates.length ? `候補が複数あります:\n${table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title]))}` : `見つかりません: ${query}`,
@@ -869,14 +869,14 @@ function ambiguous(out: Output, ctx: PcubeContext, query: string, current?: stri
   return r.candidates.length ? 1 : 2; // 候補が複数なら使い方の誤り（1）、何も無ければ見つからない（2）
 }
 
-async function pickRun(ctx: PcubeContext, rid: string, runId?: string) {
+async function pickRun(ctx: P3Context, rid: string, runId?: string) {
   const runs = await ctx.preflight.list(rid);
   const run = runId ? runs.find((r) => r.id === runId) : runs[0];
   if (!run) throw new NotFoundError(runId ?? `${rid} の preflight`);
   return run;
 }
 
-function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeof pickRun>>): string {
+function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof pickRun>>): string {
   const lines = [`${rid} / ${run.id}  ${run.engine}  ${run.status}${run.startedBy ? `  ${run.startedBy}` : ""}`];
   if (run.previous || run.notes?.length) {
     lines.push(`引き継ぎ: ${run.previous ? `前回 ${run.previous}` : "前回なし"}${run.notes?.length ? ` / メモ ${run.notes.join(", ")}` : ""}`);
@@ -1002,7 +1002,7 @@ const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
 };
 
 /** タスクを変えた後: 対応済の要望に未完了のタスクができたら進行中に戻し、そう知らせる。戻した要望の ID を返す */
-async function reopened_(ctx: PcubeContext, rid: string, actor: string): Promise<string | undefined> {
+async function reopened_(ctx: P3Context, rid: string, actor: string): Promise<string | undefined> {
   if (!(await reopenIfNeeded(ctx.ws, rid, actor))) return undefined;
   process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
   return rid;
@@ -1080,7 +1080,7 @@ function pad(label: string, width = 8): string {
 }
 
 /** 作業先の案内（このマシンのパスが無ければ登録の仕方） */
-function workHint(ctx: PcubeContext, t: Task): string {
+function workHint(ctx: P3Context, t: Task): string {
   const w = taskWork(ctx.ws, t);
   if (!w.repo) return "作業先: なし";
   return `作業先: ${w.repo}${w.branch ? `  ブランチ ${w.branch}` : "（ブランチなし）"}${w.registered ? "" : `\n  このマシンのパスが未登録です: p3 repo path ${w.repo} <パス>`}`;

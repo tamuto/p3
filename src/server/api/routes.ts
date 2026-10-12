@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type ServerEvent, type Task, TASK_STATUSES } from "../../shared/types.ts";
-import type { PcubeContext } from "../context.ts";
+import type { P3Context } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../store/attachments.ts";
@@ -93,7 +93,7 @@ const unnull = <T extends object>(o: T) =>
   };
 
 /** 誰が変更したか */
-const actorOf = (c: Context) => c.req.header("x-pcube-actor") ?? "human:web";
+const actorOf = (c: Context) => c.req.header("x-p3-actor") ?? "human:web";
 
 /** 楽観ロック: body.rev か If-Match ヘッダ */
 const expectedRev = (c: Context, body: { rev?: number }) => body.rev ?? (c.req.header("if-match") ? Number(c.req.header("if-match")) : undefined);
@@ -110,7 +110,7 @@ function download(c: Context, data: Buffer, format: AttachmentFormat, name: stri
   });
 }
 
-export function apiRoutes(ctx: PcubeContext) {
+export function apiRoutes(ctx: P3Context) {
   const { ws, index, preflight } = ctx;
   const app = new Hono();
 

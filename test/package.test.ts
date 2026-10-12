@@ -30,7 +30,7 @@ describe("npm で配る中身", () => {
     expect(pkg.publishConfig).toEqual({ access: "public" });
     expect(pkg.license).toBe("MIT");
     expect(pkg.engines.node).toBe(">=22");
-    expect(pkg.bin).toEqual({ p3: "bin/pcube.mjs", pcube: "bin/pcube.mjs" });
+    expect(pkg.bin).toEqual({ p3: "bin/p3.mjs" });
     expect(pkg.scripts.prepack).toBe("pnpm build");
     // 利用者が入れるときにビルドや Docker を動かさない
     for (const s of ["preinstall", "install", "postinstall", "prepare"]) expect(pkg.scripts[s]).toBeUndefined();
@@ -44,13 +44,13 @@ describe("npm で配る中身", () => {
     const r = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: fileURLToPath(root), encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     const files: string[] = JSON.parse(r.stdout)[0].files.map((f: { path: string }) => f.path);
-    for (const f of ["package.json", "README.md", "LICENSE", "bin/pcube.mjs", "src/cli/main.ts", "src/server/context.ts", "src/shared/types.ts", "skills/p3/SKILL.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs", "src/server/preflight/mock-ui.png", "src/server/preflight/mock-ui.html"]) {
+    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "src/cli/main.ts", "src/server/context.ts", "src/shared/types.ts", "skills/p3/SKILL.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs", "src/server/preflight/mock-ui.png", "src/server/preflight/mock-ui.html"]) {
       expect(files).toContain(f);
     }
     // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）
     if (existsSync(new URL("dist/web/index.html", root))) expect(files).toContain("dist/web/index.html");
     const unwanted = files.filter((f) =>
-      /^(\.env|\.pcube|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || /\.test\.ts$/.test(f),
+      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || /\.test\.ts$/.test(f),
     );
     expect(unwanted).toEqual([]);
   });

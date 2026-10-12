@@ -24,11 +24,11 @@ describe("npm pack の中身だけで動く", () => {
     gitInit(repo);
     writeFileSync(join(repo, "README.md"), "# sample\n");
     const env = {
-      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_"))),
+      ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))),
       XDG_CONFIG_HOME: tempDir("p3-pack-config-"),
     };
     const p3 = (args: string[]) => {
-      const r = spawnSync(process.execPath, [join(pkg, "bin", "pcube.mjs"), ...args], { cwd: repo, encoding: "utf8", env });
+      const r = spawnSync(process.execPath, [join(pkg, "bin", "p3.mjs"), ...args], { cwd: repo, encoding: "utf8", env });
       expect(r.status, r.stderr).toBe(0);
       return r.stdout;
     };
@@ -41,7 +41,7 @@ describe("npm pack の中身だけで動く", () => {
 
     // serve: API はいつも、画面はビルドしてあれば（pnpm -s check はテストの後にビルドする）
     const port = 20000 + Math.floor(Math.random() * 20000);
-    const child = spawn(process.execPath, [join(pkg, "bin", "pcube.mjs"), "serve", "--port", String(port), "--host", "127.0.0.1"], { cwd: repo, env });
+    const child = spawn(process.execPath, [join(pkg, "bin", "p3.mjs"), "serve", "--port", String(port), "--host", "127.0.0.1"], { cwd: repo, env });
     try {
       const get = async (path: string) => {
         for (let i = 0; ; i++) {

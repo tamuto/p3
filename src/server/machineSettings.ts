@@ -4,8 +4,8 @@ import { loadUserSettings, userConfigPath, UserConfigError, type UserConfig } fr
 /**
  * マシンごとの設定（Codex の認証・パスの対応・Preflight の既定エンジン・serve の待ち受け）。
  *
- * 決め方（項目ごと）: CLI の明示（--port / --host / --engine）→ 環境変数（PCUBE_*）→ 個人設定（config.yaml）→ 既定値。
- *   - 環境変数を空（PCUBE_CODEX_MODEL=）にすると、個人設定の値を使わずに既定値に戻す（解除）
+ * 決め方（項目ごと）: CLI の明示（--port / --host / --engine）→ 環境変数（P3_*）→ 個人設定（config.yaml）→ 既定値。
+ *   - 環境変数を空（P3_CODEX_MODEL=）にすると、個人設定の値を使わずに既定値に戻す（解除）
  *   - 読めない値は黙って捨てず、どこの何を直せばよいかをエラーにする
  *
  * 個人設定（~/.config/infodb-p3/config.yaml）の書き方:
@@ -26,7 +26,7 @@ import { loadUserSettings, userConfigPath, UserConfigError, type UserConfig } fr
  *     port: 4310
  *
  * ChatGPT のトークンはここに置かない（chatgpt.json。所有者だけが読める権限）。
- * PCUBE_ACTOR・PCUBE_REQUEST は操作ごとの指定なので、環境変数（と --actor / --req）だけで決める。
+ * P3_ACTOR・P3_REQUEST は操作ごとの指定なので、環境変数（と --actor / --req）だけで決める。
  */
 export interface MachineSettings {
   codex: {
@@ -47,16 +47,16 @@ export type EngineChoice = "codex" | "mock";
 
 /** 環境変数と個人設定の対応（README の対照表と同じ） */
 export const SETTING_KEYS = {
-  "codex.auth": "PCUBE_CODEX_AUTH",
-  "codex.authVolume": "PCUBE_CODEX_AUTH_VOLUME",
-  "codex.authFile": "PCUBE_CODEX_AUTH_FILE",
-  "codex.pathMap": "PCUBE_CODEX_PATH_MAP",
-  "codex.model": "PCUBE_CODEX_MODEL",
-  "codex.effort": "PCUBE_CODEX_EFFORT",
-  "codex.ensureImage": "PCUBE_CODEX_ENSURE_IMAGE",
-  "preflight.engine": "PCUBE_PREFLIGHT_ENGINE",
-  "serve.host": "PCUBE_HOST",
-  "serve.port": "PCUBE_PORT",
+  "codex.auth": "P3_CODEX_AUTH",
+  "codex.authVolume": "P3_CODEX_AUTH_VOLUME",
+  "codex.authFile": "P3_CODEX_AUTH_FILE",
+  "codex.pathMap": "P3_CODEX_PATH_MAP",
+  "codex.model": "P3_CODEX_MODEL",
+  "codex.effort": "P3_CODEX_EFFORT",
+  "codex.ensureImage": "P3_CODEX_ENSURE_IMAGE",
+  "preflight.engine": "P3_PREFLIGHT_ENGINE",
+  "serve.host": "P3_HOST",
+  "serve.port": "P3_PORT",
 } as const;
 type Key = keyof typeof SETTING_KEYS;
 

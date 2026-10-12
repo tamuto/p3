@@ -4,7 +4,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { UserConfig } from "../userConfig.ts";
 
 /** リポジトリの中にデータを置く場合のフォルダ名（以前の既定。今もデモやテストで使う） */
-export const DATA_DIR_NAME = ".pcube";
+export const DATA_DIR_NAME = ".p3";
 
 export interface ResolvedProject {
   /** 個人設定に登録したプロジェクト名（登録していないフォルダを --dir で指したときは無い） */
@@ -25,7 +25,7 @@ export class ProjectNotResolvedError extends Error {}
  *   1. --dir <フォルダ>          データのフォルダを直接指す
  *   2. --project <名前>          個人設定に登録したプロジェクト
  *   3. 今いる場所                 登録したプロジェクトのデータのフォルダか、そのリポジトリ（作業ツリーを含む）の中
- *   4. リポジトリの中の .pcube/   以前の置き方（git のメインの作業ツリー → 上へ辿る）
+ *   4. リポジトリの中の .p3/   以前の置き方（git のメインの作業ツリー → 上へ辿る）
  *   5. 登録が1つだけ              それを使う
  */
 export function resolveProject(o: { cwd: string; dir?: string; project?: string; user: UserConfig }): ResolvedProject {
@@ -85,8 +85,8 @@ function listing(user: UserConfig): string {
 const inside = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep);
 
 /**
- * リポジトリの中の .pcube/ を探す（以前の置き方）。
- * 要望ごとの作業ツリーの中で実行しても、git のメインの作業ツリーの .pcube/ を使う（各作業ツリーの .pcube/ はブランチ時点の写し）。
+ * リポジトリの中の .p3/ を探す（以前の置き方）。
+ * 要望ごとの作業ツリーの中で実行しても、git のメインの作業ツリーの .p3/ を使う（各作業ツリーの .p3/ はブランチ時点の写し）。
  */
 export function findDataDir(cwd: string): string | undefined {
   const main = mainWorktree(cwd);

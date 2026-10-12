@@ -1,13 +1,13 @@
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
- * pcube のドメイン型。サーバ・CLI・Web で共有する。
+ * p3 のドメイン型。サーバ・CLI・Web で共有する。
  *
  * 作業の単位は「要望」。要望ごとにフォルダを作り、そこから生まれたタスクや Preflight の記録は
  * すべてその下に置く。タスクは要望をまたいで移動しないので、要望の中で素直な連番（T001, T002, ...）にする。
  *
- *   .pcube/requests/<要望ID>/request.md
- *   .pcube/requests/<要望ID>/tasks/T001.md
- *   .pcube/requests/<要望ID>/preflight/<run>/...
+ *   .p3/requests/<要望ID>/request.md
+ *   .p3/requests/<要望ID>/tasks/T001.md
+ *   .p3/requests/<要望ID>/preflight/<run>/...
  */
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ export interface Task {
   repoOutputs?: RepoOutput[];
   /**
    * 作業中にした日時（着手を指示した目安）と、完了にした日時。
-   * 予定ではなく、ステータスを変えたときに pcube が記録する（AI や人が書くものではない）
+   * 予定ではなく、ステータスを変えたときに p3 が記録する（AI や人が書くものではない）
    */
   startedAt?: string;
   doneAt?: string;

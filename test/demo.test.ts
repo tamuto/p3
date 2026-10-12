@@ -4,9 +4,9 @@ import { seedDemo } from "../scripts/demoData.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 import { tempDir } from "./helpers.ts";
 
-describe("デモデータ（一時フォルダに作る。.pcube-demo には触れない）", () => {
+describe("デモデータ（一時フォルダに作る。.p3-demo には触れない）", () => {
   it("成果物は1つの例と、URL・文章・パスを混ぜた複数の例があり、どれも文字列の配列で保存される", async () => {
-    const dir = join(tempDir("p3-demo-"), ".pcube-demo");
+    const dir = join(tempDir("p3-demo-"), ".p3-demo");
     await seedDemo(dir);
     const ws = new Workspace(dir);
     await ws.load();

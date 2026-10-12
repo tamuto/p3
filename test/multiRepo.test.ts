@@ -62,7 +62,7 @@ describe("複数の参照先を Preflight に渡す", () => {
       { name: "docs", host: "/host/docsrepo/guide", container: "/workspace/docs" },
       { name: "infra", host: s.infra, container: "/workspace/infra" },
     ]);
-    expect(s.launched[0].data).toBe("/host/app/.pcube");
+    expect(s.launched[0].data).toBe("/host/app/.p3");
     // 調べた範囲は P3 が決めて残す（このマシンのパスは入れない）
     expect(s.run.scope).toEqual([
       { name: "app", mount: "app", role: "システム本体", readFirst: true, status: "ok" },

@@ -1,7 +1,7 @@
 /**
  * デモデータの中身（scripts/demo.ts が使う。テストからも一時フォルダに作って確かめる）。製品のコードではない。
  *
- * 題材は pcube 自身の開発。要望を作り、実際に Preflight（Mock エンジン）を走らせてタスク化し、
+ * 題材は p3 自身の開発。要望を作り、実際に Preflight（Mock エンジン）を走らせてタスク化し、
  * 作業を進めた状態まで作る。だから評価・タスク案・タスクボード・進捗の画面がそのまま確かめられる。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -29,9 +29,9 @@ export async function seedDemo(dir: string) {
     join(dir, "project.yaml"),
     YAML.stringify({
       name: "p3 (demo)",
-      description: "ファイルベースのプロジェクト管理ツール pcube 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
+      description: "ファイルベースのプロジェクト管理ツール p3 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
       // 本体の参照先（このマシンのパスは個人設定に置くもの。デモは pnpm dev の serve --dir で開くので登録しない）
-      repos: { pcube: { role: "本体", readFirst: true, writable: true } },
+      repos: { p3: { role: "本体", readFirst: true, writable: true } },
       docs: ["README.md", "docs"],
       milestones: [
         { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
@@ -67,11 +67,11 @@ export async function seedDemo(dir: string) {
     if (status === "done" && col.require(tid).status === "todo") await col.update(tid, { status: "doing" }, { actor: "ai:claude" });
     await col.update(tid, { status, ...(outputs.length ? { outputs } : {}) }, { actor: "ai:claude" });
   };
-  const pr = (n: number) => `https://github.com/tamuto/pcube/pull/${n}`;
+  const pr = (n: number) => `https://github.com/tamuto/p3/pull/${n}`;
 
   /**
    * 出来事の日時をさかのぼって書く（デモでスケジュールに経過が出るように）。
-   * pcube は日時を書き込んだ瞬間で記録するので、ファイルを直接書き換える。日数は今日からの相対、時刻は 10 時台
+   * p3 は日時を書き込んだ瞬間で記録するので、ファイルを直接書き換える。日数は今日からの相対、時刻は 10 時台
    */
   const at = (offset: number, hour = 10) => {
     const d = new Date();
@@ -177,7 +177,7 @@ export async function seedDemo(dir: string) {
       milestone: "v0.3",
       tags: ["ai"],
       areas: ["src/cli"],
-      body: `Claude Code や Codex から pcube のタスクを直接操作できるよう、MCP サーバとして公開したい。
+      body: `Claude Code や Codex から p3 のタスクを直接操作できるよう、MCP サーバとして公開したい。
 
 - CLI と同じ操作を MCP の tool として提供する
 - stdio と Streamable HTTP の両方に対応する

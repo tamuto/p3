@@ -8,7 +8,7 @@ const devSkill = readFileSync(new URL("../.claude/skills/p3/SKILL.md", import.me
 describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）", () => {
   // 役割と終わり方: どちらにも同じことが書いてある
   const shared = [
-    "PCUBE_ACTOR=ai:", // 変更者を名乗る
+    "P3_ACTOR=ai:", // 変更者を名乗る
     "pnpx @infodb/p3", // 入っていなくても動く呼び方
     "p3 whoami",
     "request new",

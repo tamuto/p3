@@ -9,7 +9,7 @@
 //      init --agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
-//      --render-dir <Docker のホストから見えるフォルダ> と環境変数 PCUBE_CODEX_PATH_MAP を渡す
+//      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
 //
 // 依存を使わない（Node だけで動く）。CI には入れない。公開の前に人が実行する（docs/publishing.md）。
 import { execFileSync, spawn } from "node:child_process";
@@ -47,10 +47,10 @@ const check = (cond, message) => {
   if (!cond) throw new Error(message);
 };
 
-// 入れた p3 を動かす環境: このマシンの PCUBE_* と個人設定は使わない。HOME も分ける（npm のキャッシュ・~/.config）
+// 入れた p3 を動かす環境: このマシンの P3_* と個人設定は使わない。HOME も分ける（npm のキャッシュ・~/.config）
 const home = join(work, "home");
 const env = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_") && !k.startsWith("npm_"))),
+  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_") && !k.startsWith("npm_"))),
   HOME: home,
   XDG_CONFIG_HOME: join(home, ".config"),
   npm_config_cache: join(work, "npm-cache"),
@@ -85,10 +85,10 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    for (const f of ["bin/pcube.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs"]) {
+    for (const f of ["bin/p3.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
-    const unwanted = files.filter((f) => /^(\.env|\.pcube|\.claude\/|test\/|scripts\/|src\/web\/|node_modules\/)/.test(f));
+    const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/web\/|node_modules\/)/.test(f));
     check(unwanted.length === 0, `入れてはいけないもの: ${unwanted.join(", ")}`);
     return `${files.length} ファイル`;
   });
@@ -174,12 +174,12 @@ try {
       return `${r.version}（前 ${r.previous ?? "なし"}）`;
     });
     await step("p3 render（本物の Docker。配布物の資材だけでイメージを作り、日本語の HTML を PNG にする）", () => {
-      // DevContainer の中では、一時フォルダは Docker のホストから見えない。--render-dir と PCUBE_CODEX_PATH_MAP で渡す
+      // DevContainer の中では、一時フォルダは Docker のホストから見えない。--render-dir と P3_CODEX_PATH_MAP で渡す
       const dir = option("render-dir") ? resolve(option("render-dir"), `p3-verify-render-${process.pid}`) : join(work, "render");
       mkdirSync(dir, { recursive: true });
       cleanup.push(dir);
       writeFileSync(join(dir, "page.html"), '<!doctype html><html lang="ja"><meta charset="utf-8"><body style="font-family:sans-serif"><h1>要望一覧</h1><p>絞り込み</p></body></html>');
-      const renderEnv = { ...env, ...(process.env.PCUBE_CODEX_PATH_MAP ? { PCUBE_CODEX_PATH_MAP: process.env.PCUBE_CODEX_PATH_MAP } : {}) };
+      const renderEnv = { ...env, ...(process.env.P3_CODEX_PATH_MAP ? { P3_CODEX_PATH_MAP: process.env.P3_CODEX_PATH_MAP } : {}) };
       const r = JSON.parse(p3(["render", join(dir, "page.html"), "--width", "800", "--json"], { cwd: dir, env: renderEnv, stdio: ["ignore", "pipe", "inherit"] }));
       check(r.ok && readFileSync(r.file).subarray(1, 4).toString() === "PNG", `描画できません: ${JSON.stringify(r)}`);
       return r.file;

@@ -7,7 +7,7 @@ import { CodexImageError, ensureCodexImage, updateCodexImage } from "../src/serv
 import { tempDir } from "./helpers.ts";
 
 const FAKE_DOCKER = fileURLToPath(new URL("./fixtures/fake-docker.mjs", import.meta.url));
-const BIN = fileURLToPath(new URL("../bin/pcube.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 const DAY = 86_400_000;
 
 /** PATH に置く偽の docker（このテストの node で fake-docker.mjs を動かす）と、その状態・記録のファイル */
@@ -86,7 +86,7 @@ describe("Codex のイメージ", () => {
 describe("p3 codex update", () => {
   /** 偽の docker だけが見える PATH で、未登録・未認証の個人設定のまま動かす */
   function p3(args: string[], d: ReturnType<typeof fakeDocker>) {
-    const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_")));
+    const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_")));
     const r = spawnSync(process.execPath, [BIN, ...args], {
       cwd: tempDir("p3-nowhere-"),
       encoding: "utf8",
@@ -115,7 +115,7 @@ describe("p3 codex update", () => {
     const r = spawnSync(process.execPath, [BIN, "codex", "update", "--json"], {
       cwd: tempDir(),
       encoding: "utf8",
-      env: { ...process.env, ...d.env, PATH: `${d.dir}:/usr/bin:/bin`, PCUBE_CODEX_ENSURE_IMAGE: "0", XDG_CONFIG_HOME: tempDir() },
+      env: { ...process.env, ...d.env, PATH: `${d.dir}:/usr/bin:/bin`, P3_CODEX_ENSURE_IMAGE: "0", XDG_CONFIG_HOME: tempDir() },
     });
     expect(r.status, r.stderr).toBe(0);
     expect(d.builds()).toHaveLength(1);

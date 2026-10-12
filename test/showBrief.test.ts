@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeProject, newRequest, newTask, tempDir } from "./helpers.ts";
 
-const BIN = fileURLToPath(new URL("../bin/pcube.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 
 /**
  * 短い出力でどれだけ減るか（README の「短い出力」の目安）。
@@ -61,7 +61,7 @@ async function fixture() {
 }
 
 function show(root: string, dataDir: string, ref: string, extra: string[]) {
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("PCUBE_"))), XDG_CONFIG_HOME: tempDir("p3-config-") };
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-") };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, "show", ref, ...extra], { cwd: root, encoding: "utf8", env });
   expect(r.status, r.stderr).toBe(0);
   return r.stdout;

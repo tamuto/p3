@@ -11,13 +11,13 @@
   ],
   "license": "MIT",
   "author": "tamuto",
-  "homepage": "https://github.com/tamuto/pcube#readme",
+  "homepage": "https://github.com/tamuto/p3#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tamuto/pcube.git"
+    "url": "git+https://github.com/tamuto/p3.git"
   },
   "bugs": {
-    "url": "https://github.com/tamuto/pcube/issues"
+    "url": "https://github.com/tamuto/p3/issues"
   },
   "type": "module",
   "engines": {
@@ -25,8 +25,7 @@
   },
   "packageManager": "pnpm@12.10.1",
   "bin": {
-    "p3": "bin/pcube.mjs",
-    "pcube": "bin/pcube.mjs"
+    "p3": "bin/p3.mjs"
   },
   "files": [
     "bin",
@@ -41,12 +40,11 @@
   },
   "scripts": {
     "dev": "pnpm demo && concurrently -n server,web -c blue,magenta \"pnpm:dev:server\" \"pnpm:dev:web\"",
-    "dev:server": "tsx watch --clear-screen=false src/cli/main.ts serve --dir .pcube-demo",
+    "dev:server": "tsx watch --clear-screen=false src/cli/main.ts serve --dir .p3-demo",
     "dev:web": "vite",
     "build": "vite build",
-    "start": "pnpm demo && node bin/pcube.mjs serve --dir .pcube-demo",
-    "pcube": "node bin/pcube.mjs",
-    "p3": "node bin/pcube.mjs",
+    "start": "pnpm demo && node bin/p3.mjs serve --dir .p3-demo",
+    "p3": "node bin/p3.mjs",
     "demo": "tsx scripts/demo.ts",
     "demo:reset": "tsx scripts/demo.ts --force",
     "routes": "tsr generate",
