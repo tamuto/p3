@@ -5,7 +5,7 @@ import { Badge, cx, Section } from "./ui.tsx";
 
 /**
  * Preflight の「調べた範囲」（参照先ごとに読んだか。P3 が始めるときに決めた記録）と、
- * 参照先のコードの地図（今の設定）、「判断の根拠」（確かめた / 推測。P3 が確かめ直したもの）。
+ * 参照先の主なフォルダ（今の設定）、「判断の根拠」（確かめた / 推測。P3 が確かめ直したもの）。
  */
 export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[]; repos: RepoRef[]; evidence?: Evidence[] | null }) {
   return (
@@ -32,9 +32,9 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                       {s.reason ?? SCOPE_STATUS_LABEL[s.status]}。中身は確かめていないので、関わる判断は推測です
                     </p>
                   )}
-                  {def && (def.map.length > 0 || def.mapFile) && (
+                  {def && def.map.length > 0 && (
                     <details className="text-sm">
-                      <summary className="cursor-pointer text-slate-500">コードの地図（今の設定）</summary>
+                      <summary className="cursor-pointer text-slate-500">主なフォルダ（今の設定）</summary>
                       <ul className="mt-1 space-y-0.5 pl-4">
                         {def.map.map((m) => (
                           <li key={m.path} className="break-words">
@@ -46,11 +46,6 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                             )}
                           </li>
                         ))}
-                        {def.mapFile && (
-                          <li>
-                            説明: <code className="font-mono break-all">{def.mapFile}</code>
-                          </li>
-                        )}
                       </ul>
                     </details>
                   )}

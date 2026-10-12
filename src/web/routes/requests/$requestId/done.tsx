@@ -53,7 +53,7 @@ function DonePage() {
                   <span>{t.title}</span>
                 </button>
               </td>
-              <td className="py-1">{t.outputs.length ? <Outputs outputs={t.outputs} /> : <span className="text-sm text-slate-400">—</span>}</td>
+              <td className="py-1">{t.outputs.length || t.repoOutputs?.length ? <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} /> : <span className="text-sm text-slate-400">—</span>}</td>
               <td className="py-2 text-right">
                 <Button
                   variant="ghost"

@@ -52,6 +52,13 @@ export function userConfigPath(): string {
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "infodb-p3", "config.yaml");
 }
 
+/** Preflight の記録（共有）に残す文から、個人設定のファイルのパス（このマシンのもの）を外す */
+export function hideConfigPath(e: unknown): string {
+  const text = (e as Error)?.message ?? String(e);
+  const path = (e as { configPath?: string })?.configPath ?? userConfigPath();
+  return text.split(path).join("個人設定（config.yaml）");
+}
+
 /** 個人設定を読めない・壊れている。ファイルは変えていない */
 export class UserConfigError extends Error {}
 

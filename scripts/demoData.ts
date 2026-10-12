@@ -28,7 +28,8 @@ export async function seedDemo(dir: string) {
     YAML.stringify({
       name: "p3 (demo)",
       description: "ファイルベースのプロジェクト管理ツール pcube 自身の開発。TypeScript / React / Hono、preflight に Codex を使う。",
-      repo: "..",
+      // 本体の参照先（このマシンのパスは個人設定に置くもの。デモは pnpm dev の serve --dir で開くので登録しない）
+      repos: { pcube: { role: "本体", readFirst: true, writable: true } },
       docs: ["README.md", "docs"],
       milestones: [
         { id: "v0.1", title: "最初の試作", due: day(-10), done: true },
@@ -36,7 +37,6 @@ export async function seedDemo(dir: string) {
         { id: "v0.3", title: "AI 連携の拡充", due: day(40) },
       ],
       branchPattern: "req/{id}-{slug}",
-      worktreeDir: ".worktrees",
       preflight: { instructions: "依存パッケージの追加は最小限に。ファイルが唯一の正である前提を崩さないこと。" },
     }),
   );

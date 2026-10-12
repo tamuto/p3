@@ -85,6 +85,10 @@ export interface Task {
   areas: string[];
   /** 成果物。1項目ずつ URL（PR / MR）・文章・ドキュメントのパスのどれでもよい。項目全体が http(s) の URL なら画面でリンクにする */
   outputs: string[];
+  /** 作業先（作業先にできる参照先の名前）。null は作業先なし（調査・人の判断など）。shared/workTarget.ts */
+  repo: string | null;
+  /** リポジトリごとの成果物（PR など）。最後のタスクに、関係するリポジトリの PR を全部残せる。outputs とは別に持つ */
+  repoOutputs?: RepoOutput[];
   /**
    * 作業中にした日時（着手を指示した目安）と、完了にした日時。
    * 予定ではなく、ステータスを変えたときに pcube が記録する（AI や人が書くものではない）
@@ -115,10 +119,15 @@ export interface Task {
 export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "resolved" | "done" | "rejected";
 export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "resolved", "done", "rejected"];
 
+/** 要望の、作業先のリポジトリでのブランチ（名前だけ。git のブランチや作業ツリーは作業する人・AI が作る） */
 export interface Workstream {
   branch: string;
-  /** リポジトリルートからの相対パス */
-  worktree: string;
+}
+
+/** リポジトリ（参照先の名前）ごとの成果物 */
+export interface RepoOutput {
+  repo: string;
+  output: string;
 }
 
 export interface Request {
@@ -135,7 +144,8 @@ export interface Request {
   milestone?: string;
   /** タグ: 外部 ID・分類の自由な文字列（例: jira:PROJ-123、group:顧客A、feature）。shared/tags.ts */
   tags: string[];
-  workstream?: Workstream;
+  /** 作業先のリポジトリごとのブランチ（参照先の名前 → ブランチ）。タスク化・作業先を足したときに要る分だけ割り当てる */
+  workstreams?: Record<string, Workstream>;
   /** 最新 preflight run */
   lastPreflight?: string;
   rev: number;
@@ -178,6 +188,8 @@ export interface ProposedTask {
   relations: Relation[];
   /** 取り込み対象か（UI で切り替え） */
   include: boolean;
+  /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
+  repo?: string | null;
 }
 
 export interface PreflightAssessment {
@@ -244,7 +256,14 @@ export interface PreflightRun {
    * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らず、同じタスクを二度アーカイブしないための記録。
    *   created: 作った案とタスク（D1 → T004）、archive: アーカイブに選んだ置き換えられるタスク、archived: アーカイブ済み
    */
-  materialization?: { created: Record<string, string>; archive: string[]; archived: string[]; done: boolean };
+  materialization?: {
+    created: Record<string, string>;
+    archive: string[];
+    archived: string[];
+    done: boolean;
+    /** 割り当てるブランチ（始めたときに決めたもの。やり直しでも同じ） */
+    workstreams?: { add: Record<string, Workstream>; noGit: string[] };
+  };
   /** 実行した人 */
   startedBy?: string;
   /** 結果を引き継いだ前回の run（無ければ最初から評価した） */
@@ -323,20 +342,15 @@ export interface ProjectConfig {
   name: string;
   /** 何を作っているプロジェクトか。Preflight の前提になる */
   description: string;
-  /** 管理対象リポジトリのルート（data dir からの相対 or 絶対）。タスクの作業ツリーの元。以前は Preflight もここだけを読んだ */
-  repo: string;
   /**
-   * Preflight が読む参照先（共有の定義。名前・役割・最初に読むか・作業先になりうるか・コードの地図）。
-   * 空なら今までの1リポジトリ（名前 main）。手元のパスは個人設定に置く。shared/repos.ts
+   * 参照先（リポジトリ・フォルダ。名前・役割・最初に読むか・作業先になりうるか・主なフォルダ）。
+   * Preflight が読み、作業先にできるものはタスクの作業先になる。このマシンのパスは個人設定に置く。shared/repos.ts
    */
   repos: RepoRef[];
-  /** プロジェクトのドキュメント（`<参照先>:<パス>` か、先頭の参照先の中のパス）。Preflight で最初に読ませる */
-  docs: string[];
   /** マイルストーン（リリース）。複数の要望をまとめる */
   milestones: Milestone[];
   /** ブランチ命名規則。{id} {slug} を置換 */
   branchPattern: string;
-  worktreeDir: string;
   preflight: {
     /** プロジェクト固有の評価の観点・制約（例: 「外部 API の追加は要相談」） */
     instructions: string;

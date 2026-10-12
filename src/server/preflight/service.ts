@@ -17,7 +17,7 @@ import {
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
-import { nowIso, slugify, writeFileAtomic } from "../store/fsutil.ts";
+import { nowIso, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { supersedeCandidates } from "../supersede.ts";
@@ -25,6 +25,8 @@ import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
+import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
+import { hideConfigPath } from "../userConfig.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -121,7 +123,7 @@ export class PreflightService {
       try {
         engine = this.engines[await this.currentDefault()];
       } catch (e) {
-        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`;
+        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`;
         engine = failing(this.lastDefault, message);
       }
     }
@@ -209,6 +211,21 @@ export class PreflightService {
     this.ws.emit({ type: "preflight-log", runId: run.id, entry });
   }
 
+  /** 共有の記録に出すパス: 参照先の中なら <参照先>:<パス>、データのフォルダの中なら data:<パス>（このマシンのパスは出さない） */
+  private shownPath(p: string, refs: ResolvedRef[]): string {
+    const inside = (dir: string) => {
+      const rel = relative(dir, p);
+      return rel.startsWith("..") || isAbsolute(rel) ? undefined : rel;
+    };
+    for (const r of refs) {
+      const rel = r.local ? inside(r.local) : undefined;
+      if (rel !== undefined) return `${r.name}:${rel}`;
+    }
+    const data = inside(this.ws.dataDir);
+    if (data !== undefined) return `data:${data}`;
+    return p.startsWith("/workspace") ? p : "（参照先の外）";
+  }
+
   private async execute(
     engine: PreflightEngine,
     run: PreflightRun,
@@ -218,7 +235,6 @@ export class PreflightService {
     after: (ok: boolean) => Request["status"],
     refs: ResolvedRef[],
   ) {
-    const repoRoot = this.ws.repoRoot;
     try {
       this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
       const outcome = await engine.run(
@@ -226,7 +242,6 @@ export class PreflightService {
           project: this.ws.project,
           request: this.ws.requests.require(run.requestId),
           context: run.context,
-          repoRoot,
           refs,
           dataDir: this.ws.dataDir,
           runDir,
@@ -237,11 +252,7 @@ export class PreflightService {
       );
       // 書いてよい範囲の外が変更されていないか確かめる
       const stray = outcome.changed.filter((p) => !p.startsWith(`${runDir}/`));
-      for (const p of stray) {
-        const inRepo = relative(repoRoot, p);
-        const shown = inRepo.startsWith("..") || isAbsolute(inRepo) ? p : inRepo;
-        this.log(run, { kind: "error", text: `想定外の変更: ${shown}（確認して必要なら元に戻してください）` });
-      }
+      for (const p of stray) this.log(run, { kind: "error", text: `想定外の変更: ${this.shownPath(p, refs)}（確認して必要なら元に戻してください）` });
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
@@ -270,6 +281,8 @@ export class PreflightService {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
     if (!run || !draft) throw new Error(`${runId}/${key} not found`);
+    // 作業先は作業先にできる参照先だけ（変える前に断る）
+    if ("repo" in patch) checkRepoTarget(this.ws, patch.repo);
     const next = { ...draft, ...patch, key };
     await this.ws.preflight.saveDraft(requestId, runId, next);
     return next;
@@ -312,6 +325,18 @@ export class PreflightService {
     const drafts = resuming ? run.drafts.filter((d) => d.key in run.materialization!.created || d.include) : run.drafts.filter((d) => d.include);
     if (!drafts.length) throw new Error("採用したタスク案がありません");
 
+    // 作業先: 手で直した案も、変える前に確かめる。割り当てるブランチもここで決めて run に残す（やり直しでも同じ）
+    for (const d of drafts) checkRepoTarget(this.ws, d.repo);
+    const draftRepo = (d: ProposedTask) => d.repo ?? null;
+    const plan =
+      resuming && run.materialization!.workstreams
+        ? run.materialization!.workstreams
+        : planWorkstreams(
+            this.ws,
+            requestId,
+            drafts.map(draftRepo).filter((r): r is string => !!r),
+          );
+
     const candidates = supersedeCandidates(this.ws, run);
     if (!resuming) {
       const chosen: string[] = [];
@@ -322,7 +347,7 @@ export class PreflightService {
         if (sel.rev !== undefined && sel.rev !== c.rev) throw new ConflictError(`${requestId}/${id}`, sel.rev, c.rev);
         if (!chosen.includes(id)) chosen.push(id);
       }
-      run.materialization = { created: {}, archive: chosen, archived: [], done: false };
+      run.materialization = { created: {}, archive: chosen, archived: [], done: false, workstreams: plan };
       await this.ws.preflight.save(run);
     }
     const state = run.materialization!;
@@ -350,6 +375,7 @@ export class PreflightService {
           {
             title: d.title,
             status: "todo",
+            repo: draftRepo(d),
             labels: [],
             areas: d.areas,
             outputs: [],
@@ -382,19 +408,14 @@ export class PreflightService {
     const impactRels = keepExisting(
       (run.assessment?.impacts ?? []).map((i) => ({ type: i.type, target: i.target, note: i.reason, confidence: i.confidence })),
     ).filter((i) => !request.relations.some((r) => absRef(r.target, requestId) === absRef(i.target, requestId) && r.type === i.type));
-    const p = this.ws.project;
-    // 日本語のタイトルは slug にならないので、そのときは区切りごと落とす (req/261009-k7m3x)
-    const slug = slugify(request.title);
-    const branch = p.branchPattern
-      .replace("{id}", requestId)
-      .replace(slug ? "{slug}" : /[-_/]?\{slug\}/, slug);
     await this.ws.requests.update(
       requestId,
       {
         status: "active",
         areas: [...new Set([...request.areas, ...(run.assessment?.areas ?? [])])],
         relations: [...request.relations, ...impactRels],
-        workstream: request.workstream ?? { branch, worktree: `${p.worktreeDir}/${requestId}` },
+        // 採用した案の作業先の分だけブランチを割り当てる（既にあるものは変えない。作業先なしは割り当てない）
+        ...workstreamPatch(this.ws, requestId, plan),
       },
       { actor },
     );

@@ -7,12 +7,15 @@ import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { ReloadError } from "../store/workspace.ts";
+import { checkRepoTarget, ensureWorkstreams } from "../workTargets.ts";
+import { defaultRepo } from "../../shared/workTarget.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
+import { repoRoutes } from "./repoRoutes.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -35,6 +38,9 @@ const relation = z.object({
 });
 const taskInput = z.object({
   title: z.string().min(1),
+  /** 作業先（参照先の名前）。null は作業先なし */
+  repo: z.string().nullable().optional(),
+  repoOutputs: z.array(z.object({ repo: z.string().min(1), output: z.string().min(1) })).optional(),
   status: z.enum(TASK_STATUSES).optional(),
   labels: z.array(z.string()).optional(),
   areas: z.array(z.string()).optional(),
@@ -58,7 +64,6 @@ const projectPatch = z
   .object({
     name: z.string().min(1),
     description: z.string(),
-    docs: z.array(z.string().min(1)),
     milestones: z.array(
       z.object({
         id: z.string().regex(/^[A-Za-z0-9._-]+$/, "マイルストーンの id は英数字と . _ -"),
@@ -68,7 +73,6 @@ const projectPatch = z
       }),
     ),
     branchPattern: z.string().includes("{id}"),
-    worktreeDir: z.string().min(1),
     preflight: z.object({ instructions: z.string() }),
   })
   .partial()
@@ -139,6 +143,8 @@ export function apiRoutes(ctx: PcubeContext) {
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
+  /** 参照先（設定画面。このマシンのパスはローカルの画面からだけ） */
+  app.route("/repos", repoRoutes(ctx));
   /** データのフォルダを全部読み直す（ファイル監視に頼らない取り込み）。終わったら変更通知 kind: "reload" */
   app.post("/reload", async (c) => c.json(await ws.reloadAll()));
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
@@ -193,8 +199,15 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.post("/requests/:rid/tasks", async (c) => {
     const id = rid(c);
-    const b = unnull(taskInput.parse(await c.req.json()));
-    const t = await ws.tasksOf(id).create({ ...b, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    const raw = taskInput.parse(await c.req.json());
+    const b = unnull(raw);
+    // 作業先は null（作業先なし）を残す。作業先にできるものだけ（変える前に断る）
+    checkRepoTarget(ws, raw.repo);
+    for (const o of raw.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
+    // 作業先を書かなければ、作業先にできる参照先が1つならそれ（ほかは作業先なし）
+    const repo = "repo" in raw ? (raw.repo ?? null) : defaultRepo(ws.project);
+    const t = await ws.tasksOf(id).create({ ...b, repo, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    if (repo) await ensureWorkstreams(ws, id, [repo], actorOf(c));
     // 対応済の要望に未完了のタスクを足したら進行中に戻す
     const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
@@ -210,6 +223,11 @@ export function apiRoutes(ctx: PcubeContext) {
     const id = rid(c);
     const col = ws.tasksOf(id);
     const next: Partial<Task> = unnull(patch) as Partial<Task>;
+    if ("repo" in patch) {
+      checkRepoTarget(ws, patch.repo);
+      next.repo = patch.repo ?? null;
+    }
+    for (const o of patch.repoOutputs ?? []) checkRepoTarget(ws, o.repo);
     if (checked !== undefined) {
       const done = (next.status ?? col.require(tid(c)).status) === "done";
       if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
@@ -218,6 +236,7 @@ export function apiRoutes(ctx: PcubeContext) {
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
     const warnings = startWarnings(ws, `${id}/${tid(c)}`, col.require(tid(c)).status, next.status);
     const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    if (patch.repo) await ensureWorkstreams(ws, id, [patch.repo], actorOf(c));
     const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
     if (reopened) changed("request", id);
@@ -291,7 +310,7 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
     const patch = z
-      .object({ title: z.string(), description: z.string(), include: z.boolean() })
+      .object({ title: z.string(), description: z.string(), include: z.boolean(), repo: z.string().nullable() })
       .partial()
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch));

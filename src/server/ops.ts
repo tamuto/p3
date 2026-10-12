@@ -14,12 +14,16 @@ export interface TaskFilter {
   status?: string[];
   area?: string;
   q?: string;
+  /** 作業先（参照先の名前。none は作業先なし） */
+  repo?: string;
 }
 
 export function listTasks({ ws }: PcubeContext, f: TaskFilter = {}): Task[] {
   let tasks = f.request ? ws.tasksOf(f.request).list() : ws.allTasks();
   if (f.status?.length) tasks = tasks.filter((t) => f.status!.includes(t.status));
   if (f.area) tasks = tasks.filter((t) => t.areas.some((a) => a.startsWith(f.area!)));
+  // 作業先で絞る（none は作業先なし）
+  if (f.repo !== undefined) tasks = tasks.filter((t) => (t.repo ?? null) === (f.repo === "none" ? null : f.repo));
   if (f.q) {
     const q = f.q.toLowerCase();
     tasks = tasks.filter((t) => `${t.ref} ${t.title} ${t.body}`.toLowerCase().includes(q));

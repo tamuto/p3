@@ -5,24 +5,19 @@ import type { ProjectConfig } from "../../shared/types.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
 /** 設定の保存（画面・p3 config）で書き換える項目。repos は p3 repo だけが項目ごとに書く（writeRepoEntry） */
-const ORDER: (keyof ProjectConfig)[] = [
-  "name", "description", "repo", "docs", "milestones", "branchPattern", "worktreeDir", "preflight",
-];
+const ORDER: (keyof ProjectConfig)[] = ["name", "description", "milestones", "branchPattern", "preflight"];
 /** ファイルの中の並び */
-const RANK: (keyof ProjectConfig)[] = ["name", "description", "repo", "repos", "docs", "milestones", "branchPattern", "worktreeDir", "preflight"];
+const RANK: (keyof ProjectConfig)[] = ["name", "description", "repos", "milestones", "branchPattern", "preflight"];
 
 /** project.yaml に書く形。既定値のままの項目や空の項目は省き、人が読み書きしやすく保つ */
 function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknown>> {
   return {
     name: cfg.name,
     description: cfg.description || undefined,
-    repo: cfg.repo || undefined,
-    docs: cfg.docs.length ? cfg.docs : undefined,
     milestones: cfg.milestones.length
       ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
       : undefined,
     branchPattern: cfg.branchPattern,
-    worktreeDir: cfg.worktreeDir,
     preflight: cfg.preflight.instructions ? { instructions: cfg.preflight.instructions } : undefined,
   };
 }
@@ -35,6 +30,7 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
   const doc = text.trim() ? YAML.parseDocument(text) : new YAML.Document({});
   const plain = toPlain(cfg);
   doc.delete("statuses"); // 以前は列を設定できた。今は未着手 / 作業中 / 完了で固定
+  dropLegacy(doc);
   for (const key of ORDER) {
     const value = plain[key];
     if (value === undefined) doc.delete(key);
@@ -42,6 +38,11 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
   }
   sortKeys(doc);
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
+}
+
+/** 以前のプロジェクトの docs（どの保存でも消す）。今は参照先の主なフォルダ（入口）で示す */
+function dropLegacy(doc: YAML.Document) {
+  doc.delete("docs");
 }
 
 /** 後から足した項目も決まった順に並べる（コメントは項目に付いているので一緒に動く） */
@@ -60,7 +61,7 @@ function repoPlain(r: RepoRef): Record<string, unknown> {
     ? Object.fromEntries(r.map.map((m) => [m.path, m.entry ? { role: m.role, entry: m.entry } : m.role]))
     : undefined;
   return Object.fromEntries(
-    Object.entries({ role: r.role || undefined, readFirst: r.readFirst || undefined, writable: r.writable || undefined, map, mapFile: r.mapFile }).filter(
+    Object.entries({ role: r.role || undefined, readFirst: r.readFirst || undefined, writable: r.writable || undefined, map }).filter(
       ([, v]) => v !== undefined,
     ),
   );
@@ -78,6 +79,7 @@ export async function writeRepoEntry(path: string, name: string, entry: RepoRef 
   if (repos !== undefined && !YAML.isMap(repos)) {
     throw new Error(`project.yaml の repos は「名前: 定義」の対応で書いてください（今の形では p3 repo で書き換えられません）: ${path}`);
   }
+  dropLegacy(doc);
   if (entry === null) {
     doc.deleteIn(["repos", name]);
     if (YAML.isMap(doc.get("repos")) && !(doc.get("repos") as YAML.YAMLMap).items.length) doc.delete("repos");
@@ -87,7 +89,8 @@ export async function writeRepoEntry(path: string, name: string, entry: RepoRef 
     const plain = repoPlain(entry);
     if (YAML.isMap(node)) {
       // 既にあれば項目ごとに書く（人が書いたコメントや、ここで扱わない項目を残す）
-      for (const key of ["role", "readFirst", "writable", "map", "mapFile"]) {
+      node.delete("mapFile"); // 以前の構成の説明。今は主なフォルダの入口で示す
+      for (const key of ["role", "readFirst", "writable", "map"]) {
         if (plain[key] === undefined) node.delete(key);
         else node.set(key, doc.createNode(plain[key]));
       }

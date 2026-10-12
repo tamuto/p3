@@ -17,35 +17,37 @@ export interface PcubeContext {
   preflight: PreflightService;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
+  /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
+  projectName?: string;
 }
 
 /**
  * サーバと CLI が共有する組み立て。どちらもデータのフォルダのファイルを直接読み書きする。
- * repoRoot: 手元のリポジトリ（個人設定）。省くと project.yaml の repo
+ * repos: 参照先の名前 → このマシンのパス（個人設定）
  * settings: マシンごとの設定（環境変数と個人設定から。.env は読まない）。省くと個人設定から、Preflight を始めるたび・
  *   エンジンの状態を見るたびに読み直す（serve を起動し直さずに効く）。MachineSettings を渡すとその値に決める（テストなど）。
  *   プロジェクト（データのフォルダ）側には置かない: 認証情報をプロジェクトの git に入れないため
  */
 export async function openProject(
   dataDir: string,
-  opts: { repoRoot?: string; repos?: Record<string, string>; settings?: MachineSettings | SettingsSource } = {},
+  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string } = {},
 ): Promise<PcubeContext> {
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
   const initial = await source.get().catch(() => undefined);
-  const ws = new Workspace(dataDir, opts.repoRoot, opts.repos);
+  const ws = new Workspace(dataDir, opts.repos);
   await ws.load();
   const index = new ProjectIndex(ws);
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
   // Mock は preflight.engine: mock（PCUBE_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
   const chatgpt = new ChatGptAccount();
   const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = {
-    codex: new CodexWorkspaceEngine({ load: async () => ({ ...codexConfig(await source.get()), configPath: source.path }), account: chatgpt }),
+    codex: new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt }),
     mock: new MockEngine(),
   };
   const preflight = new PreflightService(ws, index, engines, {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  return { ws, index, preflight, chatgpt };
+  return { ws, index, preflight, chatgpt, projectName: opts.projectName };
 }

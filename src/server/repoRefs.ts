@@ -1,6 +1,5 @@
 import { statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
-import { effectiveRepos, LEGACY_REPO, mountNames, type RefScope, type RepoRef } from "../shared/repos.ts";
+import { mountNames, type RefScope, type RepoRef } from "../shared/repos.ts";
 import type { ProjectConfig } from "../shared/types.ts";
 
 /**
@@ -21,26 +20,15 @@ export interface ResolvedRef extends RepoRef {
   local?: string;
   /** 見られないときの理由 */
   reason?: string;
-  /** 共有の repos が無い今までのプロジェクトの、ただ1つの参照先 */
-  legacy?: boolean;
 }
 
-/**
- * 解決の順（名前ごと）: 個人設定の repos.<名前> → （共有の repos が無いときだけ）今までのリポジトリ
- * （個人設定の repos.main・その最初の項目 → project.yaml の repo）。共有の repos があるのに手元の対応が無い名前は unregistered。
- */
-export function resolveRefs(project: ProjectConfig, opts: { dataDir: string; localRepos?: Record<string, string>; repoOverride?: string }): ResolvedRef[] {
+/** 共有の定義ごとに、個人設定の repos.<名前>（このマシンのパス）を合わせる。手元の対応が無い名前は unregistered */
+export function resolveRefs(project: ProjectConfig, opts: { localRepos?: Record<string, string> }): ResolvedRef[] {
   const local = opts.localRepos ?? {};
-  const legacy = !project.repos.length;
-  const repos = effectiveRepos(project.repos);
-  const mounts = mountNames(repos.map((r) => r.name));
-  return repos.map((r, i) => {
-    let path = local[r.name];
-    if (!path && legacy) {
-      path = opts.repoOverride ?? local[LEGACY_REPO] ?? Object.values(local)[0];
-      if (!path && project.repo) path = isAbsolute(project.repo) ? project.repo : resolve(opts.dataDir, project.repo);
-    }
-    const base = { ...r, mount: mounts[i], ...(legacy ? { legacy: true } : {}) };
+  const mounts = mountNames(project.repos.map((r) => r.name));
+  return project.repos.map((r, i) => {
+    const path = local[r.name];
+    const base = { ...r, mount: mounts[i] };
     if (!path) return { ...base, status: "unregistered" as const, reason: "このマシンのパスが登録されていません" };
     try {
       const st = statSync(path);

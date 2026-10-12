@@ -153,7 +153,7 @@ describe("前回の結果とメモの引き継ぎ", () => {
     const r1 = await preflight();
     await ctx.preflight.updateDraft(req.id, r1.id, "D1", { title: "人が直した題", include: false });
     const r2 = await preflight();
-    expect(carryover(r2.id)).toContain("### D1 人が直した題（不採用）");
+    expect(carryover(r2.id)).toContain("### D1 人が直した題（不採用 / 作業先: main）");
     await ctx.preflight.updateDraft(req.id, r1.id, "D1", { title: "さらに直した" });
     expect(carryover(r2.id)).toContain("人が直した題");
   });

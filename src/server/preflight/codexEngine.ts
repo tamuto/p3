@@ -18,8 +18,9 @@ import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
 import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
 import { prepareLaunch } from "./launch.ts";
+import { hideConfigPath } from "../userConfig.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
-import { parseRepoPath } from "../../shared/repos.ts";
+import { writableRepos } from "../../shared/workTarget.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -53,8 +54,6 @@ export interface CodexWorkspaceConfig {
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
-  /** 個人設定のファイルの場所（直す場所の案内に出す） */
-  configPath?: string;
   /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
   command?: (m: { repos: HostMount[]; data: string; auth: CodexAuth["mode"] }) => string[];
 }
@@ -171,7 +170,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     try {
       cfg = await this.config();
     } catch (e) {
-      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
     }
     return new CodexWorkspaceEngine({ ...cfg, account: this.account });
   }
@@ -264,7 +263,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     try {
       cfg = await this.config();
     } catch (e) {
-      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
     }
     const auth = await this.auth(cfg);
     if (auth.mode === "none") throw new Error(auth.reason);
@@ -306,9 +305,9 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     ];
     const repos: HostMount[] = readable.map((r, i) => ({ name: r.name, host: mappings[i].host, container: mappings[i].container }));
     const data = mappings.at(-1)!.host;
-    log({ kind: "info", text: `パスの対応（個人設定の codex.pathMap${cfg.configPath ? `、${cfg.configPath}` : ""}）:` });
+    log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
-    for (const r of readable) if (mapFileMissing(r)) log({ kind: "info", text: `地図のファイルがありません: ${r.name}:${r.mapFile}` });
+    for (const r of readable) for (const m of r.map) if (m.entry && entryMissing(r, m.entry)) log({ kind: "info", text: `入口のファイルがありません: ${r.name}:${m.entry}` });
     if (cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
       try {
@@ -328,7 +327,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       );
     // 中継ごしに起こして、すぐ終わったときの Docker の出力と終わり方を残す（launcher.mjs）
     const launch = await prepareLaunch(command);
-    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length, configPath: cfg.configPath };
+    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length };
     /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
     const diagnosed = async (e: unknown, phase: "start" | "run") => {
       if (signal.aborted) return undefined;
@@ -446,47 +445,30 @@ ${c.text.trim()}
 `;
 }
 
-/** 参照先の中のパス → コンテナの中のパス（読めなければ理由） */
-function containerPathOf(job: PreflightJob, raw: string): { path: string } | { reason: string } {
-  const repos = job.refs;
-  const p = parseRepoPath(raw, repos.map((r) => r.name), repos[0]?.name);
-  if (!p.ok) return { reason: p.reason };
-  const ref = repos.find((r) => r.name === p.repo)!;
-  if (ref.status !== "ok") return { reason: `参照先 ${ref.name} は見ていません（${refScope(ref).reason}）` };
-  return { path: `${CONTAINER_WORKSPACE}/${ref.mount}${p.path ? `/${p.path}` : ""}` };
-}
-
-/** プロジェクト設定の docs（<参照先>:<パス> か先頭の参照先の中のパス）。最初に読ませる */
-function docsSection(job: PreflightJob) {
-  if (!job.project.docs.length) return "";
-  const lines = job.project.docs.map((d) => {
-    const at = containerPathOf(job, d);
-    return "path" in at ? `- ${at.path}` : `- ${d}（読めません: ${at.reason}）`;
-  });
-  return `\n## 最初に読むドキュメント\nプロジェクトの方針・用語・設計が書かれています。評価の前に必要な範囲で読んでください。\n${lines.join("\n")}\n`;
-}
-
-/** コードの地図（どこから読むかの案内）。地図の Markdown が無ければ印を付ける */
+/** 主なフォルダ（どこから読むかの案内）。入口のファイルが無ければ印を付ける */
 function codeMapSection(job: PreflightJob) {
   const parts = job.refs
-    .filter((r) => r.status === "ok" && (r.map.length || r.mapFile))
+    .filter((r) => r.status === "ok" && r.map.length)
     .map((r) => {
       const base = `${CONTAINER_WORKSPACE}/${r.mount}`;
-      const lines = r.map.map((m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}）` : ""}`);
-      if (r.mapFile) lines.push(`- 地図の説明: ${base}/${r.mapFile}${mapFileMissing(r) ? "（ファイルがありません）" : ""}`);
+      const lines = r.map.map(
+        (m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}${entryMissing(r, m.entry) ? "。ファイルがありません" : ""}）` : ""}`,
+      );
       return `### ${r.name}${r.role ? `（${r.role}）` : ""}\n${lines.join("\n")}`;
     });
   if (!parts.length) return "";
-  return `\n## コードの地図（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
+  return `\n## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
 }
 
-const mapFileMissing = (r: ResolvedRef) => !!r.mapFile && !!r.local && !existsSync(join(r.local, r.mapFile));
+const entryMissing = (r: ResolvedRef, entry: string) => !!r.local && !existsSync(join(r.local, entry));
 
 /** 調べる対象（参照先）の説明 */
 function refsSection(job: PreflightJob) {
   const ok = job.refs.filter((r) => r.status === "ok");
+  const writable = writableRepos(job.project);
   const lines = ok.map(
-    (r) => `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}`,
+    (r) =>
+      `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}${writable.includes(r.name) ? "［作業先にできる］" : ""}`,
   );
   const skipped = job.refs.filter((r) => r.status !== "ok").map((r) => `${r.name}（${refScope(r).reason}）`);
   return [
@@ -494,6 +476,7 @@ function refsSection(job: PreflightJob) {
       ? `- 調べる対象（参照先。読むだけで、書き込めません）:\n${lines.join("\n")}`
       : "- 読める参照先（リポジトリ・フォルダ）はありません。コードは確かめられないので、要望と /data の資料だけで評価し、その制約を評価に書いてください。",
     ...(skipped.length ? [`- 見ていない参照先: ${skipped.join(" / ")}。中身は確かめられないので、これに関わる判断は推測として扱ってください。`] : []),
+    `- タスク案の repo（作業先）に書けるのは ${writable.join(" / ")} か none だけです。1つのタスクの作業先は1つにし、複数のリポジトリにまたがる作業はタスクを分けてください。`,
   ].join("\n");
 }
 
@@ -521,7 +504,7 @@ function prompt(job: PreflightJob, paths: ContainerPaths) {
 
 ## プロジェクト
 ${job.project.name}: ${job.project.description || "（説明なし）"}
-${docsSection(job)}${codeMapSection(job)}
+${codeMapSection(job)}
 ## 要望（${paths.runDir}/request.md にも同じ内容があります）
 ${r.body.trim() || "(本文なし)"}
 ${carryoverSection(job, paths)}
@@ -531,7 +514,7 @@ ${contextList(job.context)}
 
 ## やること
 1. 要望の妥当性（目的・価値・既存方針との整合）を評価する。
-2. 参照先のコードを必要な範囲で調べ（コードの地図があればそこから）、実現可能性・影響範囲・リスクを評価する。
+2. 参照先のコードを必要な範囲で調べ（主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
 3. 既存のタスク/要望との関係（依存・影響・重複など）を洗い出す。関係は1対1とは限らない。
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。

@@ -9,10 +9,10 @@ import type { MachineSettings, SettingsSource } from "./machineSettings.ts";
 
 export interface ServeOptions {
   dataDir: string;
-  /** 手元のリポジトリ（個人設定） */
-  repoRoot?: string;
   /** 参照先の名前 → このマシンのパス（個人設定） */
   repos?: Record<string, string>;
+  /** 個人設定に登録したプロジェクト名（設定画面で参照先のこのマシンのパスを書くため） */
+  projectName?: string;
   port: number;
   host: string;
   /** ビルド済みの画面 (dist/web) も配信する */
@@ -23,7 +23,7 @@ export interface ServeOptions {
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions) {
-  const ctx = await openProject(opts.dataDir, { repoRoot: opts.repoRoot, repos: opts.repos, settings: opts.settings });
+  const ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
   const { ws, preflight } = ctx;
   void ws.watch();
 
@@ -39,7 +39,7 @@ export async function startServer(opts: ServeOptions) {
   serve({ fetch: app.fetch, port: opts.port, hostname: opts.host }, () => {
     console.log(`pcube: ${ws.project.name}`);
     console.log(`  data     ${opts.dataDir}`);
-    console.log(`  repo     ${ws.repoRoot}`);
+    console.log(`  repos    ${ws.project.repos.map((r) => r.name).join(", ") || "（なし）"}`);
     console.log(`  engines  ${preflight.availableEngines().join(", ")} (default: ${preflight.defaultEngine})`);
     console.log(`  listen   http://${opts.host}:${opts.port}${opts.static ? "" : "  (api only)"}`);
     if (opts.static && !existsSync(`${PCUBE_ROOT}dist/web/index.html`)) {

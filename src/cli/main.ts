@@ -18,8 +18,10 @@ import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
+import { defaultRepo, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
+import { addRepoOutputs, checkRepoTarget, ensureWorkstreams, parseRepoOutput, repoArg, taskWork } from "../server/workTargets.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
-import { config, currentRequest, init, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 
 /**
@@ -39,12 +41,14 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
 使い方: p3 <コマンド> [引数] [オプション]   （pcube でも同じ）
 
 プロジェクト
-  init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する
-                               --project 名前 --dir フォルダ --description --docs a,b --instructions 観点 --agents --yes
-  project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
-  config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
+  init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する。
+                               このリポジトリを本体の参照先として登録する
+                               --project 名前 --dir フォルダ --repo-name 参照先の名前（既定はフォルダ名）--description --docs a,b
+                               --instructions 観点 --agents --yes
+  project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
+  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
-                               add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…]  共有の定義を足す
+                               add <名前> [<パス>] [role=… readFirst=true writable=true]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
                                rm <名前>  共有の定義ごと消す（--local はこのマシンのパスだけ）
   user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
@@ -67,12 +71,15 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   request archive <要望>
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
-  ls                           一覧  --status s1,s2  --area パス  -q 語句  --all（全要望）
+  ls                           一覧  --status s1,s2  --area パス  -q 語句  --repo <参照先>|none（作業先）  --all（全要望）
   show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
-  set <T003> キー=値 ...         title status labels areas outputs（空で消す。outputs= はカンマ区切りで置き換える）
+                               --repo <参照先>|none 作業先（作業先にできる参照先だけ。足りないブランチは割り当てる）
+  set <T003> キー=値 ...         title status labels areas outputs repo（空で消す。outputs= はカンマ区切りで置き換える。repo=none は作業先なし）
+                               --repo-output <参照先>=<成果物>  リポジトリごとの成果物を足す（repoOutputs= で全部外す）
   move <T003> <ステータス>        --output URL・文章・パス（成果物を足す。繰り返し可。カンマで分けない）
+                               --repo-output <参照先>=<URL>  リポジトリごとの成果物（最後のタスクに全リポジトリの PR を残す）
   check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
   link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
   unlink <T003> <種類> <相手>
@@ -115,6 +122,7 @@ const OPTIONS = {
   area: { type: "string", multiple: true },
   label: { type: "string", multiple: true },
   output: { type: "string", multiple: true },
+  "repo-output": { type: "string", multiple: true },
   q: { type: "string", short: "q" },
   due: { type: "string" },
   milestone: { type: "string" },
@@ -132,7 +140,6 @@ const OPTIONS = {
   name: { type: "string" },
   repo: { type: "string" },
   description: { type: "string" },
-  docs: { type: "string" },
   instructions: { type: "string" },
   agents: { type: "boolean" },
   "note-only": { type: "boolean" },
@@ -142,6 +149,7 @@ const OPTIONS = {
   forget: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   local: { type: "boolean" },
+  "repo-name": { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
 } as const;
@@ -181,10 +189,10 @@ async function main(argv: string[]): Promise<number> {
         dir: o.dir,
         name: o.name,
         description: o.description,
-        docs: o.docs,
         instructions: o.instructions,
         agents: o.agents,
         yes: o.yes,
+        repoName: o["repo-name"],
       }),
     );
     return 0;
@@ -229,11 +237,11 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    await startServer({ dataDir: target.dataDir, repoRoot: target.repoRoot, repos: target.repos, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
+    await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(target.dataDir, { repoRoot: target.repoRoot, repos: target.repos, settings });
+  const ctx = await openProject(target.dataDir, { repos: target.repos, settings, projectName: target.name });
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;
@@ -272,15 +280,17 @@ async function main(argv: string[]): Promise<number> {
       return out.result(r.data, () => r.text);
     }
 
-    case "whoami":
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, repo: ctx.ws.repoRoot, actor, request: current ?? null }, () =>
+    case "whoami": {
+      const here = locateHere(ctx, cwd);
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
-          `リポジトリ    ${ctx.ws.repoRoot}`,
+          `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
         ].join("\n"),
       );
+    }
 
     case "progress": {
       const ps = progress(ctx).filter((p) => o.all || !["done", "rejected"].includes(p.request.status));
@@ -328,12 +338,25 @@ async function main(argv: string[]): Promise<number> {
     // --- タスク -------------------------------------------------------------
     case "ls":
     case "list": {
-      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q };
+      if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
+        throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
+      }
+      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       const marks = supersededMarks(ctx.ws);
       const items = tasks.map((t) => (marks.has(t.ref) ? { ...t, superseded: marks.get(t.ref) } : t));
+      // 共有の参照先があるときは作業先の列を出す
+      const multi = ctx.ws.project.repos.length > 0;
       return out.result(items, () =>
-        table(tasks.map((t) => [o.all ? t.ref : t.id, t.status, t.title, [deps(t), replacedBy(t, marks)].filter(Boolean).join("  ")])) || "タスクはありません",
+        table(
+          tasks.map((t) => [
+            o.all ? t.ref : t.id,
+            t.status,
+            ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
+            t.title,
+            [deps(t), replacedBy(t, marks)].filter(Boolean).join("  "),
+          ]),
+        ) || "タスクはありません",
       );
     }
 
@@ -377,33 +400,46 @@ async function main(argv: string[]): Promise<number> {
       const rid = requestArg(undefined);
       const status = o.status ?? "todo";
       checkStatus(status);
+      // 作業先（--repo <名前>|none）。作業先にできるものだけ。書く前に確かめる
+      const repo = repoArg(o.repo) ?? defaultRepo(ctx.ws.project);
+      checkRepoTarget(ctx.ws, repo);
+      const repoOutputs = (o["repo-output"] ?? []).map((x) => parseRepoOutput(ctx.ws, x));
       const t = await ctx.ws.tasksOf(rid).create(
         {
           title,
           status,
+          repo,
           labels: o.label ?? [],
           areas: o.area ?? [],
           outputs: o.output ?? [],
+          ...(repoOutputs.length ? { repoOutputs: addRepoOutputs([], repoOutputs) } : {}),
           body: readBody(o.body),
         },
         actor,
       );
+      if (repo) await ensureWorkstreams(ctx.ws, rid, [repo], actor);
       const reopened = await reopened_(ctx, rid, actor);
-      return out.result(reopened ? { ...t, reopened } : t, () => `作成: ${t.ref}  ${t.title}`);
+      return out.result(reopened ? { ...t, reopened } : t, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
     }
 
     case "set": {
       const ref = taskArg(args[0]);
       const patch = parseTaskAssignments(args.slice(1));
       if (o.body !== undefined) patch.body = readBody(o.body);
-      if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       const { col, tid } = split(ref);
+      if ("repo" in patch) checkRepoTarget(ctx.ws, patch.repo);
+      if (o["repo-output"]?.length) {
+        const add = o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x));
+        patch.repoOutputs = addRepoOutputs(patch.repoOutputs ?? col.require(tid).repoOutputs ?? [], add);
+      }
+      if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       const warnings = startWarnings(ctx.ws, ref, col.require(tid).status, patch.status);
       const next = await col.update(tid, patch, { expectedRev, actor });
+      if (patch.repo) await ensureWorkstreams(ctx.ws, next.request, [patch.repo], actor);
       warn(warnings);
       const reopened = await reopened_(ctx, next.request, actor);
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
-        `更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`,
+        [`更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
     }
 
@@ -416,12 +452,14 @@ async function main(argv: string[]): Promise<number> {
       const cur = col.require(tid);
       const patch: Partial<Task> = { status };
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
+      // リポジトリごとの成果物（最後のタスクに、関係するリポジトリの PR を全部残せる）
+      if (o["repo-output"]?.length) patch.repoOutputs = addRepoOutputs(cur.repoOutputs ?? [], o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x)));
       const warnings = startWarnings(ctx.ws, ref, cur.status, status);
       const next = await col.update(tid, patch, { expectedRev, actor });
       warn(warnings);
       const reopened = await reopened_(ctx, next.request, actor);
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
-        `${next.ref} → ${status}${o.output?.length ? `  (${o.output.join(", ")})` : ""}`,
+        `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
     }
 
@@ -594,14 +632,19 @@ async function requestCommand(
       const graph = ctx.index.neighborhood(rid);
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);
-      return out.result({ item: r, tasks: ctx.ws.tasksOf(rid).list(), graph, file, ...(issue ? { issue } : {}) }, () => {
+      const branches = requestWorkstreams(r);
+      const multi = ctx.ws.project.repos.length > 0;
+      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), graph, file, ...(issue ? { issue } : {}) }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
         return [
           issue ? `※ ${issue}\n` : "",
           formatEntity(ctx, r, graph, file),
+          ...(Object.keys(branches).length
+            ? ["", "ブランチ（作業先のリポジトリごと）:", ...Object.entries(branches).map(([name, w]) => `  ${name}  ${w.branch}`)]
+            : []),
           "",
           `タスク (${tasks.length}):`,
-          table(tasks.map((t) => [`  ${t.id}`, t.status, t.title, deps(t)])) || "  （なし）",
+          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, deps(t)])) || "  （なし）",
         ].join("\n");
       });
     }
@@ -701,7 +744,8 @@ function formatEntity(ctx: PcubeContext, item: Task | Request, graph: ReturnType
   /** 同じ要望の中は T003 と短く見せる */
   const short = (ref: string) => (ref.startsWith(`${home}/`) ? ref.slice(home.length + 1) : ref);
   const lines = [`${head}  ${item.title}`, ""];
-  const skip = new Set(["id", "ref", "request", "title", "body", "relations"]);
+  if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo"]);
   for (const [k, v] of Object.entries(item)) {
     if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
@@ -757,7 +801,18 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
   if (run.scope?.some((s) => s.status === "unregistered")) lines.push("  → このマシンのパスは p3 repo path <名前> <パス> で登録します");
   if (run.drafts.length) {
     lines.push("", `タスク案 (${run.drafts.filter((d) => d.include).length}/${run.drafts.length} 件を採用):`);
-    lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));
+    const multi = ctx.ws.project.repos.length > 0;
+    lines.push(
+      table(
+        run.drafts.map((d) => [
+          d.include ? "[x]" : "[ ]",
+          d.key,
+          ...(multi ? [d.repo ?? "（作業先なし）"] : []),
+          d.title,
+          d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : "",
+        ]),
+      ),
+    );
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);
@@ -766,13 +821,23 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
 
 // --- 入力 -----------------------------------------------------------------
 
-const TASK_KEYS = ["title", "status", "labels", "areas", "outputs"];
+const TASK_KEYS = ["title", "status", "labels", "areas", "outputs", "repo", "repoOutputs"];
 
 function parseTaskAssignments(pairs: string[]): Partial<Task> {
   const patch: Record<string, unknown> = {};
   for (const pair of pairs) {
     const [key, raw] = splitPair(pair);
     if (!TASK_KEYS.includes(key)) throw new UsageError(`変更できるキー: ${TASK_KEYS.join(", ")}`);
+    if (key === "repo") {
+      // repo=<名前> / repo=none・repo= は作業先なし
+      patch.repo = repoArg(raw);
+      continue;
+    }
+    if (key === "repoOutputs") {
+      if (raw !== "") throw new UsageError("repoOutputs= は空で全部外すだけ。足すときは --repo-output <名前>=<成果物>");
+      patch.repoOutputs = [];
+      continue;
+    }
     if (raw === "") {
       patch[key] = key === "labels" || key === "areas" || key === "outputs" ? [] : undefined;
       continue;
@@ -877,4 +942,11 @@ main(process.argv.slice(2)).then(
 function pad(label: string, width = 8): string {
   const w = [...label].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
   return label + " ".repeat(Math.max(1, width - w));
+}
+
+/** 作業先の案内（このマシンのパスが無ければ登録の仕方） */
+function workHint(ctx: PcubeContext, t: Task): string {
+  const w = taskWork(ctx.ws, t);
+  if (!w.repo) return "作業先: なし";
+  return `作業先: ${w.repo}${w.branch ? `  ブランチ ${w.branch}` : "（ブランチなし）"}${w.registered ? "" : `\n  このマシンのパスが未登録です: p3 repo path ${w.repo} <パス>`}`;
 }

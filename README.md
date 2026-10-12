@@ -9,7 +9,7 @@
 最大の特徴は **Preflight** —— 要望をタスクにする前に、Codex（`codex app-server`）がリポジトリを読んで
 妥当性・実現可能性・影響範囲を評価し、着手できる粒度のタスク案を **ファイルとして** 書き出す。
 
-- 要望 = フォルダ = 作業ツリー（ブランチ）。タスクは要望の中で連番（T001, T002, ...）。共有も要望単位
+- 要望 = フォルダ。ブランチ（作業ツリー）は作業先のリポジトリごとに1つ。タスクは要望の中で連番（T001, T002, ...）。共有も要望単位
 - タスクは AI か人が実施する。状態は 未着手 / 作業中 / 完了 の3つで固定（設定では変えない）。保留や取りやめの状態は持たず、
   手を付けないなら未着手のまま、AI が進めた作業をマージしないなら完了のまま（成果物の側で閉じる）。
   完了したタスクには成果物（PR・MR・ドキュメント）を残す。
@@ -94,28 +94,34 @@ pnpm はスクリプトをパッケージの場所で動かすが、p3 は呼び
 cd ~/src/myapp
 p3 init
 #   プロジェクト名（切り替えに使う短い名前） [myapp]:
+#   （このリポジトリは本体の参照先 myapp として登録する。名前は --repo-name で変えられる）
 #   データを置くフォルダ（リポジトリの外を勧めます）: ~/p3-data/myapp
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
-#   ドキュメントのパス（カンマ区切り。Preflight で最初に読みます） [docs, README.md]:
+#   主なフォルダ（カンマ区切り。Preflight がどこから読むかの案内） [docs]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 #   AGENTS.md に AI 向けの p3 の使い方を追記しますか (y/n) [y]:
 
 # AI やスクリプトからは引数で（--yes で質問しない）
-p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ" --docs docs,README.md
+p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
 ```
 
 データのフォルダには `project.yaml` と空の `requests/` が作られる。既に作られたフォルダ（他の人が作って共有したもの）を
 指したときは、作らずに **参加** だけする。
 
+新しく作るときは、このリポジトリを **本体の参照先**（`project.yaml` の `repos`。名前は既定でフォルダ名、役割「本体」・最初に読む・
+作業先にできる）として登録する。リポジトリに `docs/`（か `doc/`）があれば、それを本体の主なフォルダにする（入口はその中の
+`README.md` か `index.md`）。参加するときは、同じ名前の参照先か、参照先が1つならそれにこのリポジトリを結び付ける
+（決まらなければ `p3 repo path <名前> <パス>` を案内する）。
+
 どちらの場合も **個人設定**（`~/.config/infodb-p3/config.yaml`。このマシン・この人だけのもので共有しない）に
-「プロジェクト名 → データのフォルダ・手元のリポジトリ」を登録する。
+「プロジェクト名 → データのフォルダ・参照先のこのマシンのパス」を登録する。
 
 ```yaml
 projects:
   myapp:
     dir: /home/me/p3-data/myapp
     repos:
-      main: /home/me/src/myapp
+      myapp: /home/me/src/myapp      # 参照先の名前 → このマシンのパス
   other:
     dir: /home/me/p3-data/other
 ```
@@ -123,13 +129,13 @@ projects:
 **操作するプロジェクトは環境変数ではなく、今いる場所と個人設定から決まる。**
 
 1. `--project <名前>` を付ければそれ
-2. 登録したリポジトリ（サブフォルダ・要望の作業ツリーを含む）か、データのフォルダの中ならそのプロジェクト
+2. 登録した参照先（サブフォルダ・その git の作業ツリーを含む）か、データのフォルダの中ならそのプロジェクト
 3. 登録が1つだけなら、どこからでもそれ
 4. 決まらなければ、登録済みのプロジェクトと選び方を表示する
 
-`p3 project` で一覧（今いる場所のプロジェクトに `*`）、`p3 project add <名前> <フォルダ> --repo <リポジトリ>` で
-init せずに登録、`p3 project rm <名前>` で登録を外す（データは消さない）。`p3 whoami` で今の判定を確かめられる。
-（以前の置き方として、リポジトリの中の `.pcube/` もそのまま読める。デモはこの形）
+`p3 project` で一覧（今いる場所のプロジェクトに `*`）、`p3 project add <名前> <フォルダ>` で init せずに登録
+（参照先のこのマシンのパスは続けて `p3 repo path <名前> <パス>`）、`p3 project rm <名前>` で登録を外す（データは消さない）。
+`p3 whoami` で今の判定を確かめられる。
 
 個人設定は、p3 が書き換えるときもコメントと p3 の知らない項目を残す。書き換えは「ロックを取って最新のファイルを読み、
 対象の項目だけを変えて書く」ので、CLI と serve が同時に別の項目（プロジェクトの登録とテーマなど）を変えても消し合わない。
@@ -160,7 +166,7 @@ CLI やほかの serve でテーマを変えたときは、開いている画面
 | `name` / `description` | 画面の表示と、Preflight の前提（説明が空だと画面に警告を出す） |
 | `docs` | Preflight で Codex に最初に読ませるドキュメント（`<参照先>:<パス>`、名前なしは先頭の参照先。複製はしない） |
 | `preflight.instructions` | プロジェクト固有の評価の観点・制約。Codex への指示に加わる |
-| `branchPattern` / `worktreeDir` | 要望ごとの作業ツリーのブランチ名（既定 `req/{id}-{slug}`）と置き場所 |
+| `branchPattern` | 要望のブランチ名（既定 `req/{id}-{slug}`。作業先のリポジトリごとに同じ名前で割り当てる） |
 
 ### 要望からタスクまで
 
@@ -180,12 +186,13 @@ pcube accept k7m3x --skip D3           # タスク化 → requests/261009-k7m3x/
 pcube serve                            # http://localhost:4310 で進捗・タスクボードを見る
 ```
 
-タスク化すると要望は「進行中」になり、作業ツリーのブランチ名（`req/261009-k7m3x-...`）が割り当てられる。
-**要望の作業ツリー（そのブランチ）の中で CLI を実行すると、その要望が「今の要望」になり、指定を省ける。**
+タスク化すると要望は「進行中」になり、作業先のリポジトリごとにブランチ名（`req/261009-k7m3x-...`）が割り当てられる
+（下の「作業先とリポジトリごとのブランチ」）。P3 は名前を決めるだけで、ブランチや作業ツリーは作業する人・AI が作る。
+**そのブランチ（作業ツリーでもよい）の中で CLI を実行すると、その要望が「今の要望」になり、指定を省ける。**
 状態の書き込みは常にプロジェクトのデータのフォルダに行く（ブランチごとに状態が分岐しない）。
 
 ```bash
-cd .worktrees/261009-k7m3x
+git switch -c req/261009-k7m3x       # 作業ツリー（git worktree）でもよい
 export PCUBE_ACTOR=ai:claude
 pcube move T001 doing
 pcube new "作業中に見つかった追加の作業" --body "..."        # → T004（要望の中の続きの番号）
@@ -212,7 +219,7 @@ pcube move T001 done --output https://github.com/me/myapp/pull/42
 | `pcube init` / `pcube config` / `pcube whoami` | 初期設定 / 設定 / 変更者と今の要望 |
 | `pcube serve` | ビューアの起動 |
 
-今の要望は `--req <要望>` → `PCUBE_REQUEST` → 要望の作業ツリー の順で決まる。
+今の要望は `--req <要望>` → `PCUBE_REQUEST` → 今いる参照先に割り当てたブランチ → ブランチ名の要望 ID の順で決まる（パスに要望 ID が入っているだけでは決めない。detached HEAD では決めない）。
 `--json` で機械可読な出力、`--rev` で楽観ロック（競合すると終了コード 3、見つからないと 2）。
 CLI はサーバを経由せずファイルに直接書く（serve が動いていなくてよい）。開いている画面には、ヘッダーの「再読み込み」か、
 タブ・ウィンドウに戻ったときの読み直しで反映される（ファイル監視で届くこともあるが当てにしない。下の「画面への反映」）。
@@ -224,7 +231,7 @@ AI がタスクを進めるときに読む形。作業に要る項目だけを�
 | | 残すもの | 省くもの |
 | --- | --- | --- |
 | タスク | `item` の id・ref・request・title・status・body・rev・outputs・relations（`depends_on` だけ）、`dependencies`、`superseded`、`warnings` | 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・`graph`（関係しそう・影響範囲） |
-| 要望 | `item` の id・title・status・body・rev・workstream（ブランチ。あるときだけ）、`tasks` の id・ref・title・status、`issue` | 日時・areas・tags・関係・`graph`・タスクの本文など |
+| 要望 | `item` の id・title・status・body・rev・workstreams（作業先ごとのブランチ。あるときだけ）、`branches`、`tasks` の id・ref・title・status・repo、`issue` | 日時・areas・tags・関係・`graph`・タスクの本文など |
 
 JSON の項目名と階層は通常の `--json` と同じで、項目を省くだけ。タスクの通常の `--json` にも、次の2つを足した:
 
@@ -421,7 +428,7 @@ ID の順は数を含む部分を数として比べる（T2 < T10）。要望・
 1. **明示エッジ** — `relations` に型付きで持つ。`depends_on` / `part_of` / `derived_from` / `impacts` /
    `relates_to` / `duplicates` / `supersedes`。エッジは張った側のファイルに保存し、逆向きはインデックスで導く。
    誰が張ったか（`origin`）と AI の確信度（`confidence`）を持ち、AI 由来の関係は人が見直せる。
-2. **構造** — タスクは要望（フォルダ = 作業ツリー）に所属する。
+2. **構造** — タスクは要望（フォルダ）に所属する。
 3. **暗黙の近さ** — 影響領域（`areas`、パスの包含関係を考慮）の重なりと、内容の類似（TF-IDF、日本語は bigram）。
    明示されていないが関係しそうなもの（過去の要望の作業を含む）を「理由つき」で提示する。
 
@@ -453,44 +460,52 @@ Preflight の Codex が読むリポジトリ・フォルダ（参照先）を、
 依存しているライブラリのように分かれたシステムでも、全部を読ませて判断させるため。
 
 - **共有の定義**（`project.yaml` の `repos`）: 名前・役割・最初に読むか（`readFirst`）・タスクの作業先になりうるか（`writable`。
-  今は表示だけで、作業先とブランチの複数対応は別の要望で入れる）・コードの地図
+  今は表示だけで、作業先とブランチの複数対応は別の要望で入れる）・主なフォルダ
 - **このマシンのパス**（個人設定 `projects.<プロジェクト>.repos.<名前>`）: 人によって違うので共有しない。git のリポジトリで
   なくてもよい（フォルダだけ・リポジトリの中のサブフォルダも可）
 
 ```bash
-p3 repo add allesc /workspaces/allesc role=システム本体 readFirst=true writable=true
-p3 repo add docs /workspaces/allescdoc/standard_guide role=ドキュメント mapFile=MAP.md   # リポジトリの中のサブフォルダ
-p3 repo add infra /workspaces/allescinfra role=基盤
+p3 repo add app /workspaces/app role=システム本体 readFirst=true writable=true
+p3 repo add docs /workspaces/docsrepo/guide role=ドキュメント   # リポジトリの中のサブフォルダ
+p3 repo add infra /workspaces/infrarepo role=基盤
 p3 repo ls                       # 一覧。このマシンのパスが無いものは「未登録 → p3 repo path <名前> <パス>」
-p3 repo path docs ~/src/allescdoc/standard_guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
-p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable mapFile）
+p3 repo path docs ~/src/docsrepo/guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
+p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable）
 p3 repo rm infra --local         # このマシンのパスだけ外す（共有の定義は残る）
 p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の Preflight でも読まなくなる。フォルダは消さない）
 ```
 
+設定画面の「参照先（リポジトリ・フォルダ）」でも同じことができる（足す・役割・最初に読む・作業先にできる・
+主なフォルダ・消す）。このマシンのパスは、P3 を動かしているマシンのローカルの画面でだけ見え、登録・変更できる
+（ほかのマシンの画面には出さない）。
+
 ```yaml
 # project.yaml（共有）
 repos:
-  allesc:
+  app:
     role: システム本体
     readFirst: true
     writable: true
-    map:                               # コードの地図: どこから読むかの案内（全部を読む指示ではない）
+    map:                               # 主なフォルダ: どこから読むかの案内（全部を読む指示ではない）
       src/server: API とデータ
       src/web: { role: 画面, entry: src/web/main.tsx }
   docs:
     role: ドキュメント
-    mapFile: MAP.md                    # 地図を Markdown で書くとき（参照先の中のパス）
+    map:
+      chapters: { role: 手順書, entry: chapters/index.md }   # 入口: そのフォルダで最初に読むファイル（参照先の中のパス）
   infra: { role: 基盤 }
-docs: [README.md, "docs:guide/"]      # <参照先>:<パス>。名前なしは先頭の参照先
 ```
 
-- **参照の書き方**: `docs` と要望・タスクの `areas` は `<参照先>:<パス>`（例 `docs:standard_guide/`・`infra:terraform`）で
+- **どこから読むか**: 参照先ごとの「最初に読む」（`readFirst`）は、どの参照先から読むか。参照先の中のどこから読むかは主なフォルダ
+  （`map`）で示し、そのフォルダで最初に読むファイルを入口（`entry`）に書く。どちらも参照先ごとに書くので、どの参照先のファイルかが
+  はっきりする。プロジェクト全体のドキュメントの一覧（以前の `docs`）と構成の説明の Markdown（以前の `mapFile`）は無い（設定を
+  保存すると project.yaml から消える）。入口のファイルが無ければ、Preflight の指示とログにそう出す
+
+- **参照の書き方**: 要望・タスクの `areas` と根拠（`evidence`）は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
   書ける。名前なしは先頭の参照先の中のパス（今までの書き方のまま読める）。登録に無い名前・絶対パス・`..` は読まない。
   文脈の選定（関係しそうな項目）は、同じ参照先の中だけで領域の重なりを見る（別の参照先の同じ `src` は重ならない）
-- **今までのプロジェクト**: `repos` が無ければ、今までどおりリポジトリ1つ（名前 `main`。個人設定の `repos.main`、無ければ
-  `project.yaml` の `repo`）を読む。設定は書き換えない。`p3 repo add` で共有の参照先を書いたら、それからは `repos` の
-  参照先だけを読む（本体も読ませるなら本体も足す。`p3 repo add` が知らせる）。タスクの作業ツリーは今までのリポジトリのまま
+- **本体**: `p3 init` が本体のリポジトリを参照先として登録する。足すのは、ドキュメント・基盤・依存しているライブラリなど
+  ほかのリポジトリ・フォルダだけ
 - **Preflight での扱い**: 読める参照先を全部 `/workspace/<名前>` に **読むだけで** マウントする（`/workspace` 自体は空。
   データは今までどおり `/data`、書けるのは run のフォルダだけ）。パスの対応（`codex.pathMap`）は全部に効く。このマシンの
   パスが無い・無いパス・フォルダでないものは飛ばし、「見ていない参照先」として理由をログと記録（run.json の `scope`）に残す
@@ -503,6 +518,38 @@ docs: [README.md, "docs:guide/"]      # <参照先>:<パス>。名前なしは�
   `p3 drafts`（`--json` では `scope` と `assessment.evidence`）で確かめる
 - テストは偽の app-server で、マウントの引数・指示文・記録・根拠の扱いを確かめる。本物の Codex が実際にどこまで読むか、
   読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない（Docker での確認は docs/architecture.md）
+
+### 作業先とリポジトリごとのブランチ
+
+1つの要望が本体と基盤の両方を変える・ドキュメントのリポジトリだけを直す、のように、作業するリポジトリは要望ごとに違う。
+
+- **タスクの作業先**（`repo`）: 作業先になりうる（`writable=true`）参照先の名前か、作業先なし（調査・人の判断など）。参照だけの
+  参照先（依存しているライブラリなど）は選べない。1つのタスクの作業先は1つ（またがる作業はタスクを分ける）。Preflight は案に
+  作業先を書き（`repo: <名前>` か `none`）、人がレビューで直せる（画面の案の「作業先」、ファイルを直してもよい。タスク化の前に
+  確かめ、作業先にできない名前なら何も変えずに断る）。作業先を書かずにタスクを足すと、作業先にできる参照先が1つならそれ、
+  ほかは作業先なし
+- **リポジトリごとのブランチ**（要望の `workstreams`: 名前 → `{ branch }`）: タスク化で、採用した案の作業先の分だけ割り当てる
+  （作業先なし・不採用は割り当てない。既にあるものは変えない）。後からタスクを足した・作業先を変えたときも、足りない分だけ足す。
+  P3 は名前を決めるだけで、git のブランチや作業ツリーは作らない（作業する人・AI が作る）。git でないフォルダはブランチなし（そのフォルダで
+  作業する）。リポジトリの中のサブフォルダは、それを含む git のリポジトリを基準にし、同じ git を指す2つの名前に割り当てることに
+  なるときは断る（作業先をそろえる）。作業ツリーの置き場所は記録しない（Claude Code などに任せる）
+- **リポジトリごとの成果物**（タスクの `repoOutputs`: `{ repo, output }` の並び）: 最後のタスクに、関係するリポジトリの PR を全部残せる。
+  `outputs`（文字列の並び）はそのまま使え、成果物の所属を作業先から推し量ることはしない
+
+```bash
+p3 new "基盤の設定" --req <要望> --repo infra   # 作業先（none で作業先なし）。足りないブランチは割り当てる
+p3 set T004 --req <要望> repo=app               # 作業先を変える（repo=none で外す）
+p3 ls --req <要望> --repo infra                 # 作業先で絞る（none は作業先なし）。共有の参照先があれば一覧に作業先の列
+p3 show T004 --brief --json                     # work: { repo, branch, registered }
+p3 request show <要望> --brief                  # branch  app: req/…  /  branch  infra: req/…
+p3 move T005 done --repo-output app=https://…/pull/1 --repo-output infra=https://…/pull/2   # 全部の PR を最後のタスクに
+p3 whoami                                       # 今いる参照先と今の要望
+```
+
+今の要望は、今いる参照先（参照先の中か、その git のリポジトリの作業ツリーの中）を見て、その参照先に割り当てたブランチだけと照らす
+（別のリポジトリの同じ名前のブランチと取り違えない）。detached HEAD や git でないときは決めない。
+決まらない・複数に当たるときは `--req` を案内する。画面では、案のレビューとタスク詳細で作業先を選び、要望の概要に作業先ごとの
+ブランチ、ボードのカードに作業先、成果物にリポジトリごとの成果物を出す。
 
 ### ChatGPT プランで動かす（Sign in with ChatGPT）
 
@@ -614,17 +661,20 @@ run や並んで動いている run は変わらない。待ち受け（`serve.h
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-**Docker のエラーを見る:** Preflight の開始のログに、リポジトリとデータのフォルダそれぞれの「このマシンのパス → Docker の
-ホストのパス（当たった `codex.pathMap` の対応。対応なし・パスが変わらない対応も書く）→ コンテナの中のパス」を出す。
+**Docker のエラーを見る:** Preflight の開始のログに、参照先とデータのフォルダそれぞれの「名前 → コンテナの中のパス
+（`codex.pathMap` の対応が当たったか。当たらない・パスが変わらない対応も書く）」を出す。ログとエラーは共有の記録（run.json）に
+残るので、このマシンのパス・Docker のホストのパス・個人設定のファイルの場所は出さない（Docker の出力の中のパスも参照先の名前に
+置き換える。想定外の変更も `<参照先>:<パス>` で出す）。実際のパスは、手元で `p3 repo ls` と個人設定で確かめる。
 app-server（`docker run`）がすぐ・途中で終わったときは、Docker の出力（stderr。長ければ先頭と末尾を残して省略を明示）と
 終了コード（またはシグナル）をログとエラーに出し、よくある原因には次にすることを添える（要約にはエラーらしい最後の行を出す）。
 トークンなどは伏せてから残す。
 
 ```text
-app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /workspaces/pcube
-Docker のホストにこのパス（/workspaces/pcube）がありません。個人設定の codex.pathMap を確かめてください（~/.config/infodb-p3/config.yaml）
+app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 pcube>
+参照先 pcube のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください
 今のパスの対応:
-  リポジトリ: /workspaces/pcube → Docker のホスト /workspaces/pcube（対応なし（codex.pathMap が空。このパスのまま渡す））→ コンテナ /workspace
+  参照先 pcube → コンテナ /workspace/pcube（codex.pathMap の対応なし（このマシンのパスのまま渡す））
+  データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））
 ```
 
 | Docker の出力 | 次にすること |
@@ -734,7 +784,7 @@ AI にも CLI を使わせる（API ごとの認証を持たせずに済む）�
 `AGENTS.md` / `CLAUDE.md` の追記も、見出し（`タスク管理（infodb p3）`）があれば足さないので、新しい内容は
 docs/architecture.md の版と見比べて手で直す。
 
-- 要望の作業ツリーの中で作業すれば、要望を指定せずに `pcube move` / `pcube new` が使える
+- 要望のブランチ（作業ツリーでもよい）で作業すれば、要望を指定せずに `pcube move` / `pcube new` が使える
 - 作業中に新しく必要になった作業は、AI がそのままタスクとして足す（可視化される）
 - 人への質問（Human in the Loop）はタスクにせず、Claude Code などのチャットで行う
 

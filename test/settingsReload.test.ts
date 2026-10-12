@@ -27,7 +27,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
   const configPath = join(configDir, "config.yaml");
   const source = machineSettingsSource({ path: configPath, env });
   const launched: { workspace: string; data: string }[] = [];
-  const ws = new Workspace(repo.dataDir);
+  const ws = new Workspace(repo.dataDir, { main: repo.root });
   await ws.load();
   const index = new ProjectIndex(ws);
   const initial = await source.get().catch(() => undefined);
@@ -35,7 +35,6 @@ async function setup(env: Record<string, string | undefined> = {}) {
     account: new ChatGptAccount(join(tempDir(), "none.json")),
     load: async () => ({
       ...codexConfig(await source.get()),
-      configPath: source.path,
       command: ({ repos, data }) => {
         launched.push({ workspace: repos[0]?.host ?? "", data });
         return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", process.execPath, FAKE_CODEX];
@@ -67,8 +66,8 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
     const second = await s.runOnce();
     expect(second.run.status).toBe("completed");
     expect(s.launched.map((l) => l.workspace)).toEqual(["/wrong/host", "/right/host"]);
-    expect(second.log).toContain(`参照先 main: ${s.repo.root} → Docker のホスト /right/host（対応 ${s.repo.root}=/right/host）`);
-    expect(second.log).toContain(s.configPath);
+    expect(second.log).toContain("参照先 main → コンテナ /workspace/main（codex.pathMap の対応あり）");
+    expect(second.log).not.toContain(s.configPath);
   });
 
   it("環境変数が個人設定より先。空の環境変数は既定値に戻す", async () => {
@@ -104,9 +103,10 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
     await s.write(`${s.legacy}  pathMap:\n    ${s.repo.root}: /second\n`);
     const second = await s.runOnce();
     const run1 = (await s.preflight.wait(r1.id, first.id))!;
-    expect(run1.log.map((l) => l.text).join("\n")).toContain("/first");
-    expect(second.log).toContain("/second");
-    expect(s.launched.map((l) => l.workspace).sort()).toEqual(["/first", "/second"]);
+    // 始めたときの対応で起こし、後から直した対応は後の run だけに効く（ログにはパスを出さないので、起こしたときの引数で見る）
+    expect(run1.status).toBe("completed");
+    expect(second.run.status).toBe("completed");
+    expect(s.launched.map((l) => l.workspace)).toEqual(["/first", "/second"]);
   });
 
   it("読めない設定では、その Preflight を設定のエラーとして失敗にし（Docker を起こさない）、直すと次は成功する", async () => {
@@ -129,7 +129,8 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
       expect([label, run.status]).toEqual([label, "failed"]);
       expect(run.error).toContain("個人設定を読めないので Preflight を始めません（Docker は起動していません）");
       expect(run.error).toContain(expected);
-      expect(run.error).toContain(s.configPath);
+      expect(run.error).not.toContain(s.configPath); // 共有の記録にこのマシンのパスを残さない
+      expect(run.error).toContain("個人設定（config.yaml）");
       expect(log).toContain(expected);
       expect(request.status).toBe("draft"); // 評価の前の状態に戻す
       const status = await s.preflight.engineStatus();

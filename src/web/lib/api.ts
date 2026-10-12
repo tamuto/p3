@@ -1,3 +1,4 @@
+import type { RepoRef } from "../../shared/repos.ts";
 import type {
   Neighborhood,
   MaterializeResult,
@@ -97,6 +98,16 @@ export interface ChatGptState {
   engine: EngineStatus;
 }
 
+/** 参照先（設定画面）。local と reason は、このマシンのローカルの画面にだけ返る */
+export interface RepoInfo extends RepoRef {
+  mount: string;
+  status: "ok" | "unregistered" | "missing" | "notdir";
+  local?: string | null;
+  reason?: string | null;
+}
+
+export type RepoInput = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map">>;
+
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
   /** データのフォルダを全部読み直させる（応答は読み直しを終えた後） */
@@ -111,6 +122,12 @@ export const api = {
   chatgptPaste: (url: string) => call<ChatGptState>("POST", "/chatgpt/paste", { url }),
   chatgptLogout: (forget = false) => call<{ revoked: boolean; message: string }>("POST", "/chatgpt/logout", { forget }),
   saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
+  repos: () => call<{ local: boolean; registered: boolean; repos: RepoInfo[] }>("GET", "/repos"),
+  addRepo: (b: RepoInput & { name: string; path?: string }) => call<RepoRef>("POST", "/repos", b),
+  updateRepo: (name: string, b: RepoInput) => call<RepoRef>("PATCH", `/repos/${encodeURIComponent(name)}`, b),
+  removeRepo: (name: string) => call<{ ok: true }>("DELETE", `/repos/${encodeURIComponent(name)}`),
+  setRepoPath: (name: string, path: string | null) =>
+    path === null ? call<{ ok: true }>("DELETE", `/repos/${encodeURIComponent(name)}/path`) : call<{ ok: true }>("PUT", `/repos/${encodeURIComponent(name)}/path`, { path }),
 
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),

@@ -7,7 +7,7 @@ pcube は **ファイルが唯一の正（source of truth）で、すべてロ�
 ## 作業の単位は要望
 
 Preflight で扱う要望が、プロジェクトで行う作業の粒度になる。そこで **要望ごとにフォルダを作り**、
-そこから生まれたタスクや評価の記録はすべてその下に置く。要望 = フォルダ = 作業ツリー（ブランチ）。
+そこから生まれたタスクや評価の記録はすべてその下に置く。要望 = フォルダ。ブランチ（作業ツリー）は作業先のリポジトリごとに1つ。
 
 ```
 <データのフォルダ>/requests/<作成日-乱数>/request.md
@@ -107,20 +107,18 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     出し、横にはみ出さない。新しい要望は Enter で足した値と書きかけの値（`x/y, z`）の両方を付けて作る
   - 開いた中が、スケジュールの左の列（sticky, z-30）の下に隠れていたので z-50 にした
 - Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
-  名前・役割・readFirst・writable・コードの地図 map / mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
-  `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。共有の `repos` が無ければ今までの
-  1リポジトリ（`main`）。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
+  名前・役割・readFirst・writable・主なフォルダ map。入口 entry がそのフォルダで最初に読むファイル）、このマシンのパスは個人設定の `projects.<p>.repos`。
+  `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。`p3 init` が本体を参照先として
+  登録する。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
   設定の保存（画面・`p3 config`）は `repos` を書き換えない。コンテナの中の名前（mount）は論理名から英数字と `. _ -` だけで作り、
-  重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は docs・areas・evidence で共通。名前なしは先頭の参照先。
-  タスクの作業先（`repoRoot`・workstream）はこの段階では多重化しない
+  重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は areas・evidence で共通。名前なしは先頭の参照先。
   - マウント（`withMounts`）: dockerCommand の `/workspace` の bind を tmpfs に替え、参照先を `/workspace/<mount>` に
     `readonly` で、データを `/data` に置く。Codex の cwd は `/workspace` のまま。変更のパスは参照先の対応で戻す
   - 調べた範囲（`run.scope`）は P3 が始めるときに決めて残す（パスは入れない）。根拠（`assessment.evidence`）は Codex が書き、
     P3 が `parseEvidence` で確かめる（verified は読めた参照先の中の、ある相対パスを指すときだけ）
-  - 本物の Docker（29.3.0）での確認（2026-10-12）: 生成した docker run の引数で、`/workspaces/allesc`・
-    `/workspaces/allescdoc/standard_guide`（リポジトリの中のサブフォルダ）・`/workspaces/allescinfra` の3つを `codex.pathMap`
-    （`/workspaces=/root/workspaces`）で対応させてマウントし、コンテナの中で3つとも読め（27・16・12 項目）、それぞれへの書き込みは
-    `Read-only file system` で拒まれ、`/workspace`（tmpfs）には書けた。ホストのフォルダには何もできていない。イメージの
+  - 本物の Docker（29.3.0）での確認（2026-10-12）: 生成した docker run の引数で、このマシンの3つのフォルダ（git のリポジトリ
+    2つと、別のリポジトリの中のサブフォルダ1つ）を `codex.pathMap` で対応させてマウントし、コンテナの中で3つとも読め、それぞれへの
+    書き込みは `Read-only file system` で拒まれ、`/workspace`（tmpfs）には書けた。ホストのフォルダには何もできていない。イメージの
     entrypoint を sh にして確かめたので、本物の Codex に評価させてはいない（認証が要る）
 - タスクの成果物（`outputs: string[]`）は URL・文章・パスを1項目ずつ混ぜてよい。画面は `components/Outputs.tsx` で、
   項目全体が絶対の http(s) URL（`web/lib/outputs.ts` の `outputHref`。前後の空白は判定でだけ除く）ならリンク、ほかは文字。
@@ -224,7 +222,36 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   概要ページで個人設定を壊してタブに戻ると、エンジンの状態に YAML の行と直すファイルが出て実行のボタンが止まり、直して戻ると
   元に戻った（serve は起動し直していない）。直した後の成功は、偽の app-server で確かめた（test/settingsReload.test.ts）
 
-複数のリポジトリへの対応（`project.yaml` の `repos`、タスクの作業先、リポジトリをまたぐ Preflight）と、
+- Preflight の記録（run.json のログ・エラー）は共有するので、このマシンのパス・Docker のホストのパス・個人設定のファイルの
+  場所を入れない（`diagnose.ts` の `describeMapping` は名前とコンテナの中のパスだけ、`hidePaths` で Docker の出力の中のパスを
+  参照先の名前に置き換える。個人設定のエラーは `hideConfigPath` で「個人設定（config.yaml）」にする。想定外の変更は
+  `<参照先>:<パス>`）。画面のエンジンの状態（共有しない）には個人設定の場所を出してよい
+- タスクの作業先とリポジトリごとのブランチ（`shared/workTarget.ts`・`server/workTargets.ts`）: タスクとタスク案の `repo`
+  （名前 / null = 作業先なし。書かずに足すと、作業先にできる参照先が1つならそれ）、要望の `workstreams`（名前 → branch。
+  作業ツリーの置き場所は記録しない）、タスクの `repoOutputs`。作業先は writable の参照先だけで、API・CLI・タスク化の
+  前に `checkRepoTarget` で確かめ、変える前に断る。割当は `planWorkstreams`（既存は残す・git でないフォルダはブランチなし・
+  同じ git の実体を指す2つの名前は断る。git の実体は `--git-common-dir` で見る）で決め、タスク化では計画を run の
+  materialization に残してやり直しでも同じにする。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先
+  （`locateHere`）の割当のブランチ → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない（detached HEAD では決めない）。
+  git のブランチ・作業ツリーは作らない
+- 参照先の登録・変更・削除は `server/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
+  同じものを使う。このマシンのパスは `localOnly` でローカルの画面にだけ返し、変えられるのもローカルの画面（Origin）からだけ。
+  パスつきで足すときは、共有の定義を書く前にフォルダかを確かめる
+  - ブラウザでの確認（2026-10-12、Chromium。新しい init で作った一時プロジェクト）: 本体（init が登録）が「読める」で出て、
+    名前・役割・このマシンのパスで docs を足し、主なフォルダ（フォルダ・役割・入口）と「作業先にできる」を変えて保存すると
+    project.yaml の repos に書かれ、パスを外すと「未登録」になり個人設定から消え、確認つきで消すと共有の定義も消える。
+    375px（ライト・ダーク）と 1280px で横にはみ出さない
+  - 設定画面はほかの画面と同じく画面の横幅いっぱいに使う。入力欄のラベルは短くし、補足は `Field` の `hint` で入力欄の下に出すので、
+    ラベルの折り返しで横に並んだ入力欄の高さがずれない（2026-10-12、Chromium。1280px・1920px・375px で、横に並んだ入力欄の
+    上端がそろい、横にはみ出さない）
+  - 主なフォルダの行は、広い画面ではフォルダ・役割・入口を3等分し（見出しの行を上に置く）、狭い画面では縦に並べる。構成の説明
+    （`mapFile`）の欄は無い（2026-10-12、Chromium。1280px で 373px・1920px で 587px の3等分、375px は縦並びで横にはみ出さない。
+    以前の `mapFile` とプロジェクトの `docs` が残った project.yaml で参照先を保存すると、どちらも消える）
+  - ブラウザでの確認（2026-10-12、Chromium。app・infra（git、作業先にできる）と lib（参照だけ）の一時プロジェクト）: 案のレビューの
+    作業先の選択肢は app・infra・作業先なし（lib は出ない）で、選ぶと保存される。タスク化で app・infra の2つにブランチが割り当たり、
+    概要に「ブランチ（作業先ごと）」、ボードのカードに作業先（作業先なしも）が出る。タスク詳細で作業先を作業先なしから infra に変え、
+    app と infra の PR を足すと、どちらもリンクで出る。375px で概要は横にはみ出さない
+
 1人1つのサーバで画面からプロジェクトを切り替える形（決定済み）は、次の段階で入れる。
 
 ## 役割
@@ -364,7 +391,10 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 - Codex はコンテナの中から、それらをリポジトリのファイルとして直接読む。
 - pcube が作る記録（要望・評価・タスク案・タスク）もリポジトリ内の Markdown なので、それ自体がドキュメントになる。
   「なぜこのタスクがあるのか」は、タスク → 要望 → Preflight の評価と文脈（`context.md`）を辿れば分かる。
-- `project.yaml` の `docs` に、Preflight で最初に読ませるドキュメント（設計方針・用語集など）を列挙する。
+- Preflight で最初に読ませるドキュメント（設計方針・用語集など）は、参照先の主なフォルダ（`repos.<名前>.map`）に書き、
+  そのフォルダで最初に読むファイルを入口（`entry`）にする。参照先ごとに書くので、どの参照先のファイルかが曖昧にならない
+  （以前のプロジェクトの `docs` は、名前を付けないと先頭の参照先のパスになり分かりにくかったので外した。構成の説明の
+  Markdown `mapFile` も入口と重なるので外した。どちらも保存のときに project.yaml から消す）。
   `preflight.instructions` にはプロジェクト固有の評価の観点・制約を書く。どちらも Codex への指示に加わる。
 
 ## 共有（同期）の方法
@@ -377,7 +407,7 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 
 - **ID の衝突** — 要望は作成日 + 乱数、タスクは要望の中の連番にしたので、別々の人が作った要望どうしは衝突しない
 - **状態がブランチごとに分岐する** — データはリポジトリの外のデータのフォルダに書く（リポジトリの中の `.pcube/` の場合も
-  git のメインの作業ツリーのものに書く）。要望の作業ツリーの中で実行しても書き込み先は1か所で、今の要望はブランチ名から決まる
+  git のメインの作業ツリーのものに書く）。要望の作業ツリーの中で実行しても書き込み先は1か所で、今の要望は今いる参照先のブランチから決まる
 
 ### 残っている課題
 
@@ -402,7 +432,8 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 - 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
   Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
 - 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む
-- 着手するときは `p3 move T003 doing`、終えたら `p3 move T003 done --output <PR の URL など>`
+- 着手する前に、`--brief --json` の `work`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
+- 着手するときは `p3 move T003 doing`、終えたら `p3 move T003 done --output <PR の URL など>`。複数のリポジトリにまたがるときは最後のタスクに `--repo-output <参照先>=<PR の URL>` で全部の PR を残す
 - 要望のタスクを全部終えたら `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は `p3 new "<タイトル>" --body "..."` でタスクにする（人への質問はタスクにしない）

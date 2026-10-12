@@ -52,6 +52,7 @@ export class PreflightStore {
         dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
         relations: normalizeRelations(data.relations),
         include: data.include !== false,
+        ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
       });
     }
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));

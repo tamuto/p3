@@ -67,7 +67,7 @@ export function renderCarryover(c: Carryover): string | undefined {
       ...(p.drafts.length
         ? p.drafts.map(
             (d) =>
-              `### ${d.key} ${d.title}（${d.include ? "採用" : "不採用"}${d.dependsOn.length ? ` / 依存: ${d.dependsOn.join(", ")}` : ""}）\n${d.description}`,
+              `### ${d.key} ${d.title}（${d.include ? "採用" : "不採用"}${d.dependsOn.length ? ` / 依存: ${d.dependsOn.join(", ")}` : ""}${d.repo !== undefined ? ` / 作業先: ${d.repo ?? "なし"}` : ""}）\n${d.description}`,
           )
         : ["（なし）"]),
     );

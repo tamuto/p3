@@ -12,9 +12,8 @@ import { redact } from "../src/server/redact.ts";
 import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/server/preflight/codexEngine.ts";
 import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
-import { writeProjectFile } from "../src/server/store/projectFile.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
-import { makeProject, makeRepo, newRequest, newTask, openTestProject, projectConfig, tempDir } from "./helpers.ts";
+import { makeProject, MAIN_REF, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 
@@ -83,7 +82,7 @@ describe("PreflightService（mock エンジン）", () => {
     expect(tasks[1].relations).toEqual([{ type: "depends_on", target: "T001", origin: "preflight" }]);
     const r = ctx.ws.requests.get(req.id)!;
     expect(r.status).toBe("active");
-    expect(r.workstream).toEqual({ branch: `req/${req.id}-add-export`, worktree: `.worktrees/${req.id}` });
+    expect(r.workstreams).toEqual({ main: { branch: `req/${req.id}-add-export` } });
     // 別の要望のタスクへの影響は絶対参照で要望に記録する
     expect(r.relations).toEqual([expect.objectContaining({ type: "impacts", target: existing.ref, origin: "preflight" })]);
     await expect(ctx.preflight.materialize(req.id, id)).rejects.toThrow("タスク化済み");
@@ -99,7 +98,7 @@ describe("PreflightService（mock エンジン）", () => {
     expect(tasks.map((t) => [t.id, t.title])).toEqual([["T001", "受ける"]]);
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
-    expect(ctx.ws.requests.get(req.id)?.workstream?.branch).toBe(`req/${req.id}`);
+    expect(ctx.ws.requests.get(req.id)?.workstreams?.main.branch).toBe(`req/${req.id}`);
   });
 
   it("タスク化済みの要望で再評価しても、要望のステータスは変えない（進行中のまま）", async () => {
@@ -146,19 +145,20 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
 
   /** outside: データディレクトリをリポジトリの外に置く（project.yaml の repo は絶対パス） */
   async function setup(scenario = "", { outside = false } = {}) {
-    const config = { docs: ["docs/design.md", "README.md"], preflight: { instructions: "外部 SaaS の追加は要相談" } };
+    const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
     const repo = await makeRepo(config);
     if (outside) {
       repo.dataDir = tempDir("pcube-data-");
       await mkdir(join(repo.dataDir, "requests"));
-      await writeProjectFile(join(repo.dataDir, "project.yaml"), projectConfig({ ...config, repo: repo.root }));
+      await writeTestProject(repo.dataDir, config);
     }
+    const local = { main: repo.root };
     const logFile = join(tempDir(), "codex.jsonl");
     // 既存のタスクは engine を作る前に用意する（偽サーバが参照として書く）
-    const pre = await openTestProject(repo.dataDir);
+    const pre = await openTestProject(repo.dataDir, undefined, { repos: local });
     const past = await newRequest(pre, { title: "過去", status: "done" });
     const existing = await newTask(pre, past.id, { title: "既存", areas: ["src/a"] });
-    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) });
+    const ctx = await openTestProject(repo.dataDir, { codex: engine(repo.root, repo.dataDir, logFile, scenario, existing.ref) }, { repos: local });
     const req = await newRequest(ctx, { title: "x", status: "draft", areas: ["src/a"], body: "本文" });
     const sent = () => readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     return { ctx, req, existing, sent };
@@ -183,8 +183,8 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(thread.developerInstructions).toContain("外部 SaaS の追加は要相談");
     expect(thread.developerInstructions).toContain(`/data/requests/${req.id}/preflight/${id}/`);
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
-    expect(prompt).toContain("## 最初に読むドキュメント");
-    expect(prompt).toContain("- /workspace/main/docs/design.md");
+    expect(prompt).toContain("## 主なフォルダ");
+    expect(prompt).toContain("- /workspace/main/docs — 設計（入口 /workspace/main/docs/design.md");
     expect(prompt).toContain(existing.ref); // 文脈として選ばれた既存タスク
     expect(prompt).toContain("drafts/D1.md");
 
@@ -224,7 +224,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const repo = await makeRepo();
     const dataDir = tempDir("pcube-data-");
     await mkdir(join(dataDir, "requests"));
-    await writeProjectFile(join(dataDir, "project.yaml"), projectConfig({ repo: repo.root }));
+    await writeTestProject(dataDir);
     let supersede = "";
     const codex = new CodexWorkspaceEngine({
       authVolume: "vol",
@@ -233,7 +233,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
       ensureImage: false,
       command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
     });
-    const ctx = await openTestProject(dataDir, { codex });
+    const ctx = await openTestProject(dataDir, { codex }, { repos: { main: repo.root } });
     const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
     const run = async () => {
       const { id } = await ctx.preflight.start(req.id, { actor: "human:a" });
@@ -269,7 +269,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const { id } = await ctx.preflight.start(req.id);
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run.status).toBe("completed");
-    expect(run.log).toContainEqual(expect.objectContaining({ kind: "error", text: expect.stringContaining("想定外の変更: src/main.ts") }));
+    expect(run.log).toContainEqual(expect.objectContaining({ kind: "error", text: expect.stringContaining("想定外の変更: main:src/main.ts") }));
   });
 
   it("使用量の上限に当たっていれば頼まずに失敗させ、要望を下書きに戻す", async () => {
@@ -299,21 +299,21 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const prompt = sent().find((m) => m.method === "turn/start").params.input[0].text;
     expect(prompt).toContain(`/data/requests/${req.id}/preflight/${id}/assessment.json`);
     // run ディレクトリの中は想定内、リポジトリの変更だけを警告する
-    expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: src/main.ts")]);
+    expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: main:src/main.ts")]);
   });
 
   it("codex-workspace の docker run を、/workspace は tmpfs・参照先は /workspace/<名前> に読むだけ・データは /data にする", () => {
     const repos = [
-      { name: "allesc", host: "/host/allesc", container: "/workspace/allesc" },
-      { name: "docs", host: "/host/allescdoc/standard_guide", container: "/workspace/docs" },
+      { name: "app", host: "/host/app", container: "/workspace/app" },
+      { name: "docs", host: "/host/docsrepo/guide", container: "/workspace/docs" },
       { name: "infra", host: "/host/infra", container: "/workspace/infra" },
     ];
     const command = withMounts(dockerCommand("/p3-placeholder", { authVolume: "vol" }), repos, "/host/data");
     const mounts = command.flatMap((a: string, i: number) => (command[i - 1] === "--mount" ? [a] : []));
     expect(mounts).toEqual([
       "type=tmpfs,dst=/workspace",
-      "type=bind,src=/host/allesc,dst=/workspace/allesc,readonly",
-      "type=bind,src=/host/allescdoc/standard_guide,dst=/workspace/docs,readonly",
+      "type=bind,src=/host/app,dst=/workspace/app,readonly",
+      "type=bind,src=/host/docsrepo/guide,dst=/workspace/docs,readonly",
       "type=bind,src=/host/infra,dst=/workspace/infra,readonly",
       "type=bind,src=/host/data,dst=/data",
       expect.stringContaining("volume"),

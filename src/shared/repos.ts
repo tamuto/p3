@@ -1,14 +1,13 @@
 /**
  * Preflight が読む参照先（リポジトリ・フォルダ）。数と名前はプロジェクトごとに自由。
  *
- *   project.yaml（共有）: 名前・役割・最初に読むか・作業先になりうるか・コードの地図
+ *   project.yaml（共有）: 名前・役割・最初に読むか・作業先になりうるか・主なフォルダ
  *   個人設定（共有しない）: 名前 → このマシンのパス（projects.<名前>.repos）
  *
- * 参照の書き方: `<参照先の名前>:<参照先の中のパス>`（例: `docs:standard_guide/`）。名前を付けなければ先頭の参照先
- * （docs・areas の今までの書き方。共有の repos が無いプロジェクトでは、ただ1つの参照先 main）。
+ * 参照の書き方: `<参照先の名前>:<参照先の中のパス>`（例: `docs:guide/`）。名前を付けなければ先頭の参照先。
  */
 
-/** コードの地図の1行: 主なフォルダとその役割・入口 */
+/** 主なフォルダの1行: フォルダ（またはファイル）とその役割・入口（最初に読むファイル。参照先の中のパス） */
 export interface CodeMapEntry {
   path: string;
   role: string;
@@ -24,14 +23,9 @@ export interface RepoRef {
   readFirst: boolean;
   /** タスクの作業先になりうるか（今は表示だけ。作業先の多重化は別の要望） */
   writable: boolean;
-  /** コードの地図（どこから読むかの案内。全部読む指示ではない） */
+  /** 主なフォルダ（どこから読むかの案内。全部読む指示ではない）。入口がそのフォルダの最初に読むファイル */
   map: CodeMapEntry[];
-  /** 地図を書いた Markdown（参照先の中のパス） */
-  mapFile?: string;
 }
-
-/** 共有の repos が無いプロジェクトの参照先（今までの1リポジトリ） */
-export const LEGACY_REPO = "main";
 
 export const REPO_NAME = /^[^\s:/\\]+$/;
 
@@ -41,11 +35,6 @@ export function repoNameProblem(name: string): string | undefined {
   if (!REPO_NAME.test(name)) return `「${name}」は使えません（空白・コロン・スラッシュ・バックスラッシュを含めない）`;
   if (name === "." || name === "..") return `「${name}」は使えません`;
   return undefined;
-}
-
-/** 共有の repos（無ければ今までの1リポジトリ main） */
-export function effectiveRepos(repos: readonly RepoRef[]): RepoRef[] {
-  return repos.length ? [...repos] : [{ name: LEGACY_REPO, role: "", readFirst: true, writable: true, map: [] }];
 }
 
 /**

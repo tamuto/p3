@@ -2,7 +2,6 @@ import { absRef } from "../../shared/refs.ts";
 import type { GraphEdge, Neighborhood, RelatedItem, Request, Task } from "../../shared/types.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { areaOverlap, TfIdf } from "./text.ts";
-import { effectiveRepos } from "../../shared/repos.ts";
 
 /** id は絶対参照（"<要望ID>" か "<要望ID>/T003"） */
 type Node = { id: string; kind: "task" | "request"; title: string; areas: string[]; status: string; text: string };
@@ -145,8 +144,8 @@ export class ProjectIndex {
     const qv = this.tfidf.vectorize(q.text);
     const exclude = new Set(q.exclude ?? []);
     const near = this.hops(q.seeds ?? [], 2);
-    // areas の参照先（名前なしは先頭の参照先。共有の repos が無ければ main だけ）
-    const names = effectiveRepos(this.ws.project.repos).map((r) => r.name);
+    // areas の参照先（名前なしは先頭の参照先）
+    const names = this.ws.project.repos.map((r) => r.name);
     const scope = { known: names, defaultRepo: names[0] };
     const scored: RelatedItem[] = [];
     for (const n of this.nodes.values()) {

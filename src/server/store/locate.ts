@@ -10,8 +10,6 @@ export interface ResolvedProject {
   /** 個人設定に登録したプロジェクト名（登録していないフォルダを --dir で指したときは無い） */
   name?: string;
   dataDir: string;
-  /** 手元のリポジトリ（個人設定の repos.main か最初の項目。タスクの作業ツリーの元）。無ければ project.yaml の repo */
-  repoRoot?: string;
   /** 個人設定の参照先の名前 → このマシンのパス（Preflight が読む。全部） */
   repos: Record<string, string>;
   /** どうやって決まったか */
@@ -35,7 +33,6 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
   const named = ([name, p]: (typeof entries)[number], via: ResolvedProject["via"]): ResolvedProject => ({
     name,
     dataDir: p.dir,
-    repoRoot: p.repos.main ?? Object.values(p.repos)[0],
     repos: { ...p.repos },
     via,
   });

@@ -5,8 +5,6 @@ export interface PreflightJob {
   project: ProjectConfig;
   request: Request;
   context: RelatedItem[];
-  /** 管理対象リポジトリのルート（ローカルパス）。タスクの作業ツリーの元 */
-  repoRoot: string;
   /** Preflight が読む参照先（始めるときに解決したもの。読めないものも status つきで入る。0件でもよい） */
   refs: ResolvedRef[];
   /** データディレクトリ（ローカル絶対パス）。リポジトリの外にあってもよい */
@@ -82,6 +80,7 @@ evidence には、判断に使ったファイル・箇所を書いてくださ�
 export const DRAFT_SPEC = `---
 key: D2                # D1, D2 ... の連番
 title: タスク名
+repo: <作業先>         # 作業するリポジトリ・フォルダ（「作業先にできる」参照先の名前）。調査・人の判断など作業先が無いタスクは none
 areas: [src/foo]       # 触る領域
 dependsOn: [D1]        # 同じ preflight 内で先に終わっている必要があるタスク案の key
 relations:             # 既存タスク/要望との関係（無ければ省略）
