@@ -1,8 +1,9 @@
-import type { RequestStatus } from "../../shared/types.ts";
+import type { Request, RequestStatus } from "../../shared/types.ts";
 
 /**
  * 進捗の一覧の絞り込み（URL の ?show=）。
- *   open（既定）: 完了済・見送り以外。対応済（人の確認待ち）も含める
+ *   open（既定）: まだ作業が残るもの（下書き・Preflight・レビュー済・進行中）。対応済は含めない
+ *     （リリース前のものは対応済のまましばらく残るので、確認待ち・すべてで見る）
  *   resolved: 対応済だけ（確認待ちを拾う）
  *   closed: 完了済・見送り（対応済は含めない）
  *   all: すべて
@@ -27,5 +28,11 @@ export function parseShow(v: unknown): Exclude<Show, "open"> | undefined {
 export function matchesShow(status: RequestStatus, show: Show): boolean {
   if (show === "all") return true;
   if (show === "resolved") return status === "resolved";
-  return (show === "closed") === CLOSED_STATUSES.has(status);
+  if (show === "closed") return CLOSED_STATUSES.has(status);
+  return status !== "resolved" && !CLOSED_STATUSES.has(status);
+}
+
+/** 進捗の行の絞り込み（状態とタグ）。show を省いたら既定（未完了） */
+export function filterRequests<T extends { request: Pick<Request, "status" | "tags"> }>(items: readonly T[], show: Show = "open", tag?: string): T[] {
+  return items.filter((p) => matchesShow(p.request.status, show) && (!tag || p.request.tags.includes(tag)));
 }

@@ -42,7 +42,7 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト（--repo リポジトリ）
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern worktreeDir instructions repo）
   user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
-  progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも）
+  progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $PCUBE_PORT / $PCUBE_HOST）
