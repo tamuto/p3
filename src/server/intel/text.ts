@@ -2,6 +2,7 @@
  * 依存ゼロの軽量テキスト類似度。日本語は文字 bigram、英数字は単語で分割し TF-IDF のコサイン類似度を取る。
  * 将来は llmcs/embedding-server (bge-m3) によるベクトル類似へ差し替え可能なよう、Vectorizer 越しに使う。
  */
+import { parseRepoPath } from "../../shared/repos.ts";
 
 const CJK = /[぀-ヿ㐀-鿿豈-﫿]/;
 const HIRAGANA_ONLY = /^[\u3040-\u309f]+$/;
@@ -92,14 +93,35 @@ export class TfIdf {
   }
 }
 
-/** 領域（パス）の重なり。"src/server" は "src/server/store" を包含するとみなす */
-export function areaOverlap(a: string[], b: string[]): { score: number; shared: string[] } {
+/** areas を読むときの参照先（名前の一覧と、名前なしのときの既定） */
+export interface AreaScope {
+  known: readonly string[];
+  defaultRepo?: string;
+}
+
+/**
+ * 領域（パス）の重なり。同じ参照先の中で "src/server" は "src/server/store" を包含するとみなす（参照先の全体は中の全部を包含）。
+ * `<参照先>:<パス>` は参照先を区別する（別の参照先の同じパスは重ならない）。名前なしは既定の参照先。
+ * 登録に無い名前・絶対パス・.. を含むものは、どれとも重ならない。scope を省くと名前を区別しない（今までどおり）
+ */
+export function areaOverlap(a: string[], b: string[], scope?: AreaScope): { score: number; shared: string[] } {
   if (!a.length || !b.length) return { score: 0, shared: [] };
+  const read = (xs: string[]) =>
+    xs.map((x) => {
+      if (!scope) return { repo: "", path: x, label: x };
+      const p = parseRepoPath(x, scope.known, scope.defaultRepo);
+      if (!p.ok) return undefined;
+      // 参照先が1つなら今までどおりパスだけで見せる
+      return { repo: p.repo, path: p.path, label: scope.known.length > 1 ? `${p.repo}:${p.path}` : p.path };
+    });
+  const A = read(a);
+  const B = read(b);
   const shared: string[] = [];
-  for (const x of a) {
-    for (const y of b) {
-      if (x === y || y.startsWith(`${x}/`) || x.startsWith(`${y}/`)) {
-        shared.push(x.length >= y.length ? x : y);
+  for (const x of A) {
+    for (const y of B) {
+      if (!x || !y || x.repo !== y.repo) continue;
+      if (x.path === y.path || x.path === "" || y.path === "" || y.path.startsWith(`${x.path}/`) || x.path.startsWith(`${y.path}/`)) {
+        shared.push(x.path.length >= y.path.length ? x.label : y.label);
       }
     }
   }

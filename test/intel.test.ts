@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { areaOverlap, TfIdf, tokenize } from "../src/server/intel/text.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
+import { join } from "node:path";
+import { writeRepoEntry } from "../src/server/store/projectFile.ts";
 
 describe("tokenize", () => {
   it("日本語は bigram、ひらがなだけの bigram は捨てる。パスは区切りでも分割する", () => {
@@ -108,5 +110,41 @@ describe("ProjectIndex", () => {
     await newTask(ctx, B, { title: "後続", relations: [{ type: "depends_on", target: "T002" }] });
     ctx.ws.emit({ type: "changed", kind: "task", request: B, ref: `${B}/T005` });
     expect(ctx.index.impactScope(`${B}/T002`)).toEqual([`${B}/T005`]);
+  });
+});
+
+describe("areas の重なりは参照先を区別する", () => {
+  const scope = { known: ["allesc", "docs", "infra"], defaultRepo: "allesc" };
+  it("同じ参照先の中の一致・親子・参照先の全体。名前なしは先頭の参照先", () => {
+    expect(areaOverlap(["allesc:src/server"], ["allesc:src/server/store"], scope).shared).toEqual(["allesc:src/server/store"]);
+    expect(areaOverlap(["src/server"], ["allesc:src/server"], scope).shared).toEqual(["allesc:src/server"]); // 今までの書き方と混ぜる
+    expect(areaOverlap(["infra:"], ["infra:terraform/prod"], scope).shared).toEqual(["infra:terraform/prod"]);
+    expect(areaOverlap(["docs:standard_guide/"], ["docs:standard_guide"], scope).shared).toEqual(["docs:standard_guide"]);
+  });
+
+  it("別の参照先の同じパスは重ならない。登録に無い名前・外へ出るパスはどれとも重ならない", () => {
+    expect(areaOverlap(["allesc:src"], ["infra:src"], scope).score).toBe(0);
+    expect(areaOverlap(["src"], ["docs:src"], scope).score).toBe(0);
+    expect(areaOverlap(["unknown:src"], ["allesc:src", "unknown:src"], scope).score).toBe(0);
+    expect(areaOverlap(["allesc:../x"], ["allesc:../x"], scope).score).toBe(0);
+  });
+
+  it("参照先が1つ（今までのプロジェクト）なら、見せ方も今までどおりパスだけ", () => {
+    expect(areaOverlap(["src/a"], ["src/a/b"], { known: ["main"], defaultRepo: "main" }).shared).toEqual(["src/a/b"]);
+    expect(areaOverlap(["src/a"], ["src/a/b"]).shared).toEqual(["src/a/b"]);
+  });
+
+  it("文脈の選定でも参照先を区別し、理由に名前を残す（内容が似ているだけの関連は出してよい）", async () => {
+    const { ctx, dataDir } = await makeProject();
+    const file = join(dataDir, "project.yaml");
+    for (const name of ["allesc", "infra"]) await writeRepoEntry(file, name, { name, role: "", readFirst: false, writable: false, map: [] });
+    await ctx.ws.reloadAll();
+    const r = await newRequest(ctx, { title: "基盤の作業", areas: ["infra:src/net"] });
+    const same = await newTask(ctx, r.id, { title: "ネットワーク設定", areas: ["infra:src/net/vpc"] });
+    const other = await newTask(ctx, r.id, { title: "全く別の話題", areas: ["src/net"] }); // allesc の src/net
+    ctx.index.invalidate();
+    const rel = ctx.index.related({ text: "無関係な文", areas: ["infra:src/net"], exclude: [r.id] });
+    expect(rel.find((x) => x.ref === same.ref)?.reasons).toContain("領域が重複 (infra:src/net/vpc)");
+    expect(rel.find((x) => x.ref === other.ref)).toBeUndefined();
   });
 });
