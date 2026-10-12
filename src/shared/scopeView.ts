@@ -14,14 +14,22 @@ export const SCOPE_STATUS_LABEL: Record<RefScope["status"], string> = {
 };
 
 /** 根拠の場所（<参照先>:<ファイル> <箇所>） */
-export const evidenceWhere = (e: Evidence) => (e.repo && e.file ? `${e.repo}:${e.file}${e.location ? ` ${e.location}` : ""}` : "");
+export const evidenceWhere = (e: Evidence) =>
+  [e.repo && e.file ? `${e.repo}:${e.file}${e.location ? ` ${e.location}` : ""}` : "", e.commit ? `commit ${e.commit}` : ""].filter(Boolean).join(" / ");
+
+/** git の履歴の表示（調べた範囲） */
+export const historyLabel = (h: RefScope["history"]) =>
+  !h ? "" : h.status === "ok" ? "git の履歴あり" : h.status === "shallow" ? `git の履歴は途中まで（${h.reason ?? "浅い clone"}）` : `git の履歴なし（${h.reason ?? "不明"}）`;
 
 export function scopeLines(scope: RefScope[] | undefined): string[] {
   if (!scope) return ["調べた範囲: 記録なし（以前の評価）"];
   if (!scope.length) return ["調べた範囲: 参照先なし"];
   return [
     "調べた範囲:",
-    ...scope.map((s) => `  ${s.status === "ok" ? "✓" : "✕"} ${s.name}${s.role ? `（${s.role}）` : ""}  ${s.status === "ok" ? `/workspace/${s.mount}` : (s.reason ?? SCOPE_STATUS_LABEL[s.status])}`),
+    ...scope.map(
+      (s) =>
+        `  ${s.status === "ok" ? "✓" : "✕"} ${s.name}${s.role ? `（${s.role}）` : ""}  ${s.status === "ok" ? `/workspace/${s.mount}` : (s.reason ?? SCOPE_STATUS_LABEL[s.status])}${s.history ? `  ${historyLabel(s.history)}` : ""}`,
+    ),
   ];
 }
 

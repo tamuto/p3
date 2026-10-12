@@ -65,14 +65,23 @@ describe("複数の参照先を Preflight に渡す", () => {
     expect(s.launched[0].data).toBe("/host/app/.p3");
     // 調べた範囲は P3 が決めて残す（このマシンのパスは入れない）
     expect(s.run.scope).toEqual([
-      { name: "app", mount: "app", role: "システム本体", readFirst: true, status: "ok" },
-      { name: "docs", mount: "docs", role: "ドキュメント", readFirst: false, status: "ok" },
-      { name: "infra", mount: "infra", role: "基盤", readFirst: false, status: "ok" },
+      // git の履歴: 本体はリポジトリの最上位、docs はリポジトリの中のサブフォルダ、infra は git でない
+      { name: "app", mount: "app", role: "システム本体", readFirst: true, status: "ok", history: { status: "ok" } },
+      { name: "docs", mount: "docs", role: "ドキュメント", readFirst: false, status: "ok", history: { status: "unavailable", reason: expect.stringContaining("サブフォルダ") } },
+      { name: "infra", mount: "infra", role: "基盤", readFirst: false, status: "ok", history: { status: "unavailable", reason: "git のリポジトリではありません" } },
       { name: "gone", mount: "gone", role: "誰も登録していない", readFirst: false, status: "unregistered", reason: "このマシンのパスが登録されていません（p3 repo path gone <パス>）" },
     ]);
     expect(JSON.stringify(JSON.parse(s.saved).scope)).not.toContain(s.infra);
     expect(s.log).toContain("見ていない参照先: gone（このマシンのパスが登録されていません（p3 repo path gone <パス>））");
     expect(s.log).toContain("入口のファイルがありません: docs:MAP.md");
+    // 経緯は Codex が git の履歴と過去の要望で調べる（p3 は文脈を選ばない）
+    expect(s.instructions).toContain("/workspace/app — app（システム本体）［最初に読む］［作業先にできる］［git の履歴あり］");
+    expect(s.instructions).toMatch(/\/workspace\/docs — docs（ドキュメント）［git の履歴なし: リポジトリの中のサブフォルダ/);
+    expect(s.prompt).toContain("## 過去の経緯の調べ方");
+    expect(s.prompt).toContain("git の履歴が使える参照先: /workspace/app\n");
+    expect(s.prompt).toContain("blame -C -C -M -w -L");
+    expect(s.prompt).toContain("/data/requests/<要望ID>/ の request.md");
+    expect(s.prompt).not.toContain("インテリジェンス層");
     expect(s.log).not.toContain("入口のファイルがありません: app:");
   });
 
@@ -125,6 +134,36 @@ describe("複数の参照先を Preflight に渡す", () => {
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run.status).toBe("completed");
     expect(launched[0]).toEqual([{ name: "main", host: repo.root, container: "/workspace/main" }]);
-    expect(run.scope).toEqual([{ name: "main", mount: "main", role: "本体", readFirst: true, status: "ok" }]);
+    expect(run.scope).toEqual([{ name: "main", mount: "main", role: "本体", readFirst: true, status: "ok", history: { status: "ok" } }]);
+  });
+});
+
+describe("参照先の git の履歴（Codex のコンテナから使えるか）", async () => {
+  const { gitHistory } = await import("../src/core/repoRefs.ts");
+  const { execFileSync } = await import("node:child_process");
+  const { git } = await import("./helpers.ts");
+  const commit = (dir: string) => {
+    execFileSync("sh", ["-c", "echo a > a.txt"], { cwd: dir });
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "a");
+  };
+
+  it("リポジトリの最上位は使え、git の作業ツリーは使えない（本体がマウントの外）", () => {
+    const main = tempDir("hist-main-");
+    gitInit(main);
+    commit(main);
+    expect(gitHistory(main)).toEqual({ status: "ok" });
+    const wt = join(tempDir("hist-wt-"), "wt");
+    git(main, "worktree", "add", "-q", wt);
+    expect(gitHistory(wt)).toMatchObject({ status: "unavailable", reason: expect.stringContaining("作業ツリー") });
+  });
+
+  it("浅い clone は途中まで", () => {
+    const src = tempDir("hist-src-");
+    gitInit(src);
+    commit(src);
+    const shallow = join(tempDir("hist-shallow-"), "c");
+    execFileSync("git", ["clone", "-q", "--depth", "1", `file://${src}`, shallow]);
+    expect(gitHistory(shallow)).toMatchObject({ status: "shallow" });
   });
 });

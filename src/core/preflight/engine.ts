@@ -67,7 +67,8 @@ export const ASSESSMENT_SPEC = `{
   "areas": ["影響するコード領域やコンポーネント（リポジトリ相対パス推奨）"],
   "evidence": [
     { "claim": "支える判断（例: 実現可能性: 既存の X で足りる / D2 の範囲）", "kind": "verified" | "assumed",
-      "repo": "参照先の名前（verified のとき）", "file": "参照先の中の相対パス", "location": "行・関数名など" }
+      "repo": "参照先の名前（verified のとき）", "file": "参照先の中の相対パス", "location": "行・関数名など",
+      "commit": "経緯を確かめたコミット（git の履歴を根拠にしたとき）" }
   ]
 }
 

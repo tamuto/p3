@@ -618,7 +618,7 @@ export function parseEvidence(v: unknown, refs?: readonly ResolvedRef[]): Eviden
     .filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
     .map((e) => {
       const ev: Evidence = { claim: text(e.claim) ?? "（判断の説明がありません）", kind: e.kind === "verified" ? "verified" : "assumed" };
-      for (const k of ["repo", "file", "location"] as const) if (text(e[k])) ev[k] = text(e[k]);
+      for (const k of ["repo", "file", "location", "commit"] as const) if (text(e[k])) ev[k] = text(e[k]);
       if (ev.kind !== "verified" || !refs) return ev;
       const problem = verifiedProblem(ev, refs);
       return problem ? { ...ev, kind: "assumed" as const, note: problem } : ev;

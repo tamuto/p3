@@ -215,6 +215,8 @@ export interface Evidence {
   file?: string;
   /** 行・関数名など */
   location?: string;
+  /** 経緯を確かめたコミット（git の履歴を根拠にしたとき） */
+  commit?: string;
   /** P3 が付けた注記（確かめた根拠として扱えなかった理由） */
   note?: string;
 }

@@ -1,4 +1,5 @@
-import { statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { mountNames, type RefScope, type RepoRef } from "../shared/repos.ts";
 import type { ProjectConfig } from "../shared/types.ts";
 
@@ -40,6 +41,34 @@ export function resolveRefs(project: ProjectConfig, opts: { localRepos?: Record<
   });
 }
 
+/**
+ * 参照先のフォルダで git の履歴が使えるか。コンテナには参照先のフォルダだけを読むだけでマウントするので、
+ * 履歴の本体（.git）がフォルダの中にあるときだけ使える。浅い clone は途中までしか無い
+ */
+export function gitHistory(local: string): NonNullable<RefScope["history"]> {
+  const dotGit = join(local, ".git");
+  let st;
+  try {
+    st = statSync(dotGit);
+  } catch {
+    // 上に .git があれば、リポジトリの中のサブフォルダ（履歴の本体はマウントの外）
+    for (let d = dirname(resolve(local)); d !== dirname(d); d = dirname(d)) {
+      if (existsSync(join(d, ".git"))) return { status: "unavailable", reason: "リポジトリの中のサブフォルダなので、履歴の本体（.git）がマウントの外にあります" };
+    }
+    return { status: "unavailable", reason: "git のリポジトリではありません" };
+  }
+  if (st.isFile()) {
+    // git の作業ツリー（worktree）・サブモジュール: .git は本体の場所を指すファイル
+    const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"));
+    const gitdir = m ? resolve(local, m[1].trim()) : undefined;
+    const inside = gitdir && !relative(local, gitdir).startsWith("..") && !isAbsolute(relative(local, gitdir));
+    if (!inside) return { status: "unavailable", reason: "git の作業ツリーなので、履歴の本体がマウントの外にあります（メインのチェックアウトを参照先にすると使えます）" };
+    return { status: "ok" };
+  }
+  if (existsSync(join(dotGit, "shallow"))) return { status: "shallow", reason: "浅い clone なので、履歴は途中までです" };
+  return { status: "ok" };
+}
+
 export function refScope(r: ResolvedRef): RefScope {
   const reason =
     r.status === "unregistered"
@@ -49,5 +78,13 @@ export function refScope(r: ResolvedRef): RefScope {
         : r.status === "notdir"
           ? "登録したパスがフォルダではありません"
           : undefined;
-  return { name: r.name, mount: r.mount, role: r.role, readFirst: r.readFirst, status: r.status, ...(reason ? { reason } : {}) };
+  return {
+    name: r.name,
+    mount: r.mount,
+    role: r.role,
+    readFirst: r.readFirst,
+    status: r.status,
+    ...(reason ? { reason } : {}),
+    ...(r.status === "ok" && r.local ? { history: gitHistory(r.local) } : {}),
+  };
 }
