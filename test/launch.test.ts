@@ -55,6 +55,8 @@ describe("app-server（docker run）がすぐ終わったときの診断", () =>
     // 診断はエラーのログに1回だけ
     expect(run.log.filter((l) => l.text.includes("codex.pathMap を確かめてください"))).toHaveLength(1);
     expect(run.error).toContain("参照先 main のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください");
+    expect(run.error).toContain("直し方: 対応の行き先（Docker のホストから見たパス）が違います"); // 対応は当たっていた
+    expect(run.error).toContain("p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker のホストから見たパス>");
     expect(run.error).toContain("参照先 main → コンテナ /workspace/main（codex.pathMap の対応あり）");
     expect(run.error).toContain("データ → コンテナ /data（codex.pathMap の対応あり）");
     // 共有の記録（run.json）に、このマシンのパスも Docker のホストのパスも残さない
@@ -166,5 +168,18 @@ describe("中継（launcher.mjs）", () => {
     expect(code).toBe(0);
     expect((await launch.result({ waitMs: 1000 })).exit).toEqual({ code: 0, signal: null });
     await launch.cleanup();
+  });
+});
+
+describe("パスの対応の直し方", () => {
+  it("対応が当たらなければ足し方を、当たっていたら行き先の直し方を出す（このマシンのパスは出さない）", async () => {
+    const { pathMapHowTo } = await import("../src/server/preflight/diagnose.ts");
+    const none = pathMapHowTo({ label: "データ", local: "/mnt/x/data", host: "/mnt/x/data", container: "/data" });
+    expect(none[0]).toContain("対応を足します");
+    expect(none.join("\n")).toContain("docker inspect <この開発コンテナ> の Mounts");
+    expect(none.join("\n")).not.toContain("/mnt/x");
+    const wrong = pathMapHowTo({ label: "データ", local: "/mnt/x/data", host: "/h/data", rule: ["/mnt/x", "/h"], container: "/data" });
+    expect(wrong[0]).toContain("行き先");
+    expect(pathMapHowTo()[0]).toContain("対応を足します");
   });
 });

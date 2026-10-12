@@ -69,6 +69,22 @@ const lastLine = (s: string) => {
   return lines.findLast((l) => /error|denied|cannot|unable|not found|no such|does not exist|failed|killed/i.test(l)) ?? lines.at(-1);
 };
 
+/**
+ * パスの対応の直し方（書き方と設定するコマンド）。共有の記録に残るので、このマシンのパスは例のパスで示す。
+ * 対応が当たっていたのに無いなら行き先の誤り、当たっていなければ対応が足りない
+ */
+export function pathMapHowTo(which?: PathMapping): string[] {
+  return [
+    which?.rule
+      ? "直し方: 対応の行き先（Docker のホストから見たパス）が違います。同じ「このマシンのパス」で足し直すと置き換わります"
+      : "直し方: このパスを含む「このマシンのパス」と「Docker のホストから見たパス」の対応を足します",
+    "  p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker のホストから見たパス>",
+    "  例: p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces",
+    "  Docker のホストから見たパスは、ホストで docker inspect <この開発コンテナ> の Mounts（Source が Docker のホスト、Destination がこのマシン）で分かります。",
+    "  今の対応は p3 user-config で確かめられます。直せば serve はそのままで次の Preflight から効きます",
+  ];
+}
+
 export function diagnoseLaunch(
   r: LaunchResult,
   ctx: { image: string; mappings: PathMapping[]; rules: number; phase: "start" | "run" },
@@ -95,6 +111,7 @@ export function diagnoseLaunch(
       `${which ? `${which.label} のパス` : "マウントするパス"}が Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください`,
       "今のパスの対応:",
       ...ctx.mappings.map((m) => `  ${describeMapping(m, ctx.rules)}`),
+      ...pathMapHowTo(which),
     );
   } else if (/Cannot connect to the Docker daemon|Is the docker daemon running|error during connect|permission denied while trying to connect to the Docker daemon/i.test(stderr)) {
     hints.push("Docker のデーモンに繋がりません。Docker を起動し、接続先（DOCKER_HOST・docker context）と権限を確かめてください");
