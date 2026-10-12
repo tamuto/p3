@@ -37,6 +37,8 @@ node scripts/verify-pack.mjs --docker     # npm pack → 実行時の依存だ�
 ## 4. 公開する中身
 
 - [ ] `npm pack --dry-run` の一覧に `.env`・個人設定・デモデータ・テスト・開発用のスキル（`.claude/`）が無い
+- [ ] `npm pack --dry-run` の一覧に README から辿る文書（`docs/`）とそのリンクの先がある（`test/package.test.ts`）。README と docs/ の
+  相対リンクと節のアンカーが解決する（`test/docs.test.ts`）
 - [ ] 公開するリポジトリと tarball に、環境に固有のパス・個人の情報が無い。例は `~/p3-data/myapp`・`/home/me/...`・
   `/workspaces`（DevContainer の慣例）のような汎用のものにする。コンテナの中の `/workspace`（リポジトリ）と `/data`
   （データのフォルダ）は Codex のコンテナとの約束なので残す

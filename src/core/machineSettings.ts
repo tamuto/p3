@@ -45,7 +45,7 @@ export interface MachineSettings {
 export type CodexAuthChoice = "auto" | "legacy";
 export type EngineChoice = "codex" | "mock";
 
-/** 環境変数と個人設定の対応（README の対照表と同じ） */
+/** 環境変数と個人設定の対応（docs/installation.md の「設定の決まり」の表と同じ） */
 export const SETTING_KEYS = {
   "codex.auth": "P3_CODEX_AUTH",
   "codex.authVolume": "P3_CODEX_AUTH_VOLUME",
