@@ -24,6 +24,12 @@ export const AI_MANIFEST = {
         "データのフォルダ（project.yaml・要望・タスク）を全部読み直し、関係の索引も作り直す。応答 {requests, tasks, errors, loadedAt} は読み直しを終えた後。" +
         "読み込み中に呼ぶと、終わってからもう1回読む。project.yaml などが読めなければ 503 で何も変えない。終えたら変更通知 kind: reload",
     },
+    {
+      method: "GET|POST|PATCH|DELETE",
+      path: "/api/repos[/:name]",
+      desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, mapFile?, path?}",
+    },
+    { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
     { method: "POST", path: "/api/requests", desc: "要望の作成" },
     { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・関係・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },

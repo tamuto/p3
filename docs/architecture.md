@@ -234,6 +234,13 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   materialization に残してやり直しでも同じにする。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先
   （`locateHere`）の割当のブランチ → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない（detached HEAD では決めない）。
   git のブランチ・作業ツリーは作らない
+- 参照先の登録・変更・削除は `server/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
+  同じものを使う。このマシンのパスは `localOnly` でローカルの画面にだけ返し、変えられるのもローカルの画面（Origin）からだけ。
+  パスつきで足すときは、共有の定義を書く前にフォルダかを確かめる
+  - ブラウザでの確認（2026-10-12、Chromium。新しい init で作った一時プロジェクト）: 本体（init が登録）が「読める」で出て、
+    名前・役割・このマシンのパスで docs を足し、地図の行（フォルダ・役割・入口）と「作業先にできる」を変えて保存すると
+    project.yaml の repos に書かれ、パスを外すと「未登録」になり個人設定から消え、確認つきで消すと共有の定義も消える。
+    375px（ライト・ダーク）と 1280px で横にはみ出さない
 - 以前の形式（project.yaml の `repo`・`worktreeDir`、参照先が無い、個人設定の `repos.main`、要望の `workstream`、作業先の無い
   タスク・タスク案）は読まない。`cli/migrate.ts` の `migrate`（`p3 migrate`）が一度に移す（本体の参照先を足す・以前の項目を外す・
   `repos.main` を付け替える・`workstream` を本体の `workstreams` にする・作業先を本体にする。何度実行してもよい）。CLI と serve は

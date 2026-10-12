@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { Milestone, ProjectConfig } from "../../shared/types.ts";
 import { ChatGptPanel } from "../components/ChatGptPanel.tsx";
+import { ReposPanel } from "../components/ReposPanel.tsx";
 import { ThemePanel } from "../components/ThemePanel.tsx";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
@@ -63,6 +64,8 @@ function SettingsPage() {
         <h1 className="shrink-0 text-2xl font-bold">プロジェクト設定</h1>
         <span className="min-w-0 truncate font-mono text-sm text-slate-400" title={`${ctx.info.dataDir}/project.yaml`}>{ctx.info.dataDir}/project.yaml</span>
       </header>
+
+      <ReposPanel tick={ctx.tick} onChanged={ctx.reload} />
 
       <Section title="基本">
         <div className="space-y-3">

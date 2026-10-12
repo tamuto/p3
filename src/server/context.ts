@@ -17,6 +17,8 @@ export interface PcubeContext {
   preflight: PreflightService;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
+  /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
+  projectName?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ export interface PcubeContext {
  */
 export async function openProject(
   dataDir: string,
-  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource } = {},
+  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string } = {},
 ): Promise<PcubeContext> {
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
@@ -47,5 +49,5 @@ export async function openProject(
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  return { ws, index, preflight, chatgpt };
+  return { ws, index, preflight, chatgpt, projectName: opts.projectName };
 }

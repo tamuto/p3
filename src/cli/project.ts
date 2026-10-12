@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { appendFile, copyFile, mkdir } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -10,7 +10,8 @@ import type { ProjectConfig } from "../shared/types.ts";
 import type { PcubeContext } from "../server/context.ts";
 import { resolveRequestId } from "../server/ops.ts";
 import { writeProjectFile, writeRepoEntry } from "../server/store/projectFile.ts";
-import { repoNameProblem, type RepoRef } from "../shared/repos.ts";
+import { repoNameProblem } from "../shared/repos.ts";
+import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../server/repoAdmin.ts";
 import { Workspace as WorkspaceStore } from "../server/store/workspace.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../server/store/workspace.ts";
@@ -398,44 +399,34 @@ export async function repoCommand(
   o: { local?: boolean },
 ): Promise<{ data: unknown; text: string }> {
   const [sub = "ls", name, ...rest] = args;
-  const file = join(ws.dataDir, "project.yaml");
   const shared = () => ws.project.repos.find((r) => r.name === name);
   const usage = "p3 repo [ls | add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…] | set <名前> キー=値 … | path <名前> <パス> | rm <名前> [--local]]";
 
-  /** このマシンのパスを書く（null で外す）。プロジェクトが個人設定に登録されていること */
-  const setLocal = async (ref: string, path: string | null) => {
-    if (!projectName) throw new UsageError("このプロジェクトは個人設定に登録されていません。先に p3 project add <名前> <フォルダ> で登録してください");
-    await updateUserConfig((doc, now) => {
-      const prev = now.projects[projectName];
-      if (!prev) throw new UsageError(`プロジェクト「${projectName}」は個人設定に登録されていません`);
-      const repos = { ...prev.repos };
-      if (path === null) delete repos[ref];
-      else repos[ref] = path;
-      setProjectNode(doc, projectName, { dir: prev.dir, repos });
-    });
-  };
-  /** 渡されたパス（フォルダであること。git でなくてよい） */
-  const folder = (raw: string) => {
-    const p = resolvePath(cwd, raw);
-    if (!existsSync(p)) throw new UsageError(`パスがありません: ${p}`);
-    if (!statSync(p).isDirectory()) throw new UsageError(`フォルダではありません: ${p}`);
-    return p;
-  };
-  const pairs = (list: string[], base: RepoRef): RepoRef => {
-    const next = { ...base };
+  const pairs = (list: string[]): RepoPatch => {
+    const patch: RepoPatch = {};
     for (const pair of list) {
       const eq = pair.indexOf("=");
       const key = pair.slice(0, eq);
       const value = pair.slice(eq + 1).trim();
-      if (key === "role") next.role = value;
+      if (key === "role") patch.role = value;
       else if (key === "readFirst" || key === "writable") {
         if (!["true", "false"].includes(value)) throw new UsageError(`${key} は true か false`);
-        next[key] = value === "true";
-      } else if (key === "mapFile") next.mapFile = value || undefined;
-      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（コードの地図 map は project.yaml に直接書く）`);
+        patch[key] = value === "true";
+      } else if (key === "mapFile") patch.mapFile = value;
+      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（コードの地図 map は設定画面か project.yaml で）`);
     }
-    return next;
+    return patch;
   };
+  /** 共通の操作の失敗は使い方の誤りとして出す */
+  const run = async <T>(f: () => Promise<T>): Promise<T> => {
+    try {
+      return await f();
+    } catch (e) {
+      if (e instanceof RepoAdminError) throw new UsageError(e.message);
+      throw e;
+    }
+  };
+  const folder = (raw: string) => resolvePath(cwd, raw);
 
   if (sub === "ls") {
     const refs = ws.refs();
@@ -458,44 +449,38 @@ export async function repoCommand(
   if (problem && sub !== "rm") throw new UsageError(`参照先の名前: ${problem}`);
 
   if (sub === "add") {
-    if (shared()) throw new UsageError(`「${name}」は既にあります。変えるときは p3 repo set ${name} キー=値、このマシンのパスは p3 repo path ${name} <パス>`);
     const maybePath = rest[0] && !rest[0].includes("=") ? rest[0] : undefined;
-    const entry = pairs(maybePath ? rest.slice(1) : rest, { name, role: "", readFirst: false, writable: false, map: [] });
+    const patch = pairs(maybePath ? rest.slice(1) : rest);
+    if (shared()) throw new UsageError(`「${name}」は既にあります。変えるときは p3 repo set ${name} キー=値、このマシンのパスは p3 repo path ${name} <パス>`);
     const path = maybePath ? folder(maybePath) : undefined;
-    await writeRepoEntry(file, name, entry);
-    if (path) await setLocal(name, path);
+    if (path) await run(async () => checkFolder(path));
+    const entry = await run(() => addRepo(ws, name, patch));
+    if (path) await run(() => setLocalRepoPath(ws, projectName, name, path));
     return {
       data: { ...entry, local: path ?? null },
-      text: [
-        `参照先を足しました: ${name}${entry.role ? `（${entry.role}）` : ""}${path ? ` → ${path}` : "（このマシンのパスは未登録: p3 repo path " + name + " <パス>）"}`,
-      ].join("\n"),
+      text: `参照先を足しました: ${name}${entry.role ? `（${entry.role}）` : ""}${path ? ` → ${path}` : `（このマシンのパスは未登録: p3 repo path ${name} <パス>）`}`,
     };
   }
   if (sub === "set") {
-    const cur = shared();
-    if (!cur) throw new UsageError(`「${name}」はありません。足すときは p3 repo add ${name} <パス>`);
+    if (!shared()) throw new UsageError(`「${name}」はありません。足すときは p3 repo add ${name} <パス>`);
     if (!rest.length) throw new UsageError("キー=値 を指定してください（role readFirst writable mapFile）");
-    const next = pairs(rest, cur);
-    await writeRepoEntry(file, name, next);
+    const next = await run(() => updateRepo(ws, name, pairs(rest)));
     return { data: next, text: `参照先を変えました: ${name}` };
   }
   if (sub === "path") {
-    if (!shared()) {
-      throw new UsageError(`「${name}」は共有の参照先にありません（p3 repo ls）。足すときは p3 repo add ${name} <パス>`);
-    }
+    if (!shared()) throw new UsageError(`「${name}」は共有の参照先にありません（p3 repo ls）。足すときは p3 repo add ${name} <パス>`);
     if (!rest[0]) throw new UsageError(`p3 repo path ${name} <このマシンのパス>`);
     const path = folder(rest[0]);
-    await setLocal(name, path);
+    await run(() => setLocalRepoPath(ws, projectName, name, path));
     return { data: { name, local: path }, text: `このマシンのパスを登録しました: ${name} → ${path}（共有の定義は変えていません）` };
   }
   if (sub === "rm") {
     if (o.local) {
-      await setLocal(name, null);
+      await run(() => setLocalRepoPath(ws, projectName, name, null));
       return { data: { name, local: null }, text: `このマシンのパスを外しました: ${name}（共有の定義は残しています。ほかの人には影響しません）` };
     }
     if (!shared()) throw new UsageError(`「${name}」は共有の参照先にありません。このマシンのパスだけを外すときは --local`);
-    await writeRepoEntry(file, name, null);
-    if (projectName) await setLocal(name, null).catch(() => undefined);
+    await run(() => removeRepo(ws, projectName, name));
     return { data: { name }, text: `参照先を消しました: ${name}（共有の定義。ほかの人の Preflight でも読まなくなります。ファイルやフォルダは消していません）` };
   }
   throw new UsageError(usage);

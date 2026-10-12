@@ -245,11 +245,11 @@ async function main(argv: string[]): Promise<number> {
     const check = new Workspace(target.dataDir);
     await check.load();
     await assertMigrated(check);
-    await startServer({ dataDir: target.dataDir, repos: target.repos, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
+    await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
-  const ctx = await openProject(target.dataDir, { repos: target.repos, settings });
+  const ctx = await openProject(target.dataDir, { repos: target.repos, settings, projectName: target.name });
   if (cmd === "migrate") {
     const r = await migrate(ctx.ws, target.name, cwd, { name: o.name });
     return out.result(r.data, () => r.text);

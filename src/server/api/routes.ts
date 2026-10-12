@@ -15,6 +15,7 @@ import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
+import { repoRoutes } from "./repoRoutes.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -143,6 +144,8 @@ export function apiRoutes(ctx: PcubeContext) {
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
+  /** 参照先（設定画面。このマシンのパスはローカルの画面からだけ） */
+  app.route("/repos", repoRoutes(ctx));
   /** データのフォルダを全部読み直す（ファイル監視に頼らない取り込み）。終わったら変更通知 kind: "reload" */
   app.post("/reload", async (c) => c.json(await ws.reloadAll()));
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */

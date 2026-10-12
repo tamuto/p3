@@ -66,7 +66,7 @@ export class Workspace {
   /** localRepos: 個人設定の参照先の名前 → このマシンのパス（repoRefs.ts） */
   constructor(
     readonly dataDir: string,
-    readonly localRepos: Record<string, string> = {},
+    private localRepos: Record<string, string> = {},
   ) {
     this.requests = new MarkdownCollection<Request>({
       layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
@@ -79,6 +79,21 @@ export class Workspace {
 
   get requestsDir() {
     return join(this.dataDir, "requests");
+  }
+
+  /** このマシンのパスを変えた（個人設定に書いた後に呼ぶ） */
+  setLocalRepo(name: string, path: string | null) {
+    const next = { ...this.localRepos };
+    if (path === null) delete next[name];
+    else next[name] = path;
+    this.localRepos = next;
+    this.emit({ type: "changed", kind: "project" });
+  }
+
+  /** project.yaml を読み直して知らせる（参照先を書いた後） */
+  async refreshProject() {
+    await this.loadProject();
+    this.emit({ type: "changed", kind: "project" });
   }
 
   /** project.yaml に残っている以前の形式の項目（repo・worktreeDir。p3 migrate で移す） */
