@@ -182,10 +182,23 @@ describe("p3 のタスク操作（--req で要望を指定）", () => {
     const { root, rid } = await initialized();
     p3(root, ["new", "A", "--req", rid]);
     p3(root, ["new", "B", "--req", rid]);
-    const done = p3(root, ["move", "T1", "done", "--output", "https://example.com/pull/7", "--req", rid], { P3_ACTOR: "ai:claude" });
+    // AI が完了にするときは変更の記録が要る（無ければ何も変えずに断る）
+    const ng = p3(root, ["move", "T1", "done", "--output", "https://example.com/pull/7", "--req", rid], { P3_ACTOR: "ai:claude" });
+    expect(ng.code).toBe(1);
+    expect(ng.err).toContain("--record で変更の記録");
+    expect(p3(root, ["show", `${rid}/T1`, "--json"]).json().item.status).toBe("todo");
+    const record = "- 認証の失敗を 401 で返すようにした\n- 理由: 画面が再ログインに誘導できないため\n- 決まり: 期限切れは 401、権限なしは 403";
+    const done = p3(root, ["move", "T1", "done", "--output", "https://example.com/pull/7", "--record", "-", "--req", rid], { P3_ACTOR: "ai:claude" }, CONFIG_HOME, record);
     expect(done.code, done.err).toBe(0);
     const t = p3(root, ["show", `${rid}/T1`, "--json"]).json().item;
-    expect(t).toMatchObject({ status: "done", outputs: ["https://example.com/pull/7"], updatedBy: "ai:claude" });
+    expect(t).toMatchObject({ status: "done", outputs: ["https://example.com/pull/7"], updatedBy: "ai:claude", record });
+    expect(readFileSync(join(root, ".p3", "requests", rid, "tasks", "T001.md"), "utf8")).toContain("期限切れは 401");
+    // 作業に読む短い出力にも出る。人は記録なしでも完了にできる
+    expect(p3(root, ["show", `${rid}/T1`, "--brief", "--json"]).json().item.record).toBe(record);
+    expect(p3(root, ["show", `${rid}/T1`, "--brief"]).out).toContain("## 変更の記録\n- 認証の失敗");
+    expect(p3(root, ["show", `${rid}/T1`]).out).toContain("変更の記録:\n  - 認証の失敗");
+    expect(p3(root, ["move", "T2", "done", "--req", rid]).code).toBe(0);
+    expect(p3(root, ["move", "T2", "todo", "--req", rid]).code).toBe(0);
     // 人が確認して「済み」にする（完了前のタスクは拒む）
     expect(p3(root, ["check", "T2", "--req", rid]).err).toContain("まだ完了していません");
     expect(p3(root, ["check", "T1", "--req", rid]).code).toBe(0);

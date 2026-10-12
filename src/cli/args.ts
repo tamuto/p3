@@ -36,6 +36,7 @@ const OPTIONS = {
   done: { type: "boolean" },
   off: { type: "boolean" },
   body: { type: "string" },
+  record: { type: "string" },
   note: { type: "string" },
   engine: { type: "string" },
   run: { type: "string" },

@@ -41,6 +41,8 @@ const taskInput = z.object({
   areas: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
   body: z.string().optional(),
+  /** 変更の記録（Markdown。完了にするときに書く） */
+  record: z.string().nullable().optional(),
 });
 /** checked: 完了したタスクに人が「済み」を付ける / 外す */
 const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional() });

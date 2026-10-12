@@ -14,6 +14,10 @@ import { requestCommand } from "./requestCommands.ts";
 
 /** タスクのコマンド（ls / show / find / impact / new / set / move / check / link / unlink / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
 
+const RECORD_REQUIRED =
+  "AI が完了にするときは --record で変更の記録を残してください（何を変えたか・なぜ・入れた決まり・やめたもの。Markdown。- で標準入力）\n" +
+  "  例: p3 move T003 done --output <URL> --record - < record.md";
+
 export async function taskCommand(cmd: string, env: CommandEnv): Promise<number | undefined> {
   const { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd } = env;
   switch (cmd) {
@@ -103,7 +107,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const ref = taskArg(args[0]);
       const patch = parseTaskAssignments(args.slice(1));
       if (o.body !== undefined) patch.body = readBody(o.body);
+      if (o.record !== undefined) patch.record = readBody(o.record).trim() || undefined;
       const { col, tid } = split(ref);
+      if (patch.status === "done" && actor.startsWith("ai:") && !patch.record && !col.require(tid).record) throw new UsageError(RECORD_REQUIRED);
       if (o["repo-output"]?.length) {
         const add = o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x));
         patch.repoOutputs = addRepoOutputs(patch.repoOutputs ?? col.require(tid).repoOutputs ?? [], add);
@@ -126,6 +132,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { col, tid } = split(ref);
       const cur = col.require(tid);
       const patch: Partial<Task> = { status };
+      if (o.record !== undefined) patch.record = readBody(o.record).trim() || undefined;
+      // AI が完了にするときは変更の記録を残す（後の Preflight・タスク解析・リリースノートが読む）
+      if (status === "done" && actor.startsWith("ai:") && !patch.record && !cur.record) throw new UsageError(RECORD_REQUIRED);
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
       // リポジトリごとの成果物（最後のタスクに、関係するリポジトリの PR を全部残せる）
       if (o["repo-output"]?.length) patch.repoOutputs = addRepoOutputs(cur.repoOutputs ?? [], o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x)));

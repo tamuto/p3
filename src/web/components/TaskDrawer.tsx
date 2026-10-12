@@ -13,7 +13,7 @@ import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarge
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 
-type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
+type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string; record: string };
 
 const toDraft = (t: Task): Fields => ({
   title: t.title,
@@ -22,6 +22,7 @@ const toDraft = (t: Task): Fields => ({
   labels: t.labels.join(", "),
   areas: t.areas.join(", "),
   outputs: t.outputs.join("\n"),
+  record: t.record ?? "",
 });
 
 const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -111,6 +112,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         labels: split(fields.labels),
         areas: split(fields.areas),
         outputs: fields.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
+        record: fields.record.trim() || null,
         rev: draft!.baseRev,
       });
       setDraft(draftOf(toDraft(res), res.rev));
@@ -258,6 +260,15 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </Field>
           <Field label="本文 (Markdown)">
             <textarea rows={6} className={`${inputCls} font-mono`} value={fields.body} onChange={(e) => set("body", e.target.value)} />
+          </Field>
+          <Field label="変更の記録 (Markdown。完了したら: 何を変えたか・なぜ・入れた決まり・やめたもの)">
+            <textarea
+              rows={4}
+              className={`${inputCls} font-mono`}
+              value={fields.record}
+              placeholder={task.status === "done" ? "まだ書かれていません" : "完了にするときに書きます"}
+              onChange={(e) => set("record", e.target.value)}
+            />
           </Field>
 
           <Section title="関係（Preflight のタスク化で張ったもの）">

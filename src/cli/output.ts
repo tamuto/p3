@@ -27,12 +27,13 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
   const home = "ref" in item ? item.request : item.id;
   const lines = [`${head}  ${item.title}`, ""];
   if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
-  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo"]);
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record"]);
   for (const [k, v] of Object.entries(item)) {
     if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
   }
   if (item.body.trim()) lines.push("", indent(item.body.trim()));
+  if ("record" in item && item.record) lines.push("", "変更の記録:", indent(item.record));
   if ("ref" in item) {
     const out = item.relations.map((r) => `  → ${pad(relationRole(r.type, "out"))} ${r.target} ${titleOf(ctx, `${home}/${r.target}`)}`);
     const inc = [

@@ -46,9 +46,11 @@ export function taskExtras(ctx: P3Context, task: Task, marks: Map<string, Supers
 const BRIEF_TASK_KEYS = ["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"] as const;
 
 export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
-  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs">;
+  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
+  // 変更の記録（完了したタスク）。経緯を知るために読む
+  if (task.record) item.record = task.record;
   // 着手先: 作業先のリポジトリとそのブランチ（作業先なしは repo: null）
   return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks) };
 }
@@ -67,6 +69,7 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   for (const o of item.repoOutputs ?? []) lines.push(`  成果物  ${o.repo}: ${o.output}`);
   for (const w of warnings) lines.push(`※ ${w.message}`);
   if (item.body.trim()) lines.push("", item.body.trim());
+  if (item.record) lines.push("", "## 変更の記録", item.record);
   return lines.join("\n");
 }
 

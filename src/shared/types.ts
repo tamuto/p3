@@ -96,6 +96,11 @@ export interface Task {
   doneAt?: string;
   /** 完了したタスクを人が確認して「済み」にした日時（完了から戻すと消える） */
   checkedAt?: string;
+  /**
+   * 変更の記録（Markdown）。完了にするときに作業した側が書く: 何を変えたか・なぜ・入れた決まり・やめたもの。
+   * 後の Preflight が経緯を調べるとき、タスク解析・リリースノートの材料に読む。AI が完了にするときは必須
+   */
+  record?: string;
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;

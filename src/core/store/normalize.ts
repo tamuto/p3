@@ -40,6 +40,7 @@ export const normalizeTaskIn =
     startedAt: d.startedAt ? iso(d.startedAt) : undefined,
     doneAt: d.doneAt ? iso(d.doneAt) : undefined,
     checkedAt: d.checkedAt ? iso(d.checkedAt) : undefined,
+    record: str(d.record)?.trim() || undefined,
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -49,7 +50,7 @@ export const normalizeTaskIn =
   });
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
-  "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs",
+  "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
   "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
 ];
 
