@@ -274,6 +274,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
+| リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |

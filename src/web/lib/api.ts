@@ -13,6 +13,11 @@ import type {
   Theme,
   Attachment,
   InputMatch,
+  ReleaseGeneration,
+  ReleaseMaterial,
+  ReleaseNote,
+  ReleaseNoteSummary,
+  ReleaseWarning,
 } from "../../shared/types.ts";
 
 /** API の run（評価対象と今の要望が同じか inputMatch を添える。run.json には無い） */
@@ -130,6 +135,18 @@ export interface RepoInfo extends RepoRef {
 
 export type RepoInput = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map">>;
 
+/** マイルストーンのリリースノートの詳細（保存したノートと材料） */
+export interface ReleaseNoteDetail {
+  note: ReleaseNote | null;
+  /** ノートのファイルが読めない理由（null でなければ「無い」ではない） */
+  noteError: string | null;
+  material: ReleaseMaterial;
+  materialChanged: boolean;
+}
+
+/** 保存の競合（409）の応答の今のノート（読めなければ・無ければ null） */
+export const conflictNote = (e: unknown): ReleaseNote | null => ((e instanceof ApiError ? (e.body as { current?: ReleaseNote | null }) : null)?.current ?? null);
+
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
   /** データのフォルダを全部読み直させる（応答は読み直しを終えた後） */
@@ -182,6 +199,19 @@ export const api = {
     return data as Attachment;
   },
   removeAttachment: (rid: string, id: string) => call("DELETE", `/requests/${rid}/attachments/${id}`),
+
+  /** マイルストーンのリリースノート */
+  releaseNotes: () => call<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }>("GET", "/release-notes"),
+  releaseNote: (mid: string) => call<ReleaseNoteDetail>("GET", `/release-notes/${encodeURIComponent(mid)}`),
+  /** version: 読んだときの版（更新のときは必須。無ければ新規）。basedOn: 元にした材料の hash */
+  saveReleaseNote: (mid: string, b: { body: string; version?: string; basedOn?: string }) =>
+    call<{ note: ReleaseNote; warnings: ReleaseWarning[] }>("PUT", `/release-notes/${encodeURIComponent(mid)}`, b),
+  /** 保存した本文のダウンロード（URL） */
+  releaseNoteExportUrl: (mid: string) => `/api/release-notes/${encodeURIComponent(mid)}/export`,
+  generateReleaseNote: (mid: string) => call<ReleaseGeneration>("POST", `/release-notes/${encodeURIComponent(mid)}/generate`, {}),
+  releaseGenerations: (mid: string) => call<ReleaseGeneration[]>("GET", `/release-notes/${encodeURIComponent(mid)}/generations`),
+  releaseGeneration: (id: string) => call<ReleaseGeneration>("GET", `/release-generations/${id}`),
+  cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */

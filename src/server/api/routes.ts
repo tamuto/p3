@@ -17,6 +17,7 @@ import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
+import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 
@@ -28,6 +29,7 @@ import { StaleInputError } from "../../core/preflight/input.ts";
  *   /requests/:rid/tasks[/:tid]            要望のタスク
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
+ *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
  */
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -158,6 +160,9 @@ export function apiRoutes(ctx: P3Context) {
   app.route("/user-theme", userThemeRoutes(() => ws.emit({ type: "changed", kind: "user" })));
   /** 最初の描画の前に読むスクリプト（index.html の先頭）。テーマだけを埋め込み、キャッシュさせない */
   app.route("/user-theme.js", userThemeScriptRoute());
+
+  /** マイルストーンのリリースノート（材料・保存・出力・要約の生成） */
+  app.route("/", releaseNoteRoutes(ctx));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));
