@@ -269,7 +269,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const { id } = await ctx.preflight.start(req.id);
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run.status).toBe("completed");
-    expect(run.log).toContainEqual(expect.objectContaining({ kind: "error", text: expect.stringContaining("想定外の変更: src/main.ts") }));
+    expect(run.log).toContainEqual(expect.objectContaining({ kind: "error", text: expect.stringContaining("想定外の変更: main:src/main.ts") }));
   });
 
   it("使用量の上限に当たっていれば頼まずに失敗させ、要望を下書きに戻す", async () => {
@@ -299,7 +299,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const prompt = sent().find((m) => m.method === "turn/start").params.input[0].text;
     expect(prompt).toContain(`/data/requests/${req.id}/preflight/${id}/assessment.json`);
     // run ディレクトリの中は想定内、リポジトリの変更だけを警告する
-    expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: src/main.ts")]);
+    expect(run.log.filter((l) => l.text.startsWith("想定外の変更")).map((l) => l.text)).toEqual([expect.stringContaining("想定外の変更: main:src/main.ts")]);
   });
 
   it("codex-workspace の docker run を、/workspace は tmpfs・参照先は /workspace/<名前> に読むだけ・データは /data にする", () => {

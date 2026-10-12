@@ -18,6 +18,7 @@ import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
 import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
 import { prepareLaunch } from "./launch.ts";
+import { hideConfigPath } from "../userConfig.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { parseRepoPath } from "../../shared/repos.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
@@ -54,8 +55,6 @@ export interface CodexWorkspaceConfig {
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
-  /** 個人設定のファイルの場所（直す場所の案内に出す） */
-  configPath?: string;
   /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
   command?: (m: { repos: HostMount[]; data: string; auth: CodexAuth["mode"] }) => string[];
 }
@@ -172,7 +171,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     try {
       cfg = await this.config();
     } catch (e) {
-      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
     }
     return new CodexWorkspaceEngine({ ...cfg, account: this.account });
   }
@@ -265,7 +264,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     try {
       cfg = await this.config();
     } catch (e) {
-      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`, { cause: e });
+      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
     }
     const auth = await this.auth(cfg);
     if (auth.mode === "none") throw new Error(auth.reason);
@@ -307,7 +306,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     ];
     const repos: HostMount[] = readable.map((r, i) => ({ name: r.name, host: mappings[i].host, container: mappings[i].container }));
     const data = mappings.at(-1)!.host;
-    log({ kind: "info", text: `パスの対応（個人設定の codex.pathMap${cfg.configPath ? `、${cfg.configPath}` : ""}）:` });
+    log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
     for (const r of readable) if (mapFileMissing(r)) log({ kind: "info", text: `地図のファイルがありません: ${r.name}:${r.mapFile}` });
     if (cfg.ensureImage) {
@@ -329,7 +328,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       );
     // 中継ごしに起こして、すぐ終わったときの Docker の出力と終わり方を残す（launcher.mjs）
     const launch = await prepareLaunch(command);
-    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length, configPath: cfg.configPath };
+    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length };
     /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
     const diagnosed = async (e: unknown, phase: "start" | "run") => {
       if (signal.aborted) return undefined;

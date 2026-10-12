@@ -40,7 +40,7 @@ export async function openProject(
   // Mock は preflight.engine: mock（PCUBE_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
   const chatgpt = new ChatGptAccount();
   const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = {
-    codex: new CodexWorkspaceEngine({ load: async () => ({ ...codexConfig(await source.get()), configPath: source.path }), account: chatgpt }),
+    codex: new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt }),
     mock: new MockEngine(),
   };
   const preflight = new PreflightService(ws, index, engines, {

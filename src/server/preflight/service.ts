@@ -26,6 +26,7 @@ import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
+import { hideConfigPath } from "../userConfig.ts";
 import { taskRepo } from "../../shared/workTarget.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
@@ -123,7 +124,7 @@ export class PreflightService {
       try {
         engine = this.engines[await this.currentDefault()];
       } catch (e) {
-        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${(e as Error).message}`;
+        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`;
         engine = failing(this.lastDefault, message);
       }
     }
@@ -211,6 +212,21 @@ export class PreflightService {
     this.ws.emit({ type: "preflight-log", runId: run.id, entry });
   }
 
+  /** 共有の記録に出すパス: 参照先の中なら <参照先>:<パス>、データのフォルダの中なら data:<パス>（このマシンのパスは出さない） */
+  private shownPath(p: string, refs: ResolvedRef[]): string {
+    const inside = (dir: string) => {
+      const rel = relative(dir, p);
+      return rel.startsWith("..") || isAbsolute(rel) ? undefined : rel;
+    };
+    for (const r of refs) {
+      const rel = r.local ? inside(r.local) : undefined;
+      if (rel !== undefined) return `${r.name}:${rel}`;
+    }
+    const data = inside(this.ws.dataDir);
+    if (data !== undefined) return `data:${data}`;
+    return p.startsWith("/workspace") ? p : "（参照先の外）";
+  }
+
   private async execute(
     engine: PreflightEngine,
     run: PreflightRun,
@@ -239,11 +255,7 @@ export class PreflightService {
       );
       // 書いてよい範囲の外が変更されていないか確かめる
       const stray = outcome.changed.filter((p) => !p.startsWith(`${runDir}/`));
-      for (const p of stray) {
-        const inRepo = relative(repoRoot, p);
-        const shown = inRepo.startsWith("..") || isAbsolute(inRepo) ? p : inRepo;
-        this.log(run, { kind: "error", text: `想定外の変更: ${shown}（確認して必要なら元に戻してください）` });
-      }
+      for (const p of stray) this.log(run, { kind: "error", text: `想定外の変更: ${this.shownPath(p, refs)}（確認して必要なら元に戻してください）` });
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);

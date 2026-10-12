@@ -26,15 +26,31 @@ export function mapPath(pathMap: readonly [string, string][], local: string): { 
   return { host: local };
 }
 
+/**
+ * パスの対応の説明。共有の記録（run.json）に残るので、このマシンのパスと Docker のホストのパスは出さず、
+ * 参照先の名前・コンテナの中のパス・codex.pathMap の対応が当たったかだけを書く
+ */
 export function describeMapping(m: PathMapping, rules: number): string {
   const how = m.rule
     ? m.rule[0] === m.rule[1]
-      ? `対応 ${m.rule[0]}=${m.rule[1]}（パスは変わらない）`
-      : `対応 ${m.rule[0]}=${m.rule[1]}`
+      ? "codex.pathMap の対応あり（パスは変わらない）"
+      : "codex.pathMap の対応あり"
     : rules
-      ? `対応なし（codex.pathMap の ${rules} 件のどれにも当たらない。このパスのまま渡す）`
-      : "対応なし（codex.pathMap が空。このパスのまま渡す）";
-  return `${m.label}: ${m.local} → Docker のホスト ${m.host}（${how}）→ コンテナ ${m.container}`;
+      ? `codex.pathMap の対応なし（${rules} 件のどれにも当たらない。このマシンのパスのまま渡す）`
+      : "codex.pathMap の対応なし（このマシンのパスのまま渡す）";
+  return `${m.label} → コンテナ ${m.container}（${how}）`;
+}
+
+/** Docker の出力に出るこのマシン・ホストのパスを、参照先の名前に置き換える（長いパスから） */
+export function hidePaths(text: string, mappings: readonly PathMapping[]): string {
+  const pairs = mappings.flatMap((m) => [
+    [m.host, `<${m.label}>`],
+    [m.local, `<${m.label}>`],
+  ]);
+  return pairs
+    .filter(([p]) => p && p !== "/")
+    .sort((a, b) => b[0].length - a[0].length)
+    .reduce((t, [p, name]) => t.split(p).join(name), text);
 }
 
 export interface LaunchDiagnosis {
@@ -55,9 +71,11 @@ const lastLine = (s: string) => {
 
 export function diagnoseLaunch(
   r: LaunchResult,
-  ctx: { image: string; mappings: PathMapping[]; rules: number; configPath?: string; phase: "start" | "run" },
+  ctx: { image: string; mappings: PathMapping[]; rules: number; phase: "start" | "run" },
 ): LaunchDiagnosis {
-  const { exit, stderr } = r;
+  const { exit } = r;
+  // 共有の記録に残るので、パスは参照先の名前にしてから使う
+  const stderr = hidePaths(r.stderr, ctx.mappings);
   const last = lastLine(stderr);
   const when = ctx.phase === "start" ? "初期化の前に" : "途中で";
   let head: string;
@@ -69,11 +87,12 @@ export function diagnoseLaunch(
   if (last) head += `: ${last}`;
 
   const hints: string[] = [];
-  const bind = /bind source path does not exist: (\S+)/.exec(stderr);
+  const bind = /bind source path does not exist: (\S+)/.exec(r.stderr);
   if (exit?.spawnError === "ENOENT") hints.push("docker コマンドが見つかりません。Docker を入れて、PATH を確かめてください");
   if (bind) {
+    const which = ctx.mappings.find((m) => m.host === bind[1]);
     hints.push(
-      `Docker のホストにこのパス（${bind[1]}）がありません。個人設定の codex.pathMap を確かめてください${ctx.configPath ? `（${ctx.configPath}）` : ""}`,
+      `${which ? `${which.label} のパス` : "マウントするパス"}が Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください`,
       "今のパスの対応:",
       ...ctx.mappings.map((m) => `  ${describeMapping(m, ctx.rules)}`),
     );

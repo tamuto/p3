@@ -223,6 +223,10 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   概要ページで個人設定を壊してタブに戻ると、エンジンの状態に YAML の行と直すファイルが出て実行のボタンが止まり、直して戻ると
   元に戻った（serve は起動し直していない）。直した後の成功は、偽の app-server で確かめた（test/settingsReload.test.ts）
 
+- Preflight の記録（run.json のログ・エラー）は共有するので、このマシンのパス・Docker のホストのパス・個人設定のファイルの
+  場所を入れない（`diagnose.ts` の `describeMapping` は名前とコンテナの中のパスだけ、`hidePaths` で Docker の出力の中のパスを
+  参照先の名前に置き換える。個人設定のエラーは `hideConfigPath` で「個人設定（config.yaml）」にする。想定外の変更は
+  `<参照先>:<パス>`）。画面のエンジンの状態（共有しない）には個人設定の場所を出してよい
 - タスクの作業先とリポジトリごとのブランチ（`shared/workTarget.ts`・`server/workTargets.ts`）: タスクとタスク案の `repo`
   （名前 / null = 作業先なし / 無い = 以前のタスクで主リポジトリ）、要望の `workstreams`（名前 → branch・worktree。以前の
   `workstream` は主リポジトリの分として読む）、タスクの `repoOutputs`。作業先は writable の参照先だけで、API・CLI・タスク化の

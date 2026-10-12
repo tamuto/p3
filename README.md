@@ -647,17 +647,20 @@ run や並んで動いている run は変わらない。待ち受け（`serve.h
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
 
-**Docker のエラーを見る:** Preflight の開始のログに、リポジトリとデータのフォルダそれぞれの「このマシンのパス → Docker の
-ホストのパス（当たった `codex.pathMap` の対応。対応なし・パスが変わらない対応も書く）→ コンテナの中のパス」を出す。
+**Docker のエラーを見る:** Preflight の開始のログに、参照先とデータのフォルダそれぞれの「名前 → コンテナの中のパス
+（`codex.pathMap` の対応が当たったか。当たらない・パスが変わらない対応も書く）」を出す。ログとエラーは共有の記録（run.json）に
+残るので、このマシンのパス・Docker のホストのパス・個人設定のファイルの場所は出さない（Docker の出力の中のパスも参照先の名前に
+置き換える。想定外の変更も `<参照先>:<パス>` で出す）。実際のパスは、手元で `p3 repo ls` と個人設定で確かめる。
 app-server（`docker run`）がすぐ・途中で終わったときは、Docker の出力（stderr。長ければ先頭と末尾を残して省略を明示）と
 終了コード（またはシグナル）をログとエラーに出し、よくある原因には次にすることを添える（要約にはエラーらしい最後の行を出す）。
 トークンなどは伏せてから残す。
 
 ```text
-app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /workspaces/pcube
-Docker のホストにこのパス（/workspaces/pcube）がありません。個人設定の codex.pathMap を確かめてください（~/.config/infodb-p3/config.yaml）
+app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 pcube>
+参照先 pcube のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください
 今のパスの対応:
-  リポジトリ: /workspaces/pcube → Docker のホスト /workspaces/pcube（対応なし（codex.pathMap が空。このパスのまま渡す））→ コンテナ /workspace
+  参照先 pcube → コンテナ /workspace/pcube（codex.pathMap の対応なし（このマシンのパスのまま渡す））
+  データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））
 ```
 
 | Docker の出力 | 次にすること |

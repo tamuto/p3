@@ -66,8 +66,10 @@ export const DEFAULT_SETTINGS: MachineSettings = {
   serve: { host: "0.0.0.0", port: 4310 },
 };
 
-/** 設定の値が読めない（CLI は使い方の誤りと同じく終了コード 1） */
-export class SettingsError extends Error {}
+/** 設定の値が読めない（CLI は使い方の誤りと同じく終了コード 1）。configPath: 読んだ個人設定のファイル（共有の記録から外すため） */
+export class SettingsError extends Error {
+  configPath?: string;
+}
 
 export interface SettingsOverrides {
   host?: string;
@@ -97,9 +99,14 @@ export function machineSettingsSource(opts: { path?: string; env?: Env; cli?: Se
       try {
         return resolveMachineSettings(await loadUserSettings(path), opts.env ?? process.env, opts.cli ?? {});
       } catch (e) {
-        if (e instanceof UserConfigError) throw new SettingsError(e.message);
-        if (e instanceof SettingsError && e.message.includes("個人設定")) throw new SettingsError(`${e.message}（${path}）`);
-        throw e;
+        const err =
+          e instanceof UserConfigError
+            ? new SettingsError(e.message)
+            : e instanceof SettingsError && e.message.includes("個人設定")
+              ? new SettingsError(`${e.message}（${path}）`)
+              : e;
+        if (err instanceof SettingsError) err.configPath = path;
+        throw err;
       }
     },
   };

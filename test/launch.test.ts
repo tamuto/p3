@@ -36,7 +36,6 @@ async function runWith(mode: string | string[], opts: { chatgpt?: boolean; pathM
     authVolume: opts.chatgpt ? undefined : "vol",
     account: opts.chatgpt ? await chatgptAccount() : new ChatGptAccount(join(tempDir(), "none.json")),
     pathMap: opts.pathMap ?? [[repo.root, "/host/repo"]],
-    configPath: "/home/u/.config/infodb-p3/config.yaml",
     ensureImage: false,
     command: () => (Array.isArray(mode) ? mode : [process.execPath, FAKE_RUN, mode]),
   });
@@ -50,17 +49,22 @@ async function runWith(mode: string | string[], opts: { chatgpt?: boolean; pathM
 
 describe("app-server（docker run）がすぐ終わったときの診断", () => {
   it("マウントのエラー: Docker のメッセージと終了コード、codex.pathMap の案内と今の対応を出す", async () => {
-    const { run, log, repo } = await runWith("mount");
+    const { run, log, repo, saved } = await runWith("mount");
     expect(run.status).toBe("failed");
-    expect(run.error).toContain('初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /host/repo');
+    expect(run.error).toContain('初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 main>');
     // 診断はエラーのログに1回だけ
     expect(run.log.filter((l) => l.text.includes("codex.pathMap を確かめてください"))).toHaveLength(1);
-    expect(run.error).toContain("Docker のホストにこのパス（/host/repo）がありません。個人設定の codex.pathMap を確かめてください（/home/u/.config/infodb-p3/config.yaml）");
-    expect(run.error).toContain(`参照先 main: ${repo.root} → Docker のホスト /host/repo（対応 ${repo.root}=/host/repo）→ コンテナ /workspace/main`);
-    expect(run.error).toContain(`データ: ${repo.dataDir} → Docker のホスト /host/repo/.pcube（対応 ${repo.root}=/host/repo）→ コンテナ /data`);
-    expect(log).toContain('error: Docker の出力:\ndocker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /host/repo');
+    expect(run.error).toContain("参照先 main のパスが Docker のホストにありません。個人設定（config.yaml）の codex.pathMap を確かめてください");
+    expect(run.error).toContain("参照先 main → コンテナ /workspace/main（codex.pathMap の対応あり）");
+    expect(run.error).toContain("データ → コンテナ /data（codex.pathMap の対応あり）");
+    // 共有の記録（run.json）に、このマシンのパスも Docker のホストのパスも残さない
+    for (const p of [repo.root, "/host/repo"]) {
+      expect(saved).not.toContain(p);
+      expect(log).not.toContain(p);
+    }
+    expect(log).toContain('error: Docker の出力:\ndocker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 main>');
     // 開始のログにパスの対応
-    expect(log).toContain("info: パスの対応（個人設定の codex.pathMap、/home/u/.config/infodb-p3/config.yaml）:");
+    expect(log).toContain("info: パスの対応（個人設定の codex.pathMap）:");
   });
 
   it("デーモンに繋がらない・イメージが無い・分からない失敗・終了コード 0・シグナル・起動できない", async () => {
@@ -118,9 +122,10 @@ describe("パスの対応の説明", () => {
     expect(mapPath(map, "/workspaces/pcube")).toEqual({ host: "/home/u/ws/pcube", rule: map[0] });
     expect(mapPath(map, "/workspacesX/a")).toEqual({ host: "/workspacesX/a" });
     const m = (local: string) => ({ label: "データ", local, ...mapPath(map, local), container: "/data" });
-    expect(describeMapping(m("/mnt/assets/p"), 3)).toBe("データ: /mnt/assets/p → Docker のホスト /mnt/assets/p（対応 /mnt/assets=/mnt/assets（パスは変わらない））→ コンテナ /data");
-    expect(describeMapping(m("/srv/x"), 3)).toContain("対応なし（codex.pathMap の 3 件のどれにも当たらない。このパスのまま渡す）");
-    expect(describeMapping({ label: "データ", local: "/srv/x", host: "/srv/x", container: "/data" }, 0)).toContain("codex.pathMap が空");
+    expect(describeMapping(m("/mnt/assets/p"), 3)).toBe("データ → コンテナ /data（codex.pathMap の対応あり（パスは変わらない））");
+    expect(describeMapping(m("/workspaces/pcube"), 3)).toBe("データ → コンテナ /data（codex.pathMap の対応あり）");
+    expect(describeMapping(m("/srv/x"), 3)).toContain("対応なし（3 件のどれにも当たらない。このマシンのパスのまま渡す）");
+    expect(describeMapping({ label: "データ", local: "/srv/x", host: "/srv/x", container: "/data" }, 0)).toBe("データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））");
   });
 });
 
