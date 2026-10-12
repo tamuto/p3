@@ -12,7 +12,7 @@ import {
 } from "../../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../../../components/RequestStatus.tsx";
 import { Badge, Button, buttonCls, cx, Field, inputCls, Empty, Id, Meter, scoreTone, Section, type Tone } from "../../../components/ui.tsx";
-import { api, ApiError, type NotesInfo, type RunInfo } from "../../../lib/api.ts";
+import { api, ApiError, failureOf, type NotesInfo, type RunInfo } from "../../../lib/api.ts";
 import { archiveSelection } from "../../../lib/supersede.ts";
 import { nextRunLabel, notesPanelState, PLAIN_RUN_BLOCKED, submitNote } from "../../../lib/notes.ts";
 import { absRef } from "../../../../shared/refs.ts";
@@ -831,7 +831,7 @@ function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestData; dr
       ctx.reload();
       return saved;
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (failureOf(e) === "rev_conflict") {
         setError("競合: 他で更新されています。入力は残してあります（最新を見るには「入力を捨てて最新にする」）");
         data.reload();
       } else setError((e as Error).message);
@@ -1067,7 +1067,7 @@ function BodyEditor({
       onSaved();
     } catch (e) {
       setMessage({ error: true, text: bodySaveErrorText(e) });
-      if (e instanceof ApiError && e.status === 409) onConflict();
+      if (failureOf(e) === "rev_conflict") onConflict();
     } finally {
       setBusy(false);
     }

@@ -1,5 +1,5 @@
 import type { InputMatch } from "../../shared/types.ts";
-import { ApiError } from "./api.ts";
+import { failureOf } from "./api.ts";
 import { changedLabel } from "../../shared/preflightInput.ts";
 
 /**
@@ -34,18 +34,15 @@ export function staleNotice(m: InputMatch | undefined, opts: { done: boolean }):
 
 /** タスク化の失敗の表示。409 は code で分ける（評価のあとで要望が変わった / 置き換えられるタスクが他で更新された） */
 export function materializeErrorText(e: unknown): string {
-  if (e instanceof ApiError && e.status === 409) {
-    const code = (e.body as { code?: string } | null)?.code;
-    if (code === "stale_input") return e.message;
-    return "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください";
-  }
+  const kind = failureOf(e);
+  if (kind === "rev_conflict") return "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください";
   return (e as Error).message;
 }
 
 /** 本文の保存の失敗の表示（入力は消さない） */
 export function bodySaveErrorText(e: unknown): string {
-  if (e instanceof ApiError && e.status === 409) return "保存できませんでした: 本文が他で更新されています。入力は残してあります。最新の本文を確かめて取り込んでください";
-  if (e instanceof ApiError && e.status === 404) return "この要望は見つからないので保存しません。入力は残してあります（必要ならコピーしてください）";
+  if (failureOf(e) === "rev_conflict") return "保存できませんでした: 本文が他で更新されています。入力は残してあります。最新の本文を確かめて取り込んでください";
+  if (failureOf(e) === "not_found") return "この要望は見つからないので保存しません。入力は残してあります（必要ならコピーしてください）";
   return `保存できませんでした: ${(e as Error).message}。入力は残してあります`;
 }
 

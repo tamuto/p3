@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { ApiError } from "../src/web/lib/api.ts";
+import { ApiError, failureOf } from "../src/web/lib/api.ts";
 import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft } from "../src/web/lib/draft.ts";
 import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../src/web/lib/requestEdit.ts";
 import { makeProject, newRequest } from "./helpers.ts";
@@ -109,5 +109,17 @@ describe("評価対象の規則（shared/preflightInput.ts。サーバと画面�
     expect(isMaterialized({ materialized: ["T001"] })).toBe(true);
     expect(isMaterialized({ materialized: ["T001"], materialization: { created: {}, archive: [], archived: [], done: false } })).toBe(false);
     expect(isMaterialized({})).toBe(false);
+  });
+});
+
+describe("API の失敗の種類（画面はこれで分ける）", () => {
+  it("409 は code で分け、code の無い 409 は rev の競合。404 は無い", () => {
+    expect(failureOf(new ApiError(409, "", { code: "stale_input" }))).toBe("stale_input");
+    expect(failureOf(new ApiError(409, "", { code: "rev_conflict" }))).toBe("rev_conflict");
+    expect(failureOf(new ApiError(409, "", {}))).toBe("rev_conflict");
+    expect(failureOf(new ApiError(409, "", null))).toBe("rev_conflict");
+    expect(failureOf(new ApiError(404, "", {}))).toBe("not_found");
+    expect(failureOf(new ApiError(400, "", {}))).toBe("other");
+    expect(failureOf(new Error("x"))).toBe("other");
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { RELATION_TYPES, relationTypes, type GraphEdge, type RepoOutput, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
-import { api, ApiError } from "../lib/api.ts";
+import { api, failureOf } from "../lib/api.ts";
 import { markFrom, warningText } from "../lib/supersede.ts";
 import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
@@ -67,7 +67,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         return syncDraft(d, server, r.task.rev, shallowEqual);
       });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setGone(true);
+      if (failureOf(e) === "not_found") setGone(true);
       else setMsg(`最新の内容を読み込めませんでした（表示は前の内容のまま）: ${(e as Error).message}`);
     }
   };
@@ -121,10 +121,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       data.reload();
       ctx.reload();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (failureOf(e) === "rev_conflict") {
         setMsg("競合: 他で更新されています。入力は残してあります。「破棄」で最新を表示します。");
         void load();
-      } else if (e instanceof ApiError && e.status === 404) setGone(true);
+      } else if (failureOf(e) === "not_found") setGone(true);
       else setMsg(String((e as Error).message));
     }
   }
