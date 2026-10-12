@@ -210,7 +210,7 @@ function Card({
           ))}
         </div>
       )}
-      {t.outputs.length > 0 && <Outputs outputs={t.outputs} />}
+      {t.outputs.length > 0 && <Outputs outputs={t.outputs} compact />}
       <div className="mt-2 flex items-center gap-2">
         {(t.doneAt || t.startedAt) && (
           <span className="text-sm text-slate-400" title="ステータスを変えたときに記録された日時">
