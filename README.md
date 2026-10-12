@@ -1045,6 +1045,9 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 src/
   shared/            型定義・参照の解き方・日付（サーバ/Web 共通）
   cli/               p3 CLI（ファイルを直接操作。serve でサーバも起動する）
+    main.ts          振り分け・プロジェクトと変更者と今の要望の決定・終了コード
+    taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は server/requestOps.ts を通す）
+    args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
   server/
     requestOps.ts    要望・タスク・関係の変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
     ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
