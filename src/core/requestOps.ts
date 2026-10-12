@@ -40,6 +40,25 @@ export function checkMilestone(ctx: P3Context, id: string | null | undefined) {
   }
 }
 
+/**
+ * マイルストーンを外すときの規則（CLI の milestone rm と、API の設定全体の更新で同じに効かせる）。
+ * next: 外した後に残るマイルストーンの ID。使っている要望か、リリースノート（読めないファイルも含む）があれば断る
+ */
+export async function checkMilestoneRemoval(ctx: P3Context, next: string[]): Promise<void> {
+  const keep = new Set(next);
+  const removed = ctx.ws.project.milestones.map((m) => m.id).filter((id) => !keep.has(id));
+  if (!removed.length) return;
+  const used = [...new Set(ctx.ws.requests.list().flatMap((r) => (r.milestone && removed.includes(r.milestone) ? [r.milestone] : [])))];
+  if (used.length) {
+    const n = (id: string) => ctx.ws.requests.list().filter((r) => r.milestone === id).length;
+    throw new OpRuleError(`使用中のマイルストーンは消せません: ${used.map((id) => `${id}（要望 ${n(id)} 件）`).join(", ")}。要望の milestone を外してから消してください`);
+  }
+  const notes = (await ctx.ws.releaseNotes.ids()).filter((id) => removed.includes(id));
+  if (notes.length) {
+    throw new OpRuleError(`リリースノートのあるマイルストーンは消せません: ${notes.join(", ")}（release-notes/<ID>.md を残すなら消さないでください）`);
+  }
+}
+
 /** タスクを変えた後: ブランチの割り当てと、対応済の要望に未完了のタスクができたら進行中に戻す */
 async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: string | null | undefined, actor?: string): Promise<string | undefined> {
   if (repo) await ensureWorkstreams(ctx.ws, rid, [repo], actor);

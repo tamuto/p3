@@ -17,7 +17,7 @@ import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
-import { archiveTask, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 
 /**
@@ -142,11 +142,8 @@ export function apiRoutes(ctx: P3Context) {
   );
   app.put("/project", async (c) => {
     const patch = projectPatch.parse(await c.req.json());
-    if (patch.milestones) {
-      const ids = new Set(patch.milestones.map((m) => m.id));
-      const used = ws.requests.list().filter((r) => r.milestone && !ids.has(r.milestone));
-      if (used.length) throw new Error(`使用中のマイルストーンは消せません: ${[...new Set(used.map((r) => r.milestone))].join(", ")}`);
-    }
+    // 使っている要望・リリースノートのあるマイルストーンは消さない（CLI の milestone rm と同じ規則）
+    if (patch.milestones) await checkMilestoneRemoval(ctx, patch.milestones.map((m) => m.id));
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
