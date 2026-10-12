@@ -95,3 +95,19 @@ describe("画面の保存と再評価（API を通して）", () => {
     expect(ok.body.tasks.map((t: any) => t.title)).toEqual(["送信", "再送"]);
   });
 });
+
+describe("評価対象の規則（shared/preflightInput.ts。サーバと画面で同じ）", async () => {
+  const { changedLabel, isMaterialized, normalizeInput, sameText } = await import("../src/shared/preflightInput.ts");
+  const { normalizeInput: serverNormalize } = await import("../src/server/preflight/input.ts");
+  it("サーバの評価対象の正規化と画面の本文の比較は同じ規則", () => {
+    expect(serverNormalize).toBe(normalizeInput);
+    expect(sameBody).toBe(sameText);
+    expect(changedLabel(["title", "body"])).toBe("タイトルと本文");
+    expect(changedLabel(undefined)).toBe("");
+  });
+  it("タスク化済みは、途中で止まったものを含めない", () => {
+    expect(isMaterialized({ materialized: ["T001"] })).toBe(true);
+    expect(isMaterialized({ materialized: ["T001"], materialization: { created: {}, archive: [], archived: [], done: false } })).toBe(false);
+    expect(isMaterialized({})).toBe(false);
+  });
+});

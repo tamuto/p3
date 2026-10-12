@@ -32,6 +32,7 @@ import { hideConfigPath } from "../userConfig.ts";
 import { extractXlsx, XlsxError } from "./xlsx.ts";
 import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
 import { compareInput, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
+import { changedLabel } from "../../shared/preflightInput.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -192,7 +193,7 @@ export class PreflightService {
       this.log(run, {
         kind: "info",
         text: m.status === "changed"
-          ? `前回の評価のあとで要望の${(m.changed ?? []).map((k) => (k === "title" ? "タイトル" : "本文")).join("と")}が変わりました。今の内容を基準に評価し、変わったことを資料として渡します`
+          ? `前回の評価のあとで要望の${changedLabel(m.changed)}が変わりました。今の内容を基準に評価し、変わったことを資料として渡します`
           : `前回が何を評価したか確かめられません（${m.reason ?? "不明"}）。今の内容を基準に評価します`,
       });
     }

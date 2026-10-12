@@ -27,6 +27,7 @@ import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtra
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 import { StaleInputError, staleMessage } from "../server/preflight/input.ts";
+import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -888,8 +889,8 @@ function ambiguous(out: Output, ctx: P3Context, query: string, current?: string)
 /** 評価対象と今の要望の比較（drafts の表示） */
 function inputMatchLine(rid: string, run: PreflightRun, m: InputMatch): string {
   if (m.status === "same") return "";
-  if (run.materialized?.length && run.materialization?.done !== false) {
-    return `\n※ この評価のあとで要望が変わっています（${m.status === "changed" ? (m.changed ?? []).join(", ") : m.reason}）。タスク化は済んでいます。作り直すなら p3 preflight ${rid}`;
+  if (isMaterialized(run)) {
+    return `\n※ この評価のあとで要望が変わっています（${m.status === "changed" ? changedLabel(m.changed) : m.reason}）。タスク化は済んでいます。作り直すなら p3 preflight ${rid}`;
   }
   return `\n※ ${staleMessage(rid, run.id, m)}`;
 }

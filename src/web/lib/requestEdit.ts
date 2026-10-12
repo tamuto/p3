@@ -1,5 +1,6 @@
 import type { InputMatch } from "../../shared/types.ts";
 import { ApiError } from "./api.ts";
+import { changedLabel } from "../../shared/preflightInput.ts";
 
 /**
  * 要望のタイトル・本文の編集と、評価対象（Preflight が評価した内容）との食い違いの表示。
@@ -13,8 +14,6 @@ export function unsavedFields(s: { title: boolean; body: boolean }): string[] {
   return [...(s.title ? ["タイトル"] : []), ...(s.body ? ["本文"] : [])];
 }
 
-const FIELD = { title: "タイトル", body: "本文" } as const;
-
 /**
  * 表示中の run の評価対象と今の要望の食い違い。同じなら null。
  * done: この run からタスク化済み（取り消したようには見せない）
@@ -23,7 +22,7 @@ export function staleNotice(m: InputMatch | undefined, opts: { done: boolean }):
   if (!m || m.status === "same") return null;
   const what =
     m.status === "changed"
-      ? `この評価のあとで要望の${(m.changed ?? []).map((k) => FIELD[k]).join("と")}が変わりました。`
+      ? `この評価のあとで要望の${changedLabel(m.changed)}が変わりました。`
       : `この評価が何を評価したか確かめられません（${m.reason ?? "不明"}）。`;
   return opts.done
     ? { title: "表示中の評価は、今の要望とは違う内容に対するものです", text: `${what}この評価からのタスク化は済んでいます（作ったタスクはそのまま残ります）。今の内容で見直すなら、もう一度 Preflight を実行してください。` }

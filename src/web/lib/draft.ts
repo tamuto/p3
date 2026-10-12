@@ -50,5 +50,5 @@ export function syncFieldDraft<V>(d: Draft<V>, value: V, rev: number, eq: Eq<V> 
   return syncDraft(d, value, rev, eq);
 }
 
-/** 本文の比較（改行の形と前後の空白は保存で変わるので比べない。サーバの評価対象の比べ方と同じ） */
-export const sameBody: Eq<string> = (a, b) => a.replace(/\r\n?/g, "\n").trim() === b.replace(/\r\n?/g, "\n").trim();
+/** 本文の比較（改行の形と前後の空白は保存で変わるので比べない。サーバの評価対象の比べ方と同じ規則） */
+export { sameText as sameBody } from "../../shared/preflightInput.ts";

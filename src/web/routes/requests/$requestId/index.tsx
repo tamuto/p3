@@ -32,6 +32,7 @@ import { draftAnchor, uiShortage } from "../../../lib/uiMaterials.ts";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../../../shared/workTarget.ts";
 import { sameTags } from "../../../../shared/tags.ts";
 import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft, type Draft } from "../../../lib/draft.ts";
+import { isMaterialized } from "../../../../shared/preflightInput.ts";
 import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../../../lib/requestEdit.ts";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -247,7 +248,7 @@ function RunView({
   const a = run.assessment;
   const steps = preflightSteps(run);
   // 実行中の run は始めたときの内容で評価している（比べるのは終わってから見せる）
-  const stale = run.status === "running" ? null : staleNotice(run.inputMatch, { done: !!run.materialized?.length && run.materialization?.done !== false });
+  const stale = run.status === "running" ? null : staleNotice(run.inputMatch, { done: isMaterialized(run) });
 
   return (
     <div className="space-y-8">
@@ -627,7 +628,7 @@ function Drafts({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const done = !!run.materialized?.length && run.materialization?.done !== false;
+  const done = isMaterialized(run);
   // 評価のあとでタイトル・本文が変わった（か確かめられない）run からはタスク化しない。評価・案は読める
   const stale = !!run.inputMatch && run.inputMatch.status !== "same";
   const stopped = stale ? "この評価は今の要望と違うので、タスク化できません。もう一度 Preflight を実行してください" : blocked;
