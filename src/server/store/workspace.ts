@@ -96,13 +96,6 @@ export class Workspace {
     this.emit({ type: "changed", kind: "project" });
   }
 
-  /** project.yaml に残っている以前の形式の項目（repo・worktreeDir。p3 migrate で移す） */
-  async legacyProjectKeys(): Promise<string[]> {
-    const text = await readFile(join(this.dataDir, "project.yaml"), "utf8").catch(() => "");
-    const raw = (YAML.parse(text) ?? {}) as Record<string, unknown>;
-    return ["repo", "worktreeDir"].filter((k) => k in raw);
-  }
-
   /** Preflight が読む参照先（共有の定義と、このマシンのパス）。呼ぶたびにパスがあるかを確かめる */
   refs(): ResolvedRef[] {
     return resolveRefs(this.project, { localRepos: this.localRepos });

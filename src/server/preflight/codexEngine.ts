@@ -308,7 +308,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     const data = mappings.at(-1)!.host;
     log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
-    for (const r of readable) if (mapFileMissing(r)) log({ kind: "info", text: `地図のファイルがありません: ${r.name}:${r.mapFile}` });
+    for (const r of readable) if (mapFileMissing(r)) log({ kind: "info", text: `構成の説明のファイルがありません: ${r.name}:${r.mapFile}` });
     if (cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
       try {
@@ -466,18 +466,18 @@ function docsSection(job: PreflightJob) {
   return `\n## 最初に読むドキュメント\nプロジェクトの方針・用語・設計が書かれています。評価の前に必要な範囲で読んでください。\n${lines.join("\n")}\n`;
 }
 
-/** コードの地図（どこから読むかの案内）。地図の Markdown が無ければ印を付ける */
+/** 主なフォルダ（どこから読むかの案内）。構成の説明のファイルが無ければ印を付ける */
 function codeMapSection(job: PreflightJob) {
   const parts = job.refs
     .filter((r) => r.status === "ok" && (r.map.length || r.mapFile))
     .map((r) => {
       const base = `${CONTAINER_WORKSPACE}/${r.mount}`;
       const lines = r.map.map((m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}）` : ""}`);
-      if (r.mapFile) lines.push(`- 地図の説明: ${base}/${r.mapFile}${mapFileMissing(r) ? "（ファイルがありません）" : ""}`);
+      if (r.mapFile) lines.push(`- 構成の説明: ${base}/${r.mapFile}${mapFileMissing(r) ? "（ファイルがありません）" : ""}`);
       return `### ${r.name}${r.role ? `（${r.role}）` : ""}\n${lines.join("\n")}`;
     });
   if (!parts.length) return "";
-  return `\n## コードの地図（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
+  return `\n## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
 }
 
 const mapFileMissing = (r: ResolvedRef) => !!r.mapFile && !!r.local && !existsSync(join(r.local, r.mapFile));
@@ -534,7 +534,7 @@ ${contextList(job.context)}
 
 ## やること
 1. 要望の妥当性（目的・価値・既存方針との整合）を評価する。
-2. 参照先のコードを必要な範囲で調べ（コードの地図があればそこから）、実現可能性・影響範囲・リスクを評価する。
+2. 参照先のコードを必要な範囲で調べ（主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
 3. 既存のタスク/要望との関係（依存・影響・重複など）を洗い出す。関係は1対1とは限らない。
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。

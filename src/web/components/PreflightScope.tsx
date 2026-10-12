@@ -5,7 +5,7 @@ import { Badge, cx, Section } from "./ui.tsx";
 
 /**
  * Preflight の「調べた範囲」（参照先ごとに読んだか。P3 が始めるときに決めた記録）と、
- * 参照先のコードの地図（今の設定）、「判断の根拠」（確かめた / 推測。P3 が確かめ直したもの）。
+ * 参照先の主なフォルダ（今の設定）、「判断の根拠」（確かめた / 推測。P3 が確かめ直したもの）。
  */
 export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[]; repos: RepoRef[]; evidence?: Evidence[] | null }) {
   return (
@@ -34,7 +34,7 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                   )}
                   {def && (def.map.length > 0 || def.mapFile) && (
                     <details className="text-sm">
-                      <summary className="cursor-pointer text-slate-500">コードの地図（今の設定）</summary>
+                      <summary className="cursor-pointer text-slate-500">主なフォルダ（今の設定）</summary>
                       <ul className="mt-1 space-y-0.5 pl-4">
                         {def.map.map((m) => (
                           <li key={m.path} className="break-words">

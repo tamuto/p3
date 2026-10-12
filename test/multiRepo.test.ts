@@ -70,10 +70,10 @@ describe("複数の参照先を Preflight に渡す", () => {
     ]);
     expect(JSON.stringify(JSON.parse(s.saved).scope)).not.toContain(s.infra);
     expect(s.log).toContain("見ていない参照先: gone（このマシンのパスが登録されていません（p3 repo path gone <パス>））");
-    expect(s.log).toContain("地図のファイルがありません: docs:MAP.md");
+    expect(s.log).toContain("構成の説明のファイルがありません: docs:MAP.md");
   });
 
-  it("指示文に参照先の名前・役割・コンテナの中のパス・最初に読むもの、見ていないもの、地図と docs を入れる", async () => {
+  it("指示文に参照先の名前・役割・コンテナの中のパス・最初に読むもの、見ていないもの、主なフォルダと docs を入れる", async () => {
     const { instructions, prompt } = await setup();
     expect(instructions).toContain("- /workspace/app — app（システム本体）［最初に読む］");
     expect(instructions).toContain("- /workspace/docs — docs（ドキュメント）");
@@ -84,10 +84,10 @@ describe("複数の参照先を Preflight に渡す", () => {
     expect(prompt).toContain("- /workspace/docs/intro.md");
     expect(prompt).toContain("- gone:x.md（読めません: 参照先 gone は見ていません");
     expect(prompt).toContain("- unknown:y.md（読めません: 参照先「unknown」は登録されていません）");
-    // コードの地図（案内であって全部読む指示ではない）
-    expect(prompt).toContain("## コードの地図（どこから読むかの案内。全部を読む必要はありません）");
+    // 主なフォルダ（案内であって全部読む指示ではない）
+    expect(prompt).toContain("## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）");
     expect(prompt).toContain("- /workspace/app/src/server — API（入口 /workspace/app/src/server/main.ts）");
-    expect(prompt).toContain("- 地図の説明: /workspace/docs/MAP.md（ファイルがありません）");
+    expect(prompt).toContain("- 構成の説明: /workspace/docs/MAP.md（ファイルがありません）");
     expect(prompt).toContain("- /workspace/infra/terraform — 環境の定義");
   });
 

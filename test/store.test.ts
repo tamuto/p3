@@ -278,7 +278,7 @@ describe("project.yaml", () => {
     expect(text).toContain("instructions: 観点");
     expect(text).not.toContain("statuses"); // 列の設定は無くなったので消す
     expect(text.indexOf("name:")).toBeLessThan(text.indexOf("docs:")); // 後から足した項目も決まった順
-    expect(text).toContain("repo: .."); // 以前の項目は設定の保存では消さない（p3 migrate が外す）
+    expect(text).toContain("repo: .."); // 知らない項目は設定の保存では消さない
     expect(normalizeProject((await import("yaml")).parse(text)).docs).toEqual(["docs"]);
   });
 

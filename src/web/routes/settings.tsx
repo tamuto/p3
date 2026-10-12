@@ -56,7 +56,8 @@ function SettingsPage() {
   const updateMilestone = (i: number, patch: Partial<Milestone>) =>
     set("milestones", draft.milestones.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   return (
-    <div className="mx-auto max-w-4xl space-y-10 p-8 pb-24">
+    // ブラウザの幅をそのまま使う（ほかの画面と同じ）。狭い画面では左右の余白を縮める
+    <div className="w-full space-y-10 px-4 pt-6 pb-24 sm:px-6 lg:px-8 lg:pt-8">
       <ChatGptPanel tick={ctx.tick} />
       <ThemePanel tick={ctx.tick} />
 
@@ -72,7 +73,7 @@ function SettingsPage() {
           <Field label="プロジェクト名">
             <input className={inputCls} value={draft.name} onChange={(e) => set("name", e.target.value)} />
           </Field>
-          <Field label="何を作っているプロジェクトか（Preflight の前提になります）">
+          <Field label="プロジェクトの説明" hint="何を作っているか。Preflight の前提になる">
             <textarea rows={3} className={inputCls} value={draft.description} onChange={(e) => set("description", e.target.value)} />
           </Field>
         </div>
@@ -121,7 +122,7 @@ function SettingsPage() {
       </Section>
 
       <Section title="Preflight">
-        <Field label="評価で重視する観点・制約（Codex への指示に加わります）">
+        <Field label="評価の観点・制約" hint="Codex への指示に加わる">
           <textarea
             rows={4}
             className={inputCls}
@@ -133,13 +134,13 @@ function SettingsPage() {
       </Section>
 
       <Section title="ブランチ">
-        <Field label="ブランチ名（{id} {slug} を置換。作業先のリポジトリごとに同じ名前で割り当てる）">
+        <Field label="ブランチ名" hint="{id} {slug} を置換する。作業先のリポジトリごとに同じ名前で割り当てる">
           <input className={`${inputCls} font-mono`} value={draft.branchPattern} onChange={(e) => set("branchPattern", e.target.value)} />
         </Field>
       </Section>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-3 sm:px-8">
+        <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <Button variant="primary" disabled={!dirty} onClick={save}>
             保存
           </Button>

@@ -413,7 +413,7 @@ export async function repoCommand(
         if (!["true", "false"].includes(value)) throw new UsageError(`${key} は true か false`);
         patch[key] = value === "true";
       } else if (key === "mapFile") patch.mapFile = value;
-      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（コードの地図 map は設定画面か project.yaml で）`);
+      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（主なフォルダ map は設定画面か project.yaml で）`);
     }
     return patch;
   };
@@ -438,7 +438,7 @@ export async function repoCommand(
         const where =
           r.status === "ok" ? r.local : r.status === "unregistered" ? `未登録 → p3 repo path ${r.name} <このマシンのパス>` : `${r.reason}`;
         return `${r.name}${r.role ? `（${r.role}）` : ""}${flags ? ` [${flags}]` : ""}  /workspace/${r.mount}\n    ${where}${
-          r.map.length || r.mapFile ? `\n    地図: ${[...r.map.map((m) => m.path), ...(r.mapFile ? [`${r.mapFile}（Markdown）`] : [])].join(", ")}` : ""
+          r.map.length || r.mapFile ? `\n    主なフォルダ: ${[...r.map.map((m) => m.path), ...(r.mapFile ? [`${r.mapFile}（Markdown）`] : [])].join(", ")}` : ""
         }`;
       }),
     ].join("\n");

@@ -35,7 +35,7 @@ export const normalizeTaskIn =
     labels: strs(d.labels),
     areas: strs(d.areas),
     outputs: strs(d.outputs),
-    // 作業先（null / "" / 無いは作業先なし。以前の形式は p3 migrate で付ける）
+    // 作業先（null / "" / 無いは作業先なし）
     repo: str(d.repo) ?? null,
     ...(Array.isArray(d.repoOutputs) ? { repoOutputs: normalizeRepoOutputs(d.repoOutputs) } : {}),
     startedAt: d.startedAt ? iso(d.startedAt) : undefined,

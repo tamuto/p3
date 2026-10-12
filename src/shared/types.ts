@@ -343,7 +343,7 @@ export interface ProjectConfig {
   /** 何を作っているプロジェクトか。Preflight の前提になる */
   description: string;
   /**
-   * 参照先（リポジトリ・フォルダ。名前・役割・最初に読むか・作業先になりうるか・コードの地図）。
+   * 参照先（リポジトリ・フォルダ。名前・役割・最初に読むか・作業先になりうるか・主なフォルダ）。
    * Preflight が読み、作業先にできるものはタスクの作業先になる。このマシンのパスは個人設定に置く。shared/repos.ts
    */
   repos: RepoRef[];

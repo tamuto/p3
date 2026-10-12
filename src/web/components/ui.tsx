@@ -54,11 +54,13 @@ export function Id({ id, onClick }: { id: string; onClick?: () => void }) {
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+/** 入力欄の見出し。説明は hint で入力欄の下に出す（見出しを短く保ち、横に並べた欄の入力欄の位置をそろえる） */
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className="flex min-w-0 flex-col gap-1">
       <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</span>
       {children}
+      {hint && <span className="text-sm text-slate-400">{hint}</span>}
     </label>
   );
 }

@@ -107,7 +107,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     出し、横にはみ出さない。新しい要望は Enter で足した値と書きかけの値（`x/y, z`）の両方を付けて作る
   - 開いた中が、スケジュールの左の列（sticky, z-30）の下に隠れていたので z-50 にした
 - Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
-  名前・役割・readFirst・writable・コードの地図 map / mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
+  名前・役割・readFirst・writable・主なフォルダ map / 構成の説明 mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
   `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。`p3 init` が本体を参照先として
   登録する。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
   設定の保存（画面・`p3 config`）は `repos` を書き換えない。コンテナの中の名前（mount）は論理名から英数字と `. _ -` だけで作り、
@@ -238,13 +238,12 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   同じものを使う。このマシンのパスは `localOnly` でローカルの画面にだけ返し、変えられるのもローカルの画面（Origin）からだけ。
   パスつきで足すときは、共有の定義を書く前にフォルダかを確かめる
   - ブラウザでの確認（2026-10-12、Chromium。新しい init で作った一時プロジェクト）: 本体（init が登録）が「読める」で出て、
-    名前・役割・このマシンのパスで docs を足し、地図の行（フォルダ・役割・入口）と「作業先にできる」を変えて保存すると
+    名前・役割・このマシンのパスで docs を足し、主なフォルダ（フォルダ・役割・入口）と「作業先にできる」を変えて保存すると
     project.yaml の repos に書かれ、パスを外すと「未登録」になり個人設定から消え、確認つきで消すと共有の定義も消える。
     375px（ライト・ダーク）と 1280px で横にはみ出さない
-- 以前の形式（project.yaml の `repo`・`worktreeDir`、参照先が無い、個人設定の `repos.main`、要望の `workstream`、作業先の無い
-  タスク・タスク案）は読まない。`cli/migrate.ts` の `migrate`（`p3 migrate`）が一度に移す（本体の参照先を足す・以前の項目を外す・
-  `repos.main` を付け替える・`workstream` を本体の `workstreams` にする・作業先を本体にする。何度実行してもよい）。CLI と serve は
-  `assertMigrated` で以前の形式を見つけたら `p3 migrate` を案内して止まる（`whoami` と `migrate` だけは動く）
+  - 設定画面はほかの画面と同じく画面の横幅いっぱいに使う。入力欄のラベルは短くし、補足は `Field` の `hint` で入力欄の下に出すので、
+    ラベルの折り返しで横に並んだ入力欄の高さがずれない（2026-10-12、Chromium。1280px・1920px・375px で、横に並んだ入力欄の
+    上端がそろい、横にはみ出さない）
   - ブラウザでの確認（2026-10-12、Chromium。app・infra（git、作業先にできる）と lib（参照だけ）の一時プロジェクト）: 案のレビューの
     作業先の選択肢は app・infra・作業先なし（lib は出ない）で、選ぶと保存される。タスク化で app・infra の2つにブランチが割り当たり、
     概要に「ブランチ（作業先ごと）」、ボードのカードに作業先（作業先なしも）が出る。タスク詳細で作業先を作業先なしから infra に変え、

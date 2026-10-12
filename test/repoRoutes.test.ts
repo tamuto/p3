@@ -30,7 +30,7 @@ describe("/api/repos（設定画面の参照先）", () => {
     return { repo, ctx, call };
   }
 
-  it("共有の定義を足す・変える（地図も）・消す。このマシンのパスはローカルの画面からだけ", async () => {
+  it("共有の定義を足す・変える（主なフォルダも）・消す。このマシンのパスはローカルの画面からだけ", async () => {
     const { repo, ctx, call } = await setup();
     const docs = tempDir("docs-");
     const list = await call("GET", "/repos");

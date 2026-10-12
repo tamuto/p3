@@ -8,7 +8,7 @@ import { Workspace } from "../src/server/store/workspace.ts";
 import { makeRepo } from "./helpers.ts";
 
 describe("参照先の定義（project.yaml の repos）", () => {
-  it("名前をキーにした対応と、name を持つ並びの両方を読む。地図は「パス: 役割」か { role, entry }", () => {
+  it("名前をキーにした対応と、name を持つ並びの両方を読む。主なフォルダは「パス: 役割」か { role, entry }", () => {
     const repos = normalizeRepos({
       app: { role: "システム本体", readFirst: true, writable: true, map: { "src/server": "API", "src/web": { role: "画面", entry: "src/web/main.tsx" } } },
       "ガイド": { role: "ドキュメント", mapFile: "MAP.md" },

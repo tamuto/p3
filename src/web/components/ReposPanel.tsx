@@ -13,7 +13,7 @@ const STATUS: Record<RepoInfo["status"], { label: string; tone: "emerald" | "amb
 
 /**
  * 参照先（Preflight が読むリポジトリ・フォルダ。作業先にできるものはタスクの作業先になる）。
- *   共有の定義（名前・役割・最初に読む・作業先にできる・コードの地図）は project.yaml の repos に書く（チームで共有）
+ *   共有の定義（名前・役割・最初に読む・作業先にできる・主なフォルダ）は project.yaml の repos に書く（チームで共有）
  *   このマシンのパスは個人設定に書く（このマシンのローカルの画面からだけ見せ・変える）
  * CLI の p3 repo と同じ操作（server/repoAdmin.ts）。
  */
@@ -49,7 +49,7 @@ export function ReposPanel({ tick, onChanged }: { tick: number; onChanged: () =>
     <Section title="参照先（リポジトリ・フォルダ）">
       <p className="text-sm text-slate-500">
         Preflight が読むリポジトリ・フォルダ。数と名前は自由で、git でなくてもよい。「作業先にできる」ものはタスクの作業先になる。
-        名前・役割・地図はチームで共有し（project.yaml）、このマシンのパスは個人設定に置く（共有しない）。
+        名前・役割・主なフォルダはチームで共有し（project.yaml）、このマシンのパスは個人設定に置く（共有しない）。
       </p>
       {error && (
         <p role="alert" className="text-sm break-words text-rose-600">
@@ -117,10 +117,10 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
         </span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="役割（例: 本体 / ドキュメント / 基盤 / 依存しているライブラリ）">
-          <input className={inputCls} value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
+        <Field label="役割">
+          <input className={inputCls} value={draft.role} placeholder="本体 / ドキュメント / 基盤 / 依存しているライブラリ" onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
         </Field>
-        <Field label="地図の Markdown（参照先の中のパス。任意）">
+        <Field label="構成の説明（Markdown）" hint="参照先の中のパス。任意">
           <input className={`${inputCls} font-mono`} value={draft.mapFile} placeholder="docs/MAP.md" onChange={(e) => setDraft({ ...draft, mapFile: e.target.value })} />
         </Field>
       </div>
@@ -135,19 +135,21 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
         </label>
       </div>
       <div className="space-y-2">
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">コードの地図（どこから読むかの案内。主なフォルダと役割・入口）</p>
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          主なフォルダ <span className="font-normal text-slate-400">— Preflight がどこから読むかの案内（フォルダ・役割・入口）</span>
+        </p>
         {draft.map.map((m, i) => (
           <div key={i} className="flex flex-wrap gap-2">
             <input className={cx(inputCls, "!w-40 font-mono")} aria-label="フォルダ" placeholder="src/server" value={m.path} onChange={(e) => setMap(i, { path: e.target.value })} />
             <input className={cx(inputCls, "min-w-0 flex-1")} aria-label="役割" placeholder="API とデータ" value={m.role} onChange={(e) => setMap(i, { role: e.target.value })} />
             <input className={cx(inputCls, "!w-48 font-mono")} aria-label="入口" placeholder="入口（任意）" value={m.entry ?? ""} onChange={(e) => setMap(i, { entry: e.target.value || undefined })} />
-            <Button variant="ghost" aria-label={`地図の ${m.path || "行"} を外す`} onClick={() => setDraft({ ...draft, map: draft.map.filter((_, j) => j !== i) })}>
+            <Button variant="ghost" aria-label={`主なフォルダ ${m.path || "の行"} を外す`} onClick={() => setDraft({ ...draft, map: draft.map.filter((_, j) => j !== i) })}>
               ×
             </Button>
           </div>
         ))}
         <Button variant="ghost" onClick={() => setDraft({ ...draft, map: [...draft.map, { path: "", role: "" }] })}>
-          ＋ 地図の行
+          ＋ フォルダを足す
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -160,17 +162,17 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
         {dirty && <span className="text-sm text-slate-500">未保存の変更があります</span>}
       </div>
       {local && (
-        <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div className="flex flex-wrap items-start gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
           <div className="min-w-0 flex-1 basis-64">
-            <Field label="このマシンのパス（個人設定。共有しない）">
+            <Field label="このマシンのパス" hint="個人設定に置き、共有しない">
               <input className={cx(inputCls, "font-mono")} value={path} placeholder="/home/me/src/..." onChange={(e) => setPath(e.target.value)} />
             </Field>
           </div>
-          <Button disabled={!path.trim() || path === repo.local} onClick={() => void act(() => api.setRepoPath(repo.name, path.trim()))}>
+          <Button className="mt-6" disabled={!path.trim() || path === repo.local} onClick={() => void act(() => api.setRepoPath(repo.name, path.trim()))}>
             登録
           </Button>
           {repo.local && (
-            <Button variant="ghost" onClick={() => void act(() => api.setRepoPath(repo.name, null))}>
+            <Button variant="ghost" className="mt-6" onClick={() => void act(() => api.setRepoPath(repo.name, null))}>
               外す
             </Button>
           )}
@@ -188,14 +190,14 @@ function AddRepo({ local, act }: { local: boolean; act: Act }) {
     <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">参照先を足す</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="名前（空白・コロン・スラッシュは使えない）">
+        <Field label="名前" hint="空白・コロン・スラッシュは使えない">
           <input className={inputCls} value={f.name} placeholder="docs" onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
         <Field label="役割">
           <input className={inputCls} value={f.role} placeholder="ドキュメント" onChange={(e) => setF({ ...f, role: e.target.value })} />
         </Field>
         {local && (
-          <Field label="このマシンのパス（任意。あとで登録してもよい）">
+          <Field label="このマシンのパス" hint="任意。あとで登録してもよい">
             <input className={cx(inputCls, "font-mono")} value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} />
           </Field>
         )}

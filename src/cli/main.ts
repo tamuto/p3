@@ -21,8 +21,6 @@ import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
 import { defaultRepo, requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, checkRepoTarget, ensureWorkstreams, parseRepoOutput, repoArg, taskWork } from "../server/workTargets.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
-import { assertMigrated, migrate } from "./migrate.ts";
-import { Workspace } from "../server/store/workspace.ts";
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 
@@ -47,7 +45,6 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                このリポジトリを本体の参照先として登録する
                                --project 名前 --dir フォルダ --repo-name 参照先の名前（既定はフォルダ名）--description --docs a,b
                                --instructions 観点 --agents --yes
-  migrate                      以前の形式のプロジェクトを新しい形式に一度で移す（--name 本体の参照先の名前）
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
   config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern instructions）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
@@ -242,20 +239,11 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    const check = new Workspace(target.dataDir);
-    await check.load();
-    await assertMigrated(check);
     await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
     return await new Promise<number>(() => {}); // 終了まで動き続ける
   }
 
   const ctx = await openProject(target.dataDir, { repos: target.repos, settings, projectName: target.name });
-  if (cmd === "migrate") {
-    const r = await migrate(ctx.ws, target.name, cwd, { name: o.name });
-    return out.result(r.data, () => r.text);
-  }
-  // 以前の形式のままなら、p3 migrate を案内して止める（読み違えたまま書かない）
-  if (cmd !== "whoami") await assertMigrated(ctx.ws);
   const actor = resolveActor(o.actor ?? process.env.PCUBE_ACTOR, cwd);
   const current = currentRequest(ctx, o.req ?? o.request ?? process.env.PCUBE_REQUEST, cwd);
   const expectedRev = o.rev !== undefined ? Number(o.rev) : undefined;

@@ -30,12 +30,12 @@ describe("調べた範囲と根拠の見せ方", () => {
     expect(evidenceLines([])).toEqual(["判断の根拠: なし"]);
   });
 
-  it("画面: 見ていない参照先は登録の仕方を出し、地図は今の設定から。以前の評価は記録なし", () => {
+  it("画面: 見ていない参照先は登録の仕方を出し、主なフォルダは今の設定から。以前の評価は記録なし", () => {
     const repos = [{ name: "app", role: "本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API", entry: "src/server/main.ts" }] }];
     const html = renderToStaticMarkup(createElement(PreflightScope, { scope, repos, evidence }));
     expect(html).toContain("見ていない（このマシンのパスが未登録）");
     expect(html.match(/p3 repo path infra &lt;パス&gt;/g)).toHaveLength(1);
-    expect(html).toContain("コードの地図（今の設定）");
+    expect(html).toContain("主なフォルダ（今の設定）");
     expect(html).toContain("src/server/main.ts");
     expect(html).toContain("確かめた");
     expect(html).toContain("※ 参照先 infra はこの評価で見ていません");
