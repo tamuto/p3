@@ -59,8 +59,8 @@ P3 をコンテナの中で動かし、Docker はホストのデーモンを使�
 
 - **パスの対応:** Codex のコンテナはホストのデーモンが作るので、マウントするパスはホストから見たものでなければならない。
   リポジトリとデータのフォルダが、コンテナの中とホストでどこに当たるかを個人設定の `codex.pathMap` に書く
-  （例: コンテナの `/workspaces` がホストの `<開いたフォルダの親>` なら `/workspaces: <そのホストのパス>`）。
-  データのフォルダもホストから見える（バインドマウントされた）場所に置く
+  （`p3 user-config set codex.pathMap+=/workspaces=<ホストのパス>`）。ホストのパスの調べ方と確かめ方は「Preflight」の
+  「パスの対応（DevContainer の中から使うとき）」。データのフォルダもホストから見える（バインドマウントされた）場所に置く
 - **サインインのコールバック（1455）:** `p3 chatgpt login` は 127.0.0.1:1455 で待ち、VS Code がそのポートをホストへ転送するので、
   ホストのブラウザから届く。1455 が使えずに別のポートで待ったときや、転送先のポートが変わったとき、転送されない環境
   （SSH・別のコンテナ）では、ブラウザが「接続できません」になる。そのときは `p3 chatgpt login --paste` で、その画面の
@@ -97,7 +97,7 @@ p3 init
 #   （このリポジトリは本体の参照先 myapp として登録する。名前は --repo-name で変えられる）
 #   データを置くフォルダ（リポジトリの外を勧めます）: ~/p3-data/myapp
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
-#   主なフォルダ（カンマ区切り。Preflight がどこから読むかの案内） [docs]:
+#   最初に読むドキュメント（カンマ区切り。Preflight が評価の前に読みます） [docs, README.md]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 #   AGENTS.md に AI 向けの p3 の使い方を追記しますか (y/n) [y]:
 
@@ -109,8 +109,9 @@ p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向け�
 指したときは、作らずに **参加** だけする。
 
 新しく作るときは、このリポジトリを **本体の参照先**（`project.yaml` の `repos`。名前は既定でフォルダ名、役割「本体」・最初に読む・
-作業先にできる）として登録する。リポジトリに `docs/`（か `doc/`）があれば、それを本体の主なフォルダにする（入口はその中の
-`README.md` か `index.md`）。参加するときは、同じ名前の参照先か、参照先が1つならそれにこのリポジトリを結び付ける
+作業先にできる）として登録する。リポジトリにあるドキュメント（`docs/`・`doc/`・`README.md`・
+`ARCHITECTURE.md`・`DESIGN.md`・`AGENTS.md`・`CLAUDE.md`・`CONTRIBUTING.md`）を本体の主なフォルダにする（本体は最初に読むので、
+Preflight は評価の前に読む。フォルダの中に `README.md` か `index.md` があれば入口にする）。参加するときは、同じ名前の参照先か、参照先が1つならそれにこのリポジトリを結び付ける
 （決まらなければ `p3 repo path <名前> <パス>` を案内する）。
 
 どちらの場合も **個人設定**（`~/.config/infodb-p3/config.yaml`。このマシン・この人だけのもので共有しない）に
@@ -141,8 +142,12 @@ projects:
 対象の項目だけを変えて書く」ので、CLI と serve が同時に別の項目（プロジェクトの登録とテーマなど）を変えても消し合わない。
 YAML が壊れている・読めないときは、書かずにエラーと直し方を出す。
 
+**設定画面** はタブで「個人」（ChatGPT の接続・画面のテーマ）・「プロジェクトの基本」（project.yaml）・「参照先」
+（リポジトリ・フォルダとこのマシンのパス）に分かれる。選んだタブは URL（`/settings?tab=personal|project|repos`）に残り、
+タブを移っても書きかけの入力は消えず、保存していない変更があるタブには印が付く。
+
 **画面のテーマ**（`ui.theme`: `system` = OS に合わせる（既定）/ `light` / `dark`）も個人設定に置き、このマシンの
-すべてのプロジェクトで共通にする。画面では「設定」の「画面のテーマ（個人）」で選ぶ（選んだらすぐ保存する。
+すべてのプロジェクトで共通にする。画面では「設定」の「個人」のタブの「画面のテーマ（個人）」で選ぶ（選んだらすぐ保存する。
 プロジェクト設定の「保存」とは別で、編集中のプロジェクト設定はそのまま残る。保存できなかったときは知らせて元の表示に戻し、
 「もう一度保存する」でやり直せる）。同じ serve を開いているほかのタブの設定画面にも、変更通知で反映する。CLI では:
 
@@ -475,7 +480,7 @@ p3 repo rm infra --local         # このマシンのパスだけ外す（共有
 p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の Preflight でも読まなくなる。フォルダは消さない）
 ```
 
-設定画面の「参照先（リポジトリ・フォルダ）」でも同じことができる（足す・役割・最初に読む・作業先にできる・
+設定画面の「参照先」のタブでも同じことができる（足す・役割・最初に読む・作業先にできる・
 主なフォルダ・消す）。このマシンのパスは、P3 を動かしているマシンのローカルの画面でだけ見え、登録・変更できる
 （ほかのマシンの画面には出さない）。
 
@@ -496,9 +501,10 @@ repos:
   infra: { role: 基盤 }
 ```
 
-- **どこから読むか**: 参照先ごとの「最初に読む」（`readFirst`）は、どの参照先から読むか。参照先の中のどこから読むかは主なフォルダ
-  （`map`）で示し、そのフォルダで最初に読むファイルを入口（`entry`）に書く。どちらも参照先ごとに書くので、どの参照先のファイルかが
-  はっきりする。プロジェクト全体のドキュメントの一覧（以前の `docs`）と構成の説明の Markdown（以前の `mapFile`）は無い（設定を
+- **どこから読むか**: 主なフォルダ（`map`）にはフォルダもファイルも書ける。「最初に読む」（`readFirst`）参照先の主なフォルダは、
+  Preflight が **評価の前に必要な範囲で読む**（以前のプロジェクトの `docs` と同じ指示。プロジェクトの方針・設計・README など）。
+  ほかの参照先の主なフォルダは、どこから読むかの案内（全部を読む指示ではない）。入口（`entry`）は任意で、書けばそのフォルダで
+  そこから読む。参照先ごとに書くので、どの参照先のファイルかがはっきりする。プロジェクト全体のドキュメントの一覧（以前の `docs`）と構成の説明の Markdown（以前の `mapFile`）は無い（設定を
   保存すると project.yaml から消える）。入口のファイルが無ければ、Preflight の指示とログにそう出す
 
 - **参照の書き方**: 要望・タスクの `areas` と根拠（`evidence`）は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
@@ -643,6 +649,77 @@ codex:
 
 `PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
 
+**CLI で見る・変える:** config.yaml を手で編集しなくてよい。
+
+```bash
+p3 user-config                                   # 項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）
+p3 user-config set codex.model=gpt-5.5 codex.effort=high   # 書く（読めない値があれば何も書かない）
+p3 user-config set codex.model=                  # 消す（既定値に戻す）
+p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces   # パスの対応を1件足す（同じパスなら置き換える）
+p3 user-config set codex.pathMap-=/workspaces    # 1件外す（codex.pathMap= で全部外す）
+```
+
+コメントとほかの項目（projects など）は残す。書く前に読むときと同じ規則で確かめ、読めなければ理由を出して書かない。
+
+#### パスの対応（DevContainer の中から使うとき）
+
+P3 が Codex のコンテナを作るとき、参照先とデータのフォルダを **Docker のデーモン（ホスト）から見たパス** でマウントする。
+P3 を DevContainer の中で動かし、Docker はホストのものを使う（docker-outside-of-docker）と、コンテナの中のパス（例
+`/workspaces/app`）とホストのパスが違うので、その対応を `codex.pathMap` に書く。ホストで直接動かすときは要らない。
+
+1. **ホストから見たパスを調べる:** P3 を動かしているコンテナのマウントを見る。DevContainer の中の `docker` はホストの
+   デーモンにつながるので、中からでも調べられる。
+
+   ```bash
+   docker ps --format '{{.Names}}'          # 自分のコンテナの名前を探す（VS Code が付けた名前など）
+   docker inspect <コンテナの名前> --format '{{range .Mounts}}{{.Source}} → {{.Destination}}{{"\n"}}{{end}}'
+   # /home/me/workspaces → /workspaces       ← Source がホスト、Destination がコンテナの中
+   # /mnt/usb/assets → /mnt/assets
+   ```
+
+2. **対応を書く:** 参照先とデータのフォルダを含む Destination ごとに1件。左がコンテナの中（このマシン）、右がホスト。
+
+   ```bash
+   p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces
+   p3 user-config set codex.pathMap+=/mnt/assets=/mnt/usb/assets   # データのフォルダが別のマウントにあるとき
+   ```
+
+   前から順に、境界（`/`）が合う最初の対応を使う。データのフォルダも、ホストから見える（バインドマウントされた）場所に置く。
+
+3. **確かめる:** `p3 user-config` で対応を見て、Preflight を1回動かす。開始のログの「パスの対応」に、参照先とデータの
+   それぞれで「codex.pathMap の対応あり」と出ればよい。違うと `bind source path does not exist` で止まり、直し方を出す
+   （serve はそのままで、直せば次の Preflight から効く）。
+
+#### 旧来の認証（Codex でサインインした auth.json）
+
+ふだんは ChatGPT の接続（設定画面の「Continue with ChatGPT」か `p3 chatgpt login`）を使う。こちらは、ChatGPT に接続せずに
+Codex の `auth.json` で動かしたいときだけ使う。Codex のコンテナには `/codex/auth.json` としてマウントする（書き換えられる。
+トークンの更新を保つため）。
+
+- **Docker のボリュームに置く（`codex.authVolume`。勧める）:** Codex をこのマシンに入れなくてよい。P3 のイメージの中の Codex で
+  サインインし、ボリュームの一番上に `auth.json` を作る。
+
+  ```bash
+  p3 codex update                                  # イメージを作る（まだなら）
+  docker volume create codex-state
+  docker run --rm -it --entrypoint codex -v codex-state:/codex llmcs-codex-workspace:local login --device-auth
+  #   表示された URL をブラウザで開き、表示されたコードを入れてサインインする
+  docker run --rm --entrypoint codex -v codex-state:/codex llmcs-codex-workspace:local login status   # Logged in … と出ればよい
+  p3 user-config set codex.authVolume=codex-state
+  ```
+
+  `--device-auth` は、ChatGPT のアカウントでデバイスコードでのサインインが使えるときの方法。使えなければ下のファイルの方法にする。
+- **ホストのファイルを使う（`codex.authFile`）:** Codex を入れたマシンで `codex login` すると `~/.codex/auth.json`（`CODEX_HOME`
+  があればその下）ができる。そのパスを書く。**Docker のホストから見たパス** で書く（`codex.pathMap` は効かない）。
+
+  ```bash
+  p3 user-config set codex.authFile=/home/me/.codex/auth.json
+  ```
+
+`authVolume` と `authFile` はどちらか一方。ChatGPT に接続していると、そちらが優先される。接続したまま旧来の認証を使うときは
+`p3 user-config set codex.auth=legacy`（戻すときは `codex.auth=`）。どれを使っているかは、概要ページのエンジンの状態と
+Preflight の開始のログに出る。
+
 **serve を起動し直さずに効く設定:** `p3 serve` は Codex と Preflight の設定（`codex.*` と `preflight.engine`）を、
 **Preflight を始めるたび** と **エンジンの状態を見るたび**（概要ページ・設定画面の ChatGPT の欄）に個人設定から読み直す。
 始めたときの設定（認証・パスの対応・モデル・イメージの確認）はその Preflight の間ずっと使い、実行中に書き換えても途中の
@@ -656,7 +733,7 @@ run や並んで動いている run は変わらない。待ち受け（`serve.h
 タブやウィンドウに戻ったとき・変更通知）に確かめ直す（定期的には問い合わせない）。取れなかったときは使えると見せない。
 
 **これまでの `.env` からの移し方:** P3 は前の版まで、P3 の置き場所の `.env` を読んでいた。今は読まないので、その中の値を
-上の表に従って個人設定に書き写す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
+上の表に従って `p3 user-config set` で個人設定に移す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
 接続に変えたりはしない。書き写したら `.env` は消してよい。
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
@@ -675,7 +752,14 @@ app-server（docker run）が初期化の前に終わりました（終了コー
 今のパスの対応:
   参照先 pcube → コンテナ /workspace/pcube（codex.pathMap の対応なし（このマシンのパスのまま渡す））
   データ → コンテナ /data（codex.pathMap の対応なし（このマシンのパスのまま渡す））
+直し方: このパスを含む「このマシンのパス」と「Docker のホストから見たパス」の対応を足します
+  p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker のホストから見たパス>
+  例: p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces
+  Docker のホストから見たパスは、ホストで docker inspect <この開発コンテナ> の Mounts（Source が Docker のホスト、Destination がこのマシン）で分かります。
+  今の対応は p3 user-config で確かめられます。直せば serve はそのままで次の Preflight から効きます
 ```
+
+対応が当たっていたのに無いとき（行き先の誤り）は、同じ「このマシンのパス」で足し直すよう案内する。
 
 | Docker の出力 | 次にすること |
 | --- | --- |

@@ -136,17 +136,67 @@ describe("画面のテーマ（個人設定の ui.theme）", () => {
 });
 
 describe("p3 user-config", () => {
-  it("プロジェクトが無くても動き、テーマだけを見せる（--json も）", () => {
+  it("プロジェクトが無くても動き、テーマとマシンごとの設定を出どころつきで見せる（プロジェクトの登録は出さない。--json も）", () => {
     const cwd = tempDir("p3-nowhere-");
-    write("projects:\n  secret: { dir: /data/secret }\ncodex:\n  authVolume: vol\n");
+    write("projects:\n  secret: { dir: /data/secret }\ncodex:\n  authVolume: vol\n  pathMap:\n    /workspaces: /home/me/ws\n");
     const show = p3(cwd, ["user-config", "--json"]);
     expect(show.code, show.err).toBe(0);
-    expect(JSON.parse(show.out)).toEqual({ ui: { theme: "system" }, path: file() });
+    const json = JSON.parse(show.out);
+    expect(json.ui).toEqual({ theme: "system" });
+    expect(json.path).toBe(file());
+    expect(json.settings.find((r: any) => r.key === "codex.authVolume")).toMatchObject({ value: "vol", from: "個人設定" });
+    expect(json.settings.find((r: any) => r.key === "codex.pathMap")).toMatchObject({ value: "/workspaces → /home/me/ws", from: "個人設定" });
+    expect(json.settings.find((r: any) => r.key === "serve.port")).toMatchObject({ value: "4310", from: "既定" });
     const set = p3(cwd, ["user-config", "set", "ui.theme=dark", "--json"]);
     expect(set.code, set.err).toBe(0);
-    expect(JSON.parse(set.out)).toEqual({ ui: { theme: "dark" }, path: file() });
-    expect(p3(cwd, ["user-config"]).out).toContain("ui.theme  dark");
-    expect(p3(cwd, ["user-config"]).out).not.toContain("secret");
+    expect(JSON.parse(set.out)).toEqual({ changed: ["ui.theme"], path: file() });
+    const text = p3(cwd, ["user-config"]).out;
+    expect(text).toMatch(/ui\.theme +dark/);
+    expect(text).toMatch(/codex\.ensureImage +true +（既定）/);
+    expect(text).not.toContain("secret");
+  });
+
+  it("set でマシンごとの設定を書き・消し、パスの対応を1件ずつ足し・外す。コメントとほかの項目は残す", () => {
+    const cwd = tempDir("p3-nowhere-");
+    write("# 個人設定\nprojects:\n  a: { dir: /data/a }\ncodex:\n  model: gpt-x # 使っているモデル\n");
+    const run = (...pairs: string[]) => {
+      const r = p3(cwd, ["user-config", "set", ...pairs]);
+      expect(r.code, r.err).toBe(0);
+      return YAML.parse(readFileSync(file(), "utf8"));
+    };
+    let y = run("codex.pathMap+=/workspaces=/home/me/ws", "codex.pathMap+=/mnt/assets=/mnt/usb/assets", "codex.ensureImage=false", "serve.port=4400", "codex.authVolume=codex-state");
+    expect(y.codex).toEqual({ model: "gpt-x", pathMap: { "/workspaces": "/home/me/ws", "/mnt/assets": "/mnt/usb/assets" }, ensureImage: false, authVolume: "codex-state" });
+    expect(y.serve).toEqual({ port: 4400 });
+    expect(y.projects).toEqual({ a: { dir: "/data/a" } });
+    expect(readFileSync(file(), "utf8")).toContain("# 使っているモデル");
+    y = run("codex.pathMap+=/workspaces=/root/ws"); // 同じパスは置き換える
+    expect(y.codex.pathMap["/workspaces"]).toBe("/root/ws");
+    y = run("codex.pathMap-=/mnt/assets", "serve.port=");
+    expect(y.codex.pathMap).toEqual({ "/workspaces": "/root/ws" });
+    expect(y.serve).toBeUndefined(); // 空になった項目は消す
+    y = run("codex.pathMap=");
+    expect(y.codex.pathMap).toBeUndefined();
+  });
+
+  it("読めない値はどれも書かず、書き方を出す", () => {
+    const cwd = tempDir("p3-nowhere-");
+    write("codex:\n  model: gpt-x\n");
+    for (const [pairs, msg] of [
+      [["codex.pathMap+=relative=/x"], "どちらも絶対パス"],
+      [["codex.pathMap+=/workspaces"], "codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>"],
+      [["codex.pathMap=/a=/b"], "1件ずつ codex.pathMap+="],
+      [["codex.pathMap-=/nothing"], "対応はありません"],
+      [["codex.auth=other"], "auto / legacy"],
+      [["serve.port=99999"], "1〜65535"],
+      [["codex.ensureImage=maybe"], "true か false"],
+      [["codex.model=gpt-y", "preflight.engine=nope"], "codex / mock"],
+      [["ui.theme=dark", "codex.auth=other"], "auto / legacy"],
+    ] as [string[], string][]) {
+      const r = p3(cwd, ["user-config", "set", ...pairs]);
+      expect(r.code, pairs.join(" ")).toBe(1);
+      expect(r.err).toContain(msg);
+    }
+    expect(readFileSync(file(), "utf8")).toBe("codex:\n  model: gpt-x\n");
   });
 
   it("読めない値・知らないキーは終了コード 1 で、ファイルを変えない", () => {
@@ -157,7 +207,7 @@ describe("p3 user-config", () => {
     expect(bad.err).toContain("system / light / dark");
     const key = p3(cwd, ["user-config", "set", "projects.a=/x"]);
     expect(key.code).toBe(1);
-    expect(key.err).toContain("変更できるキー: ui.theme");
+    expect(key.err).toContain("変更できるキー: ui.theme codex.auth");
     write("ui: [\n");
     const broken = p3(cwd, ["user-config", "set", "ui.theme=dark"]);
     expect(broken.code).toBe(1);
@@ -220,5 +270,20 @@ describe("/api/user-theme", () => {
     expect(r.status).toBe(500);
     expect(r.body.error).toContain("YAML が壊れています");
     expect(readFileSync(file(), "utf8")).toBe("ui: [\n");
+  });
+});
+
+describe("describeSettings（p3 user-config の表示）", () => {
+  it("環境変数・個人設定・既定のどれから来た値かを出し、読めない値は理由を添える", async () => {
+    const { describeSettings } = await import("../src/server/machineSettingsEdit.ts");
+    const user = { settings: { codex: { model: "gpt-x", effort: "high" } } };
+    const { rows, error } = describeSettings(user, { PCUBE_CODEX_MODEL: "gpt-env", PCUBE_CODEX_EFFORT: "" });
+    expect(error).toBeUndefined();
+    expect(rows.find((r) => r.key === "codex.model")).toMatchObject({ value: "gpt-env", from: "環境変数", env: "PCUBE_CODEX_MODEL" });
+    expect(rows.find((r) => r.key === "codex.effort")).toMatchObject({ value: "（なし）", from: "既定" }); // 空の環境変数は既定に戻す
+    expect(rows.find((r) => r.key === "codex.auth")).toMatchObject({ value: "auto", from: "既定" });
+    const bad = describeSettings({ settings: { serve: { port: "x" } } }, {});
+    expect(bad.error).toContain("個人設定 serve.port が読めません");
+    expect(bad.rows.find((r) => r.key === "serve.port")).toMatchObject({ value: "x", from: "個人設定" });
   });
 });

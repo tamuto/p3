@@ -173,7 +173,8 @@ function parsePort(r: Raw): number {
   return n;
 }
 
-const PATH_MAP_HINT = "<このマシンのパス>=<Docker デーモンから見たパス> をカンマ区切りで。例: /workspaces=/home/me/workspaces";
+const PATH_MAP_HINT =
+  "個人設定は p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス> で1件ずつ。環境変数は <このマシンのパス>=<Docker デーモンから見たパス> をカンマ区切りで。例: /workspaces=/home/me/workspaces";
 
 /** "ローカル=ホスト,..."（環境変数）か { ローカル: ホスト }（個人設定）。どちらも絶対パス */
 function parsePathMap(r: Raw): [string, string][] {

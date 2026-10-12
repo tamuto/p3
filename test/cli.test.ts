@@ -57,8 +57,8 @@ describe("pcube init", () => {
     expect(yaml).toContain(`repos:\n  ${refName}:\n    role: 本体\n    readFirst: true\n    writable: true`);
     expect(yaml).not.toMatch(/^repo:|worktreeDir/m);
     expect(readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8")).toContain(`${refName}: ${root}`);
-    // ドキュメントのフォルダは本体の主なフォルダ（入口はその中の index.md）。プロジェクトの docs は無い
-    expect(yaml).toContain("    map:\n      docs:\n        role: ドキュメント\n        entry: docs/index.md");
+    // ドキュメントは本体（最初に読む）の主なフォルダ（フォルダの入口はその中の index.md）。プロジェクトの docs は無い
+    expect(yaml).toContain("    map:\n      docs:\n        role: ドキュメント\n        entry: docs/index.md\n      README.md: ドキュメント\n      AGENTS.md: ドキュメント");
     expect(yaml).not.toMatch(/^docs:/m);
     expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);

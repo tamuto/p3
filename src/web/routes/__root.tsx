@@ -11,7 +11,7 @@ import { useAppCtx } from "../lib/appCtx.ts";
  *   /requests/$requestId                要望の概要と Preflight（?run=）
  *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
  *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
- *   /settings                           プロジェクト設定
+ *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
  */
@@ -26,7 +26,7 @@ export const Route = createRootRoute({
 
 const NAV = [
   { to: "/", label: "進捗", hint: "要望ごとの状況" },
-  { to: "/settings", label: "設定", hint: "プロジェクト名・ドキュメント・列" },
+  { to: "/settings", label: "設定", hint: "個人・プロジェクトの基本・参照先" },
 ] as const;
 
 const navCls = "rounded-md px-3 py-1.5 font-medium whitespace-nowrap transition";
@@ -84,7 +84,7 @@ function Layout() {
       {!ctx.info.project.description && !pathname.startsWith("/settings") && (
         <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           プロジェクトの説明がまだありません。Preflight の前提になるので設定してください。
-          <Link to="/settings" className={buttonCls("ghost", "underline")}>
+          <Link to="/settings" search={{ tab: "project" }} className={buttonCls("ghost", "underline")}>
             設定を開く
           </Link>
         </div>
