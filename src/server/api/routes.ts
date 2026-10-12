@@ -6,6 +6,7 @@ import { REQUEST_STATUSES, relationTypes, type Relation, type Request, type Serv
 import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
+import { ReloadError } from "../store/workspace.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
@@ -103,6 +104,8 @@ export function apiRoutes(ctx: PcubeContext) {
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
+    // データのフォルダが読めない（メモリ上の状態は変えていない）
+    if (err instanceof ReloadError) return c.json({ error: err.message }, 503);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });
@@ -136,6 +139,8 @@ export function apiRoutes(ctx: PcubeContext) {
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
+  /** データのフォルダを全部読み直す（ファイル監視に頼らない取り込み）。終わったら変更通知 kind: "reload" */
+  app.post("/reload", async (c) => c.json(await ws.reloadAll()));
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
   app.get("/engine", async (c) => c.json(await preflight.engineStatus()));
   if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, ws, preflight));

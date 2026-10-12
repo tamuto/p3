@@ -53,36 +53,105 @@ export interface CollectionOptions<T extends Entity> {
   beforeWrite?: (prev: T | undefined, next: T) => T;
 }
 
+/** 全件の読み込みの準備（prepareLoad）。commit で読んだ結果を公開し、abort で捨てる */
+export interface PreparedLoad {
+  /** 読めた ID（読めなかったものは含まない） */
+  ids: string[];
+  commit(): void;
+  abort(): void;
+}
+
+type ReadResult<T> = { item: T } | { error: string } | { missing: true };
+
 /**
  * 1エンティティ = 1 Markdown ファイル（YAML frontmatter + 本文）のコレクション。
  * メモリ上にキャッシュし、ファイル変更（人手・AI・Codex・git pull）は reload() で取り込む。
+ *
+ * 全件の読み込み（load / prepareLoad）は、読み終えてから入れ替える（読んでいる途中の空や半分の状態を見せない）。
+ * 読み込みの間に作成・更新・アーカイブ・1件の読み直しがあった ID は、読んだ結果ではなくその時点の状態を残す
+ * （読み込みが先に読んだ古い内容で、後の書き込みを戻さない）。
  */
 export class MarkdownCollection<T extends Entity> {
   private items = new Map<string, T>();
   /** 読めないファイル。壊れたファイルで全体が落ちないようにする */
   readonly errors = new Map<string, string>();
   private layout: Layout;
+  /** 進行中の全件の読み込みごとの「その間に変わった ID」 */
+  private loads = new Set<Set<string>>();
 
   constructor(private opts: CollectionOptions<T>) {
     this.layout = opts.layout;
   }
 
   async load(): Promise<void> {
-    this.items.clear();
-    this.errors.clear();
-    for (const id of await this.layout.scan()) await this.reload(id);
+    (await this.prepareLoad()).commit();
+  }
+
+  /** ディスクから全件を読む。公開は commit でまとめて（同期で）行う */
+  async prepareLoad(): Promise<PreparedLoad> {
+    const touched = new Set<string>();
+    this.loads.add(touched);
+    const items = new Map<string, T>();
+    const errors = new Map<string, string>();
+    try {
+      for (const id of await this.layout.scan()) {
+        const r = await this.read(id);
+        if ("item" in r) items.set(id, r.item);
+        else if ("error" in r) errors.set(id, r.error);
+      }
+    } catch (e) {
+      this.loads.delete(touched);
+      throw e;
+    }
+    return {
+      ids: [...items.keys()],
+      commit: () => {
+        if (!this.loads.delete(touched)) return;
+        for (const id of touched) {
+          const live = this.items.get(id);
+          if (live) items.set(id, live);
+          else items.delete(id);
+          const err = this.errors.get(id);
+          if (err !== undefined) errors.set(id, err);
+          else errors.delete(id);
+        }
+        this.items = items;
+        this.errors.clear();
+        for (const [id, e] of errors) this.errors.set(id, e);
+      },
+      abort: () => void this.loads.delete(touched),
+    };
+  }
+
+  private async read(id: string): Promise<ReadResult<T>> {
+    try {
+      const { data, body } = parseFrontmatter(await readFile(this.layout.path(id), "utf8"));
+      return { item: this.opts.normalize(data, body, id) };
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === "ENOENT" ? { missing: true } : { error: String(e) };
+    }
+  }
+
+  private touch(id: string) {
+    for (const t of this.loads) t.add(id);
+  }
+
+  private put(id: string, item: T) {
+    this.items.set(id, item);
+    this.touch(id);
   }
 
   /** 1件を読み直す。消えていれば除く */
   async reload(id: string): Promise<void> {
-    try {
-      const { data, body } = parseFrontmatter(await readFile(this.layout.path(id), "utf8"));
-      this.items.set(id, this.opts.normalize(data, body, id));
+    const r = await this.read(id);
+    if ("item" in r) {
+      this.put(id, r.item);
       this.errors.delete(id);
-    } catch (e) {
+    } else {
       this.items.delete(id);
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") this.errors.delete(id);
-      else this.errors.set(id, String(e));
+      if ("error" in r) this.errors.set(id, r.error);
+      else this.errors.delete(id);
+      this.touch(id);
     }
   }
 
@@ -126,7 +195,7 @@ export class MarkdownCollection<T extends Entity> {
       const final = this.opts.beforeWrite?.(undefined, item) ?? item;
       Object.assign(item, final);
       if (await createExclusive(this.layout.path(id), this.serialize(item))) {
-        this.items.set(id, item);
+        this.put(id, item);
         return item;
       }
       existing.push(id);
@@ -154,7 +223,7 @@ export class MarkdownCollection<T extends Entity> {
     } as T;
     const next = this.opts.beforeWrite?.(cur, merged) ?? merged;
     await writeFileAtomic(this.layout.path(id), this.serialize(next));
-    this.items.set(id, next);
+    this.put(id, next);
     return next;
   }
 
@@ -167,6 +236,7 @@ export class MarkdownCollection<T extends Entity> {
     await mkdir(dirname(to), { recursive: true });
     await rename(from, to);
     this.items.delete(id);
+    this.touch(id);
   }
 }
 
