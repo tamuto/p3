@@ -363,6 +363,10 @@ export function apiRoutes(ctx: PcubeContext) {
     const { meta, data } = await preflight.fixedAttachment(rid(c), c.req.param("run"), c.req.param("aid"));
     return download(c, data, meta.format, meta.name);
   });
+  app.get("/requests/:rid/preflight/:run/attachments/:aid/extract", async (c) => {
+    const text = await preflight.fixedExtract(rid(c), c.req.param("run"), c.req.param("aid"));
+    return c.body(text, 200, { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'" });
+  });
   app.post("/requests/:rid/preflight/:run/cancel", (c) => {
     preflight.cancel(c.req.param("run"));
     return c.json({ ok: true });

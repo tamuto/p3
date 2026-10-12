@@ -26,6 +26,9 @@ import { RelationRow } from "../../../components/RelationRow.tsx";
 import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
 import { TagInput } from "../../../components/TagInput.tsx";
 import { PreflightScope } from "../../../components/PreflightScope.tsx";
+import { AttachmentsPanel } from "../../../components/Attachments.tsx";
+import { UiMaterialsPanel } from "../../../components/UiMaterials.tsx";
+import { draftAnchor, uiShortage } from "../../../lib/uiMaterials.ts";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../../../shared/workTarget.ts";
 import { sameTags } from "../../../../shared/tags.ts";
 import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
@@ -149,6 +152,8 @@ function RequestPanel({
           {request.body || "（本文なし）"}
         </pre>
       </section>
+
+      <AttachmentsPanel requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
         <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun}>
@@ -334,6 +339,9 @@ function RunView({
             </div>
           </Section>
       )}
+
+      {/* 画面資料は評価の下（評価と一緒に、提案の画面イメージを確かめる）。run を替えれば作り直す */}
+      {(a || run.ui) && <UiMaterialsPanel key={run.id} requestId={request.id} run={run} />}
 
       {/* 評価の下。評価が無い間（実行中・失敗）も同じ並びの位置なので、作り直されず入力も消えない */}
       {notes}
@@ -625,8 +633,9 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
             {lv.map((d) => (
               <div
                 key={d.key}
+                id={draftAnchor(d.key)}
                 className={cx(
-                  "space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800",
+                  "scroll-mt-4 space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 target:ring-2 target:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800",
                   !d.include && "opacity-50",
                 )}
               >
@@ -713,6 +722,11 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
             ))}
           </ul>
         </div>
+      )}
+      {!done && uiShortage(run) && (
+        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
+          {uiShortage(run)}
+        </p>
       )}
       <div className="flex items-center gap-3 pt-2">
         {done ? (

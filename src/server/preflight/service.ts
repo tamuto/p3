@@ -377,6 +377,17 @@ export class PreflightService {
     if (xlsx.length) await this.ws.preflight.save(run);
   }
 
+  /** run に固定した xlsx から取り出した内容（Markdown） */
+  async fixedExtract(requestId: string, runId: string, id: string): Promise<string> {
+    const { meta } = await this.fixedAttachment(requestId, runId, id);
+    const rel = meta.extract?.text;
+    if (!rel || rel !== `attachments/${meta.id}.md`) throw new NotFoundError(`${id} の取り出した内容`);
+    const file = join(this.ws.preflight.runDir(requestId, runId), rel);
+    const st = await lstat(file).catch(() => undefined);
+    if (!st?.isFile()) throw new NotFoundError(`${id} の取り出した内容`);
+    return readFile(file, "utf8");
+  }
+
   async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>) {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
