@@ -1,13 +1,12 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { RequestStatusBadge } from "../../components/RequestStatus.tsx";
 import { TaskDrawer } from "../../components/TaskDrawer.tsx";
-import { Badge, Empty } from "../../components/ui.tsx";
+import { Empty } from "../../components/ui.tsx";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
 
 /**
- * 要望の枠: 見出し・タブ（概要と Preflight / タスクボード / 対応済み）・タスク詳細（?task=T003）。
+ * 要望の枠: 見出し（タイトルとタスクの完了数。状態・ID は概要・Preflight の管理情報に出す）・タブ（概要と Preflight / タスクボード / 対応済み）・タスク詳細（?task=T003）。
  * 要望は作業の単位で、ここから下はすべてこの要望の中だけを扱う。
  */
 export const Route = createFileRoute("/requests/$requestId")({
@@ -48,21 +47,14 @@ function RequestFrame() {
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-slate-200 bg-white px-6 pt-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center gap-3">
-          <RequestStatusBadge status={request.status} />
-          <span className="font-mono text-slate-500">{request.id}</span>
-          {request.workstream && (
-            <Badge tone="emerald" title={request.workstream.worktree}>
-              ⎇ {request.workstream.branch}
-            </Badge>
-          )}
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="min-w-0 text-xl font-bold break-words">{request.title}</h1>
           {tasks.length > 0 && (
-            <span className="text-sm text-slate-500">
+            <span className="text-sm whitespace-nowrap text-slate-500">
               タスク {finished}/{tasks.length} 完了
             </span>
           )}
         </div>
-        <h1 className="mt-1 text-xl font-bold">{request.title}</h1>
         <nav className="mt-3 flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <Link

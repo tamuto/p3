@@ -22,6 +22,7 @@ import { useServerEvents } from "../../../lib/live.ts";
 import { optionalString } from "../../../lib/search.ts";
 import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
+import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
 export const Route = createFileRoute("/requests/$requestId/")({
@@ -252,7 +253,7 @@ function RunView({
         {run.startedBy ? ` · 実行: ${run.startedBy}` : ""}
       </p>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Section title={`文脈として選ばれた項目 (${run.context.length})`}>
           {run.context.length === 0 ? (
             <Empty>関連する既存項目はありません</Empty>
@@ -287,9 +288,9 @@ function RunView({
                 <Badge tone={VERDICT[a.verdict].tone} className="text-base font-semibold">
                   {VERDICT[a.verdict].label}
                 </Badge>
-                <p className="min-w-0 flex-1 break-words">{a.summary}</p>
+                <p className="min-w-0 flex-1 self-stretch break-words">{a.summary}</p>
               </div>
-              <div className="grid gap-6 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 {(
                   [
                     ["妥当性", a.validity],
@@ -310,7 +311,7 @@ function RunView({
                   </div>
                 ))}
               </div>
-              <div className="grid gap-6 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <ListBlock title="リスク" items={a.risks} tone="rose" />
                 <ListBlock
                   title="確認事項"
@@ -700,8 +701,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
   );
 }
 
-/** 要望の管理項目（期限・マイルストーン・タグ）。変えるとすぐ保存する */
-/** 要望の管理情報（タイトル・ステータス・期限・マイルストーン・タグ）。期限〜タグは Preflight には渡さない */
+/** 要望の管理情報（ID・タイトル・ステータス・期限・マイルストーン・タグ）。変えるとすぐ保存する。期限〜タグは Preflight には渡さない */
 function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   const { request } = data;
   const [title, setTitle] = useState(request.title);
@@ -724,18 +724,21 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   const tagList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
     <section className="space-y-4">
-      <Field label="タイトル">
-        <input
-          className={`${inputCls} text-lg font-semibold`}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => {
-            if (!title.trim()) return setTitle(request.title);
-            if (title.trim() !== request.title) void save({ title: title.trim() });
-          }}
-          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        />
-      </Field>
+      <div className="space-y-1">
+        <RequestIdCopy id={request.id} />
+        <Field label="タイトル">
+          <input
+            className={`${inputCls} text-lg font-semibold`}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => {
+              if (!title.trim()) return setTitle(request.title);
+              if (title.trim() !== request.title) void save({ title: title.trim() });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          />
+        </Field>
+      </div>
       <div className="flex flex-wrap items-start gap-4">
         <Field label="ステータス">
           <select className={`${inputCls} !w-36`} value={request.status} onChange={(e) => void save({ status: e.target.value as RequestStatus })}>
