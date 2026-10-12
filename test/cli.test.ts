@@ -734,3 +734,26 @@ describe("p3 repo（Preflight が読む参照先）", () => {
     expect(pcube(root, ["--dir", join(root, ".pcube"), "repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["allesc", "infra"]);
   });
 });
+
+describe("Preflight の調べた範囲と根拠（p3 drafts）", () => {
+  it("登録から Preflight（Mock）・drafts まで: 読んだ参照先・見ていない参照先・推測の根拠を出し、JSON にもある", async () => {
+    const { root, rid } = await initialized();
+    const docs = tempDir("docs-");
+    expect(pcube(root, ["repo", "add", "app", root, "role=本体", "readFirst=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "docs", docs, "role=ドキュメント"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "infra", "role=基盤"]).code).toBe(0); // このマシンのパスなし
+    const pf = pcube(root, ["preflight", rid, "--engine", "mock"]);
+    expect(pf.code, pf.err).toBe(0);
+    const text = pcube(root, ["drafts", rid]).out;
+    expect(text).toContain("調べた範囲:");
+    expect(text).toContain("✓ app（本体）  /workspace/app");
+    expect(text).toContain("✕ infra（基盤）  このマシンのパスが登録されていません（p3 repo path infra <パス>）");
+    expect(text).toContain("判断の根拠:");
+    expect(text).toContain("推測      mock: 要望の本文の箇条書きからタスク案を作った（コードは読んでいない）");
+    expect(text).toContain("→ このマシンのパスは p3 repo path <名前> <パス> で登録します");
+    const json = pcube(root, ["drafts", rid, "--json"]).json();
+    expect(json.scope.map((s: any) => [s.name, s.status])).toEqual([["app", "ok"], ["docs", "ok"], ["infra", "unregistered"]]);
+    expect(JSON.stringify(json.scope)).not.toContain(root); // このマシンのパスは入れない
+    expect(json.assessment.evidence[0].kind).toBe("assumed");
+  });
+});

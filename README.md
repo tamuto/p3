@@ -158,7 +158,7 @@ CLI やほかの serve でテーマを変えたときは、開いている画面
 | 設定 | 使われ方 |
 | --- | --- |
 | `name` / `description` | 画面の表示と、Preflight の前提（説明が空だと画面に警告を出す） |
-| `docs` | Preflight で Codex に最初に読ませるドキュメント（リポジトリ内のパス。複製はしない） |
+| `docs` | Preflight で Codex に最初に読ませるドキュメント（`<参照先>:<パス>`、名前なしは先頭の参照先。複製はしない） |
 | `preflight.instructions` | プロジェクト固有の評価の観点・制約。Codex への指示に加わる |
 | `branchPattern` / `worktreeDir` | 要望ごとの作業ツリーのブランチ名（既定 `req/{id}-{slug}`）と置き場所 |
 
@@ -446,6 +446,63 @@ B の詳細には A の役割が出る。保存する種類の名前（`depends_
 
 
 ## Preflight
+
+### 参照先（複数のリポジトリ・フォルダ）
+
+Preflight の Codex が読むリポジトリ・フォルダ（参照先）を、**数と名前を自由に** 登録できる。本体・ドキュメント・基盤・
+依存しているライブラリのように分かれたシステムでも、全部を読ませて判断させるため。
+
+- **共有の定義**（`project.yaml` の `repos`）: 名前・役割・最初に読むか（`readFirst`）・タスクの作業先になりうるか（`writable`。
+  今は表示だけで、作業先とブランチの複数対応は別の要望で入れる）・コードの地図
+- **このマシンのパス**（個人設定 `projects.<プロジェクト>.repos.<名前>`）: 人によって違うので共有しない。git のリポジトリで
+  なくてもよい（フォルダだけ・リポジトリの中のサブフォルダも可）
+
+```bash
+p3 repo add allesc /workspaces/allesc role=システム本体 readFirst=true writable=true
+p3 repo add docs /workspaces/allescdoc/standard_guide role=ドキュメント mapFile=MAP.md   # リポジトリの中のサブフォルダ
+p3 repo add infra /workspaces/allescinfra role=基盤
+p3 repo ls                       # 一覧。このマシンのパスが無いものは「未登録 → p3 repo path <名前> <パス>」
+p3 repo path docs ~/src/allescdoc/standard_guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
+p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable mapFile）
+p3 repo rm infra --local         # このマシンのパスだけ外す（共有の定義は残る）
+p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の Preflight でも読まなくなる。フォルダは消さない）
+```
+
+```yaml
+# project.yaml（共有）
+repos:
+  allesc:
+    role: システム本体
+    readFirst: true
+    writable: true
+    map:                               # コードの地図: どこから読むかの案内（全部を読む指示ではない）
+      src/server: API とデータ
+      src/web: { role: 画面, entry: src/web/main.tsx }
+  docs:
+    role: ドキュメント
+    mapFile: MAP.md                    # 地図を Markdown で書くとき（参照先の中のパス）
+  infra: { role: 基盤 }
+docs: [README.md, "docs:guide/"]      # <参照先>:<パス>。名前なしは先頭の参照先
+```
+
+- **参照の書き方**: `docs` と要望・タスクの `areas` は `<参照先>:<パス>`（例 `docs:standard_guide/`・`infra:terraform`）で
+  書ける。名前なしは先頭の参照先の中のパス（今までの書き方のまま読める）。登録に無い名前・絶対パス・`..` は読まない。
+  文脈の選定（関係しそうな項目）は、同じ参照先の中だけで領域の重なりを見る（別の参照先の同じ `src` は重ならない）
+- **今までのプロジェクト**: `repos` が無ければ、今までどおりリポジトリ1つ（名前 `main`。個人設定の `repos.main`、無ければ
+  `project.yaml` の `repo`）を読む。設定は書き換えない。`p3 repo add` で共有の参照先を書いたら、それからは `repos` の
+  参照先だけを読む（本体も読ませるなら本体も足す。`p3 repo add` が知らせる）。タスクの作業ツリーは今までのリポジトリのまま
+- **Preflight での扱い**: 読める参照先を全部 `/workspace/<名前>` に **読むだけで** マウントする（`/workspace` 自体は空。
+  データは今までどおり `/data`、書けるのは run のフォルダだけ）。パスの対応（`codex.pathMap`）は全部に効く。このマシンの
+  パスが無い・無いパス・フォルダでないものは飛ばし、「見ていない参照先」として理由をログと記録（run.json の `scope`）に残す
+  （P3 が決める。Codex の申告では変わらない。記録にはこのマシンのパスを入れない）。読める参照先が無くても、要望と P3 の
+  データだけで評価する（その制約を Codex に伝える）
+- **調べた根拠**: 評価（`assessment.json` の `evidence`）に、判断に使ったファイル・箇所（`<参照先>:<ファイル> <行・関数>`）を
+  書かせ、読まずに推測した判断も消さずに「推測」として書かせる。P3 は、見ていない参照先・参照先の外・無いファイルを指す
+  「確かめた」を「推測」に直して理由を残す。再評価では前回の根拠を前回の時点のものとして渡し、今回の根拠に写さない。
+  タスク案の本文にも「判断の根拠」と「未確認」を書かせる。以前の評価は「記録なし」と出す。画面の「調べた範囲」「判断の根拠」と
+  `p3 drafts`（`--json` では `scope` と `assessment.evidence`）で確かめる
+- テストは偽の app-server で、マウントの引数・指示文・記録・根拠の扱いを確かめる。本物の Codex が実際にどこまで読むか、
+  読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない（Docker での確認は docs/architecture.md）
 
 ### ChatGPT プランで動かす（Sign in with ChatGPT）
 

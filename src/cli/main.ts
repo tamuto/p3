@@ -17,6 +17,7 @@ import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
+import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
 import { briefRequest, briefTask, formatBriefRequest, formatBriefTask, taskExtras } from "./showView.ts";
 import { config, currentRequest, init, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
@@ -751,6 +752,9 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
     if (a.questions.length) lines.push("", "確認事項:", ...a.questions.map((x) => `  - ${x}`));
     if (a.impacts.length) lines.push("", "既存項目への影響:", ...a.impacts.map((i) => `  ${i.type} ${i.target} (${i.confidence})  ${i.reason}`));
   }
+  lines.push("", ...scopeLines(run.scope));
+  if (a) lines.push("", ...evidenceLines(a.evidence));
+  if (run.scope?.some((s) => s.status === "unregistered")) lines.push("  → このマシンのパスは p3 repo path <名前> <パス> で登録します");
   if (run.drafts.length) {
     lines.push("", `タスク案 (${run.drafts.filter((d) => d.include).length}/${run.drafts.length} 件を採用):`);
     lines.push(table(run.drafts.map((d) => [d.include ? "[x]" : "[ ]", d.key, d.title, d.dependsOn.length ? `← ${d.dependsOn.join(",")}` : ""])));
