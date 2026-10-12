@@ -107,11 +107,11 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     出し、横にはみ出さない。新しい要望は Enter で足した値と書きかけの値（`x/y, z`）の両方を付けて作る
   - 開いた中が、スケジュールの左の列（sticky, z-30）の下に隠れていたので z-50 にした
 - Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
-  名前・役割・readFirst・writable・主なフォルダ map / 構成の説明 mapFile）、このマシンのパスは個人設定の `projects.<p>.repos`。
+  名前・役割・readFirst・writable・主なフォルダ map。入口 entry がそのフォルダで最初に読むファイル）、このマシンのパスは個人設定の `projects.<p>.repos`。
   `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。`p3 init` が本体を参照先として
   登録する。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
   設定の保存（画面・`p3 config`）は `repos` を書き換えない。コンテナの中の名前（mount）は論理名から英数字と `. _ -` だけで作り、
-  重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は docs・areas・evidence で共通。名前なしは先頭の参照先。
+  重複は番号で分ける。参照の書き方 `<名前>:<パス>`（`parseRepoPath`）は areas・evidence で共通。名前なしは先頭の参照先。
   - マウント（`withMounts`）: dockerCommand の `/workspace` の bind を tmpfs に替え、参照先を `/workspace/<mount>` に
     `readonly` で、データを `/data` に置く。Codex の cwd は `/workspace` のまま。変更のパスは参照先の対応で戻す
   - 調べた範囲（`run.scope`）は P3 が始めるときに決めて残す（パスは入れない）。根拠（`assessment.evidence`）は Codex が書き、
@@ -244,6 +244,9 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   - 設定画面はほかの画面と同じく画面の横幅いっぱいに使う。入力欄のラベルは短くし、補足は `Field` の `hint` で入力欄の下に出すので、
     ラベルの折り返しで横に並んだ入力欄の高さがずれない（2026-10-12、Chromium。1280px・1920px・375px で、横に並んだ入力欄の
     上端がそろい、横にはみ出さない）
+  - 主なフォルダの行は、広い画面ではフォルダ・役割・入口を3等分し（見出しの行を上に置く）、狭い画面では縦に並べる。構成の説明
+    （`mapFile`）の欄は無い（2026-10-12、Chromium。1280px で 373px・1920px で 587px の3等分、375px は縦並びで横にはみ出さない。
+    以前の `mapFile` とプロジェクトの `docs` が残った project.yaml で参照先を保存すると、どちらも消える）
   - ブラウザでの確認（2026-10-12、Chromium。app・infra（git、作業先にできる）と lib（参照だけ）の一時プロジェクト）: 案のレビューの
     作業先の選択肢は app・infra・作業先なし（lib は出ない）で、選ぶと保存される。タスク化で app・infra の2つにブランチが割り当たり、
     概要に「ブランチ（作業先ごと）」、ボードのカードに作業先（作業先なしも）が出る。タスク詳細で作業先を作業先なしから infra に変え、
@@ -388,7 +391,10 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 - Codex はコンテナの中から、それらをリポジトリのファイルとして直接読む。
 - pcube が作る記録（要望・評価・タスク案・タスク）もリポジトリ内の Markdown なので、それ自体がドキュメントになる。
   「なぜこのタスクがあるのか」は、タスク → 要望 → Preflight の評価と文脈（`context.md`）を辿れば分かる。
-- `project.yaml` の `docs` に、Preflight で最初に読ませるドキュメント（設計方針・用語集など）を列挙する。
+- Preflight で最初に読ませるドキュメント（設計方針・用語集など）は、参照先の主なフォルダ（`repos.<名前>.map`）に書き、
+  そのフォルダで最初に読むファイルを入口（`entry`）にする。参照先ごとに書くので、どの参照先のファイルかが曖昧にならない
+  （以前のプロジェクトの `docs` は、名前を付けないと先頭の参照先のパスになり分かりにくかったので外した。構成の説明の
+  Markdown `mapFile` も入口と重なるので外した。どちらも保存のときに project.yaml から消す）。
   `preflight.instructions` にはプロジェクト固有の評価の観点・制約を書く。どちらも Codex への指示に加わる。
 
 ## 共有（同期）の方法

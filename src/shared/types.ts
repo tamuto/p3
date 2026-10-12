@@ -347,8 +347,6 @@ export interface ProjectConfig {
    * Preflight が読み、作業先にできるものはタスクの作業先になる。このマシンのパスは個人設定に置く。shared/repos.ts
    */
   repos: RepoRef[];
-  /** プロジェクトのドキュメント（`<参照先>:<パス>` か、先頭の参照先の中のパス）。Preflight で最初に読ませる */
-  docs: string[];
   /** マイルストーン（リリース）。複数の要望をまとめる */
   milestones: Milestone[];
   /** ブランチ命名規則。{id} {slug} を置換 */

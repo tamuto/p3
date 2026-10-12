@@ -27,7 +27,7 @@ export const AI_MANIFEST = {
     {
       method: "GET|POST|PATCH|DELETE",
       path: "/api/repos[/:name]",
-      desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, mapFile?, path?}",
+      desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },

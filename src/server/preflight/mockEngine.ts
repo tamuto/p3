@@ -42,7 +42,7 @@ export class MockEngine implements PreflightEngine {
     const { request, context } = job;
     log({ kind: "info", text: "mock engine: Codex を使わずにヒューリスティックで評価します" });
     await this.sleep(400, signal);
-    for (const d of job.project.docs) log({ kind: "command", text: `$ ls ${d}` });
+    for (const r of job.refs) for (const m of r.map) log({ kind: "command", text: `$ ls ${r.name}:${m.path}` });
     log({ kind: "command", text: `$ rg -l "${request.title.slice(0, 20)}" .` });
     await this.sleep(400, signal);
     for (const c of context.slice(0, 3)) {

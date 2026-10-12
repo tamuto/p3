@@ -32,7 +32,7 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                       {s.reason ?? SCOPE_STATUS_LABEL[s.status]}。中身は確かめていないので、関わる判断は推測です
                     </p>
                   )}
-                  {def && (def.map.length > 0 || def.mapFile) && (
+                  {def && def.map.length > 0 && (
                     <details className="text-sm">
                       <summary className="cursor-pointer text-slate-500">主なフォルダ（今の設定）</summary>
                       <ul className="mt-1 space-y-0.5 pl-4">
@@ -46,11 +46,6 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                             )}
                           </li>
                         ))}
-                        {def.mapFile && (
-                          <li>
-                            説明: <code className="font-mono break-all">{def.mapFile}</code>
-                          </li>
-                        )}
                       </ul>
                     </details>
                   )}

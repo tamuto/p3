@@ -20,7 +20,6 @@ import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./di
 import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
-import { parseRepoPath } from "../../shared/repos.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
@@ -308,7 +307,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     const data = mappings.at(-1)!.host;
     log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
-    for (const r of readable) if (mapFileMissing(r)) log({ kind: "info", text: `構成の説明のファイルがありません: ${r.name}:${r.mapFile}` });
+    for (const r of readable) for (const m of r.map) if (m.entry && entryMissing(r, m.entry)) log({ kind: "info", text: `入口のファイルがありません: ${r.name}:${m.entry}` });
     if (cfg.ensureImage) {
       log({ kind: "info", text: "コンテナのイメージを確かめています" });
       try {
@@ -446,41 +445,22 @@ ${c.text.trim()}
 `;
 }
 
-/** 参照先の中のパス → コンテナの中のパス（読めなければ理由） */
-function containerPathOf(job: PreflightJob, raw: string): { path: string } | { reason: string } {
-  const repos = job.refs;
-  const p = parseRepoPath(raw, repos.map((r) => r.name), repos[0]?.name);
-  if (!p.ok) return { reason: p.reason };
-  const ref = repos.find((r) => r.name === p.repo)!;
-  if (ref.status !== "ok") return { reason: `参照先 ${ref.name} は見ていません（${refScope(ref).reason}）` };
-  return { path: `${CONTAINER_WORKSPACE}/${ref.mount}${p.path ? `/${p.path}` : ""}` };
-}
-
-/** プロジェクト設定の docs（<参照先>:<パス> か先頭の参照先の中のパス）。最初に読ませる */
-function docsSection(job: PreflightJob) {
-  if (!job.project.docs.length) return "";
-  const lines = job.project.docs.map((d) => {
-    const at = containerPathOf(job, d);
-    return "path" in at ? `- ${at.path}` : `- ${d}（読めません: ${at.reason}）`;
-  });
-  return `\n## 最初に読むドキュメント\nプロジェクトの方針・用語・設計が書かれています。評価の前に必要な範囲で読んでください。\n${lines.join("\n")}\n`;
-}
-
-/** 主なフォルダ（どこから読むかの案内）。構成の説明のファイルが無ければ印を付ける */
+/** 主なフォルダ（どこから読むかの案内）。入口のファイルが無ければ印を付ける */
 function codeMapSection(job: PreflightJob) {
   const parts = job.refs
-    .filter((r) => r.status === "ok" && (r.map.length || r.mapFile))
+    .filter((r) => r.status === "ok" && r.map.length)
     .map((r) => {
       const base = `${CONTAINER_WORKSPACE}/${r.mount}`;
-      const lines = r.map.map((m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}）` : ""}`);
-      if (r.mapFile) lines.push(`- 構成の説明: ${base}/${r.mapFile}${mapFileMissing(r) ? "（ファイルがありません）" : ""}`);
+      const lines = r.map.map(
+        (m) => `- ${base}/${m.path} — ${m.role || "（役割なし）"}${m.entry ? `（入口 ${base}/${m.entry}${entryMissing(r, m.entry) ? "。ファイルがありません" : ""}）` : ""}`,
+      );
       return `### ${r.name}${r.role ? `（${r.role}）` : ""}\n${lines.join("\n")}`;
     });
   if (!parts.length) return "";
   return `\n## 主なフォルダ（どこから読むかの案内。全部を読む必要はありません）\n${parts.join("\n\n")}\n`;
 }
 
-const mapFileMissing = (r: ResolvedRef) => !!r.mapFile && !!r.local && !existsSync(join(r.local, r.mapFile));
+const entryMissing = (r: ResolvedRef, entry: string) => !!r.local && !existsSync(join(r.local, entry));
 
 /** 調べる対象（参照先）の説明 */
 function refsSection(job: PreflightJob) {
@@ -524,7 +504,7 @@ function prompt(job: PreflightJob, paths: ContainerPaths) {
 
 ## プロジェクト
 ${job.project.name}: ${job.project.description || "（説明なし）"}
-${docsSection(job)}${codeMapSection(job)}
+${codeMapSection(job)}
 ## 要望（${paths.runDir}/request.md にも同じ内容があります）
 ${r.body.trim() || "(本文なし)"}
 ${carryoverSection(job, paths)}

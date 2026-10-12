@@ -13,7 +13,7 @@ import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/server/pre
 import { resolveMachineSettings } from "../src/server/machineSettings.ts";
 import { supersededMarks } from "../src/server/supersede.ts";
 import { parseAssessment } from "../src/server/preflight/service.ts";
-import { makeProject, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
+import { makeProject, MAIN_REF, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 
@@ -145,7 +145,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
 
   /** outside: データディレクトリをリポジトリの外に置く（project.yaml の repo は絶対パス） */
   async function setup(scenario = "", { outside = false } = {}) {
-    const config = { docs: ["docs/design.md", "README.md"], preflight: { instructions: "外部 SaaS の追加は要相談" } };
+    const config = { repos: [{ ...MAIN_REF, map: [{ path: "docs", role: "設計", entry: "docs/design.md" }] }], preflight: { instructions: "外部 SaaS の追加は要相談" } };
     const repo = await makeRepo(config);
     if (outside) {
       repo.dataDir = tempDir("pcube-data-");
@@ -183,8 +183,8 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(thread.developerInstructions).toContain("外部 SaaS の追加は要相談");
     expect(thread.developerInstructions).toContain(`/data/requests/${req.id}/preflight/${id}/`);
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
-    expect(prompt).toContain("## 最初に読むドキュメント");
-    expect(prompt).toContain("- /workspace/main/docs/design.md");
+    expect(prompt).toContain("## 主なフォルダ");
+    expect(prompt).toContain("- /workspace/main/docs — 設計（入口 /workspace/main/docs/design.md");
     expect(prompt).toContain(existing.ref); // 文脈として選ばれた既存タスク
     expect(prompt).toContain("drafts/D1.md");
 

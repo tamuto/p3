@@ -102,7 +102,9 @@ export function currentRequest(ctx: PcubeContext, explicit: string | undefined, 
   return undefined;
 }
 
-const DOC_CANDIDATES = ["docs", "doc", "README.md", "ARCHITECTURE.md", "DESIGN.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
+/** init で主なフォルダの候補にするドキュメントのフォルダと、その入口の候補 */
+const DOC_FOLDERS = ["docs", "doc"];
+const DOC_ENTRIES = ["README.md", "index.md"];
 
 const AGENTS_MARK = "タスク管理（infodb p3）";
 
@@ -170,7 +172,6 @@ export interface InitOptions {
   dir?: string;
   name?: string;
   description?: string;
-  docs?: string;
   instructions?: string;
   agents?: boolean;
   yes?: boolean;
@@ -246,10 +247,15 @@ export async function init(o: InitOptions): Promise<string> {
     }
 
     // 既定値: git とリポジトリの中身から推測する
-    const docsFound = DOC_CANDIDATES.filter((d) => existsSync(join(root, d)));
+    const docFolders = DOC_FOLDERS.filter((d) => existsSync(join(root, d)));
     const name = o.name ?? key;
     const description = await ask("何を作っているプロジェクトか（Preflight の前提になります）", o.description ?? "");
-    const docs = splitList(await ask("ドキュメントのパス（カンマ区切り。Preflight で最初に読みます）", o.docs ?? docsFound.join(", ")));
+    // ドキュメントのフォルダは本体の主なフォルダにする（入口はその中の README.md / index.md）
+    const folders = splitList(await ask("主なフォルダ（カンマ区切り。Preflight がどこから読むかの案内）", docFolders.join(", ")));
+    const map = folders.map((f) => {
+      const entry = DOC_ENTRIES.map((e) => `${f}/${e}`).find((e) => existsSync(join(root, e)));
+      return { path: f, role: DOC_FOLDERS.includes(f) ? "ドキュメント" : "", ...(entry ? { entry } : {}) };
+    });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
     const addAgents = await askAgents();
 
@@ -257,8 +263,7 @@ export async function init(o: InitOptions): Promise<string> {
       name,
       description,
       // このリポジトリを本体の参照先にする（このマシンのパスは個人設定に持ち、共有するデータには書かない）
-      repos: [{ name: refName!, role: "本体", readFirst: true, writable: true, map: [] }],
-      docs,
+      repos: [{ name: refName!, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
       preflight: { instructions },
@@ -272,7 +277,7 @@ export async function init(o: InitOptions): Promise<string> {
     return [
       `作りました: ${key} → ${dir}`,
       `  参照先        ${refName}（本体） → ${root}`,
-      `  ドキュメント  ${cfg.docs.join(", ") || "（なし）"}`,
+      `  主なフォルダ  ${map.map((m) => m.path).join(", ") || "（なし。設定画面で足せます）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
       ...agentLines,
       "",
@@ -340,7 +345,7 @@ export const resolvePath = (cwd: string, p: string) => resolve(cwd, p === "~" ? 
 
 const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 
-const CONFIG_KEYS = ["name", "description", "docs", "branchPattern", "instructions"] as const;
+const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions"] as const;
 
 /** pcube config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
@@ -351,8 +356,7 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
       const key = pair.slice(0, eq) as (typeof CONFIG_KEYS)[number];
       const value = pair.slice(eq + 1).trim();
       if (eq < 1 || !CONFIG_KEYS.includes(key)) throw new UsageError(`設定できるキー: ${CONFIG_KEYS.join(", ")}`);
-      if (key === "docs") patch.docs = splitList(value);
-      else if (key === "instructions") patch.preflight = { instructions: value };
+      if (key === "instructions") patch.preflight = { instructions: value };
       else if (key === "branchPattern" && !value.includes("{id}")) throw new UsageError("branchPattern には {id} を含めてください");
       else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
@@ -367,7 +371,6 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `name           ${p.name}`,
     `description    ${p.description || "（なし）"}`,
     `repos          ${p.repos.map((r) => r.name).join(", ") || "（なし）"}  (p3 repo ls)`,
-    `docs           ${p.docs.join(", ") || "（なし）"}`,
     `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
@@ -387,7 +390,7 @@ function splitList(s: string): string[] {
  *
  *   ls                               一覧（このマシンのパスが無いものは登録の仕方を出す）
  *   add <名前> [<パス>] [キー=値 ...]  共有の定義を足す（パスを渡せばこのマシンのパスも登録する）
- *   set <名前> キー=値 ...            共有の定義を変える（role readFirst writable mapFile）
+ *   set <名前> キー=値 ...            共有の定義を変える（role readFirst writable）
  *   path <名前> <パス>               このマシンのパスだけを登録する（ほかの人が足した参照先に）
  *   rm <名前> [--local]              共有の定義とこのマシンのパスを消す（--local はこのマシンのパスだけ）
  */
@@ -400,7 +403,7 @@ export async function repoCommand(
 ): Promise<{ data: unknown; text: string }> {
   const [sub = "ls", name, ...rest] = args;
   const shared = () => ws.project.repos.find((r) => r.name === name);
-  const usage = "p3 repo [ls | add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…] | set <名前> キー=値 … | path <名前> <パス> | rm <名前> [--local]]";
+  const usage = "p3 repo [ls | add <名前> [<パス>] [role=… readFirst=true writable=true] | set <名前> キー=値 … | path <名前> <パス> | rm <名前> [--local]]";
 
   const pairs = (list: string[]): RepoPatch => {
     const patch: RepoPatch = {};
@@ -412,8 +415,7 @@ export async function repoCommand(
       else if (key === "readFirst" || key === "writable") {
         if (!["true", "false"].includes(value)) throw new UsageError(`${key} は true か false`);
         patch[key] = value === "true";
-      } else if (key === "mapFile") patch.mapFile = value;
-      else throw new UsageError(`変えられるキー: role readFirst writable mapFile（主なフォルダ map は設定画面か project.yaml で）`);
+      } else throw new UsageError(`変えられるキー: role readFirst writable（主なフォルダ map は設定画面か project.yaml で）`);
     }
     return patch;
   };
@@ -438,7 +440,7 @@ export async function repoCommand(
         const where =
           r.status === "ok" ? r.local : r.status === "unregistered" ? `未登録 → p3 repo path ${r.name} <このマシンのパス>` : `${r.reason}`;
         return `${r.name}${r.role ? `（${r.role}）` : ""}${flags ? ` [${flags}]` : ""}  /workspace/${r.mount}\n    ${where}${
-          r.map.length || r.mapFile ? `\n    主なフォルダ: ${[...r.map.map((m) => m.path), ...(r.mapFile ? [`${r.mapFile}（Markdown）`] : [])].join(", ")}` : ""
+          r.map.length ? `\n    主なフォルダ: ${r.map.map((m) => (m.entry ? `${m.path}（入口 ${m.entry}）` : m.path)).join(", ")}` : ""
         }`;
       }),
     ].join("\n");
@@ -463,7 +465,7 @@ export async function repoCommand(
   }
   if (sub === "set") {
     if (!shared()) throw new UsageError(`「${name}」はありません。足すときは p3 repo add ${name} <パス>`);
-    if (!rest.length) throw new UsageError("キー=値 を指定してください（role readFirst writable mapFile）");
+    if (!rest.length) throw new UsageError("キー=値 を指定してください（role readFirst writable）");
     const next = await run(() => updateRepo(ws, name, pairs(rest)));
     return { data: next, text: `参照先を変えました: ${name}` };
   }

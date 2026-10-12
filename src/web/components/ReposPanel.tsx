@@ -75,7 +75,7 @@ type Act = (f: () => Promise<unknown>) => Promise<boolean>;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: Act }) {
-  const saved = { role: repo.role, readFirst: repo.readFirst, writable: repo.writable, mapFile: repo.mapFile ?? "", map: repo.map };
+  const saved = { role: repo.role, readFirst: repo.readFirst, writable: repo.writable, map: repo.map };
   const [draft, setDraft] = useState(saved);
   const [path, setPath] = useState(repo.local ?? "");
   const [confirm, setConfirm] = useState(false);
@@ -116,14 +116,9 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
           )}
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="役割">
-          <input className={inputCls} value={draft.role} placeholder="本体 / ドキュメント / 基盤 / 依存しているライブラリ" onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
-        </Field>
-        <Field label="構成の説明（Markdown）" hint="参照先の中のパス。任意">
-          <input className={`${inputCls} font-mono`} value={draft.mapFile} placeholder="docs/MAP.md" onChange={(e) => setDraft({ ...draft, mapFile: e.target.value })} />
-        </Field>
-      </div>
+      <Field label="役割">
+        <input className={inputCls} value={draft.role} placeholder="本体 / ドキュメント / 基盤 / 依存しているライブラリ" onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
+      </Field>
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={draft.readFirst} onChange={(e) => setDraft({ ...draft, readFirst: e.target.checked })} />
@@ -136,13 +131,21 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          主なフォルダ <span className="font-normal text-slate-400">— Preflight がどこから読むかの案内（フォルダ・役割・入口）</span>
+          主なフォルダ <span className="font-normal text-slate-400">— Preflight がどこから読むかの案内。入口はそのフォルダで最初に読むファイル（参照先の中のパス）</span>
         </p>
+        {draft.map.length > 0 && (
+          <div className="hidden grid-cols-[repeat(3,minmax(0,1fr))_2.5rem] gap-2 text-sm text-slate-500 sm:grid dark:text-slate-400" aria-hidden>
+            <span>フォルダ</span>
+            <span>役割</span>
+            <span>入口（任意）</span>
+          </div>
+        )}
         {draft.map.map((m, i) => (
-          <div key={i} className="flex flex-wrap gap-2">
-            <input className={cx(inputCls, "!w-40 font-mono")} aria-label="フォルダ" placeholder="src/server" value={m.path} onChange={(e) => setMap(i, { path: e.target.value })} />
-            <input className={cx(inputCls, "min-w-0 flex-1")} aria-label="役割" placeholder="API とデータ" value={m.role} onChange={(e) => setMap(i, { role: e.target.value })} />
-            <input className={cx(inputCls, "!w-48 font-mono")} aria-label="入口" placeholder="入口（任意）" value={m.entry ?? ""} onChange={(e) => setMap(i, { entry: e.target.value || undefined })} />
+          // 広い画面ではフォルダ・役割・入口を3等分する。狭い画面では縦に並べる
+          <div key={i} className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2 sm:grid-cols-[repeat(3,minmax(0,1fr))_2.5rem]">
+            <input className={cx(inputCls, "font-mono max-sm:col-span-2")} aria-label="フォルダ" placeholder="src/server" value={m.path} onChange={(e) => setMap(i, { path: e.target.value })} />
+            <input className={cx(inputCls, "max-sm:col-span-2")} aria-label="役割" placeholder="API とデータ" value={m.role} onChange={(e) => setMap(i, { role: e.target.value })} />
+            <input className={cx(inputCls, "font-mono")} aria-label="入口" placeholder="src/server/app.ts" value={m.entry ?? ""} onChange={(e) => setMap(i, { entry: e.target.value || undefined })} />
             <Button variant="ghost" aria-label={`主なフォルダ ${m.path || "の行"} を外す`} onClick={() => setDraft({ ...draft, map: draft.map.filter((_, j) => j !== i) })}>
               ×
             </Button>
@@ -153,7 +156,7 @@ function RepoCard({ repo, local, act }: { repo: RepoInfo; local: boolean; act: A
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={!dirty} onClick={() => void act(() => api.updateRepo(repo.name, { ...draft, mapFile: draft.mapFile || null }))}>
+        <Button variant="primary" disabled={!dirty} onClick={() => void act(() => api.updateRepo(repo.name, draft))}>
           保存
         </Button>
         <Button variant="ghost" disabled={!dirty} onClick={() => setDraft(saved)}>

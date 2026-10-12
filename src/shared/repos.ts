@@ -7,7 +7,7 @@
  * 参照の書き方: `<参照先の名前>:<参照先の中のパス>`（例: `docs:guide/`）。名前を付けなければ先頭の参照先。
  */
 
-/** 主なフォルダの1行: フォルダとその役割・入口 */
+/** 主なフォルダの1行: フォルダ（またはファイル）とその役割・入口（最初に読むファイル。参照先の中のパス） */
 export interface CodeMapEntry {
   path: string;
   role: string;
@@ -23,10 +23,8 @@ export interface RepoRef {
   readFirst: boolean;
   /** タスクの作業先になりうるか（今は表示だけ。作業先の多重化は別の要望） */
   writable: boolean;
-  /** 主なフォルダ（どこから読むかの案内。全部読む指示ではない） */
+  /** 主なフォルダ（どこから読むかの案内。全部読む指示ではない）。入口がそのフォルダの最初に読むファイル */
   map: CodeMapEntry[];
-  /** 構成の説明を書いた Markdown（参照先の中のパス） */
-  mapFile?: string;
 }
 
 export const REPO_NAME = /^[^\s:/\\]+$/;

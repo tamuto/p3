@@ -86,7 +86,6 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
     name: str(d.name) ?? "pcube project",
     description: str(d.description) ?? "",
     repos: normalizeRepos(d.repos),
-    docs: strs(d.docs),
     milestones: Array.isArray(d.milestones)
       ? (d.milestones as unknown[])
           .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !!(m as Record<string, unknown>).id)
@@ -117,7 +116,6 @@ export function normalizeRepos(v: unknown): RepoRef[] {
       readFirst: x.readFirst === true,
       writable: x.writable === true,
       map: normalizeCodeMap(x.map),
-      mapFile: str(x.mapFile),
     });
   }
   return out;

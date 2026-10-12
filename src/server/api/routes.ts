@@ -64,7 +64,6 @@ const projectPatch = z
   .object({
     name: z.string().min(1),
     description: z.string(),
-    docs: z.array(z.string().min(1)),
     milestones: z.array(
       z.object({
         id: z.string().regex(/^[A-Za-z0-9._-]+$/, "マイルストーンの id は英数字と . _ -"),

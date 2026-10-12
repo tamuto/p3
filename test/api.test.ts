@@ -103,8 +103,8 @@ describe("REST API", () => {
     const t = await newTask(ctx, rid, { title: "A" });
     expect((await call("PATCH", `/requests/${rid}/tasks/${t.id}`, { status: "hold" })).status).toBe(400);
     expect((await call("PATCH", `/requests/${rid}/tasks/${t.id}`, { status: "doing" })).body.status).toBe("doing");
-    const ok = await call("PUT", "/project", { name: "新しい名前", docs: ["docs"] });
-    expect(ok.body).toMatchObject({ name: "新しい名前", docs: ["docs"] });
+    const ok = await call("PUT", "/project", { name: "新しい名前" });
+    expect(ok.body).toMatchObject({ name: "新しい名前" });
   });
 
   it("マイルストーン: 重複と使用中の削除を拒み、要望には定義済みのものだけ付けられる", async () => {

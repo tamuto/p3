@@ -11,13 +11,13 @@ describe("参照先の定義（project.yaml の repos）", () => {
   it("名前をキーにした対応と、name を持つ並びの両方を読む。主なフォルダは「パス: 役割」か { role, entry }", () => {
     const repos = normalizeRepos({
       app: { role: "システム本体", readFirst: true, writable: true, map: { "src/server": "API", "src/web": { role: "画面", entry: "src/web/main.tsx" } } },
-      "ガイド": { role: "ドキュメント", mapFile: "MAP.md" },
+      "ガイド": { role: "ドキュメント", map: { chapters: { role: "章", entry: "chapters/index.md" } } },
       infra: "基盤",
     });
     expect(repos).toEqual([
-      { name: "app", role: "システム本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API" }, { path: "src/web", role: "画面", entry: "src/web/main.tsx" }], mapFile: undefined },
-      { name: "ガイド", role: "ドキュメント", readFirst: false, writable: false, map: [], mapFile: "MAP.md" },
-      { name: "infra", role: "基盤", readFirst: false, writable: false, map: [], mapFile: undefined },
+      { name: "app", role: "システム本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API" }, { path: "src/web", role: "画面", entry: "src/web/main.tsx" }] },
+      { name: "ガイド", role: "ドキュメント", readFirst: false, writable: false, map: [{ path: "chapters", role: "章", entry: "chapters/index.md" }] },
+      { name: "infra", role: "基盤", readFirst: false, writable: false, map: [] },
     ]);
     expect(normalizeRepos([{ name: "a", role: "x", map: [{ path: "src", role: "s" }] }, { name: "a" }, { name: "b:c" }, { name: "" }, { role: "名前なし" }]).map((r) => r.name)).toEqual(["a"]);
     expect(normalizeRepos(undefined)).toEqual([]);
@@ -58,19 +58,21 @@ describe("project.yaml への読み書き", () => {
   it("p3 repo の書き込みは1件だけを変え、コメント・ほかの項目・知らない項目を残す。設定の保存は repos を消さない", async () => {
     const { dataDir } = await makeRepo({ repos: [] });
     const file = join(dataDir, "project.yaml");
-    await writeFile(file, `${await readFile(file, "utf8")}# 参照先\nrepos:\n  # 本体のリポジトリ\n  app:\n    role: システム本体\n    owner: team-a   # 知らない項目\n  legacy-list-ok: 基盤\n`);
+    await writeFile(file, `${await readFile(file, "utf8")}# 参照先\nrepos:\n  # 本体のリポジトリ\n  app:\n    role: システム本体\n    owner: team-a   # 知らない項目\n    mapFile: OLD.md\n  legacy-list-ok: 基盤\ndocs:\n  - README.md\n`);
     await writeRepoEntry(file, "app", { name: "app", role: "本体（更新）", readFirst: true, writable: true, map: [{ path: "src", role: "コード", entry: "src/main.ts" }] });
-    await writeRepoEntry(file, "docs", { name: "docs", role: "ドキュメント", readFirst: false, writable: false, map: [], mapFile: "MAP.md" });
+    await writeRepoEntry(file, "docs", { name: "docs", role: "ドキュメント", readFirst: false, writable: false, map: [] });
     await writeRepoEntry(file, "legacy-list-ok", null);
     const text = await readFile(file, "utf8");
     expect(text).toContain("# 本体のリポジトリ");
     expect(text).toContain("owner: team-a # 知らない項目");
     expect(text).not.toContain("legacy-list-ok");
+    expect(text).not.toContain("mapFile"); // 以前の構成の説明は消す（主なフォルダの入口で示す）
+    expect(text).not.toMatch(/^docs:/m); // 以前のプロジェクトの docs も消す
     const ws = new Workspace(dataDir);
     await ws.load();
-    expect(ws.project.repos.map((r) => [r.name, r.role, r.readFirst, r.map, r.mapFile])).toEqual([
-      ["app", "本体（更新）", true, [{ path: "src", role: "コード", entry: "src/main.ts" }], undefined],
-      ["docs", "ドキュメント", false, [], "MAP.md"],
+    expect(ws.project.repos.map((r) => [r.name, r.role, r.readFirst, r.map])).toEqual([
+      ["app", "本体（更新）", true, [{ path: "src", role: "コード", entry: "src/main.ts" }]],
+      ["docs", "ドキュメント", false, []],
     ]);
     // 画面・p3 config の保存（repos を知らない経路）でも消えない
     await ws.saveProject({ description: "説明を変えた" });

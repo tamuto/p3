@@ -6,7 +6,7 @@ import { localOnly } from "./local.ts";
 
 const mapEntry = z.object({ path: z.string(), role: z.string(), entry: z.string().optional() });
 const repoPatch = z
-  .object({ role: z.string(), readFirst: z.boolean(), writable: z.boolean(), mapFile: z.string().nullable(), map: z.array(mapEntry) })
+  .object({ role: z.string(), readFirst: z.boolean(), writable: z.boolean(), map: z.array(mapEntry) })
   .partial();
 
 /**
@@ -28,7 +28,6 @@ export function repoRoutes(ctx: PcubeContext) {
         readFirst: r.readFirst,
         writable: r.writable,
         map: r.map,
-        mapFile: r.mapFile ?? null,
         mount: r.mount,
         status: r.status,
         ...(local ? { local: r.local ?? null, reason: r.reason ?? null } : {}),
@@ -41,16 +40,15 @@ export function repoRoutes(ctx: PcubeContext) {
       const why = localOnly(c, true, "このマシンのパスの登録");
       if (why) return c.json({ error: why }, 403);
     }
-    const { name, path, mapFile, ...patch } = b;
+    const { name, path, ...patch } = b;
     // パスを先に確かめる（共有の定義だけ書いて失敗しないように）
     if (path) checkFolder(path);
-    const entry = await addRepo(ws, name, { ...patch, mapFile: mapFile ?? undefined });
+    const entry = await addRepo(ws, name, patch);
     if (path) await setLocalRepoPath(ws, ctx.projectName, name, path);
     return c.json(entry, 201);
   });
   app.patch("/:name", async (c) => {
-    const { mapFile, ...patch } = repoPatch.parse(await c.req.json());
-    return c.json(await updateRepo(ws, c.req.param("name"), { ...patch, ...(mapFile !== undefined ? { mapFile: mapFile ?? undefined } : {}) }));
+    return c.json(await updateRepo(ws, c.req.param("name"), repoPatch.parse(await c.req.json())));
   });
   app.delete("/:name", async (c) => {
     await removeRepo(ws, ctx.projectName, c.req.param("name"));

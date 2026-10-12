@@ -41,9 +41,8 @@ describe("/api/repos（設定画面の参照先）", () => {
     const added = await call("POST", "/repos", { name: "docs", role: "ドキュメント", writable: true, path: docs });
     expect(added.status).toBe(201);
     expect((await loadUserConfig()).projects.t.repos.docs).toBe(docs);
-    const patched = await call("PATCH", "/repos/docs", { readFirst: true, map: [{ path: " ./guide/ ", role: "手順書", entry: "guide/index.md" }, { path: "", role: "空は捨てる" }], mapFile: "MAP.md" });
-    expect(patched.body).toMatchObject({ readFirst: true, map: [{ path: "guide", role: "手順書", entry: "guide/index.md" }], mapFile: "MAP.md" });
-    expect((await call("PATCH", "/repos/docs", { mapFile: null })).body.mapFile).toBeUndefined();
+    const patched = await call("PATCH", "/repos/docs", { readFirst: true, map: [{ path: " ./guide/ ", role: "手順書", entry: "guide/index.md" }, { path: "", role: "空は捨てる" }] });
+    expect(patched.body).toMatchObject({ readFirst: true, map: [{ path: "guide", role: "手順書", entry: "guide/index.md" }] });
     expect((await call("POST", "/repos", { name: "a:b" })).status).toBe(400);
     expect((await call("POST", "/repos", { name: "docs" })).status).toBe(400);
     // ほかのマシンからは、パスを見せず変えさせない

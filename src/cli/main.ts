@@ -46,9 +46,9 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                --project 名前 --dir フォルダ --repo-name 参照先の名前（既定はフォルダ名）--description --docs a,b
                                --instructions 観点 --agents --yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
-  config [set キー=値 ...]      設定の表示・変更（name description docs branchPattern instructions）
+  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
-                               add <名前> [<パス>] [role=… readFirst=true writable=true mapFile=…]  共有の定義を足す
+                               add <名前> [<パス>] [role=… readFirst=true writable=true]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
                                rm <名前>  共有の定義ごと消す（--local はこのマシンのパスだけ）
   user-config [set ui.theme=system|light|dark]  個人設定（このマシン・この人。全プロジェクト共通）の画面のテーマ
@@ -140,7 +140,6 @@ const OPTIONS = {
   name: { type: "string" },
   repo: { type: "string" },
   description: { type: "string" },
-  docs: { type: "string" },
   instructions: { type: "string" },
   agents: { type: "boolean" },
   "note-only": { type: "boolean" },
@@ -190,7 +189,6 @@ async function main(argv: string[]): Promise<number> {
         dir: o.dir,
         name: o.name,
         description: o.description,
-        docs: o.docs,
         instructions: o.instructions,
         agents: o.agents,
         yes: o.yes,

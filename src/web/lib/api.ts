@@ -100,14 +100,13 @@ export interface ChatGptState {
 
 /** 参照先（設定画面）。local と reason は、このマシンのローカルの画面にだけ返る */
 export interface RepoInfo extends RepoRef {
-  mapFile?: string;
   mount: string;
   status: "ok" | "unregistered" | "missing" | "notdir";
   local?: string | null;
   reason?: string | null;
 }
 
-export type RepoInput = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map">> & { mapFile?: string | null };
+export type RepoInput = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map">>;
 
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),

@@ -97,19 +97,20 @@ p3 init
 #   （このリポジトリは本体の参照先 myapp として登録する。名前は --repo-name で変えられる）
 #   データを置くフォルダ（リポジトリの外を勧めます）: ~/p3-data/myapp
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
-#   ドキュメントのパス（カンマ区切り。Preflight で最初に読みます） [docs, README.md]:
+#   主なフォルダ（カンマ区切り。Preflight がどこから読むかの案内） [docs]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 #   AGENTS.md に AI 向けの p3 の使い方を追記しますか (y/n) [y]:
 
 # AI やスクリプトからは引数で（--yes で質問しない）
-p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ" --docs docs,README.md
+p3 init --yes --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
 ```
 
 データのフォルダには `project.yaml` と空の `requests/` が作られる。既に作られたフォルダ（他の人が作って共有したもの）を
 指したときは、作らずに **参加** だけする。
 
 新しく作るときは、このリポジトリを **本体の参照先**（`project.yaml` の `repos`。名前は既定でフォルダ名、役割「本体」・最初に読む・
-作業先にできる）として登録する。参加するときは、同じ名前の参照先か、参照先が1つならそれにこのリポジトリを結び付ける
+作業先にできる）として登録する。リポジトリに `docs/`（か `doc/`）があれば、それを本体の主なフォルダにする（入口はその中の
+`README.md` か `index.md`）。参加するときは、同じ名前の参照先か、参照先が1つならそれにこのリポジトリを結び付ける
 （決まらなければ `p3 repo path <名前> <パス>` を案内する）。
 
 どちらの場合も **個人設定**（`~/.config/infodb-p3/config.yaml`。このマシン・この人だけのもので共有しない）に
@@ -465,16 +466,16 @@ Preflight の Codex が読むリポジトリ・フォルダ（参照先）を、
 
 ```bash
 p3 repo add app /workspaces/app role=システム本体 readFirst=true writable=true
-p3 repo add docs /workspaces/docsrepo/guide role=ドキュメント mapFile=MAP.md   # リポジトリの中のサブフォルダ
+p3 repo add docs /workspaces/docsrepo/guide role=ドキュメント   # リポジトリの中のサブフォルダ
 p3 repo add infra /workspaces/infrarepo role=基盤
 p3 repo ls                       # 一覧。このマシンのパスが無いものは「未登録 → p3 repo path <名前> <パス>」
 p3 repo path docs ~/src/docsrepo/guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
-p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable mapFile）
+p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable）
 p3 repo rm infra --local         # このマシンのパスだけ外す（共有の定義は残る）
 p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の Preflight でも読まなくなる。フォルダは消さない）
 ```
 
-設定画面の「参照先（リポジトリ・フォルダ）」でも同じことができる（足す・役割・最初に読む・作業先にできる・構成の説明（Markdown）・
+設定画面の「参照先（リポジトリ・フォルダ）」でも同じことができる（足す・役割・最初に読む・作業先にできる・
 主なフォルダ・消す）。このマシンのパスは、P3 を動かしているマシンのローカルの画面でだけ見え、登録・変更できる
 （ほかのマシンの画面には出さない）。
 
@@ -490,12 +491,17 @@ repos:
       src/web: { role: 画面, entry: src/web/main.tsx }
   docs:
     role: ドキュメント
-    mapFile: MAP.md                    # 構成の説明を Markdown で書くとき（参照先の中のパス）
+    map:
+      chapters: { role: 手順書, entry: chapters/index.md }   # 入口: そのフォルダで最初に読むファイル（参照先の中のパス）
   infra: { role: 基盤 }
-docs: [README.md, "docs:guide/"]      # <参照先>:<パス>。名前なしは先頭の参照先
 ```
 
-- **参照の書き方**: `docs` と要望・タスクの `areas` は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
+- **どこから読むか**: 参照先ごとの「最初に読む」（`readFirst`）は、どの参照先から読むか。参照先の中のどこから読むかは主なフォルダ
+  （`map`）で示し、そのフォルダで最初に読むファイルを入口（`entry`）に書く。どちらも参照先ごとに書くので、どの参照先のファイルかが
+  はっきりする。プロジェクト全体のドキュメントの一覧（以前の `docs`）と構成の説明の Markdown（以前の `mapFile`）は無い（設定を
+  保存すると project.yaml から消える）。入口のファイルが無ければ、Preflight の指示とログにそう出す
+
+- **参照の書き方**: 要望・タスクの `areas` と根拠（`evidence`）は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
   書ける。名前なしは先頭の参照先の中のパス（今までの書き方のまま読める）。登録に無い名前・絶対パス・`..` は読まない。
   文脈の選定（関係しそうな項目）は、同じ参照先の中だけで領域の重なりを見る（別の参照先の同じ `src` は重ならない）
 - **本体**: `p3 init` が本体のリポジトリを参照先として登録する。足すのは、ドキュメント・基盤・依存しているライブラリなど

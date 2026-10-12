@@ -270,24 +270,25 @@ describe("project.yaml", () => {
   it("人が書いたコメントを残したまま更新する", async () => {
     const dir = tempDir();
     const path = join(dir, "project.yaml");
-    await writeFile(path, "# このプロジェクトの設定\nname: old # 名前\nrepo: ..\nstatuses:\n  - id: todo\n    label: 未着手\n");
-    await writeProjectFile(path, projectConfig({ name: "new", docs: ["docs"], preflight: { instructions: "観点" } }));
+    await writeFile(path, "# このプロジェクトの設定\nname: old # 名前\nrepo: ..\ndocs:\n  - README.md\nstatuses:\n  - id: todo\n    label: 未着手\n");
+    await writeProjectFile(path, projectConfig({ name: "new", preflight: { instructions: "観点" } }));
     const text = await readFile(path, "utf8");
     expect(text).toContain("# このプロジェクトの設定");
     expect(text).toContain("name: new");
     expect(text).toContain("instructions: 観点");
     expect(text).not.toContain("statuses"); // 列の設定は無くなったので消す
-    expect(text.indexOf("name:")).toBeLessThan(text.indexOf("docs:")); // 後から足した項目も決まった順
+    expect(text).not.toContain("docs:"); // 以前のプロジェクトの docs は消す（主なフォルダの入口で示す）
+    expect(text.indexOf("name:")).toBeLessThan(text.indexOf("preflight:")); // 後から足した項目も決まった順
     expect(text).toContain("repo: .."); // 知らない項目は設定の保存では消さない
-    expect(normalizeProject((await import("yaml")).parse(text)).docs).toEqual(["docs"]);
+    expect(normalizeProject((await import("yaml")).parse(text)).preflight.instructions).toBe("観点");
   });
 
   it("saveProject は変更を書いて読み直し、変更を通知する", async () => {
     const { ctx } = await makeProject();
     const events: string[] = [];
     ctx.ws.on((e) => e.type === "changed" && events.push(e.kind));
-    const p = await ctx.ws.saveProject({ docs: ["docs/design.md"] });
-    expect(p.docs).toEqual(["docs/design.md"]);
+    const p = await ctx.ws.saveProject({ description: "変えた" });
+    expect(p.description).toBe("変えた");
     expect(events).toContain("project");
   });
 });

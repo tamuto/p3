@@ -13,7 +13,7 @@ import { setProjectNode, updateUserConfig } from "./userConfig.ts";
 export class RepoAdminError extends Error {}
 
 /** 共有の定義のうち、変えてよい項目 */
-export type RepoPatch = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map" | "mapFile">>;
+export type RepoPatch = Partial<Pick<RepoRef, "role" | "readFirst" | "writable" | "map">>;
 
 const file = (ws: Workspace) => join(ws.dataDir, "project.yaml");
 
@@ -27,7 +27,7 @@ export async function addRepo(ws: Workspace, name: string, patch: RepoPatch = {}
   const problem = repoNameProblem(name);
   if (problem) throw new RepoAdminError(`参照先の名前: ${problem}`);
   if (ws.project.repos.some((r) => r.name === name)) throw new RepoAdminError(`「${name}」は既にあります`);
-  const entry: RepoRef = { name, role: patch.role?.trim() ?? "", readFirst: !!patch.readFirst, writable: !!patch.writable, map: cleanMap(patch.map ?? []), mapFile: patch.mapFile?.trim() || undefined };
+  const entry: RepoRef = { name, role: patch.role?.trim() ?? "", readFirst: !!patch.readFirst, writable: !!patch.writable, map: cleanMap(patch.map ?? []) };
   await writeRepoEntry(file(ws), name, entry);
   await ws.refreshProject();
   return entry;
@@ -42,7 +42,6 @@ export async function updateRepo(ws: Workspace, name: string, patch: RepoPatch):
     ...(patch.readFirst !== undefined ? { readFirst: patch.readFirst } : {}),
     ...(patch.writable !== undefined ? { writable: patch.writable } : {}),
     ...(patch.map !== undefined ? { map: cleanMap(patch.map) } : {}),
-    ...("mapFile" in patch ? { mapFile: patch.mapFile?.trim() || undefined } : {}),
   };
   await writeRepoEntry(file(ws), name, next);
   await ws.refreshProject();

@@ -29,6 +29,7 @@ async function repo() {
   const root = tempDir("pcube-cli-");
   gitInit(root);
   await mkdir(join(root, "docs"));
+  writeFileSync(join(root, "docs", "index.md"), "# docs\n");
   writeFileSync(join(root, "README.md"), "# app\n");
   writeFileSync(join(root, "AGENTS.md"), "# rules\n");
   return root;
@@ -56,7 +57,9 @@ describe("pcube init", () => {
     expect(yaml).toContain(`repos:\n  ${refName}:\n    role: 本体\n    readFirst: true\n    writable: true`);
     expect(yaml).not.toMatch(/^repo:|worktreeDir/m);
     expect(readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8")).toContain(`${refName}: ${root}`);
-    expect(yaml).toMatch(/docs:\n {2}- docs\n {2}- README.md\n {2}- AGENTS.md/);
+    // ドキュメントのフォルダは本体の主なフォルダ（入口はその中の index.md）。プロジェクトの docs は無い
+    expect(yaml).toContain("    map:\n      docs:\n        role: ドキュメント\n        entry: docs/index.md");
+    expect(yaml).not.toMatch(/^docs:/m);
     expect(yaml).not.toContain("statuses"); // 列は固定なので書かない
     expect(existsSync(join(root, ".pcube", "requests"))).toBe(true);
     const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
@@ -568,11 +571,11 @@ describe("pcube milestone と要望の管理項目", () => {
 describe("pcube config", () => {
   it("設定を変え、project.yaml に書く", async () => {
     const { root } = await initialized();
-    expect(pcube(root, ["config", "set", "description=経費精算", "docs=docs,README.md", "instructions=個人情報に注意"]).code).toBe(0);
+    expect(pcube(root, ["config", "set", "description=経費精算", "instructions=個人情報に注意"]).code).toBe(0);
     expect(pcube(root, ["config", "set", "branchPattern=feature"]).err).toContain("{id}");
+    expect(pcube(root, ["config", "set", "docs=docs"]).err).toContain("設定できるキー");
     expect(pcube(root, ["config", "--json"]).json()).toMatchObject({
       description: "経費精算",
-      docs: ["docs", "README.md"],
       preflight: { instructions: "個人情報に注意" },
     });
   });
@@ -700,7 +703,8 @@ describe("p3 repo（Preflight が読む参照先）", () => {
     await mkdir(join(docsRepo, "guide"));
     const infra = tempDir("infrarepo-"); // git でないフォルダ
     expect(pcube(root, ["repo", "set", "app", "role=システム本体"]).code).toBe(0);
-    expect(pcube(root, ["repo", "add", "docs", join(docsRepo, "guide"), "role=ドキュメント", "mapFile=MAP.md"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "docs", join(docsRepo, "guide"), "role=ドキュメント"]).code).toBe(0);
+    expect(pcube(root, ["repo", "set", "docs", "mapFile=MAP.md"]).err).toContain("変えられるキー: role readFirst writable");
     const added = pcube(root, ["repo", "add", "infra", infra, "role=基盤"]);
     expect(added.code, added.err).toBe(0);
     const ls = pcube(root, ["repo", "ls", "--json"]).json();

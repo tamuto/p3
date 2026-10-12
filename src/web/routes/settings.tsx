@@ -41,7 +41,7 @@ function SettingsPage() {
 
   async function save() {
     try {
-      await api.saveProject({ ...draft, docs: draft.docs.filter(Boolean) });
+      await api.saveProject(draft);
       setDirty(false);
       setMsg({ ok: true, text: "保存しました" });
       ctx.reload();
@@ -76,26 +76,6 @@ function SettingsPage() {
           <Field label="プロジェクトの説明" hint="何を作っているか。Preflight の前提になる">
             <textarea rows={3} className={inputCls} value={draft.description} onChange={(e) => set("description", e.target.value)} />
           </Field>
-        </div>
-      </Section>
-
-      <Section title="ドキュメント">
-        <p className="text-slate-500">リポジトリ内のファイル/フォルダ。Preflight で Codex が最初に読みます（複製はせず、その場で読みます）。</p>
-        <div className="space-y-2">
-          {draft.docs.map((d, i) => (
-            <div key={i} className="flex gap-2">
-              <input
-                className={`${inputCls} font-mono`}
-                value={d}
-                placeholder="docs/ や README.md"
-                onChange={(e) => set("docs", draft.docs.map((x, j) => (j === i ? e.target.value : x)))}
-              />
-              <Button variant="ghost" onClick={() => set("docs", draft.docs.filter((_, j) => j !== i))}>
-                削除
-              </Button>
-            </div>
-          ))}
-          <Button onClick={() => set("docs", [...draft.docs, ""])}>＋ パスを追加</Button>
         </div>
       </Section>
 
