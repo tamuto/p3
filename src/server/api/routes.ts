@@ -7,6 +7,7 @@ import type { PcubeContext } from "../context.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve } from "../ops.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import { ReloadError } from "../store/workspace.ts";
+import { checkRepoTarget, ensureWorkstreams } from "../workTargets.ts";
 import { checkStatusChange, reopenIfNeeded, resolvedIssue } from "../requestStatus.ts";
 import { startWarnings, supersededMarks } from "../supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
@@ -35,6 +36,9 @@ const relation = z.object({
 });
 const taskInput = z.object({
   title: z.string().min(1),
+  /** 作業先（参照先の名前）。null は作業先なし */
+  repo: z.string().nullable().optional(),
+  repoOutputs: z.array(z.object({ repo: z.string().min(1), output: z.string().min(1) })).optional(),
   status: z.enum(TASK_STATUSES).optional(),
   labels: z.array(z.string()).optional(),
   areas: z.array(z.string()).optional(),
@@ -193,8 +197,12 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.post("/requests/:rid/tasks", async (c) => {
     const id = rid(c);
-    const b = unnull(taskInput.parse(await c.req.json()));
-    const t = await ws.tasksOf(id).create({ ...b, status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    const raw = taskInput.parse(await c.req.json());
+    const b = unnull(raw);
+    // 作業先は null（作業先なし）を残す。作業先にできるものだけ（変える前に断る）
+    checkRepoTarget(ws, raw.repo);
+    const t = await ws.tasksOf(id).create({ ...b, ...("repo" in raw ? { repo: raw.repo } : {}), status: b.status ?? "todo" } as Partial<Task>, actorOf(c));
+    if (raw.repo) await ensureWorkstreams(ws, id, [raw.repo], actorOf(c));
     // 対応済の要望に未完了のタスクを足したら進行中に戻す
     const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
@@ -210,6 +218,10 @@ export function apiRoutes(ctx: PcubeContext) {
     const id = rid(c);
     const col = ws.tasksOf(id);
     const next: Partial<Task> = unnull(patch) as Partial<Task>;
+    if ("repo" in patch) {
+      checkRepoTarget(ws, patch.repo);
+      next.repo = patch.repo ?? null;
+    }
     if (checked !== undefined) {
       const done = (next.status ?? col.require(tid(c)).status) === "done";
       if (checked && !done) throw new Error("済みにできるのは完了したタスクだけです");
@@ -218,6 +230,7 @@ export function apiRoutes(ctx: PcubeContext) {
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
     const warnings = startWarnings(ws, `${id}/${tid(c)}`, col.require(tid(c)).status, next.status);
     const t = await col.update(tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    if (patch.repo) await ensureWorkstreams(ws, id, [patch.repo], actorOf(c));
     const reopened = (await reopenIfNeeded(ws, id, actorOf(c))) ? id : undefined;
     changed("task", id, t.ref);
     if (reopened) changed("request", id);
@@ -291,7 +304,7 @@ export function apiRoutes(ctx: PcubeContext) {
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
     const patch = z
-      .object({ title: z.string(), description: z.string(), include: z.boolean() })
+      .object({ title: z.string(), description: z.string(), include: z.boolean(), repo: z.string().nullable() })
       .partial()
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch));

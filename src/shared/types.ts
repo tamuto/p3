@@ -263,7 +263,14 @@ export interface PreflightRun {
    * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らず、同じタスクを二度アーカイブしないための記録。
    *   created: 作った案とタスク（D1 → T004）、archive: アーカイブに選んだ置き換えられるタスク、archived: アーカイブ済み
    */
-  materialization?: { created: Record<string, string>; archive: string[]; archived: string[]; done: boolean };
+  materialization?: {
+    created: Record<string, string>;
+    archive: string[];
+    archived: string[];
+    done: boolean;
+    /** 割り当てるブランチ（始めたときに決めたもの。やり直しでも同じ） */
+    workstreams?: { add: Record<string, Workstream>; noGit: string[] };
+  };
   /** 実行した人 */
   startedBy?: string;
   /** 結果を引き継いだ前回の run（無ければ最初から評価した） */

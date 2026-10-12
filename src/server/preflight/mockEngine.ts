@@ -1,3 +1,4 @@
+import { primaryRepo } from "../../shared/workTarget.ts";
 import { join, relative } from "node:path";
 import type { PreflightAssessment, ProposedTask } from "../../shared/types.ts";
 import { stringifyFrontmatter } from "../store/frontmatter.ts";
@@ -65,6 +66,8 @@ export class MockEngine implements PreflightEngine {
       dependsOn: i === 0 ? [] : [`D${i}`],
       relations: [],
       include: !rejected.has(title),
+      // 共有の参照先があれば、作業先は主リポジトリ（Mock は読まないので推定しない）
+      ...(job.project.repos.length ? { repo: primaryRepo(job.project) } : {}),
     }));
 
     const impacts = context

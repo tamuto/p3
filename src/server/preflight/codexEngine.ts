@@ -20,6 +20,7 @@ import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./di
 import { prepareLaunch } from "./launch.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { parseRepoPath } from "../../shared/repos.ts";
+import { writableRepos } from "../../shared/workTarget.ts";
 import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
@@ -485,8 +486,10 @@ const mapFileMissing = (r: ResolvedRef) => !!r.mapFile && !!r.local && !existsSy
 /** 調べる対象（参照先）の説明 */
 function refsSection(job: PreflightJob) {
   const ok = job.refs.filter((r) => r.status === "ok");
+  const writable = writableRepos(job.project);
   const lines = ok.map(
-    (r) => `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}`,
+    (r) =>
+      `  - ${CONTAINER_WORKSPACE}/${r.mount} — ${r.name}${r.role ? `（${r.role}）` : ""}${r.readFirst ? "［最初に読む］" : ""}${writable.includes(r.name) ? "［作業先にできる］" : ""}`,
   );
   const skipped = job.refs.filter((r) => r.status !== "ok").map((r) => `${r.name}（${refScope(r).reason}）`);
   return [
@@ -494,6 +497,7 @@ function refsSection(job: PreflightJob) {
       ? `- 調べる対象（参照先。読むだけで、書き込めません）:\n${lines.join("\n")}`
       : "- 読める参照先（リポジトリ・フォルダ）はありません。コードは確かめられないので、要望と /data の資料だけで評価し、その制約を評価に書いてください。",
     ...(skipped.length ? [`- 見ていない参照先: ${skipped.join(" / ")}。中身は確かめられないので、これに関わる判断は推測として扱ってください。`] : []),
+    `- タスク案の repo（作業先）に書けるのは ${writable.join(" / ")} か none だけです。1つのタスクの作業先は1つにし、複数のリポジトリにまたがる作業はタスクを分けてください。`,
   ].join("\n");
 }
 

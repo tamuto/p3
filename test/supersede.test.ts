@@ -83,7 +83,7 @@ describe("置き換えられるタスクの判定", () => {
     expect(r.kept.map((c) => c.id)).toEqual(["T001"]);
     expect(ctx.ws.tasksOf(req.id).list().map((t) => t.id)).toEqual(["T001", "T003", "T004", "T005"]);
     const run = await ctx.preflight.get(req.id, runId);
-    expect(run?.materialization).toEqual({ created: { D1: "T005" }, archive: ["T002"], archived: ["T002"], done: true });
+    expect(run?.materialization).toEqual({ created: { D1: "T005" }, archive: ["T002"], archived: ["T002"], done: true, workstreams: expect.any(Object) });
     await expect(ctx.preflight.materialize(req.id, runId)).rejects.toThrow("タスク化済み");
   });
 
