@@ -1,4 +1,5 @@
 import { writableRepos } from "../../shared/workTarget.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { PreflightAssessment, ProposedTask } from "../../shared/types.ts";
 import { stringifyFrontmatter } from "../store/frontmatter.ts";
@@ -102,10 +103,55 @@ export class MockEngine implements PreflightEngine {
       log({ kind: "info", text: `✎ ${relative(job.dataDir, join(job.runDir, "drafts", `${d.key}.md`))}` });
       await this.sleep(150, signal);
     }
+    const ui = await writeMockUi(job, drafts);
+    log({ kind: "info", text: ui.length ? `✎ 画面イメージ ${ui.filter((f) => f.endsWith(".png")).length} 件（ui/）` : "画面イメージは不要としました（ui/index.json）" });
     log({ kind: "message", text: assessment.summary });
-    return { changed: [join(job.runDir, "assessment.json"), ...drafts.map((d) => join(job.runDir, "drafts", `${d.key}.md`))] };
+    return {
+      changed: [join(job.runDir, "assessment.json"), ...drafts.map((d) => join(job.runDir, "drafts", `${d.key}.md`)), join(job.runDir, "ui", "index.json"), ...ui],
+    };
   }
 }
+
+/** 画面を伴う要望とみなす語 */
+const UI_WORDS = /画面|UI|ボタン|一覧|表示|フォーム|入力欄|ダイアログ|メニュー/;
+
+/**
+ * 画面資料（決まった日本語の例）。画面を伴う要望なら、原稿（HTML）と箱だけの PNG を書く（Mock は描画のコンテナを使わない）。
+ * そうでなければ不要の理由を書く。書いた画像と原稿のパスを返す
+ */
+async function writeMockUi(job: PreflightJob, drafts: ProposedTask[]): Promise<string[]> {
+  const ui = join(job.runDir, "ui");
+  const r = job.request;
+  if (!drafts.length || !UI_WORDS.test(`${r.title}\n${r.body}`)) {
+    await writeFileAtomic(join(ui, "index.json"), JSON.stringify({ needed: false, reason: "mock: 要望に画面に関わる語が無いので、画面を伴わない変更とみなしました" }, null, 2) + "\n");
+    return [];
+  }
+  const target = drafts[0].key;
+  // 決まった原稿と、それを描画のコンテナで描いておいた画像（Mock は Docker を使わない。原稿と画像は同じもの）
+  await mkdir(join(ui, "src"), { recursive: true });
+  await writeFile(join(ui, "src", "U1.html"), await readFile(MOCK_HTML));
+  await writeFile(join(ui, "U1.png"), await readFile(MOCK_PNG));
+  const index = {
+    needed: true,
+    targets: [target],
+    items: [
+      {
+        id: "U1",
+        file: "U1.png",
+        html: "src/U1.html",
+        title: `${r.title}: 一覧と絞り込み（mock の例）`,
+        drafts: [target],
+        viewport: 960,
+        assumptions: ["mock: 要望の内容は読まずに決まった一覧画面の形で描いた", "表の行は仮のデータ"],
+      },
+    ],
+  };
+  await writeFileAtomic(join(ui, "index.json"), JSON.stringify(index, null, 2) + "\n");
+  return [join(ui, "U1.png"), join(ui, "src", "U1.html"), join(ui, "index.json")];
+}
+
+const MOCK_HTML = new URL("./mock-ui.html", import.meta.url);
+const MOCK_PNG = new URL("./mock-ui.png", import.meta.url);
 
 function bulletsOf(text: string): string[] {
   return text

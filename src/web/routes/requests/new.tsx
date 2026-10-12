@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { NewAttachments } from "../../components/Attachments.tsx";
 import { TagInput } from "../../components/TagInput.tsx";
 import { Button, Field, inputCls } from "../../components/ui.tsx";
 import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
+import { checkPending, sendPending, setUnsentAttachments, type PendingAttach } from "../../lib/uiMaterials.ts";
 
 export const Route = createFileRoute("/requests/new")({
   component: NewRequest,
@@ -25,7 +27,12 @@ function NewRequest() {
   const [tags, setTags] = useState<string[]>([]);
   /** タグの入力欄の、まだ足していない文字（作成するときに足す） */
   const [tagText, setTagText] = useState("");
+  const [files, setFiles] = useState<PendingAttach[]>([]);
+  /** 作成中（"作成中…" / "添付中 1/3"） */
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const check = checkPending(files.map((f) => f.file));
+  const blocked = !!check.total || check.items.some(Boolean);
   const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-8">
@@ -63,20 +70,31 @@ function NewRequest() {
         </label>
         <TagInput id="new-request-tags" tags={tags} onChange={setTags} text={tagText} onText={setTagText} />
       </div>
+      <NewAttachments items={files} onChange={setFiles} check={check} disabled={!!busy} />
       {error && <p className="text-rose-600">{error}</p>}
       <Button
         variant="primary"
-        disabled={!title.trim()}
+        disabled={!title.trim() || blocked || !!busy}
         onClick={async () => {
+          setBusy("作成中…");
+          setError(null);
+          let id: string;
           try {
-            const r = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] });
-            onCreated(r.id);
+            ({ id } = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] }));
           } catch (e) {
             setError((e as Error).message);
+            setBusy(null);
+            return;
           }
+          // 要望はできた。添付の失敗は要望の画面で知らせて付け直す（ここに残ると作成を繰り返してしまう）
+          if (files.length) {
+            const failed = await sendPending(files, (f) => api.addAttachment(id, f), (n) => setBusy(`添付中 ${n}/${files.length}`));
+            setUnsentAttachments(id, failed);
+          }
+          onCreated(id);
         }}
       >
-        作成
+        {busy ?? (files.length ? `作成して ${files.length} 件を添付` : "作成")}
       </Button>
     </div>
   );

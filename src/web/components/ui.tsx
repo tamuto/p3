@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from "react";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -21,6 +21,35 @@ export const buttonCls = (variant: Variant = "secondary", className?: string) =>
 
 export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
   return <button {...p} className={buttonCls(variant, className)} />;
+}
+
+/**
+ * ファイルを選ぶボタン。ブラウザ既定のファイル入力は押せるものに見えないので、入力は隠してボタンの形のラベルで開く
+ * （キーボードでも入力にフォーカスが当たり、ボタンに枠が出る）。chosen を渡すと選んだファイルの名前を横に出す
+ */
+export function FilePicker({
+  label = "ファイルを選ぶ",
+  chosen,
+  inputRef,
+  ...p
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label?: string; chosen?: string; inputRef?: Ref<HTMLInputElement> }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-2">
+      <label
+        className={buttonCls(
+          "secondary",
+          "cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
+        )}
+      >
+        <input ref={inputRef} type="file" className="sr-only" {...p} />
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+        </svg>
+        {label}
+      </label>
+      {chosen !== undefined && <span className="min-w-0 break-all text-sm text-slate-500">{chosen || "選ばれていません"}</span>}
+    </span>
+  );
 }
 
 const tones = {

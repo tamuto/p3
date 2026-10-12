@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { basename, join, relative, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
+import { renderCommand } from "./render.ts";
+import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } from "../server/store/attachments.ts";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
 import { openProject, type PcubeContext } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
@@ -65,9 +68,12 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
                                logout: --forget（このマシンの登録ごと消す）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す
+  render <原稿.html>             自己完結した HTML / CSS を PNG にする（画面イメージと同じ描画。Docker が要る）
+                               --out 画像.png --width 1280。render update で描画のイメージを作り直す
 
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
+                               --attach ファイル（PNG / JPEG / xlsx。繰り返し可。作る前に全部確かめ、だめなら要望を作らない）
   request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか）
   request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
   request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
@@ -95,6 +101,9 @@ Preflight
                                前回の結果とまだ渡していないメモを引き継ぐ
                                --note 本文|-  メモ（確認事項への回答・方針の変更）を書き足してから実行  --note-only 書くだけ
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
+  attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）
+  attach add <ファイル>           添付を足す  --description 説明 --source 出典。次の Preflight を始めるときに run に固定して渡す
+  attach get <A-ID> / rm <A-ID>  原本を書き出す（--out ファイル、--run PF-... でその run に固定した原本）/ 外す
   drafts [<要望>]               最新の評価とタスク案  --run PF-...
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
                                置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
@@ -131,6 +140,7 @@ const OPTIONS = {
   due: { type: "string" },
   milestone: { type: "string" },
   tag: { type: "string", multiple: true },
+  attach: { type: "string", multiple: true },
   title: { type: "string" },
   done: { type: "boolean" },
   off: { type: "boolean" },
@@ -156,6 +166,9 @@ const OPTIONS = {
   "repo-name": { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
+  out: { type: "string" },
+  source: { type: "string" },
+  width: { type: "string" },
 } as const;
 
 const parse = (argv: string[]) => parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });
@@ -212,6 +225,13 @@ async function main(argv: string[]): Promise<number> {
   // Codex のイメージはこのマシンの Docker のもの。プロジェクト・認証が無くても更新できる
   if (cmd === "codex") {
     const r = await codexCommand(args);
+    out.result(r.data, () => r.text);
+    return r.code ?? 0;
+  }
+
+  // 描画はこのマシンの Docker のもの。プロジェクトが決まらなくても使える（パスの対応は個人設定から）
+  if (cmd === "render") {
+    const r = await renderCommand(args, o, resolveMachineSettings(await loadUserConfig(), process.env));
     out.result(r.data, () => r.text);
     return r.code ?? 0;
   }
@@ -527,6 +547,55 @@ async function main(argv: string[]): Promise<number> {
       return run.status === "completed" ? 0 : 1;
     }
 
+    case "attach": {
+      // 要望は --req（か今の要望）。serve なしでファイルを直接扱う（API と同じ確かめ方）
+      const rid = requestArg(undefined);
+      const [sub = "ls", target] = args;
+      const fmt = (a: Attachment) => [a.id, ATTACHMENT_FORMATS[a.format], `${Math.ceil(a.bytes / 1024)}KB`, a.name, a.description ?? "", a.source ? `出典: ${a.source}` : ""];
+      if (sub === "ls") {
+        const { items, invalid } = await ctx.ws.attachments.list(rid);
+        return out.result({ items, invalid }, () =>
+          [
+            items.length ? table(items.map(fmt)) : "添付はありません",
+            ...invalid.map((i) => `[読めない] ${i.id}: ${i.error}`),
+            "",
+            "次の Preflight を始めるときに、この添付を run に固定して渡します（後で足し・消ししても過去の run の資料は変わりません）",
+          ].join("\n"),
+        );
+      }
+      if (sub === "add") {
+        if (!target) throw new UsageError("p3 attach add <ファイル> [--description 説明] [--source 出典] --req <要望>");
+        const data = await readFile(resolvePath(cwd, target)).catch(() => {
+          throw new UsageError(`ファイルが読めません: ${target}`);
+        });
+        try {
+          const a = await ctx.preflight.addAttachment(rid, { data, name: basename(target), description: o.description, source: o.source }, actor);
+          return out.result(a, () => `添付しました: ${table([fmt(a)])}\n次の Preflight に渡します`);
+        } catch (e) {
+          throw e instanceof AttachmentError ? new UsageError(e.message) : e;
+        }
+      }
+      if (sub === "get") {
+        if (!target) throw new UsageError("p3 attach get <A-ID> [--out ファイル] [--run PF-...]（--run でその run に固定した原本）");
+        const got = o.run ? await ctx.preflight.fixedAttachment(rid, o.run, target) : await ctx.ws.attachments.content(rid, target).catch((e) => {
+          throw e instanceof AttachmentError ? new NotFoundError(e.message) : e;
+        });
+        const file = resolvePath(cwd, o.out ?? safeFileName(got.meta.name, got.meta.format));
+        await writeFile(file, got.data, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => {
+          throw e.code === "EEXIST" ? new UsageError(`${file} は既にあります（--out で別の名前に）`) : e;
+        });
+        return out.result({ ...got.meta, file }, () => `書き出しました: ${file}`);
+      }
+      if (sub === "rm") {
+        if (!target) throw new UsageError("p3 attach rm <A-ID>");
+        await ctx.preflight.removeAttachment(rid, target).catch((e) => {
+          throw e instanceof AttachmentError ? new NotFoundError(target) : e;
+        });
+        return out.result({ removed: target }, () => `添付を外しました: ${target}（固定済みの過去の run の資料は残ります）`);
+      }
+      throw new UsageError("p3 attach [ls | add <ファイル> | get <A-ID> | rm <A-ID>] --req <要望>");
+    }
+
     case "notes": {
       const rid = requestArg(args[0]);
       const { notes, invalid } = await ctx.ws.notes.list(rid);
@@ -607,11 +676,31 @@ async function requestCommand(
       const title = rest.join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
       if (o.milestone) checkMilestone(ctx, o.milestone);
+      const files = await readAttachFiles(o.attach ?? []);
       const r = await ctx.ws.requests.create(
         { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
         actor,
       );
-      return out.result(r, () => `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`);
+      const head = `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`;
+      if (!files.length) return out.result(r, () => head);
+      // 確かめ済みなので通常は失敗しない。失敗しても要望は残し、付け直す方法を出す
+      const attachments: Attachment[] = [];
+      const failed: { file: string; error: string }[] = [];
+      for (const f of files) {
+        try {
+          attachments.push(await ctx.preflight.addAttachment(r.id, { data: f.data, name: basename(f.path) }, actor));
+        } catch (e) {
+          failed.push({ file: f.path, error: (e as Error).message });
+        }
+      }
+      out.result({ ...r, attachments, ...(failed.length ? { failedAttachments: failed } : {}) }, () =>
+        [
+          head,
+          ...attachments.map((a) => `  添付: ${a.id}  ${a.name}`),
+          ...failed.map((f) => `  添付できませんでした: ${f.file}（${f.error}）→ p3 attach add ${f.file} --req ${r.id}`),
+        ].join("\n"),
+      );
+      return failed.length ? 1 : 0;
     }
     case undefined:
     case "ls":
@@ -819,8 +908,30 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
     );
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
+  lines.push("", ...uiLines(run.ui, relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "ui"))));
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);
   return lines.join("\n");
+}
+
+const UI_STATUS: Record<UiMaterialsStatus, string> = { generating: "評価中", ready: "そろっています", not_needed: "不要", missing: "足りません" };
+
+/** 画面資料（ui/）。資料 ID は画面・API（/api/requests/<要望>/preflight/<run>/ui/<ID>）と同じ */
+function uiLines(ui: PreflightRun["ui"], dir: string): string[] {
+  if (!ui) return ["画面資料: 記録なし（以前の run）"];
+  const lines = [`画面資料: ${UI_STATUS[ui.status]}${ui.reason ? `（${ui.reason}）` : ""}`];
+  if (ui.verdictAdjusted) lines.push("  → 必要な画面イメージが足りないので、判定を go から clarify にしました");
+  if (ui.items.length) {
+    lines.push(
+      table(
+        ui.items.map((m) => [`  ${m.id}`, UI_MATERIAL_KINDS[m.kind], m.drafts.join(","), `${m.width}x${m.height}`, m.title, `ui/${m.file}`]),
+      ),
+    );
+    for (const m of ui.items.filter((x) => x.assumptions.length)) lines.push(`  ${m.id} の前提: ${m.assumptions.join(" / ")}`);
+    if (ui.items.some((m) => m.rendered)) lines.push("  P3 が原稿から描いた画像です（Codex は画像を見ていません。読めるかは画像で確かめてください）");
+    lines.push(`  ファイル: ${dir}/`);
+  }
+  for (const p of ui.problems) lines.push(`  [取り込めない] ${p}`);
+  return lines;
 }
 
 // --- 入力 -----------------------------------------------------------------
@@ -901,6 +1012,26 @@ async function reopened_(ctx: PcubeContext, rid: string, actor: string): Promise
 const warn = (warnings: Warning[]) => {
   for (const w of warnings) process.stderr.write(`警告: ${w.message}\n`);
 };
+
+/** request new --attach のファイルを読み、要望を作る前に全部確かめる（1つでもだめなら作らない） */
+async function readAttachFiles(paths: string[]): Promise<{ path: string; data: Buffer }[]> {
+  if (paths.length > ATTACHMENT_LIMITS.count) throw new UsageError(`添付は1つの要望に ${ATTACHMENT_LIMITS.count} 件までです`);
+  const files = [];
+  for (const path of paths) {
+    const data = await readFile(resolvePath(process.cwd(), path)).catch(() => {
+      throw new UsageError(`ファイルが読めません: ${path}`);
+    });
+    try {
+      inspectAttachment(data, basename(path));
+    } catch (e) {
+      throw e instanceof AttachmentError ? new UsageError(`${path}: ${e.message}（要望は作っていません）`) : e;
+    }
+    files.push({ path, data });
+  }
+  const total = files.reduce((n, f) => n + f.data.length, 0);
+  if (total > ATTACHMENT_LIMITS.totalBytes) throw new UsageError(`添付の合計が上限（${ATTACHMENT_LIMITS.totalBytes} バイト）を超えます（要望は作っていません）`);
+  return files;
+}
 
 const deps = (t: Task) => {
   const d = t.relations.filter((r) => r.type === "depends_on").map((r) => (absRef(r.target, t.request)?.startsWith(`${t.request}/`) ? r.target : (absRef(r.target, t.request) ?? r.target)));

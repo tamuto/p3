@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   RELATION_TYPES,
   type PreflightAssessment,
@@ -14,6 +14,7 @@ import {
   type MaterializeResult,
   type Task,
   type Evidence,
+  type FixedAttachment,
 } from "../../shared/types.ts";
 import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
 import type { ProjectIndex } from "../intel/index.ts";
@@ -27,6 +28,8 @@ import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
 import { hideConfigPath } from "../userConfig.ts";
+import { extractXlsx, XlsxError } from "./xlsx.ts";
+import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -162,14 +165,24 @@ export class PreflightService {
       log: [],
       drafts: [],
       scope: refs.map(refScope),
+      ui: { status: "generating", targets: [], items: [], problems: [] },
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
+    // 添付は始める時点のものを run の中にコピーして固定する。途中で変わったら始めない（原本は残るので、そのまま再試行できる）
+    try {
+      const fixed = await this.ws.attachments.snapshot(requestId, runDir);
+      if (fixed.length) run.attachments = fixed;
+    } catch (e) {
+      await rm(runDir, { recursive: true, force: true });
+      throw e;
+    }
     await this.ws.preflight.save(run);
     if (carryover) await writeFileAtomic(join(runDir, "carryover.md"), carryover);
     const carried = carryover ? { text: carryover, previous: carry.previous, notes: carry.notes } : undefined;
     if (carry.previous) this.log(run, { kind: "info", text: `前回 ${carry.previous.id} の結果を引き継ぎます` });
     else if (carry.previousSkipped) this.log(run, { kind: "info", text: `前回の結果は引き継ぎません（${carry.previousSkipped}）` });
     if (carry.notes.length) this.log(run, { kind: "info", text: `メモ ${carry.notes.length} 件を渡します: ${carry.notes.map((n) => n.id).join(", ")}` });
+    if (run.attachments) this.log(run, { kind: "info", text: `添付 ${run.attachments.length} 件を固定して渡します: ${run.attachments.map((a) => `${a.id}（${a.name}）`).join(", ")}` });
     for (const n of carry.invalidNotes) this.log(run, { kind: "error", text: `読めないメモを除きました: ${n.file}（${n.error}）` });
     for (const s of run.scope ?? []) if (s.status !== "ok") this.log(run, { kind: "info", text: `見ていない参照先: ${s.name}（${s.reason}）` });
     if (refs.length && !refs.some((r) => r.status === "ok")) {
@@ -237,6 +250,7 @@ export class PreflightService {
   ) {
     try {
       this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
+      await this.extractAttachments(run, runDir);
       const outcome = await engine.run(
         {
           project: this.ws.project,
@@ -246,6 +260,7 @@ export class PreflightService {
           dataDir: this.ws.dataDir,
           runDir,
           carryover,
+          attachments: run.attachments ?? [],
         },
         (e) => this.log(run, e),
         signal,
@@ -256,9 +271,16 @@ export class PreflightService {
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
+      // 画面資料: 確かめて取り込む。不正なものは除いて理由を残す（評価は消さない）。必要な画面イメージが足りなければ go を clarify に
+      run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, run.drafts.map((d) => d.key)));
+      for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
+      if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
+      run.ui = withCurrent(run.ui, run);
+      if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
       run.status = "completed";
     } catch (e) {
       run.status = "failed";
+      run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
       run.error = redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
@@ -275,6 +297,95 @@ export class PreflightService {
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
       this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
     }
+  }
+
+  /**
+   * 画面資料の画像（要望 / run / 資料 ID で決める。パスは受け取らない）。取り込んだときと同じ確かめ方をもう一度してから返す。
+   * 原稿（HTML）は返さない
+   */
+  async uiImage(requestId: string, runId: string, materialId: string): Promise<{ data: Buffer; type: string; item: NonNullable<PreflightRun["ui"]>["items"][number] }> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(runId);
+    this.ws.requests.require(requestId);
+    const run = await this.get(requestId, runId);
+    const item = run?.ui?.items.find((x) => x.id === materialId);
+    if (!run || !item) throw new NotFoundError(`${requestId}/${runId}/${materialId}`);
+    try {
+      const { data, info } = await readUiImage(join(this.ws.preflight.runDir(requestId, runId), UI_DIR), item.file);
+      return { data, type: IMAGE_TYPES[info.format], item };
+    } catch (e) {
+      if (e instanceof UiMaterialError) throw new NotFoundError(`${materialId}（${e.message}）`);
+      throw e;
+    }
+  }
+
+  /** 要望の添付を足す（CLI と API で同じ確かめ方） */
+  async addAttachment(requestId: string, input: { data: Buffer; name: string; description?: string; source?: string }, actor?: string) {
+    this.ws.requests.require(requestId);
+    const a = await this.ws.attachments.add(requestId, input, actor);
+    this.ws.emit({ type: "changed", kind: "attachment", request: requestId });
+    return a;
+  }
+
+  async removeAttachment(requestId: string, id: string) {
+    this.ws.requests.require(requestId);
+    await this.ws.attachments.remove(requestId, id);
+    this.ws.emit({ type: "changed", kind: "attachment", request: requestId });
+  }
+
+  /** run に固定した添付の原本（その run の資料。後で添付を消しても変わらない） */
+  async fixedAttachment(requestId: string, runId: string, id: string): Promise<{ meta: FixedAttachment; data: Buffer }> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(runId);
+    this.ws.requests.require(requestId);
+    const run = await this.get(requestId, runId);
+    const meta = run?.attachments?.find((a) => a.id === id);
+    if (!meta) throw new NotFoundError(`${requestId}/${runId}/${id}`);
+    const file = join(this.ws.preflight.runDir(requestId, runId), meta.path);
+    const st = await lstat(file).catch(() => undefined);
+    const data = st?.isFile() ? await readFile(file) : undefined;
+    if (!data || data.length !== meta.bytes || createHash("sha256").update(data).digest("hex") !== meta.sha256) {
+      throw new NotFoundError(`${id}（run に固定した原本が無いか、変わっています）`);
+    }
+    return { meta, data };
+  }
+
+  /** 固定した xlsx から、セルの文字と標準の埋め込み画像を取り出して run の中に置く（読めなくても評価は続ける） */
+  private async extractAttachments(run: PreflightRun, runDir: string) {
+    const xlsx = (run.attachments ?? []).filter((a) => a.format === "xlsx" && !a.extract);
+    for (const a of xlsx) {
+      try {
+        const x = extractXlsx(await readFile(join(runDir, a.path)), `${a.name}（${a.id}）`);
+        const text = `attachments/${a.id}.md`;
+        await writeFileAtomic(join(runDir, text), x.text);
+        const images = [];
+        for (const [i, img] of x.images.entries()) {
+          const file = `spec/${a.id}-${i + 1}.${img.format === "png" ? "png" : "jpg"}`;
+          await mkdir(join(runDir, UI_DIR, "spec"), { recursive: true });
+          await writeFile(join(runDir, UI_DIR, file), img.data);
+          images.push({ id: `${a.id}-${i + 1}`, file, sheet: img.sheet, anchor: img.anchor, format: img.format, width: img.width, height: img.height, bytes: img.data.length });
+        }
+        a.extract = { text, sheets: x.sheets, cells: x.cells, unknownCells: x.unknownCells, images, truncated: x.truncated, unsupported: x.unsupported };
+        this.log(run, {
+          kind: "info",
+          text: `${a.name}: シート ${x.sheets}・セル ${x.cells}・画像 ${images.length} を取り出しました${x.truncated.length ? `（打ち切り ${x.truncated.length}）` : ""}${x.unsupported.length ? `（扱っていないもの ${x.unsupported.length}）` : ""}`,
+        });
+      } catch (e) {
+        const error = e instanceof XlsxError ? e.message : `読めません: ${(e as Error).message}`;
+        a.extract = { sheets: 0, cells: 0, unknownCells: 0, images: [], truncated: [], unsupported: [], error };
+        this.log(run, { kind: "error", text: `${a.name} の中身を取り出せません（未読として渡します）: ${error}` });
+      }
+    }
+    if (xlsx.length) await this.ws.preflight.save(run);
+  }
+
+  /** run に固定した xlsx から取り出した内容（Markdown） */
+  async fixedExtract(requestId: string, runId: string, id: string): Promise<string> {
+    const { meta } = await this.fixedAttachment(requestId, runId, id);
+    const rel = meta.extract?.text;
+    if (!rel || rel !== `attachments/${meta.id}.md`) throw new NotFoundError(`${id} の取り出した内容`);
+    const file = join(this.ws.preflight.runDir(requestId, runId), rel);
+    const st = await lstat(file).catch(() => undefined);
+    if (!st?.isFile()) throw new NotFoundError(`${id} の取り出した内容`);
+    return readFile(file, "utf8");
   }
 
   async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>) {
@@ -437,6 +548,44 @@ export class PreflightService {
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
     return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
   }
+}
+
+/** 固定した添付の画像を、現状（添付）の画面資料として足す（対象のタスク案は無し） */
+function withCurrent(ui: NonNullable<PreflightRun["ui"]>, run: PreflightRun): NonNullable<PreflightRun["ui"]> {
+  const current = (run.attachments ?? [])
+    .filter((a) => a.format !== "xlsx" && a.path.startsWith(`${UI_DIR}/`))
+    .map((a) => ({
+      id: a.id,
+      kind: "current" as const,
+      file: a.path.slice(UI_DIR.length + 1),
+      format: a.format as "png" | "jpeg",
+      width: a.width ?? 0,
+      height: a.height ?? 0,
+      bytes: a.bytes,
+      title: a.description ?? a.name,
+      source: `添付 ${a.name}${a.source ? `（${a.source}）` : ""}`,
+      drafts: [],
+      assumptions: [],
+      run: run.id,
+    }));
+  const spec = (run.attachments ?? []).flatMap((a) =>
+    (a.extract?.images ?? []).map((img) => ({
+      id: img.id,
+      kind: "spec" as const,
+      file: img.file,
+      format: img.format,
+      width: img.width,
+      height: img.height,
+      bytes: img.bytes,
+      title: `${a.name} のシート「${img.sheet}」${img.anchor} の画像`,
+      source: `添付 ${a.name} / シート「${img.sheet}」${img.anchor}`,
+      drafts: [],
+      assumptions: [],
+      run: run.id,
+    })),
+  );
+  const added = [...current, ...spec];
+  return added.length ? { ...ui, items: [...ui.items.filter((m) => m.kind === "proposal"), ...added] } : ui;
 }
 
 function clampScore(v: unknown) {

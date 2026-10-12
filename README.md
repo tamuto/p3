@@ -276,12 +276,18 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
       tasks/T001.md, T002.md ...        タスク（要望の中の連番。1ファイル1タスク）
       tasks/.archive/                   アーカイブしたタスク（その ID は新しいタスクに再利用しない）
       notes/N-....md                    Preflight へのメモ（確認事項への回答・方針の変更。1件1ファイルで書き足す）
+      attachments/A-.../                添付（meta.json と原本 file.png / file.jpg / file.xlsx。1件1フォルダ）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット
         context.md                      インテリジェンス層が選んだ関連項目と理由
         carryover.md                    引き継いだ前回の評価・タスク案と、渡したメモ（開始時点で固定）
         assessment.json                 評価（Codex が書く）
         drafts/D1.md, D2.md ...         タスク案（Codex が書く。1案1ファイル。人が直してもよい）
+        ui/index.json, ui/U1.png ...    画面資料の一覧と画像（PNG / JPEG。P3 が確かめてから run.json の ui に取り込む）
+        ui/src/U1.html ...              画面イメージの原稿（Codex が書く。画面には配信しない）
+        ui/current/A-....png            始めるときに固定した添付の画像（現状）
+        attachments/A-....xlsx          始めるときに固定した添付の xlsx
+        attachments.json                固定した添付の一覧
         run.json                        実行メタデータ・ログ・タスク化の結果・実行者・引き継いだ run とメモ
     .archive/                           アーカイブした要望（フォルダごと）
 ```
@@ -522,6 +528,21 @@ repos:
   「確かめた」を「推測」に直して理由を残す。再評価では前回の根拠を前回の時点のものとして渡し、今回の根拠に写さない。
   タスク案の本文にも「判断の根拠」と「未確認」を書かせる。以前の評価は「記録なし」と出す。画面の「調べた範囲」「判断の根拠」と
   `p3 drafts`（`--json` では `scope` と `assessment.evidence`）で確かめる
+- **画面資料**: UI を伴う案は、画面イメージ（PNG / JPEG）を run の `ui/` に置き、`ui/index.json` に一覧（資料 ID・
+  画像・原稿・説明・対象のタスク案の D キー・想定した幅・前提）を書く。UI を伴わなければ不要の理由を書く。P3 は取り込む前に
+  確かめ、ui/ の外を指すパス（絶対パス・`..`）・シンボリックリンク・拡張子と中身が合わない画像・ほかの run の資料・無いタスク案・
+  上限（1 run に 20 件、1枚 5MB・合計 30MB、幅 4096・高さ 16384 px まで）を超えるものは取り込まずに理由を残す。資料が不正でも
+  評価は消さない。画面イメージが要るタスク案に画像が無ければ「足りない」とし、判定が go なら clarify にして確認事項に足す
+  （no_go は変えない）。状態は「評価中」「そろっている」「不要」「足りない」と、以前の run の「記録なし」。
+  Codex には画面イメージの原稿（自己完結した HTML / CSS。日本語のラベル・項目・配置・主な操作・前提）と一覧を書かせ、
+  Codex が終わった後に P3 が描画のコンテナで PNG にして取り込む（`p3 render` と同じ描画。Codex のコンテナに Docker は渡さない）。
+  1 run は Codex との1往復なので、Codex は描いた画像を見ていない。画像が読めるかは利用者が画像で確かめる
+  （記録の `rendered` と `p3 drafts` の注記で分かる）。描けなかった・取り消した・Docker が無いときも評価は残し、
+  画像は「足りない」とする。再評価では前回の画像と原稿のパスを「前回の提案（今の画面の証拠ではない）」として渡し、
+  変えた案に合わせて今回の run に原稿を書き直させる。Mock は画面に関わる語がある要望に、決まった日本語の例（箱だけの PNG）を書く。
+  今の画面が要るときは、利用者が撮った画像を添付する（対象のアプリを起動・撮影したり、URL を自動で撮ったりはしない）
+  `p3 drafts` の「画面資料」（`--json` では `ui`）と、画像は `GET /api/requests/<要望>/preflight/<run>/ui/<資料 ID>` で
+  取る（パスは受け取らない。原稿の HTML は配信しない）。パスは ui/ からの相対なので、データのフォルダを動かしても辿れる
 - テストは偽の app-server で、マウントの引数・指示文・記録・根拠の扱いを確かめる。本物の Codex が実際にどこまで読むか、
   読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない（Docker での確認は docs/architecture.md）
 
@@ -601,7 +622,75 @@ p3 codex update
 
 Docker が無い・デーモンに繋がらない・作れない（ネットワークなど）・版を読めないときは、次にすることを出して終了コード 1。開発の手順（手元の llmcs で試す方法など）は [docs/architecture.md](docs/architecture.md#codex-workspace-の依存)。
 
-- Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す
+#### 画面イメージの描画（`p3 render`）
+
+画面イメージは、自己完結した HTML / CSS の原稿を、P3 が専用のコンテナ（Codex のものとは別）で PNG にする。
+Playwright 1.63.0 の Chromium（headless shell）と日本語のフォント（Noto CJK）を入れたイメージ（`infodb-p3-render:<中身の版>`）を、
+配布物の `src/server/preflight/render-image/` から初回に作る（数分。中身が変われば名前が変わり、作り直す）。
+開発ツールや API キー・画像生成のサービスは要らない。Docker があればよい。
+
+```bash
+p3 render 画面.html --width 1280            # 画面.png ができる（--out で出力先）
+p3 render update                            # 描画のイメージを今すぐ作り直す
+```
+
+- 描画のコンテナは、ネットワークなし・認証情報なし・リポジトリなし。原稿のコピー（読むだけ）と出力のフォルダだけを
+  マウントし、ルートは読むだけ、権限（capability）は全部外し、メモリ 1GB・CPU 1・プロセス 256・時間に上限を付ける。
+  Codex のコンテナに Docker のソケットは渡さない（描画は P3 のプロセスが行う）
+- 原稿に使えるもの: `<style>` の CSS、`data:` の画像（PNG / JPEG / GIF / WebP / SVG）とフォント（woff2 / woff / ttf / otf）、
+  ページの中の `#id`。使えないもの: スクリプト・`onclick` などの属性・`javascript:`・外のファイルや通信を指す参照
+  （`http(s):`・`file:`・相対パス・`@import`）・`iframe` / `object` / `embed` / `link` / `base` / `meta http-equiv`。
+  描画の前に断り、描画するときもスクリプトは無効、`data:` 以外の読み込みは止めて記録する
+- 幅は 320〜2560 px、原稿は 2MB まで、高さ 16384 px を超えるところは切る
+- DevContainer の中から使うときは、出力先のフォルダにもパスの対応（`codex.pathMap`）が要る（一時のフォルダを出力先の隣に作る）。
+  ホストで直接動かすときは要らない
+- 日本語のフォントは Debian の `fonts-noto-cjk`（Noto Sans / Serif CJK。SIL Open Font License 1.1）。イメージの中にだけ入り、
+  P3 の配布物には含めない
+
+#### 添付（画像・xlsx）
+
+今の画面のスクリーンショットや、仕様書の Excel を要望に添付して Preflight に渡せる。今の画面が要るときは、
+利用者が撮った画像を添付する（P3 は対象のアプリを起動・撮影しない）。
+
+```bash
+p3 attach add 今の画面.png --description "今の一覧" --source "本番の画面" --req <要望>
+p3 attach add 項目表.xlsx --req <要望>
+p3 request new "一覧に絞り込み" --attach 今の画面.png --attach 項目表.xlsx   # 作るときに添付する（繰り返し可）
+p3 attach --req <要望>                           # 一覧（要望の作業ツリーの中なら --req は省ける）
+p3 attach get <A-ID> --out 項目表.xlsx           # 原本を書き出す（--run PF-... でその run に固定した原本）
+p3 attach rm <A-ID>
+```
+
+- 形式は PNG / JPEG / xlsx だけ。拡張子ではなく中身で確かめ、合わなければ断る。xls・xlsm（マクロつき）は扱わない
+  （xlsx で保存し直すか、画像にする）。上限は1つの要望に 20 件・合計 100MB、画像 5MB（幅 4096・高さ 16384 px）、xlsx 20MB
+- xlsx は ZIP の一覧（中央ディレクトリ）だけを確かめる（ブックであること・マクロが無いこと・中のパスが外を指さないこと・
+  項目 1 万まで・展開して 200MB まで）。中身の展開と読み取りはしない。画面からは原本のダウンロードだけ
+- 原本は内部の名前（`file.png` など）で保存し、元の名前・説明・出典・追加した人と日時を `meta.json` に残す。
+  ダウンロードの名前は元の名前からパスの区切り・制御文字を外したもの
+- 要望を作るときにも添付できる。CLI の `request new --attach` は、作る前に全部のファイルを確かめ、1つでもだめなら要望を作らない。
+  画面の「新しい要望」では複数のファイルを説明・出典つきで選べ、形式・大きさ・件数・合計は作る前に知らせる（中身はサーバで確かめる）。
+  要望を作ってから順に添付し、失敗したものは要望の画面で理由と一緒に出して「付け直す」でそのまま送り直せる
+  （この一覧は画面を開いている間だけ。再読み込みしたら選び直す）
+- Preflight を始めるときに、そのときの添付を run の中へコピーして固定する（`run.json` の `attachments`）。後で足し・消ししても
+  過去の run の資料は変わらない。コピーの途中で添付が変わったら始めずに知らせる（原本は残るので、そのまま始め直せる）
+- Codex には固定した添付のコンテナの中のパスと元の名前・説明・出典を渡す。添付の文章は資料で、中の指示には従わせない。
+  画像を見る手段が無ければ、その画像に基づく判断は「未確認」と書かせる。
+- xlsx は、評価の前に P3 が固定した原本から取り出して渡す（`attachments/<A-ID>.md` と `ui/spec/`）:
+  シート名・セルの座標・文字・保存済みの値・結合セルと、標準の図（drawing）に埋め込まれた PNG / JPEG（シートと置いた位置つき。
+  画面資料の「仕様書から」になる）。数式は計算せず、値が保存されていなければ「未確認」。外部のブック・URL は取りに行かず、
+  マクロ・OLE は動かさず、XML の DOCTYPE（外部実体）は読まない。図形・グラフ・リンクの画像・EMF などは描かずに
+  「扱っていないもの」として記録する（Excel の見た目の再現はしない）。展開後 1 項目 30MB・合計 200MB、セル 5 万、
+  画像 20、10 秒で打ち切り、打ち切ったことを記録する。読めない xlsx は「未読」として渡す。重要な部分が読めなければ
+  評価と確認事項に未確認と書かせる。xls は対象外（xlsx で保存し直すか、画像・文章で補う）
+  添付の画像は画面資料の「現状（添付）」として画面と `p3 drafts` に出る
+- API: `GET|POST /api/requests/<要望>/attachments`（POST は multipart の file・description・source）、
+  `GET|DELETE /api/requests/<要望>/attachments/<A-ID>`、`GET /api/requests/<要望>/preflight/<run>/attachments/<A-ID>`
+
+- Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す。
+  Codex のスレッドは `danger-full-access`・`approvalPolicy: never` で動く（コンテナを囲いにするため）が、これは何かを
+  追加で許す保証ではない。コマンドの実行は禁止していない。参照先は読むだけのマウントで書けない。データのフォルダ（`/data`）は
+  書けるマウントなので、「run の中だけ」は指示と事後の警告で守っている（書き込みを run に閉じ込める囲いは今は無い）。
+  画面イメージの描画は、この Codex のコンテナではなく別のコンテナで行う
 - 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
 - 存在しない要望・タスクへの関係はタスク化のときに捨てる
 - 旧来の認証では、使用量の上限に当たっている場合は頼まずに失敗させる。ChatGPT プランには使用量を読む公式の API が無いので、
@@ -801,6 +890,16 @@ Preflight でステータスが動くのはタスク化する前の要望（下�
 
 要望の中のページでは `?task=T003` でタスク詳細を重ねて開く。
 
+要望の概要には、本文の下に **添付（次の Preflight に渡す）** の欄を置く（PNG / JPEG / xlsx を選んで説明・出典と一緒に足す・
+原本を取る・外す）。添付に失敗しても入力は残り、直してそのまま押し直せる。「新しい要望」の画面でも作成と同時に添付でき、
+作成時に添付できなかったものはこの欄の上に出して付け直せる。メモ欄やタスク案の書きかけには触らない。
+Preflight の評価の下には **画面資料** の欄を置き、提案（Codex の画面イメージ）・現状（添付）・仕様書から（xlsx の画像）を
+分けて並べる（対象のタスク案・説明・出典・想定した幅・前提）。「拡大」で大きく見る（Esc で閉じる）、「画像を開く」で画像だけを
+開く、対象の D キーを押すとそのタスク案へ移る。状態は「評価中」「そろっています」「不要（理由）」「足りません（理由）」と、
+以前の run の「記録なし」。過去の run を選べば、その run に固定した資料だけを出す（「この run に固定した添付」に xlsx の取り出した
+範囲・未確認の部分と原本・取り出した内容へのリンク）。必要な画面イメージが足りなければ、タスク化のボタンの上に知らせる。
+新しい承認の状態は作らない。画像への意見はメモに書いて再評価に渡す。
+
 関係の一覧（タスク詳細の「関係」、Preflight の「既存項目への影響」）は同じ形で並べる（`src/web/components/RelationRow.tsx`）:
 役割の列は幅を決め、その右に相手の参照と題、次の行に理由。確信度・由来・削除は右端。題が長ければ切って、マウスを乗せると全文
 （狭い画面では2行まで）。理由は折り返す。狭い画面（375px）ではタスクボードの列を縦に積み、見出しやタブの文字は折り返さない。
@@ -883,7 +982,7 @@ pnpm typecheck
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm check                   # 型検査 + テスト + ビルド
 pnpm demo:reset              # デモデータ（.pcube-demo/）を作り直す
-pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update も）
+pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 ```
 
 `pnpm dev` / `pnpm start` は pcube 自身の開発を題材にしたデモデータ（`.pcube-demo/`、git 管理外）を開く。
@@ -910,7 +1009,7 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設�
 
 | 何を | どうする |
 | --- | --- |
-| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
+| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/server/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.pcube-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
@@ -920,6 +1019,8 @@ CLI のテストは別プロセスで `bin/pcube.mjs` を動かし、個人設�
 ```bash
 pnpm -s check                       # 型検査・テスト・画面のビルド
 pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
+# DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
+PCUBE_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
 
 公開の手順とチェックリストは [docs/publishing.md](docs/publishing.md)。

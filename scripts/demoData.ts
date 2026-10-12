@@ -10,6 +10,8 @@ import YAML from "yaml";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import { MockEngine } from "../src/server/preflight/mockEngine.ts";
 import { PreflightService } from "../src/server/preflight/service.ts";
+import { listScreenPng } from "../src/server/preflight/wireframe.ts";
+import { readFileSync } from "node:fs";
 import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
 import { Workspace } from "../src/server/store/workspace.ts";
 import { localToday } from "../src/shared/dates.ts";
@@ -194,5 +196,48 @@ export async function seedDemo(dir: string) {
 TF-IDF より精度の高い関連タスク検索を行いたい。サーバが無い環境では TF-IDF にフォールバックする。`,
   });
   await req(emb, -1);
+
+  // 画面資料: 添付（今の画面の画像・項目表の xlsx）を付けて Preflight。Mock の提案の画像・xlsx から取り出した画像が並ぶ
+  const { id: filter } = await ws.requests.create(
+    {
+      status: "draft",
+      title: "一覧画面に期限と担当の絞り込みを足す",
+      tags: ["ui"],
+      areas: ["src/web/routes"],
+      body: `一覧画面の上に、期限（今週・今月・期限切れ）と担当で絞り込む欄を置きたい。
+- 絞り込み欄（期限・担当）
+- 絞り込んだ結果の表
+- 絞り込みの条件を URL に残す`,
+    },
+    "human:demo",
+  );
+  await preflight.addAttachment(filter, { data: listScreenPng(4), name: "今の一覧画面.png", description: "今の一覧（絞り込みが無い）", source: "利用者のスクリーンショット" }, "human:demo");
+  await preflight.addAttachment(filter, { data: readFileSync(new URL("../test/fixtures/sample-openpyxl.xlsx", import.meta.url)), name: "画面項目.xlsx", description: "一覧の項目表" }, "human:demo");
+  const filterRun = await preflight.start(filter, { actor: "human:demo" });
+  await preflight.wait(filter, filterRun.id);
+  await req(filter, 0);
+
+  // 不足の例: 画面イメージを描けなかった run（描画の失敗で D2 の画像が無く、判定を clarify にした）
+  const { id: lacking } = await ws.requests.create(
+    { status: "draft", title: "タスクの詳細画面に履歴の表示を足す", tags: ["ui"], areas: ["src/web/components"], body: "- 履歴の表示欄\n- 変更者と日時の表示" },
+    "human:demo",
+  );
+  const lackRun = await preflight.start(lacking, { actor: "human:demo" });
+  const done = (await preflight.wait(lacking, lackRun.id))!;
+  if (done.ui && done.assessment) {
+    done.ui = {
+      ...done.ui,
+      status: "missing",
+      needed: true,
+      targets: [...done.ui.targets, "D2"],
+      reason: "画面イメージが足りないタスク案: D2",
+      problems: ["U2: 画像がありません（描画できませんでした: Docker デーモンにつながりません。Docker を起動してください）"],
+      ...(done.assessment.verdict === "go" ? { verdictAdjusted: { from: "go" as const, to: "clarify" as const } } : {}),
+    };
+    if (done.assessment.verdict === "go") done.assessment.verdict = "clarify";
+    done.assessment.questions.push("画面イメージが足りません（画面イメージが足りないタスク案: D2）。画面の内容を確かめてから進めるか、メモで再評価してください");
+    await ws.preflight.save(done);
+  }
+  await req(lacking, 0);
 }
 

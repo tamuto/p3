@@ -13,7 +13,14 @@ import type {
   SupersededMark,
   Task,
   Theme,
+  Attachment,
 } from "../../shared/types.ts";
+
+export interface AttachmentList {
+  items: Attachment[];
+  invalid: { id: string; error: string }[];
+  limits: { count: number; imageBytes: number; xlsxBytes: number; totalBytes: number };
+}
 
 export class ApiError extends Error {
   constructor(
@@ -150,6 +157,19 @@ export const api = {
   addNote: (rid: string, body: string) => call<PreflightNote>("POST", `/requests/${rid}/notes`, { body }),
   run: (rid: string, runId: string) => call<PreflightRun>("GET", `/requests/${rid}/preflight/${runId}`),
   cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
+  attachments: (rid: string) => call<AttachmentList>("GET", `/requests/${rid}/attachments`),
+  /** 添付を足す（multipart。説明・出典は空なら送らない） */
+  addAttachment: async (rid: string, input: { file: File; description?: string; source?: string }): Promise<Attachment> => {
+    const form = new FormData();
+    form.append("file", input.file);
+    if (input.description?.trim()) form.append("description", input.description.trim());
+    if (input.source?.trim()) form.append("source", input.source.trim());
+    const res = await fetch(`/api/requests/${rid}/attachments`, { method: "POST", body: form, headers: { "x-pcube-actor": "human:web" } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
+    return data as Attachment;
+  },
+  removeAttachment: (rid: string, id: string) => call("DELETE", `/requests/${rid}/attachments/${id}`),
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */

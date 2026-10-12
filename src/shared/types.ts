@@ -235,6 +235,64 @@ export interface RelatedItem {
 
 export type PreflightStatus = "running" | "completed" | "failed";
 
+/**
+ * Preflight の画面資料の種類。proposal: エンジンが作った画面イメージ（提案。現状の証拠ではない）/
+ * current: 人が添付した現状の画像 / spec: 仕様書（xlsx など）から取り出した画像
+ */
+export const UI_MATERIAL_KINDS = { proposal: "提案", current: "現状（添付）", spec: "仕様書から" } as const;
+export type UiMaterialKind = keyof typeof UI_MATERIAL_KINDS;
+
+/** 画面資料1つ（画像は PNG / JPEG。パスは run の ui/ からの相対なので、データのフォルダを動かしても辿れる） */
+export interface UiMaterial {
+  /** run の中で一意（U1, U2 ...）。画像の取得は 要望 / run / この ID で行う */
+  id: string;
+  kind: UiMaterialKind;
+  /** 画像（run の ui/ からの相対パス） */
+  file: string;
+  format: "png" | "jpeg";
+  /** 画像の実際の大きさ（P3 が画像から読む） */
+  width: number;
+  height: number;
+  bytes: number;
+  /** 説明 */
+  title: string;
+  /** 出典（提案なら原稿、添付なら添付の ID など） */
+  source?: string;
+  /** 原稿（HTML。run の ui/ からの相対パス。画面には配信しない） */
+  html?: string;
+  /** 対象のタスク案（D キー。1枚に複数をまとめてもよい） */
+  drafts: string[];
+  /** 想定した画面の幅（px） */
+  viewport?: number;
+  /** 前提（仮のデータ・省いたものなど） */
+  assumptions: string[];
+  /** 資料を作った run */
+  run: string;
+  /** P3 が原稿から描いた（エンジンは画像を見ていない。利用者が確かめる）。clipped: 縦に長すぎて切った・blocked: 止めた読み込みの数 */
+  rendered?: { by: "p3"; clipped: boolean; blocked: number };
+}
+
+/**
+ * 画面資料の状態。generating: 評価中 / ready: そろった / not_needed: UI を伴わない（理由つき）/ missing: 足りない（理由つき）。
+ * run に記録が無ければ以前の run（記録なし）
+ */
+export type UiMaterialsStatus = "generating" | "ready" | "not_needed" | "missing";
+
+export interface UiMaterials {
+  status: UiMaterialsStatus;
+  /** UI を伴う案か（エンジンの判定。分からなければ無し） */
+  needed?: boolean;
+  /** 不要・不足の理由 */
+  reason?: string;
+  /** 画面イメージが要るタスク案（D キー） */
+  targets: string[];
+  items: UiMaterial[];
+  /** 取り込めなかった資料とその理由 */
+  problems: string[];
+  /** 必要な画面イメージが足りないので、判定を go から clarify にした */
+  verdictAdjusted?: { from: "go"; to: "clarify" };
+}
+
 export interface PreflightRun {
   id: string;
   requestId: string;
@@ -275,6 +333,10 @@ export interface PreflightRun {
    * 無ければ以前の run（記録なし）
    */
   scope?: RefScope[];
+  /** 画面資料（ui/）。無ければ以前の run（記録なし） */
+  ui?: UiMaterials;
+  /** 始めるときに固定した添付（run の attachments/ と ui/current/）。無ければ添付なし */
+  attachments?: FixedAttachment[];
 }
 
 /** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */
@@ -316,6 +378,64 @@ export interface PreflightNote {
   createdAt: string;
   createdBy?: string;
   body: string;
+}
+
+/** 添付の形式（初期は画像と Excel だけ） */
+export const ATTACHMENT_FORMATS = { png: "PNG 画像", jpeg: "JPEG 画像", xlsx: "Excel（xlsx）" } as const;
+export type AttachmentFormat = keyof typeof ATTACHMENT_FORMATS;
+/** 添付の上限（1つの要望あたり）。サーバで確かめ、画面でも作成の前に同じ値で知らせる */
+export const ATTACHMENT_FILE_LIMITS = {
+  count: 20,
+  /** 画面資料の画像と同じ上限（run の中で同じ確かめ方をするため） */
+  imageBytes: 5 * 1024 * 1024,
+  xlsxBytes: 20 * 1024 * 1024,
+  totalBytes: 100 * 1024 * 1024,
+} as const;
+
+/**
+ * 要望の添付（requests/<要望ID>/attachments/<ID>/）。原本は内部の名前で保存し、元の名前・説明・出典を残す。
+ * Preflight を始めるときに run の中へコピーして固定する（後で足し・消ししても、過去の run の資料は変わらない）
+ */
+export interface Attachment {
+  /** A-20261012-123456-ab12 */
+  id: string;
+  requestId: string;
+  /** 元のファイル名（表示とダウンロードの名前にだけ使う） */
+  name: string;
+  format: AttachmentFormat;
+  bytes: number;
+  sha256: string;
+  description?: string;
+  /** 出典（どこから持ってきたか） */
+  source?: string;
+  /** 画像の大きさ */
+  width?: number;
+  height?: number;
+  createdAt: string;
+  createdBy?: string;
+}
+
+/** run に固定した添付（path は run のフォルダからの相対） */
+export interface FixedAttachment extends Omit<Attachment, "requestId"> {
+  path: string;
+  /** xlsx から取り出したもの（無ければまだ取り出していない） */
+  extract?: XlsxExtractRecord;
+}
+
+/** xlsx から取り出した範囲と、取り出せなかったもの */
+export interface XlsxExtractRecord {
+  /** 取り出した内容（Markdown。run のフォルダからの相対） */
+  text?: string;
+  sheets: number;
+  cells: number;
+  /** 値が保存されていない数式など（未確認） */
+  unknownCells: number;
+  /** 埋め込みの画像（画面資料の「仕様書から」。file は run の ui/ からの相対） */
+  images: { id: string; file: string; sheet: string; anchor: string; format: "png" | "jpeg"; width: number; height: number; bytes: number }[];
+  truncated: string[];
+  unsupported: string[];
+  /** ブックとして読めなかった理由（このときは中身は未読） */
+  error?: string;
 }
 
 export interface PreflightLogEntry {
@@ -381,7 +501,7 @@ export interface Neighborhood {
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
 

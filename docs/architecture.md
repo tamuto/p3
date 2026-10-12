@@ -321,6 +321,12 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
   認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
+- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`src/server/preflight/uiMaterials.ts`）。エンジンは画像と
+  `ui/index.json` を書き、P3 が取り込む前に確かめて `run.json` の `ui` に記録する。画像の形式と大きさは拡張子ではなく
+  中身から読み、配信のときも同じ確かめ方をもう一度する（取り込んだ後に差し替えられた画像は返さない）。画像は
+  要望 / run / 資料 ID で決め、パスを受け取らない。応答には `X-Content-Type-Options: nosniff` と
+  `Content-Security-Policy: default-src 'none'` を付け、HTML / SVG は配信しない。資料が不正でも評価は残し、
+  必要な画面イメージが足りないときだけ go を clarify にする（新しい承認の状態は作らない）
 - 同じ要望を複数人が Preflight しても、run ごとに別ディレクトリ（ID に乱数を含む）なので衝突しない。
   「直近の run」は開始時刻の新しい順で決めるが、時計は戻ることがある（WSL2 の時刻の補正など）ので、前回を引き継いだ run
   （`previous`）は引き継いだ相手より必ず新しいとする（`preflightStore.ts` の `newestFirst`）
@@ -392,6 +398,23 @@ P3 が使う公開 API と約束:
     失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/server/preflight/codexImage.ts`）
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のまま。2026-10-11 に codex-cli 0.162.1 で約40秒）
+
+### 画面イメージの描画のイメージ
+
+画面イメージの描画（`src/server/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
+Dockerfile（`src/server/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
+Playwright が入っても、それだけでは描画の安全の条件（ネットワークなし・認証情報なし・リポジトリなし・原稿は読むだけ）を
+満たさないので、描画は別のコンテナで行う。
+
+- 版: Playwright 1.63.0（Chromium の headless shell）、Node 22（`node:22-bookworm-slim`）、`fonts-noto-cjk`。
+  Playwright はイメージの中で npm から入れる（P3 の依存には足さない）。版は公開から1日を過ぎたものに固定する
+- イメージの名前は Dockerfile と `render.mjs` の中身の hash（`infodb-p3-render:<12桁>`）。中身が変われば次の描画で作り直す。
+  大きさは約 1.4GB（amd64 で確かめた）
+- Chromium の sandbox は使わない。コンテナを囲いにする（`--network none`・`--read-only`・`--cap-drop ALL`・
+  `no-new-privileges`・root ではない利用者・メモリ / CPU / プロセス数・時間の上限）。読み込みを止めるのは二重目の囲い
+- 確かめたこと（2026-10-12、DevContainer の中からホストの Docker 29.3 へ。パスの対応あり）: 日本語の表・入力欄・ボタンの
+  HTML が読める PNG になる。`http://` の読み込みは止まって記録され、`file:///etc/passwd` の画像は読めない（setContent で
+  開くので file: の起点が無い）。ホストで直接動かす経路は、パスの対応が要らないだけで同じ引数（この環境では確かめていない）
 
 手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
 

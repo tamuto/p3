@@ -40,6 +40,27 @@ export async function selectCarryover(ws: Workspace, requestId: string): Promise
 }
 
 /**
+ * 前回の画面イメージ（固定した参照）。前回の提案であり、今の画面の証拠ではない。パスはデータのフォルダからの相対
+ * （コンテナの中では /data/ の下）。作り直すときは今回の run の ui/ に書く
+ */
+function uiCarryover(p: PreflightRun): string {
+  const ui = p.ui;
+  const head = "## 前回の画面イメージ（前回の提案。今の画面の証拠ではありません。案を変えたら今回の ui/ に原稿を書き直す）";
+  if (!ui) return `${head}
+（記録なし）`;
+  if (ui.status === "not_needed") return `${head}
+不要としていました（${ui.reason ?? "理由なし"}）`;
+  const dir = `requests/${p.requestId}/preflight/${p.id}/ui`;
+  const items = ui.items.map(
+    (m) =>
+      `- ${m.id} ${m.title}（対象 ${m.drafts.join(", ")}${m.viewport ? ` / 幅 ${m.viewport}` : ""}）: 画像 ${dir}/${m.file}${m.html ? ` / 原稿 ${dir}/${m.html}` : ""}${
+        m.assumptions.length ? ` / 前提: ${m.assumptions.join("・")}` : ""
+      }`,
+  );
+  return [head, ...(items.length ? items : ["（なし）"]), ...(ui.status === "missing" ? [`足りなかったもの: ${ui.reason ?? "不明"}`] : [])].join("\n");
+}
+
+/**
  * 引き継ぐものを Markdown にする。run ディレクトリの carryover.md に固定して残し、そのままエンジンに渡す
  * （前回のタスク案やメモが後から直されても、この run が何を根拠にしたかは変わらない）。
  * 引き継ぐものが無ければ undefined。
@@ -70,6 +91,7 @@ export function renderCarryover(c: Carryover): string | undefined {
               `### ${d.key} ${d.title}（${d.include ? "採用" : "不採用"}${d.dependsOn.length ? ` / 依存: ${d.dependsOn.join(", ")}` : ""}${d.repo !== undefined ? ` / 作業先: ${d.repo ?? "なし"}` : ""}）\n${d.description}`,
           )
         : ["（なし）"]),
+      uiCarryover(p),
     );
   } else if (c.previousSkipped) {
     out.push(`## 前回の評価\n引き継ぎません（${c.previousSkipped}）。`);
