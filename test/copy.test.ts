@@ -37,7 +37,7 @@ describe("要望 ID のコピー", () => {
   it("表示: ID・コピーのボタン（名前つき）・空の知らせの欄", () => {
     const html = renderToStaticMarkup(createElement(RequestIdCopy, { id: "261011-7av02" }));
     expect(html).toContain(">261011-7av02</span>");
-    expect(html).toMatch(/<button type="button" aria-label="要望 ID をコピー"[^>]*>コピー<\/button>/);
+    expect(html).toMatch(/<button type="button" aria-label="要望 ID をコピー"[^>]*><svg aria-hidden="true"[^]*<\/svg>コピー<\/button>/);
     expect(html).toMatch(/<span role="status"[^>]*><\/span>/);
   });
 });

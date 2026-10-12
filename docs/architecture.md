@@ -89,7 +89,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 - 要望の画面の見出し（`routes/requests/$requestId.tsx` の RequestFrame）はタイトルとタスクの完了数だけ。ステータス・ID・
   ブランチの印は外した（ステータスは概要・Preflight の管理情報で選ぶ。ブランチはデータに残り、CLI で見る）。要望 ID は
   概要・Preflight の管理情報（RequestMeta）のタイトルの上にだけ出す（`components/RequestIdCopy.tsx`）。コピーは
-  `web/lib/copy.ts` の `copyText`: Clipboard API が無ければ unavailable、拒まれたら denied（例外は外へ出さない）、書き込みが
+  `web/lib/copy.ts` の `copyText`（ボタンは枠つきでコピーのアイコンと文字。成功したらアイコンをチェックにする）: Clipboard API が無ければ unavailable、拒まれたら denied（例外は外へ出さない）、書き込みが
   終わってから copied。知らせは role="status" で、どの ID の結果かを持ち、別の要望の結果は出さない。ボタンは mousedown で
   フォーカスを奪わないので、入力中のタイトルを保存させない。ID は select-all で、コピーできないときは手で選ぶ
   ブラウザでの確認（2026-10-12、Chromium。空白なしの長い語を含むタイトル・タスク 3 件とブランチあり・タスク 0 件でブランチなし・対応済）:
