@@ -25,7 +25,7 @@ export class ProjectIndex {
 
   constructor(private ws: Workspace) {
     ws.on((e) => {
-      if (e.type === "changed" && (e.kind === "task" || e.kind === "request")) this.dirty = true;
+      if (e.type === "changed" && (e.kind === "task" || e.kind === "request" || e.kind === "reload")) this.dirty = true;
     });
   }
 

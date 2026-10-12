@@ -99,6 +99,8 @@ export interface ChatGptState {
 
 export const api = {
   project: () => call<ProjectInfo>("GET", "/project"),
+  /** データのフォルダを全部読み直させる（応答は読み直しを終えた後） */
+  reloadAll: () => call<{ requests: number; tasks: number; errors: number; loadedAt: string }>("POST", "/reload", {}),
   engine: () => call<EngineStatus>("GET", "/engine"),
   /** 画面のテーマ（個人設定の ui.theme。全プロジェクト共通） */
   userTheme: () => call<{ theme: Theme }>("GET", "/user-theme"),

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { RELATION_TYPES, relationTypes, type GraphEdge, type Neighborhood, type RelationType, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -9,11 +9,13 @@ import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { relationItems } from "../lib/relations.ts";
+import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
+import { latestOnly, STALE } from "../lib/latest.ts";
 import { RelationRow } from "./RelationRow.tsx";
 
-type Draft = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
+type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string };
 
-const toDraft = (t: Task): Draft => ({
+const toDraft = (t: Task): Fields => ({
   title: t.title,
   status: t.status,
   body: t.body,
@@ -34,43 +36,51 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const [task, setTask] = useState<Task>();
   const [graph, setGraph] = useState<Neighborhood>();
   const [superseded, setSuperseded] = useState<SupersededMark[]>([]);
-  const [draft, setDraft] = useState<Draft>();
-  const [dirty, setDirty] = useState(false);
+  // 入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で。lib/draft.ts）
+  const [draft, setDraft] = useState<DraftState<Fields>>();
+  /** 外で削除・アーカイブされた（入力は残し、保存しない） */
+  const [gone, setGone] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [relType, setRelType] = useState<RelationType>("depends_on");
   const [relTarget, setRelTarget] = useState("");
+  const latest = useRef(latestOnly());
+  const dirty = !!draft && isDirty(draft, shallowEqual);
 
-  const load = async () => {
-    const r = await api.task(id);
-    setTask(r.task);
-    setGraph(r.graph);
-    setSuperseded(r.superseded);
-    if (!dirty) setDraft(toDraft(r.task));
-  };
-
-  useEffect(() => {
-    setDirty(false);
-    setMsg(null);
-    void api.task(id).then((r) => {
+  /**
+   * 取り直す。fresh: 開いたとき（下書きも作り直す）。
+   * own: この画面での入力欄以外の操作（済み・関係）の後。入力欄の項目が編集を始めたときのままなら、自分で上げた rev に合わせる
+   */
+  const load = async (fresh = false, own = false) => {
+    try {
+      const r = await latest.current.run(() => api.task(id));
+      if (r === STALE) return;
       setTask(r.task);
       setGraph(r.graph);
       setSuperseded(r.superseded);
-      setDraft(toDraft(r.task));
-    });
+      setGone(false);
+      const server = toDraft(r.task);
+      setDraft((d) => {
+        if (fresh || !d) return draftOf(server, r.task.rev);
+        if (own && shallowEqual(d.base, server)) return { ...d, baseRev: r.task.rev, external: null };
+        return syncDraft(d, server, r.task.rev, shallowEqual);
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) setGone(true);
+      else setMsg(`最新の内容を読み込めませんでした（表示は前の内容のまま）: ${(e as Error).message}`);
+    }
+  };
+
+  useEffect(() => {
+    setDraft(undefined);
+    setGone(false);
+    setMsg(null);
+    void load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // 外部更新の反映。編集中なら上書きせず通知だけ
+  // 外部更新の反映。編集中なら上書きせず知らせる
   useEffect(() => {
-    if (!task) return;
-    void api.task(id).then((r) => {
-      if (r.task.rev !== task.rev && dirty) setMsg(`他で更新されました (rev ${r.task.rev}${r.task.updatedBy ? ` by ${r.task.updatedBy}` : ""})`);
-      setGraph(r.graph);
-      setSuperseded(r.superseded);
-      if (!dirty) {
-        setTask(r.task);
-        setDraft(toDraft(r.task));
-      }
-    });
+    if (task) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.tick]);
 
@@ -81,26 +91,25 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   }, [onClose]);
 
   if (!task || !draft || !graph) return null;
+  const fields = draft.value;
 
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
-    setDraft({ ...draft, [k]: v });
-    setDirty(true);
-  };
+  const set = <K extends keyof Fields>(k: K, v: Fields[K]) => setDraft((d) => d && editDraft(d, { ...d.value, [k]: v }));
   /** 同じ要望の中は T003 と短く見せる */
   const short = (ref: string) => (ref.startsWith(`${rid}/`) ? ref.slice(rid.length + 1) : ref);
   const title = (ref: string) => graph.titles[ref] ?? data.tasks.find((t) => t.ref === ref)?.title ?? "";
   const open = (ref: string) => ctx.open(ref);
 
   async function save() {
+    if (gone) return setMsg("このタスクは見つからないので保存しません。入力は残してあります");
     try {
       const res = await api.patchTask(id, {
-        ...draft!,
-        labels: split(draft!.labels),
-        areas: split(draft!.areas),
-        outputs: draft!.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
-        rev: task!.rev,
+        ...fields,
+        labels: split(fields.labels),
+        areas: split(fields.areas),
+        outputs: fields.outputs.split("\n").map((x) => x.trim()).filter(Boolean),
+        rev: draft!.baseRev,
       });
-      setDirty(false);
+      setDraft(draftOf(toDraft(res), res.rev));
       // 置き換えられたタスクを作業中にしたときは、保存したうえで知らせる
       const w = warningText(res);
       setMsg(w ? `警告: ${w}` : null);
@@ -108,14 +117,18 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       data.reload();
       ctx.reload();
     } catch (e) {
-      setMsg(e instanceof ApiError && e.status === 409 ? "競合: 他で更新されています。破棄して読み直してください。" : String((e as Error).message));
+      if (e instanceof ApiError && e.status === 409) {
+        setMsg("競合: 他で更新されています。入力は残してあります。「破棄」で最新を表示します。");
+        void load();
+      } else if (e instanceof ApiError && e.status === 404) setGone(true);
+      else setMsg(String((e as Error).message));
     }
   }
 
   async function toggleChecked() {
     try {
       await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
-      await load();
+      await load(false, true);
       data.reload();
       ctx.reload();
     } catch (e) {
@@ -128,7 +141,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       await api.addRelation(id, { type, target, note });
       setRelTarget("");
       setMsg(null);
-      await load();
+      await load(false, true);
       data.reload();
     } catch (e) {
       setMsg((e as Error).message);
@@ -137,7 +150,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
   async function removeRel(e: GraphEdge) {
     await api.removeRelation(id, { type: e.type as RelationType, target: e.to });
-    await load();
+    await load(false, true);
     data.reload();
   }
 
@@ -155,11 +168,11 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </span>
           <div className="ml-auto flex gap-2">
             {dirty && (
-              <Button variant="ghost" onClick={() => (setDirty(false), setDraft(toDraft(task)), void load())}>
+              <Button variant="ghost" onClick={() => (setDraft((d) => d && discardDraft(d)), setMsg(null), void load())}>
                 破棄
               </Button>
             )}
-            <Button variant="primary" disabled={!dirty} onClick={save}>
+            <Button variant="primary" disabled={!dirty || gone} onClick={save}>
               保存
             </Button>
             <Button variant="ghost" onClick={onClose}>
@@ -167,6 +180,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </Button>
           </div>
         </div>
+        {gone && (
+          <div role="alert" className="bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            このタスクは見つかりません（外で削除・アーカイブされました）。保存はしません。入力は残っているので、必要なら写してから閉じてください。
+          </div>
+        )}
+        {dirty && draft.external && (
+          <div role="status" className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            編集中に他で更新されました（rev {draft.external.rev}）。このまま保存すると競合になります。入力を捨てて最新にするには「破棄」。
+          </div>
+        )}
         {msg && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{msg}</div>}
         {superseded.length > 0 && task.status !== "done" && (
           <div className="bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
@@ -189,11 +212,11 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         )}
 
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
-          <input className={`${inputCls} text-lg font-semibold`} value={draft.title} onChange={(e) => set("title", e.target.value)} />
+          <input className={`${inputCls} text-lg font-semibold`} value={fields.title} onChange={(e) => set("title", e.target.value)} />
 
           <div className="grid grid-cols-[1fr_2fr] items-end gap-3">
             <Field label="ステータス">
-              <select className={inputCls} value={draft.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
+              <select className={inputCls} value={fields.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
                 {TASK_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {TASK_STATUS_LABEL[s]}
@@ -218,10 +241,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="ラベル (カンマ区切り)">
-              <input className={inputCls} value={draft.labels} onChange={(e) => set("labels", e.target.value)} />
+              <input className={inputCls} value={fields.labels} onChange={(e) => set("labels", e.target.value)} />
             </Field>
             <Field label="影響領域 areas (カンマ区切り)">
-              <input className={`${inputCls} font-mono`} value={draft.areas} onChange={(e) => set("areas", e.target.value)} />
+              <input className={`${inputCls} font-mono`} value={fields.areas} onChange={(e) => set("areas", e.target.value)} />
             </Field>
           </div>
           {task.doneAt && (
@@ -235,10 +258,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           )}
 
           <Field label="成果物（PR / MR の URL、ドキュメントのパス。1行に1つ）">
-            <textarea rows={2} className={`${inputCls} font-mono`} value={draft.outputs} onChange={(e) => set("outputs", e.target.value)} />
+            <textarea rows={2} className={`${inputCls} font-mono`} value={fields.outputs} onChange={(e) => set("outputs", e.target.value)} />
           </Field>
           <Field label="本文 (Markdown)">
-            <textarea rows={6} className={`${inputCls} font-mono`} value={draft.body} onChange={(e) => set("body", e.target.value)} />
+            <textarea rows={6} className={`${inputCls} font-mono`} value={fields.body} onChange={(e) => set("body", e.target.value)} />
           </Field>
 
           <Section title="関係（明示）">

@@ -1,9 +1,9 @@
-import { readFile, watch } from "node:fs/promises";
+import { readdir, readFile, watch } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
-import { fileLayout, folderLayout, MarkdownCollection, NotFoundError } from "./collection.ts";
+import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
 import { NoteStore } from "./noteStore.ts";
@@ -11,6 +11,18 @@ import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 
 type Listener = (e: ServerEvent) => void;
+
+/** 全件の読み直しの結果 */
+export interface ReloadResult {
+  requests: number;
+  tasks: number;
+  /** 読めなかったファイルの数（中身は GET /api/project の errors） */
+  errors: number;
+  loadedAt: string;
+}
+
+/** 全件の読み直しができなかった（project.yaml やデータのフォルダが読めない）。メモリ上の状態は変えていない */
+export class ReloadError extends Error {}
 
 /**
  * ステータスを変えた日時を記録する（予定ではなく事実）。
@@ -75,10 +87,73 @@ export class Workspace {
   }
 
   async load(): Promise<void> {
-    await this.loadProject();
-    await this.requests.load();
-    this.taskCollections.clear();
-    await Promise.all(this.requests.list().map((r) => this.tasksOf(r.id).load()));
+    await this.loadAll(false);
+  }
+
+  /**
+   * データのフォルダを全部読み直す（画面の「再読み込み」）。ファイル監視に頼らず、外での変更を取り込む。
+   *   - project.yaml・要望・全タスクを読み、読み終えてから入れ替える（途中の状態は見せない）
+   *   - 同時には走らせない。読み込み中に呼ばれたら、今のものが終わってからもう1回だけ読む（待っている呼び出しはまとめる）
+   *   - project.yaml やデータのフォルダが読めなければ ReloadError（何も変えない）。個々の Markdown が壊れていても続け、errors() に出す
+   *   - ファイルは書かない。Preflight の履歴・メモは問い合わせのたびにディスクを読むので、ここでは扱わない
+   * 終えたら変更通知（kind: "reload"）を出す。関係・検索の索引はこれを受けて作り直す
+   */
+  reloadAll(): Promise<ReloadResult> {
+    if (this.reloadNext) return this.reloadNext;
+    if (!this.reloadRun) return this.startReload();
+    this.reloadNext = this.reloadRun
+      .catch(() => undefined)
+      .then(() => {
+        this.reloadNext = undefined;
+        return this.startReload();
+      });
+    return this.reloadNext;
+  }
+
+  private reloadRun?: Promise<ReloadResult>;
+  private reloadNext?: Promise<ReloadResult>;
+
+  private startReload(): Promise<ReloadResult> {
+    const run = (async () => {
+      await this.loadAll(true);
+      this.emit({ type: "changed", kind: "reload" });
+      return {
+        requests: this.requests.list().length,
+        tasks: this.allTasks().length,
+        errors: Object.keys(this.errors()).length,
+        loadedAt: new Date().toISOString(),
+      };
+    })().finally(() => {
+      if (this.reloadRun === run) this.reloadRun = undefined;
+    });
+    this.reloadRun = run;
+    return run;
+  }
+
+  /** strict: project.yaml とデータのフォルダが読めなければ失敗にする（起動時は無くても空として続ける） */
+  private async loadAll(strict: boolean): Promise<void> {
+    const project = strict ? await this.readProjectStrict() : await this.readProject();
+    if (strict) {
+      await readdir(this.requestsDir).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== "ENOENT") throw new ReloadError(`データのフォルダを読めません: ${this.requestsDir}: ${e.message}`);
+      });
+    }
+    const loads: PreparedLoad[] = [];
+    try {
+      const requests = await this.requests.prepareLoad();
+      loads.push(requests);
+      const tasks = await Promise.allSettled(requests.ids.map((id) => this.tasksOf(id).prepareLoad()));
+      for (const t of tasks) if (t.status === "fulfilled") loads.push(t.value);
+      const failed = tasks.find((t) => t.status === "rejected");
+      if (failed) throw (failed as PromiseRejectedResult).reason;
+    } catch (e) {
+      for (const l of loads) l.abort();
+      throw e;
+    }
+    // 公開: ここから同期でまとめて入れ替える。タスクのコレクションは作り直さない（処理中の操作が持っている参照を生かす）
+    this.project = project;
+    for (const l of loads) l.commit();
+    for (const rid of [...this.taskCollections.keys()]) if (!this.requests.get(rid)) this.taskCollections.delete(rid);
   }
 
   /** 要望のタスク（要望の中で T001, T002, ... と連番） */
@@ -140,8 +215,21 @@ export class Workspace {
   }
 
   private async loadProject() {
+    this.project = await this.readProject();
+  }
+
+  private async readProject(): Promise<ProjectConfig> {
     const text = await readFile(join(this.dataDir, "project.yaml"), "utf8").catch(() => "");
-    this.project = normalizeProject((YAML.parse(text) ?? {}) as Record<string, unknown>);
+    return normalizeProject((YAML.parse(text) ?? {}) as Record<string, unknown>);
+  }
+
+  private async readProjectStrict(): Promise<ProjectConfig> {
+    const path = join(this.dataDir, "project.yaml");
+    try {
+      return normalizeProject((YAML.parse(await readFile(path, "utf8")) ?? {}) as Record<string, unknown>);
+    } catch (e) {
+      throw new ReloadError(`project.yaml を読めません（${path}）: ${(e as Error).message}`);
+    }
   }
 
   on(l: Listener): () => void {
@@ -154,8 +242,9 @@ export class Workspace {
   }
 
   /**
-   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI・Codex・git pull）を取り込む。
-   * これによりファイルが唯一の正（source of truth）であり続ける。
+   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI・Codex・git pull）を取り込む（補助）。
+   * NFS などでは通知が届かず、Node の再帰的な監視は置き換えて保存したファイルの2回目以降の変更を通知しないことがある。
+   * 正しさはこれに頼らず、画面の「再読み込み」（reloadAll）で保証する。
    */
   async watch(): Promise<void> {
     const pending = new Map<string, NodeJS.Timeout>();

@@ -17,6 +17,13 @@ export const AI_MANIFEST = {
   relationTypes: RELATION_TYPES,
   endpoints: [
     { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
+    {
+      method: "POST",
+      path: "/api/reload",
+      desc:
+        "データのフォルダ（project.yaml・要望・タスク）を全部読み直し、関係の索引も作り直す。応答 {requests, tasks, errors, loadedAt} は読み直しを終えた後。" +
+        "読み込み中に呼ぶと、終わってからもう1回読む。project.yaml などが読めなければ 503 で何も変えない。終えたら変更通知 kind: reload",
+    },
     { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
     { method: "POST", path: "/api/requests", desc: "要望の作成" },
     { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・関係・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },

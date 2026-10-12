@@ -18,6 +18,7 @@ function RequestLayout() {
   const { requestId } = Route.useParams();
   return (
     <RequestDataProvider
+      key={requestId}
       requestId={requestId}
       fallback={
         <div className="p-10">
@@ -55,6 +56,24 @@ function RequestFrame() {
             </span>
           )}
         </div>
+        {data.gone && (
+          <p role="alert" className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            この要望は見つかりません（外で削除・アーカイブされました）。表示は最後に読み込めた内容で、保存はしません。
+            入力中の内容は残っているので、必要なら写してから{" "}
+            <Link to="/" className="underline">
+              進捗へ戻って
+            </Link>
+            ください。
+          </p>
+        )}
+        {data.loadError && !data.gone && (
+          <p role="alert" className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            最新の内容を読み込めませんでした（表示は前の内容のまま）: {data.loadError}{" "}
+            <button type="button" className="underline" onClick={() => data.reload()}>
+              もう一度読み込む
+            </button>
+          </p>
+        )}
         <nav className="mt-3 flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <Link

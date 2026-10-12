@@ -23,6 +23,7 @@ import { optionalString } from "../../../lib/search.ts";
 import { preflightSteps } from "../../../lib/preflightSteps.ts";
 import { RelationRow } from "../../../components/RelationRow.tsx";
 import { RequestIdCopy } from "../../../components/RequestIdCopy.tsx";
+import { discardDraft, draftOf, editDraft, isDirty, syncDraft, type Draft } from "../../../lib/draft.ts";
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
 export const Route = createFileRoute("/requests/$requestId/")({
@@ -76,7 +77,8 @@ function RequestPanel({
 
   useEffect(() => {
     if (!runId) return setRun(undefined);
-    void api.run(request.id, runId).then(setRun);
+    // 取れなければ前の表示のまま（要望が消えた・通信の失敗は要望の枠が知らせる）
+    void api.run(request.id, runId).then(setRun, () => undefined);
   }, [runId, request.id, ctx.tick]);
 
   // ログはストリームで追記
@@ -84,7 +86,7 @@ function RequestPanel({
     if (e.type === "preflight-log" && e.runId === runId) {
       setRun((r) => (r ? { ...r, log: [...r.log, e.entry] } : r));
     } else if (e.type === "preflight-status" && e.runId === runId) {
-      void api.run(request.id, runId).then(setRun);
+      void api.run(request.id, runId).then(setRun, () => undefined);
       data.reload();
     }
   });
@@ -121,6 +123,7 @@ function RequestPanel({
       draft={draft}
       onDraft={setDraft}
       onStarted={started}
+      gone={data.gone}
     />
   );
 
@@ -384,6 +387,7 @@ function focusNoteInput(e: { preventDefault: () => void }) {
 function Notes({
   ctx,
   request,
+  gone,
   hasHistory,
   running,
   engineOk,
@@ -399,6 +403,8 @@ function Notes({
   draft: string;
   onDraft: Dispatch<SetStateAction<string>>;
   onStarted: (r: PreflightRun) => void;
+  /** 要望が外で消された（入力は残し、保存はしない） */
+  gone: boolean;
 }) {
   const [info, setInfo] = useState<NotesInfo>();
   const [busy, setBusy] = useState(false);
@@ -407,11 +413,13 @@ function Notes({
   const st = notesPanelState({ hasHistory, running, engineOk, draft, busy, pending });
 
   useEffect(() => {
-    void api.notes(request.id).then(setInfo);
+    // 取れなければ前の一覧のまま（入力中のメモには触らない）
+    void api.notes(request.id).then(setInfo, () => undefined);
   }, [request.id, ctx.tick]);
 
   async function submit(run: boolean) {
     if (busy) return;
+    if (gone) return setMessage({ error: true, text: "この要望は見つからないので保存しません。入力は残してあります" });
     setBusy(true);
     setMessage(null);
     try {
@@ -477,10 +485,10 @@ function Notes({
               onChange={(e) => onDraft(e.target.value)}
             />
             <div className="flex flex-wrap items-center gap-3">
-              <Button variant="primary" disabled={!st.canSaveAndRun} onClick={() => void submit(true)}>
+              <Button variant="primary" disabled={!st.canSaveAndRun || gone} onClick={() => void submit(true)}>
                 保存して再実行
               </Button>
-              <Button disabled={!st.canSaveOnly} onClick={() => void submit(false)}>
+              <Button disabled={!st.canSaveOnly || gone} onClick={() => void submit(false)}>
                 {running ? "メモだけ保存（次回に渡す）" : "メモだけ保存"}
               </Button>
             </div>
@@ -585,7 +593,7 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
           ? "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください"
           : (e as Error).message,
       );
-      void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates));
+      void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates), () => setCandidates([]));
     } finally {
       setBusy(false);
     }
@@ -704,21 +712,50 @@ function Drafts({ ctx, request, run, onChanged }: { ctx: AppCtx; request: Reques
 /** 要望の管理情報（ID・タイトル・ステータス・期限・マイルストーン・タグ）。変えるとすぐ保存する。期限〜タグは Preflight には渡さない */
 function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   const { request } = data;
-  const [title, setTitle] = useState(request.title);
-  const [tags, setTags] = useState(request.tags.join(", "));
+  // タイトル・タグの入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で）
+  const [titleD, setTitleD] = useState(() => draftOf(request.title, request.rev));
+  const [tagsD, setTagsD] = useState(() => draftOf(request.tags.join(", "), request.rev));
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => setTitle(request.title), [request.title]);
-  useEffect(() => setTags(request.tags.join(", ")), [request.tags]);
+  const tagsText = request.tags.join(", ");
+  useEffect(() => {
+    setTitleD((d) => syncDraft(d, request.title, request.rev));
+    setTagsD((d) => syncDraft(d, tagsText, request.rev));
+  }, [request.title, tagsText, request.rev]);
 
-  async function save(patch: { title?: string; status?: RequestStatus; due?: string | null; milestone?: string | null; tags?: string[] }) {
+  async function save(
+    patch: { title?: string; status?: RequestStatus; due?: string | null; milestone?: string | null; tags?: string[] },
+    rev = request.rev,
+  ): Promise<Request | null> {
+    if (data.gone) {
+      setError("この要望は見つからないので保存しません");
+      return null;
+    }
     try {
-      await api.patchRequest(request.id, { ...patch, rev: request.rev } as never);
+      const saved = await api.patchRequest(request.id, { ...patch, rev } as never);
       setError(null);
       data.reload();
       ctx.reload();
+      return saved;
     } catch (e) {
-      setError((e as Error).message);
+      if (e instanceof ApiError && e.status === 409) {
+        setError("競合: 他で更新されています。入力は残してあります（最新を見るには「入力を捨てて最新にする」）");
+        data.reload();
+      } else setError((e as Error).message);
+      return null;
     }
+  }
+
+  async function commitTitle() {
+    const v = titleD.value.trim();
+    if (!v || v === titleD.base) return setTitleD((d) => ({ ...d, value: d.base }));
+    const saved = await save({ title: v }, titleD.baseRev);
+    if (saved) setTitleD(draftOf(saved.title, saved.rev));
+  }
+
+  async function commitTags() {
+    if (tagList(tagsD.value).join() === tagList(tagsD.base).join()) return;
+    const saved = await save({ tags: tagList(tagsD.value) }, tagsD.baseRev);
+    if (saved) setTagsD(draftOf(saved.tags.join(", "), saved.rev));
   }
 
   const tagList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -729,15 +766,13 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         <Field label="タイトル">
           <input
             className={`${inputCls} text-lg font-semibold`}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => {
-              if (!title.trim()) return setTitle(request.title);
-              if (title.trim() !== request.title) void save({ title: title.trim() });
-            }}
+            value={titleD.value}
+            onChange={(e) => setTitleD((d) => editDraft(d, e.target.value))}
+            onBlur={() => void commitTitle()}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           />
         </Field>
+        <ExternalChange label="タイトル" draft={titleD} onDiscard={() => (setTitleD(discardDraft), setError(null))} />
       </div>
       <div className="flex flex-wrap items-start gap-4">
         <Field label="ステータス">
@@ -766,10 +801,10 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         <Field label="タグ（カンマ区切り）">
           <input
             className={`${inputCls} !w-64`}
-            value={tags}
+            value={tagsD.value}
             placeholder="feature, ui"
-            onChange={(e) => setTags(e.target.value)}
-            onBlur={() => tagList(tags).join() !== request.tags.join() && void save({ tags: tagList(tags) })}
+            onChange={(e) => setTagsD((d) => editDraft(d, e.target.value))}
+            onBlur={() => void commitTags()}
           />
         </Field>
         {ctx.info.project.milestones.length === 0 && (
@@ -778,6 +813,7 @@ function RequestMeta({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </Link>
         )}
       </div>
+      <ExternalChange label="タグ" draft={tagsD} onDiscard={() => (setTagsD(discardDraft), setError(null))} />
       {data.issue && (
         <p className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {data.issue}
@@ -800,4 +836,17 @@ function titleIn(ctx: AppCtx, ref: string): string | undefined {
   const p = ctx.requests.find((x) => x.request.id === rid);
   if (!p) return undefined;
   return tid ? p.tasks.find((t) => t.id === tid)?.title : p.request.title;
+}
+
+/** 編集中に外で変わったことを知らせる（入力はそのまま。捨てると最新の値にする） */
+function ExternalChange({ label, draft, onDiscard }: { label: string; draft: Draft<string>; onDiscard: () => void }) {
+  if (!draft.external || !isDirty(draft)) return null;
+  return (
+    <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <span className="min-w-0 break-words">
+        編集中に{label}が他で変わりました（rev {draft.external.rev}: 「{draft.external.value}」）。このまま保存すると競合になります。
+      </span>
+      <Button onClick={onDiscard}>入力を捨てて最新にする</Button>
+    </p>
+  );
 }
