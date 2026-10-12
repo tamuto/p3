@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ServerEvent } from "../src/shared/types.ts";
-import { addRelation, archiveTask, createRequest, createTask, OpRuleError, removeRelation, updateRequest, updateTask } from "../src/server/requestOps.ts";
-import { StatusRuleError } from "../src/server/requestStatus.ts";
-import { RepoTargetError } from "../src/server/workTargets.ts";
+import { addRelation, archiveTask, createRequest, createTask, OpRuleError, removeRelation, updateRequest, updateTask } from "../src/core/requestOps.ts";
+import { StatusRuleError } from "../src/core/requestStatus.ts";
+import { RepoTargetError } from "../src/core/workTargets.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /** 要望・タスクの変更の手順（CLI と API が同じものを呼ぶ） */

@@ -3,12 +3,12 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { absRef, normalizeTaskId, parseRef, relRef, REQUEST_ID, taskId } from "../src/shared/refs.ts";
-import { ConflictError, NotFoundError } from "../src/server/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/server/store/frontmatter.ts";
-import { newRequestId, slugify } from "../src/server/store/fsutil.ts";
-import { normalizeProject, normalizeTaskIn } from "../src/server/store/normalize.ts";
-import { writeProjectFile } from "../src/server/store/projectFile.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { ConflictError, NotFoundError } from "../src/core/store/collection.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
+import { newRequestId, slugify } from "../src/core/store/fsutil.ts";
+import { normalizeProject, normalizeTaskIn } from "../src/core/store/normalize.ts";
+import { writeProjectFile } from "../src/core/store/projectFile.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 import { RELATION_TYPES, relationRole, relationTypes } from "../src/shared/types.ts";
 import { makeProject, newRequest, newTask, projectConfig, tempDir } from "./helpers.ts";
 

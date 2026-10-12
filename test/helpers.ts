@@ -4,14 +4,14 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
-import type { P3Context } from "../src/server/context.ts";
-import { ProjectIndex } from "../src/server/intel/index.ts";
-import type { PreflightEngine } from "../src/server/preflight/engine.ts";
-import { MockEngine } from "../src/server/preflight/mockEngine.ts";
-import { PreflightService } from "../src/server/preflight/service.ts";
-import { writeProjectFile, writeRepoEntry } from "../src/server/store/projectFile.ts";
+import type { P3Context } from "../src/core/context.ts";
+import { ProjectIndex } from "../src/core/intel/index.ts";
+import type { PreflightEngine } from "../src/core/preflight/engine.ts";
+import { MockEngine } from "../src/core/preflight/mockEngine.ts";
+import { PreflightService } from "../src/core/preflight/service.ts";
+import { writeProjectFile, writeRepoEntry } from "../src/core/store/projectFile.ts";
 import type { RepoRef } from "../src/shared/repos.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする

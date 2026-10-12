@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { writeRepoEntry } from "../src/server/store/projectFile.ts";
+import { writeRepoEntry } from "../src/core/store/projectFile.ts";
 import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const def = { role: "", readFirst: false, map: [] };

@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, resolveMachineSettings, SETTING_KEYS, SettingsError } from "../src/server/machineSettings.ts";
-import { loadUserConfig, normalizeUserConfig, saveUserConfig, userConfigPath } from "../src/server/userConfig.ts";
+import { DEFAULT_SETTINGS, resolveMachineSettings, SETTING_KEYS, SettingsError } from "../src/core/machineSettings.ts";
+import { loadUserConfig, normalizeUserConfig, saveUserConfig, userConfigPath } from "../src/core/userConfig.ts";
 import { tempDir } from "./helpers.ts";
 
 const user = (d: Record<string, unknown>) => normalizeUserConfig(d);

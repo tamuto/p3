@@ -30,6 +30,7 @@
   "files": [
     "bin",
     "src/cli",
+    "src/core",
     "src/server",
     "src/shared",
     "dist/web",

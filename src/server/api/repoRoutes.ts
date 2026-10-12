@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { P3Context } from "../context.ts";
-import { addRepo, checkFolder, removeRepo, setLocalRepoPath, updateRepo } from "../repoAdmin.ts";
+import type { P3Context } from "../../core/context.ts";
+import { addRepo, checkFolder, removeRepo, setLocalRepoPath, updateRepo } from "../../core/repoAdmin.ts";
 import { localOnly } from "./local.ts";
 
 const mapEntry = z.object({ path: z.string(), role: z.string(), entry: z.string().optional() });

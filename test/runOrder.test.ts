@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newestFirst } from "../src/server/store/preflightStore.ts";
+import { newestFirst } from "../src/core/store/preflightStore.ts";
 
 const run = (id: string, startedAt: string, previous?: string) => ({ id, startedAt, previous });
 const ids = (rs: { id: string }[]) => rs.map((r) => r.id);

@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_IMAGE } from "@infodb/codex-workspace";
-import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
-import { OPENAI_ENDPOINTS } from "../src/server/chatgpt/oauth.ts";
-import { saveConnection } from "../src/server/chatgpt/store.ts";
-import { CodexWorkspaceEngine } from "../src/server/preflight/codexEngine.ts";
-import { describeMapping, diagnoseLaunch, mapPath } from "../src/server/preflight/diagnose.ts";
-import { prepareLaunch } from "../src/server/preflight/launch.ts";
+import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { OPENAI_ENDPOINTS } from "../src/core/chatgpt/oauth.ts";
+import { saveConnection } from "../src/core/chatgpt/store.ts";
+import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
+import { describeMapping, diagnoseLaunch, mapPath } from "../src/core/preflight/diagnose.ts";
+import { prepareLaunch } from "../src/core/preflight/launch.ts";
 import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE_RUN = fileURLToPath(new URL("./fixtures/fake-docker-run.mjs", import.meta.url));
@@ -173,7 +173,7 @@ describe("中継（launcher.mjs）", () => {
 
 describe("パスの対応の直し方", () => {
   it("対応が当たらなければ足し方を、当たっていたら行き先の直し方を出す（このマシンのパスは出さない）", async () => {
-    const { pathMapHowTo } = await import("../src/server/preflight/diagnose.ts");
+    const { pathMapHowTo } = await import("../src/core/preflight/diagnose.ts");
     const none = pathMapHowTo({ label: "データ", local: "/mnt/x/data", host: "/mnt/x/data", container: "/data" });
     expect(none[0]).toContain("対応を足します");
     expect(none.join("\n")).toContain("docker inspect <この開発コンテナ> の Mounts");

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { THEMES, type Theme } from "../../shared/types.ts";
-import { readTheme, writeTheme } from "../userTheme.ts";
+import { readTheme, writeTheme } from "../../core/userTheme.ts";
 import { localOnly } from "./local.ts";
 
 /**

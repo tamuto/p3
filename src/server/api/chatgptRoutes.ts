@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { ChatGptAccount } from "../chatgpt/account.ts";
-import type { PreflightService } from "../preflight/service.ts";
-import type { Workspace } from "../store/workspace.ts";
+import type { ChatGptAccount } from "../../core/chatgpt/account.ts";
+import type { PreflightService } from "../../core/preflight/service.ts";
+import type { Workspace } from "../../core/store/workspace.ts";
 import { localOnly } from "./local.ts";
 
 /**

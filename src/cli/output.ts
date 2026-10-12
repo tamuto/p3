@@ -1,10 +1,10 @@
 import { absRef } from "../shared/refs.ts";
 import { relationRole, type Request, type SupersededMark, type Task } from "../shared/types.ts";
-import { type P3Context } from "../server/context.ts";
-import { resolve, titleOf } from "../server/ops.ts";
-import { type Warning } from "../server/supersede.ts";
+import { type P3Context } from "../core/context.ts";
+import { resolve, titleOf } from "../core/ops.ts";
+import { type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
-import { taskWork } from "../server/workTargets.ts";
+import { taskWork } from "../core/workTargets.ts";
 
 /** CLI の出力（人向けの表と --json）と、表示の部品 */
 

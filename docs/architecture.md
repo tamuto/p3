@@ -57,7 +57,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 - 手元のリポジトリの場所はマシンごとに違うので、プロジェクトのデータではなく個人設定に持たせる
 - **操作するプロジェクトは環境変数では決めない**（同じ人が複数のプロジェクトを行き来するため）。
   `--project <名前>` → 今いる場所（登録したリポジトリ・作業ツリー・データのフォルダの中）→ 登録が1つならそれ、の順で決め、
-  決まらなければ登録済みの一覧と選び方を出す（`src/server/store/locate.ts`）
+  決まらなければ登録済みの一覧と選び方を出す（`src/core/store/locate.ts`）
 - 使う人はフォルダや実行パスを意識しない前提で、セットアップは2段階まで・エラーは次にすることを示す、を守る
 - リポジトリの中の `.p3/` も以前の置き方として読める（デモ・テスト）
 - 個人設定の書き換えは、ロック（`config.yaml.lock`）の中で最新のファイルを読み、対象の項目（プロジェクト1つの登録・
@@ -91,7 +91,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 
 ### 参照先と作業先
 
-- Preflight の参照先（`shared/repos.ts`・`server/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
+- Preflight の参照先（`shared/repos.ts`・`core/repoRefs.ts`）: 共有の定義は project.yaml の `repos`（名前をキーにした対応。
   名前・役割・readFirst・writable・主なフォルダ map。入口 entry がそのフォルダで最初に読むファイル）、このマシンのパスは個人設定の `projects.<p>.repos`。
   `Workspace.refs()` が始めるたびに合わせ、`ok / unregistered / missing / notdir` を決める。`p3 init` が本体を参照先として
   登録する。`p3 repo` は project.yaml の `repos` の1件だけを書き（`writeRepoEntry`。コメント・知らない項目は残す）、
@@ -101,7 +101,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     `readonly` で、データを `/data` に置く。Codex の cwd は `/workspace` のまま。変更のパスは参照先の対応で戻す
   - 調べた範囲（`run.scope`）は P3 が始めるときに決めて残す（パスは入れない）。根拠（`assessment.evidence`）は Codex が書き、
     P3 が `parseEvidence` で確かめる（verified は読めた参照先の中の、ある相対パスを指すときだけ）
-- タスクの作業先とリポジトリごとのブランチ（`shared/workTarget.ts`・`server/workTargets.ts`）: タスクとタスク案の `repo`
+- タスクの作業先とリポジトリごとのブランチ（`shared/workTarget.ts`・`core/workTargets.ts`）: タスクとタスク案の `repo`
   （名前 / null = 作業先なし。書かずに足すと、作業先にできる参照先が1つならそれ）、要望の `workstreams`（名前 → branch。
   作業ツリーの置き場所は記録しない）、タスクの `repoOutputs`。作業先は writable の参照先だけで、API・CLI・タスク化の
   前に `checkRepoTarget` で確かめ、変える前に断る。割当は `planWorkstreams`（既存は残す・git でないフォルダはブランチなし・
@@ -109,7 +109,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   materialization に残してやり直しでも同じにする。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先
   （`locateHere`）の割当のブランチ → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない（detached HEAD では決めない）。
   git のブランチ・作業ツリーは作らない
-- 参照先の登録・変更・削除は `server/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
+- 参照先の登録・変更・削除は `core/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
   同じものを使う。このマシンのパスは `localOnly` でローカルの画面にだけ返し、変えられるのもローカルの画面（Origin）からだけ。
   パスつきで足すときは、共有の定義を書く前にフォルダかを確かめる
   - 設定画面はほかの画面と同じく画面の横幅いっぱいに使う。入力欄のラベルは短くし、補足は `Field` の `hint` で入力欄の下に出すので、
@@ -125,10 +125,10 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 
 ### マシンごとの設定と Codex の起動
 
-- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`P3_*`）→ 個人設定 → 既定値 で決める（`src/server/machineSettings.ts`）。
+- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`P3_*`）→ 個人設定 → 既定値 で決める（`src/core/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は README の「マシンごとの設定」
-- マシンごとの設定の書き換え（`p3 user-config set`。`src/server/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
+- マシンごとの設定の書き換え（`p3 user-config set`。`src/core/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
   パスの対応は `codex.pathMap+=A=B` / `codex.pathMap-=A` で1件ずつ足し・外す（全部の置き換えは受けない。書き間違いで全部を
   失わないように）。`updateUserConfig` の中で変更を当ててから、環境変数を見ずに `resolveMachineSettings` で確かめ、読めなければ
   何も書かない（テーマを含めて一括）。表示（`describeSettings`）は項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）。
@@ -229,14 +229,24 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
 
 同じ規則を入口（CLI・API・画面）ごとに書かない。足すときは次の1か所を直す。
 
+src は5つの層に分け、依存の向きを `test/layers.test.ts` で確かめる:
+
+| 層 | 中身 | 読み込んでよいもの |
+| --- | --- | --- |
+| `shared` | 型と判定（サーバと画面で共通） | なし（node: も外のパッケージも使わない。画面のビルドに入るので I/O を置かない） |
+| `core` | CLI と serve の共通の中核（保存の層・規則・変更の手順・Preflight・索引・設定・ChatGPT の接続） | `shared`（HTTP の hono は使わない） |
+| `server` | HTTP の API と配信（`p3 serve`） | `core`・`shared` |
+| `cli` | CLI | `core`・`shared`（serve の起動の `server/server.ts` だけ） |
+| `web` | 画面 | `shared`（node: は使わない） |
+
 | 何を | どこに |
 | --- | --- |
-| 要望・タスク・関係の変更の手順（確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知） | `server/requestOps.ts`（CLI の各コマンドと API はここを呼ぶだけ） |
-| Preflight（開始・評価対象の固定・タスク化） | `server/preflight/service.ts`（`PreflightService`） |
-| 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `server/requestStatus.ts`・`server/supersede.ts`・`server/workTargets.ts`・`shared/preflightInput.ts` |
+| 要望・タスク・関係の変更の手順（確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知） | `core/requestOps.ts`（CLI の各コマンドと API はここを呼ぶだけ） |
+| Preflight（開始・評価対象の固定・タスク化） | `core/preflight/service.ts`（`PreflightService`） |
+| 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
-| 読み取り（一覧・参照の解き方・進捗） | `server/ops.ts` |
+| 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
 `requestCommands.ts`・`preflightCommands.ts`）に分ける。大きい画面は、ルートのファイルを組み立てだけにして部品を
@@ -259,7 +269,7 @@ CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定�
   認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
-- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`src/server/preflight/uiMaterials.ts`）。エンジンは画像と
+- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`src/core/preflight/uiMaterials.ts`）。エンジンは画像と
   `ui/index.json` を書き、P3 が取り込む前に確かめて `run.json` の `ui` に記録する。画像の形式と大きさは拡張子ではなく
   中身から読み、配信のときも同じ確かめ方をもう一度する（取り込んだ後に差し替えられた画像は返さない）。画像は
   要望 / run / 資料 ID で決め、パスを受け取らない。応答には `X-Content-Type-Options: nosniff` と
@@ -301,7 +311,7 @@ CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定�
 
 要望のタイトルと本文は、Preflight の前後・実行中・完了済を含め、いつでも書き換えられる（`p3 request set --body` / `title=`、
 API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存のタスク・過去の run は変えない。そのかわり、古い評価からはタスク化しない
-（`src/server/preflight/input.ts`）。
+（`src/core/preflight/input.ts`）。
 
 - **固定**: Preflight を始めるとき、要望をディスクから読み直し（監視していない外部の編集も取り込む）、タイトルと本文を
   `run.json` の `input` に固定する。人が読む `request.md` とエンジンに渡す要望も同じ内容にする。実行中に要望が書き換えられても、
@@ -332,7 +342,7 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 ### 置き換えられたタスク
 
 再評価でタスク化すると、新しい案が同じ要望の古いタスクを置き換える（`supersedes`）ことがある。
-タスクの状態は 未着手 / 作業中 / 完了 の3つのままにし、置き換えは関係として扱う（`src/server/supersede.ts`）。
+タスクの状態は 未着手 / 作業中 / 完了 の3つのままにし、置き換えは関係として扱う（`src/core/supersede.ts`）。
 
 - **タスク化で知らせる候補**: 評価の `impacts` と **採用した** 案の `relations` にある `supersedes` のうち、
   同じ要望にある未完了（未着手・作業中）のタスク。不採用の案だけにある関係・完了したタスク・無いタスク・
@@ -372,14 +382,14 @@ P3 が使う公開 API と約束:
   - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `P3_CODEX_ENSURE_IMAGE=0` で止める）
   - 強制更新（`p3 codex update`）: `maxAgeMs` を -∞ にして、作った日時によらず作り直す。プロジェクト・認証を決める前に動き、
     個人設定の自動更新の停止（`codex.ensureImage: false`）とも関係しない。前に `docker version` でデーモンを確かめ、
-    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/server/preflight/codexImage.ts`）
+    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/core/preflight/codexImage.ts`）
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のままでよい）
 
 ### 画面イメージの描画のイメージ
 
-画面イメージの描画（`src/server/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
-Dockerfile（`src/server/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
+画面イメージの描画（`src/core/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
+Dockerfile（`src/core/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
 Playwright が入っても、それだけでは描画の安全の条件（ネットワークなし・認証情報なし・リポジトリなし・原稿は読むだけ）を
 満たさないので、描画は別のコンテナで行う。
 

@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { chatgptCommand } from "../src/cli/chatgpt.ts";
 import { apiRoutes } from "../src/server/api/routes.ts";
 import { chatgptView } from "../src/web/lib/chatgpt.ts";
-import { ChatGptAccount, ChatGptAuthError } from "../src/server/chatgpt/account.ts";
-import { OPENAI_ENDPOINTS, PLAN_SCOPE, resetJwksCache, SCOPES, type OAuthDeps } from "../src/server/chatgpt/oauth.ts";
-import { loadConnection, saveConnection } from "../src/server/chatgpt/store.ts";
-import { loadUserConfig, saveUserConfig } from "../src/server/userConfig.ts";
+import { ChatGptAccount, ChatGptAuthError } from "../src/core/chatgpt/account.ts";
+import { OPENAI_ENDPOINTS, PLAN_SCOPE, resetJwksCache, SCOPES, type OAuthDeps } from "../src/core/chatgpt/oauth.ts";
+import { loadConnection, saveConnection } from "../src/core/chatgpt/store.ts";
+import { loadUserConfig, saveUserConfig } from "../src/core/userConfig.ts";
 import { makeProject, tempDir } from "./helpers.ts";
 
 const KID = "k1";

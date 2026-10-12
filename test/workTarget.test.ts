@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeRepoEntry } from "../src/server/store/projectFile.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { writeRepoEntry } from "../src/core/store/projectFile.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 import { repoTargetProblem, requestWorkstreams, taskRepo, writableRepos } from "../src/shared/workTarget.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 

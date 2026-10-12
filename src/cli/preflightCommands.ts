@@ -1,13 +1,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve as resolvePath } from "node:path";
-import { AttachmentError, safeFileName } from "../server/store/attachments.ts";
+import { AttachmentError, safeFileName } from "../core/store/attachments.ts";
 import { type PreflightRun, type InputMatch, type MaterializeResult, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
-import { type P3Context } from "../server/context.ts";
-import { NotFoundError } from "../server/store/collection.ts";
+import { type P3Context } from "../core/context.ts";
+import { NotFoundError } from "../core/store/collection.ts";
 import { table } from "./format.ts";
 import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
 import { UsageError } from "./project.ts";
-import { StaleInputError, staleMessage } from "../server/preflight/input.ts";
+import { StaleInputError, staleMessage } from "../core/preflight/input.ts";
 import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { deps, indent } from "./output.ts";

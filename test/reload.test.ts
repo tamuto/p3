@@ -2,7 +2,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/server/store/workspace.ts";
+import { Workspace } from "../src/core/store/workspace.ts";
 import type { ServerEvent } from "../src/shared/types.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 

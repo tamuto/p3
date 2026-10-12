@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CodexImageError, ensureCodexImage, updateCodexImage } from "../src/server/preflight/codexImage.ts";
+import { CodexImageError, ensureCodexImage, updateCodexImage } from "../src/core/preflight/codexImage.ts";
 import { tempDir } from "./helpers.ts";
 
 const FAKE_DOCKER = fileURLToPath(new URL("./fixtures/fake-docker.mjs", import.meta.url));

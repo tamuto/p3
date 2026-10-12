@@ -17,8 +17,8 @@ import {
   unsentAttachments,
 } from "../src/web/lib/uiMaterials.ts";
 import { ATTACHMENT_FILE_LIMITS } from "../src/shared/types.ts";
-import { ATTACHMENT_LIMITS } from "../src/server/store/attachments.ts";
-import { UI_LIMITS } from "../src/server/preflight/uiMaterials.ts";
+import { ATTACHMENT_LIMITS } from "../src/core/store/attachments.ts";
+import { UI_LIMITS } from "../src/core/preflight/uiMaterials.ts";
 
 const run = (ui: PreflightRun["ui"], status: PreflightRun["status"] = "completed") => ({ ui, status });
 const m = (id: string, kind: UiMaterial["kind"]): UiMaterial => ({ id, kind, file: `${id}.png`, format: "png", width: 1, height: 1, bytes: 1, title: id, drafts: [], assumptions: [], run: "PF-1" });

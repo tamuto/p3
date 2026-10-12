@@ -44,7 +44,7 @@ describe("npm で配る中身", () => {
     const r = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: fileURLToPath(root), encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     const files: string[] = JSON.parse(r.stdout)[0].files.map((f: { path: string }) => f.path);
-    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "src/cli/main.ts", "src/server/context.ts", "src/shared/types.ts", "skills/p3/SKILL.md", "src/server/preflight/render-image/Dockerfile", "src/server/preflight/render-image/render.mjs", "src/server/preflight/mock-ui.png", "src/server/preflight/mock-ui.html"]) {
+    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "src/cli/main.ts", "src/core/context.ts", "src/shared/types.ts", "skills/p3/SKILL.md", "src/core/preflight/render-image/Dockerfile", "src/core/preflight/render-image/render.mjs", "src/core/preflight/mock-ui.png", "src/core/preflight/mock-ui.html"]) {
       expect(files).toContain(f);
     }
     // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）

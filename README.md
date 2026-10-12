@@ -435,7 +435,7 @@ ID の順は数を含む部分を数として比べる（T2 < T10）。要望・
 
 ## タスクの関係（多元的な紐付け）
 
-単純な親子や1本の依存では表せないので、3つの次元を重ねて扱う（`src/server/intel/`）。
+単純な親子や1本の依存では表せないので、3つの次元を重ねて扱う（`src/core/intel/`）。
 
 1. **明示エッジ** — `relations` に型付きで持つ。`depends_on` / `part_of` / `derived_from` / `impacts` /
    `relates_to` / `duplicates` / `supersedes`。エッジは張った側のファイルに保存し、逆向きはインデックスで導く。
@@ -625,7 +625,7 @@ Docker が無い・デーモンに繋がらない・作れない（ネットワ�
 
 画面イメージは、自己完結した HTML / CSS の原稿を、P3 が専用のコンテナ（Codex のものとは別）で PNG にする。
 Playwright 1.63.0 の Chromium（headless shell）と日本語のフォント（Noto CJK）を入れたイメージ（`infodb-p3-render:<中身の版>`）を、
-配布物の `src/server/preflight/render-image/` から初回に作る（数分。中身が変われば名前が変わり、作り直す）。
+配布物の `src/core/preflight/render-image/` から初回に作る（数分。中身が変われば名前が変わり、作り直す）。
 開発ツールや API キー・画像生成のサービスは要らない。Docker があればよい。
 
 ```bash
@@ -1015,7 +1015,7 @@ CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定�
 
 | 何を | どうする |
 | --- | --- |
-| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/server/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
+| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/core`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/core/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、README・LICENSE |
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ。Node 22.0.0 で tsx が `await using` を変換して動くことを確かめた）。開発（Vite 8）は Node 24 を使う |
@@ -1034,23 +1034,27 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 ## 構成
 
 ```
-src/
-  shared/            型定義・参照の解き方・日付（サーバ/Web 共通）
-  cli/               p3 CLI（ファイルを直接操作。serve でサーバも起動する）
+src/                 依存の向き: shared ← core ← server / cli、web → shared（test/layers.test.ts で確かめる）
+  shared/            型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
+  cli/               p3 CLI（core でファイルを直接操作。serve でサーバも起動する）
     main.ts          振り分け・プロジェクトと変更者と今の要望の決定・終了コード
-    taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は server/requestOps.ts を通す）
+    taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は core/requestOps.ts を通す）
     args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
-  server/
+  core/              CLI と serve の共通の中核（HTTP は使わない）
     requestOps.ts    要望・タスク・関係の変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
     ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
     store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
     intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
-    api/             REST + SSE
+    chatgpt/         ChatGPT の接続（サインイン・トークン）
+    context.ts / userConfig.ts / machineSettings*.ts   プロジェクトを開く・個人設定・マシンごとの設定
+  server/            HTTP だけ（p3 serve）
+    server.ts        待ち受けと画面の配信
+    api/             REST + SSE（core を呼ぶ）
   web/               React + TanStack Router + Tailwind（text-base 基準）
     routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
     routeTree.gen.ts ルート一覧（自動生成）
-    components/      複数のページで使う部品（タスク詳細のドロワー、要望のステータスなど）
+    components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
 bin/p3.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 scripts/demo.ts      開発用のデモデータを作る
 docs/                設計の方針

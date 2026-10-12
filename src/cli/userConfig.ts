@@ -1,7 +1,7 @@
 import { THEMES } from "../shared/types.ts";
-import { describeSettings, parseSettingChange, SETTING_KEY_LIST, SettingsInputError, writeMachineSettings, type SettingChange } from "../server/machineSettingsEdit.ts";
-import { loadUserConfig, UserConfigError, userConfigPath } from "../server/userConfig.ts";
-import { readTheme, ThemeInputError, writeTheme } from "../server/userTheme.ts";
+import { describeSettings, parseSettingChange, SETTING_KEY_LIST, SettingsInputError, writeMachineSettings, type SettingChange } from "../core/machineSettingsEdit.ts";
+import { loadUserConfig, UserConfigError, userConfigPath } from "../core/userConfig.ts";
+import { readTheme, ThemeInputError, writeTheme } from "../core/userTheme.ts";
 import { UsageError } from "./project.ts";
 
 const USAGE = [

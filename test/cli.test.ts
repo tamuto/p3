@@ -319,7 +319,7 @@ describe("マシンごとの設定（環境変数と個人設定。.env は読�
     writeFileSync(join(root, ".p3", ".env"), "P3_PREFLIGHT_ENGINE=mock\n");
     const r = p3(root, ["preflight", rid, "--json"], { DOCKER_HOST: "unix:///nonexistent.sock" });
     expect(r.code).not.toBe(0);
-    expect(readFileSync(new URL("../src/server/context.ts", import.meta.url), "utf8")).not.toContain("loadEnvFile");
+    expect(readFileSync(new URL("../src/core/context.ts", import.meta.url), "utf8")).not.toContain("loadEnvFile");
     expect(readFileSync(new URL("../src/cli/main.ts", import.meta.url), "utf8")).not.toContain("loadEnvFile");
   });
 
