@@ -5,7 +5,7 @@ import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { useAppData } from "../../../lib/appData.tsx";
 import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
-import { api, ApiError } from "../../../lib/api.ts";
+import { api, failureOf } from "../../../lib/api.ts";
 import { markText, warningText } from "../../../lib/supersede.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
@@ -41,7 +41,7 @@ function BoardPage() {
       const w = warningText(res);
       setError(w ? `警告: ${w}` : null);
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 409 ? `${t.id} は他で更新されました。最新を読み込みました。` : String(e));
+      setError(failureOf(e) === "rev_conflict" ? `${t.id} は他で更新されました。最新を読み込みました。` : String(e));
     }
     reload();
     ctx.reload();

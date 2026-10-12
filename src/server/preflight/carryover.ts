@@ -1,6 +1,7 @@
 import type { InputMatch, PreflightInput, PreflightNote, PreflightRun } from "../../shared/types.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { compareInput, runInput } from "./input.ts";
+import { changedLabel } from "../../shared/preflightInput.ts";
 
 /** 次の Preflight に引き継ぐもの: 前回の結果と、その後に書き足されたメモ */
 export interface Carryover {
@@ -58,7 +59,7 @@ function requestChangeSection(c: NonNullable<Carryover["requestChange"]>, previo
   if (c.match.status === "unknown" || !c.before) {
     return `${head}\n前回 ${previousId} が何を評価したか確かめられません（${c.match.reason ?? "不明"}）。前回の評価は今の要望に合っていないものとして扱ってください。`;
   }
-  const parts = [head, `前回 ${previousId} の後で、要望の${(c.match.changed ?? []).map((k) => (k === "title" ? "タイトル" : "本文")).join("と")}が書き換えられました。前回が評価した内容:`];
+  const parts = [head, `前回 ${previousId} の後で、要望の${changedLabel(c.match.changed)}が書き換えられました。前回が評価した内容:`];
   if (c.match.changed?.includes("title")) parts.push(`### 前回の時点のタイトル\n${quote(c.before.title)}`);
   if (c.match.changed?.includes("body")) parts.push(`### 前回の時点の本文\n${quote(c.before.body)}`);
   return parts.join("\n\n");

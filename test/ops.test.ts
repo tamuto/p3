@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId } from "../src/server/ops.ts";
+import { listTasks, progress, resolve, resolveRef, resolveRequestId } from "../src/server/ops.ts";
+import { addRelation, removeRelation } from "../src/server/requestOps.ts";
 import { NotFoundError } from "../src/server/store/collection.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 

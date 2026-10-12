@@ -36,6 +36,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * API の失敗の種類。画面はこれで文言と次の操作を決める（status や code を個別に見ない）。
+ *   rev_conflict: 編集を始めた後に他で更新された（読み直してやり直す。入力は残す）
+ *   stale_input:  評価のあとで要望のタイトル・本文が変わった（タスク化しない。再評価する）
+ *   not_found:    対象が無い（消された）
+ * 409 は API の code で分け、code の無い 409 は rev の競合とする
+ */
+export type ApiFailure = "rev_conflict" | "stale_input" | "not_found" | "other";
+
+export function failureOf(e: unknown): ApiFailure {
+  if (!(e instanceof ApiError)) return "other";
+  if (e.status === 404) return "not_found";
+  if (e.status !== 409) return "other";
+  return (e.body as { code?: string } | null)?.code === "stale_input" ? "stale_input" : "rev_conflict";
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
