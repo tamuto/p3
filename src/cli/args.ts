@@ -37,7 +37,6 @@ const OPTIONS = {
   off: { type: "boolean" },
   body: { type: "string" },
   note: { type: "string" },
-  confidence: { type: "string" },
   engine: { type: "string" },
   run: { type: "string" },
   only: { type: "string" },

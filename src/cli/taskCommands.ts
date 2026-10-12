@@ -1,16 +1,15 @@
 import { relative } from "node:path";
-import { RELATION_TYPES, relationTypes, type Relation, type RelationType, type Task } from "../shared/types.ts";
-import { listTasks, resolve, resolveRef, titleOf } from "../core/ops.ts";
-import { addRelation, archiveTask, createTask, removeRelation, updateTask } from "../core/requestOps.ts";
-import { NotFoundError } from "../core/store/collection.ts";
+import type { Task } from "../shared/types.ts";
+import { listTasks, resolve, resolveRef } from "../core/ops.ts";
+import { archiveTask, createTask, updateTask } from "../core/requestOps.ts";
 import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
 import { briefTask, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
-import { parseTaskAssignments, checkStatus, num, readBody, type CommandEnv } from "./args.ts";
-import { formatEntity, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
+import { parseTaskAssignments, checkStatus, readBody, type CommandEnv } from "./args.ts";
+import { dependentsOf, formatEntity, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
 
 /** タスクのコマンド（ls / show / find / impact / new / set / move / check / link / unlink / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
@@ -54,11 +53,11 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
         const view = briefTask(ctx, item, marks);
         return out.result(view, () => formatBriefTask(view));
       }
-      const graph = ctx.index.neighborhood(ref);
       const file = relative(cwd, split(ref).col.path(item.id));
       const { superseded, dependencies, warnings } = taskExtras(ctx, item, marks);
-      return out.result({ item, graph, file, superseded, dependencies, warnings }, () =>
-        [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, graph, file)].join(""),
+      const dependents = dependentsOf(ctx, item).map((t) => ({ ref: t.ref, title: t.title, status: t.status }));
+      return out.result({ item, file, superseded, dependencies, dependents, warnings }, () =>
+        [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, file)].join(""),
       );
     }
 
@@ -66,12 +65,6 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
     case "resolve": {
       const r = resolve(ctx, args.join(" "), current);
       return out.result(r, () => table(r.candidates.map((c) => [c.ref, c.score.toFixed(2), c.title, c.reasons.join(" / ")])) || "見つかりません");
-    }
-
-    case "impact": {
-      const ref = taskArg(args[0]);
-      const scope = ctx.index.impactScope(ref);
-      return out.result(scope, () => table(scope.map((x) => [x, ctx.ws.task(x)?.status ?? ctx.ws.requests.get(x)?.status ?? "", titleOf(ctx, x)])) || "なし");
     }
 
     case "new":
@@ -150,23 +143,6 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { tid } = split(ref);
       const { task: next } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
-    }
-
-    case "link":
-    case "unlink": {
-      const ref = taskArg(args[0]);
-      const type = args[1];
-      if (!type || !(type in RELATION_TYPES)) throw new UsageError(`関係の種類: ${relationTypes.join(", ")}`);
-      const target = resolveRef(ctx, args[2] ?? "", ref.split("/")[0]);
-      if (!target) throw new NotFoundError(args[2] ?? "（相手）");
-      if (cmd === "unlink") {
-        const next = await removeRelation(ctx, ref, { type, target }, actor);
-        return out.result(next, () => `外しました: ${ref} ${type} ${target}`);
-      }
-      const rel: Relation = { type: type as RelationType, target, note: o.note };
-      if (o.confidence !== undefined) rel.confidence = num(o.confidence, "confidence");
-      const next = await addRelation(ctx, ref, rel, actor);
-      return out.result(next, () => `張りました: ${ref} の${RELATION_TYPES[rel.type].label}: ${target}（${RELATION_TYPES[rel.type].verb}）`);
     }
 
     case "archive": {

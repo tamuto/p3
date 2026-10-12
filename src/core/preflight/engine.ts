@@ -1,10 +1,9 @@
 import type { ResolvedRef } from "../repoRefs.ts";
-import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, RelatedItem, Request } from "../../shared/types.ts";
+import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
   request: Request;
-  context: RelatedItem[];
   /** Preflight が読む参照先（始めるときに解決したもの。読めないものも status つきで入る。0件でもよい） */
   refs: ResolvedRef[];
   /** データディレクトリ（ローカル絶対パス）。リポジトリの外にあってもよい */
@@ -66,10 +65,6 @@ export const ASSESSMENT_SPEC = `{
   "risks": ["..."],
   "questions": ["要望者に確認すべき事項"],
   "areas": ["影響するコード領域やコンポーネント（リポジトリ相対パス推奨）"],
-  "impacts": [
-    { "target": "別の要望なら <要望ID>、そのタスクなら <要望ID>/T003", "type": "depends_on|impacts|relates_to|duplicates|supersedes",
-      "reason": "なぜ関係するか", "confidence": 0.0-1.0 }
-  ],
   "evidence": [
     { "claim": "支える判断（例: 実現可能性: 既存の X で足りる / D2 の範囲）", "kind": "verified" | "assumed",
       "repo": "参照先の名前（verified のとき）", "file": "参照先の中の相対パス", "location": "行・関数名など" }
@@ -85,8 +80,7 @@ title: タスク名
 repo: <作業先>         # 作業するリポジトリ・フォルダ（「作業先にできる」参照先の名前）。調査・人の判断など作業先が無いタスクは none
 areas: [src/foo]       # 触る領域
 dependsOn: [D1]        # 同じ preflight 内で先に終わっている必要があるタスク案の key
-relations:             # 既存タスク/要望との関係（無ければ省略）
-  - { type: impacts, target: 261001-ab3cd/T003, note: "理由", confidence: 0.7 }
+supersedes: [T003]     # この案が置き換える、同じ要望の既存タスク（再評価で古いタスクを置き換えるときだけ。無ければ省略）
 include: true
 ---
 

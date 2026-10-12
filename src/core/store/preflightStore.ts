@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { PreflightRun, ProposedTask } from "../../shared/types.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 import { writeFileAtomic } from "./fsutil.ts";
-import { normalizeRelations } from "./normalize.ts";
 
 /**
  * requests/<要望ID>/preflight/<RUN-ID>/
@@ -50,7 +49,7 @@ export class PreflightStore {
         description: body.trim(),
         areas: Array.isArray(data.areas) ? data.areas.map(String) : [],
         dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
-        relations: normalizeRelations(data.relations),
+        supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
         include: data.include !== false,
         ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
       });

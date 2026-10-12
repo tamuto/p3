@@ -41,13 +41,12 @@ async function snapshot(call: Awaited<ReturnType<typeof setup>>["call"], rid: st
     list: (await call("GET", "/requests")).body,
     detail: (await call("GET", `/requests/${rid}`)).body,
     tasks: (await call("GET", "/tasks")).body,
-    graph: (await call("GET", "/graph")).body,
   };
 }
 
 describe("全件の読み直し（POST /api/reload）", () => {
   it("監視なしで、同じファイルを2回以上置き換えて保存しても、読み直すと設定・一覧・詳細・進捗・関係・類似検索が最新になる", async () => {
-    const { call, rid, cli, ctx } = await setup();
+    const { call, rid, cli } = await setup();
     await snapshot(call, rid); // 索引を一度作っておく（古い索引が残らないことを見る）
     const ext = await cli();
     await ext.requests.update(rid, { title: "検索の改善 2" });
@@ -75,22 +74,18 @@ describe("全件の読み直し（POST /api/reload）", () => {
       ["T002", "todo"],
     ]);
     expect(s.tasks.map((t: any) => t.title)).toContain("ベクトル埋め込みで再ランク");
-    expect(s.graph.edges).toContainEqual(expect.objectContaining({ from: `${rid}/T002`, to: `${rid}/T001`, type: "depends_on" }));
-    const related = (await call("GET", "/related?q=ベクトル埋め込み")).body;
-    expect(related.map((r: any) => r.ref)).toContain(`${rid}/T002`);
-    expect(ctx.index.neighborhood(`${rid}/T001`).incoming.map((e) => e.from)).toContain(`${rid}/T002`);
+    expect(s.tasks.find((t: any) => t.id === "T002").relations).toEqual([expect.objectContaining({ type: "depends_on", target: "T001" })]);
   });
 
   it("外での要望・タスクの追加・削除・アーカイブ、関係の追加・削除を取り込む", async () => {
     const { call, rid, cli, dataDir } = await setup();
     const ext = await cli();
     const other = await ext.requests.create({ title: "外で足した要望", status: "draft", body: "" });
-    await ext.tasksOf(other.id).create({ title: "外のタスク", status: "todo", relations: [{ type: "relates_to", target: `${rid}/T001` }] });
+    await ext.tasksOf(other.id).create({ title: "外のタスク", status: "todo" });
     await ext.tasksOf(rid).create({ title: "消すタスク", status: "todo" });
     await call("POST", "/reload");
     expect((await call("GET", "/requests")).body.map((p: any) => p.request.title).sort()).toEqual(["外で足した要望", "検索の改善"]);
     expect((await call("GET", `/requests/${rid}`)).body.tasks.map((t: any) => t.id)).toEqual(["T001", "T002"]);
-    expect((await call("GET", "/graph")).body.edges).toContainEqual(expect.objectContaining({ from: `${other.id}/T001`, to: `${rid}/T001` }));
 
     // 削除・アーカイブ・関係の削除
     const ext2 = await cli();
@@ -101,7 +96,6 @@ describe("全件の読み直し（POST /api/reload）", () => {
     expect((await call("GET", "/requests")).body.map((p: any) => p.request.id)).toEqual([rid]);
     expect((await call("GET", `/requests/${other.id}`)).status).toBe(404);
     expect((await call("GET", `/requests/${rid}`)).body.tasks.map((t: any) => t.id)).toEqual(["T001"]);
-    expect((await call("GET", "/graph")).body.edges.filter((e: any) => e.from.startsWith(other.id))).toEqual([]);
   });
 
   it("壊れた Markdown は errors に出して正常なものは返し、直すと消える。project.yaml が読めなければ 503 で何も変えない", async () => {

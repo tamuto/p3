@@ -18,7 +18,6 @@ export function normalizeRelations(v: unknown): Relation[] {
       target: String(r.target),
       note: str(r.note),
       origin: str(r.origin) as Relation["origin"],
-      confidence: num(r.confidence),
     }));
 }
 
@@ -61,7 +60,6 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     title: str(d.title) ?? id,
     status: REQUEST_STATUSES.includes(status) ? status : "draft",
     areas: strs(d.areas),
-    relations: normalizeRelations(d.relations),
     due: date(d.due),
     milestone: str(d.milestone),
     tags: strs(d.tags),
@@ -76,7 +74,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "due", "milestone", "tags", "areas", "workstreams", "relations", "lastPreflight",
+  "id", "title", "status", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 

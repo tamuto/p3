@@ -7,8 +7,8 @@ const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 
 /**
  * 短い出力でどれだけ減るか（README の「短い出力」の目安）。
- * 実データに頼らず、261011-wng6f に似た形の固定データを作る: 本文のある6タスク（依存の鎖と成果物）に、
- * 別の要望のタスクへの関係（影響・関連）と、領域・語の重なる周辺のタスク（関係しそう・影響範囲に出る）がたくさんある。
+ * 実データに頼らず、261011-wng6f に似た形の固定データを作る: 本文のある6タスク（依存の鎖と成果物）と、
+ * 領域・語の重なる周辺のタスクがたくさんある（以前は「関係しそう」「影響範囲」として出ていた。今はどちらの出力にも出さない）。
  */
 async function fixture() {
   const { root, dataDir, ctx } = await makeProject();
@@ -51,8 +51,6 @@ async function fixture() {
       outputs: n <= 2 ? [`https://example.com/commit/${n}`] : [],
       relations: [
         ...(n > 1 ? [{ type: "depends_on" as const, target: `T00${n - 1}`, origin: "preflight" as const }] : []),
-        ...neighbors.slice(n, n + 5).map((target) => ({ type: "impacts" as const, target, origin: "preflight" as const, confidence: 0.9, note: "同じ設定の読み込みを変えるので、周辺のタスクの前提が変わる" })),
-        { type: "relates_to" as const, target: neighbors[n + 7], origin: "preflight" as const, confidence: 0.8 },
       ],
     });
     refs.push(t.ref);
@@ -70,7 +68,7 @@ function show(root: string, dataDir: string, ref: string, extra: string[]) {
 const bytes = (s: string) => Buffer.byteLength(s, "utf8");
 
 describe("短い出力の出力量", () => {
-  it("周辺の関係が多い6タスクで、テキストも JSON も半分以下になり、作業に要るものは残る", async () => {
+  it("周辺のタスクが多い6タスクで、短い出力は通常より小さく、作業に要るものは残る", async () => {
     const { root, dataDir, refs } = await fixture();
     const total = { text: { normal: 0, brief: 0 }, json: { normal: 0, brief: 0 } };
     for (const ref of refs) {
@@ -90,8 +88,10 @@ describe("短い出力の出力量", () => {
     expect(t3.dependencies).toEqual([{ ref: refs[1], title: expect.stringContaining("公開の準備 2"), status: "done" }]);
     expect(JSON.parse(show(root, dataDir, refs[0], ["--brief", "--json"])).item.outputs).toEqual(["https://example.com/commit/1"]);
 
-    expect(total.text.brief / total.text.normal).toBeLessThanOrEqual(0.5);
-    expect(total.json.brief / total.json.normal).toBeLessThanOrEqual(0.5);
+    // 通常の出力も、関係しそう・影響範囲を出さなくなって小さい。短い出力はさらに小さい
+    expect(show(root, dataDir, refs[2], [])).not.toContain("関係しそう");
+    expect(total.text.brief).toBeLessThan(total.text.normal);
+    expect(total.json.brief).toBeLessThan(total.json.normal);
     console.info(`短い出力: テキスト ${total.text.normal} → ${total.text.brief} バイト、JSON ${total.json.normal} → ${total.json.brief} バイト`);
   }, 60_000);
 });

@@ -3,22 +3,19 @@ import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import {
-  RELATION_TYPES,
   type PreflightAssessment,
   type PreflightLogEntry,
   type PreflightRun,
   type ProposedTask,
   type Relation,
   type Request,
-  type RelationType,
   type MaterializeResult,
   type Task,
   type Evidence,
   type FixedAttachment,
   type InputMatch,
 } from "../../shared/types.ts";
-import { absRef, normalizeTaskId, relRef } from "../../shared/refs.ts";
-import type { ProjectIndex } from "../intel/index.ts";
+import { normalizeTaskId } from "../../shared/refs.ts";
 import { nowIso, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -52,7 +49,6 @@ export class PreflightService {
    */
   constructor(
     private ws: Workspace,
-    private index: ProjectIndex,
     private engines: Partial<Record<PreflightEngine["name"], PreflightEngine>>,
     defaultEngine: PreflightEngine["name"] | { load: () => Promise<PreflightEngine["name"]>; initial: PreflightEngine["name"] },
   ) {
@@ -146,14 +142,6 @@ export class PreflightService {
 
     const stamp = nowIso().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const id = `PF-${stamp}-${randomBytes(2).toString("hex")}`;
-    // 関連項目の選定: 要望本文・領域・既に張られた関係を起点に
-    const context = this.index.related({
-      text: `${request.title}\n${request.body}`,
-      areas: request.areas,
-      seeds: request.relations.map((r) => absRef(r.target, request.id)).filter((x): x is string => !!x),
-      exclude: [request.id],
-      limit: 10,
-    });
     // 前回の結果とその後のメモ。開始の時点で選んで固定する（実行中に足されたメモは次回に回る）
     const carry = await selectCarryover(this.ws, requestId);
     const carryover = renderCarryover(carry);
@@ -168,7 +156,6 @@ export class PreflightService {
       startedBy: opts.actor,
       previous: carry.previous?.id,
       notes: carry.notes.length ? carry.notes.map((n) => n.id) : undefined,
-      context,
       log: [],
       drafts: [],
       scope: refs.map(refScope),
@@ -207,10 +194,6 @@ export class PreflightService {
     }
     // 要望のスナップショットと文脈をファイルとして残す（後から「何を根拠に判断したか」を辿れる）
     await writeFileAtomic(join(runDir, "request.md"), renderRequestSnapshot(request.id, input));
-    await writeFileAtomic(
-      join(runDir, "context.md"),
-      `# Context for ${request.id}\n\n${context.map((c) => `- ${c.ref} ${c.title} (${c.score}) — ${c.reasons.join(" / ")}`).join("\n")}\n`,
-    );
     // ステータスを動かすのはタスク化する前の要望だけ。進行中・完了の要望で再評価しても状態は変えない
     const before = request.status;
     const early = before === "draft" || before === "preflight" || before === "reviewed";
@@ -267,14 +250,12 @@ export class PreflightService {
     refs: ResolvedRef[],
   ) {
     try {
-      this.log(run, { kind: "info", text: `関連項目 ${run.context.length} 件を文脈として選定` });
       await this.extractAttachments(run, runDir);
       const outcome = await engine.run(
         {
           project: this.ws.project,
           // 始めたときに固定した要望（実行中に本文が変わっても、request.md・run.input と同じものを渡す）
           request,
-          context: run.context,
           refs,
           dataDir: this.ws.dataDir,
           runDir,
@@ -449,7 +430,7 @@ export class PreflightService {
    * タスク化: 採用されたタスク案を、要望のフォルダの tasks/T00x.md として書き出し、関係を張る。
    *   - 同じ run 内の dependsOn → depends_on（要望の中なので相対参照 T00x）
    *   - 案が持つ既存項目への関係 → 存在するものだけ（origin: preflight）。置き換え（supersedes）もここで各タスクに残る
-   *   - 評価の impacts → 要望側の relations に記録（作業ツリー単位の影響として扱う）
+   *   - 案の supersedes → 同じ要望の今あるタスクへの supersedes（置き換え）
    *   - archive: 置き換えられるタスク（previewMaterialize の候補）のうちアーカイブするもの。既定はどれも残す。
    *     確定の時点で候補を読み直し、候補でない・rev が変わったものがあれば何も変えずに失敗する
    *
@@ -505,16 +486,11 @@ export class PreflightService {
 
     const keyToId = new Map<string, string>();
     const created: Task[] = [];
-    // Codex が書いた参照を、存在するものだけ、ファイルに書く形（相対/絶対）にそろえる
-    const toRel = (target: string) => {
-      const abs = absRef(target, requestId);
-      return abs && abs !== requestId && this.ws.exists(abs) ? relRef(abs, requestId) : undefined;
-    };
-    const keepExisting = (rels: Relation[]): Relation[] =>
-      rels.flatMap((r) => {
-        const target = toRel(r.target);
-        return target ? [{ ...r, target, origin: "preflight" as const }] : [];
-      });
+    // 置き換えは、同じ要望に今あるタスクだけ（Codex が書いた T3 / 3 も T003 にそろえる）
+    const supersedes = (d: ProposedTask): Relation[] =>
+      [...new Set(d.supersedes.map((x) => normalizeTaskId(x) ?? x))]
+        .filter((id) => tasks.get(id))
+        .map((target) => ({ type: "supersedes" as const, target, origin: "preflight" as const }));
 
     for (const d of drafts) {
       const marker = `> preflight: ${runId} / ${d.key}`;
@@ -530,7 +506,7 @@ export class PreflightService {
             labels: [],
             areas: d.areas,
             outputs: [],
-            relations: keepExisting(d.relations),
+            relations: supersedes(d),
             body: `${d.description}\n\n${marker}`,
           },
           actor,
@@ -556,15 +532,11 @@ export class PreflightService {
       }
     }
 
-    const impactRels = keepExisting(
-      (run.assessment?.impacts ?? []).map((i) => ({ type: i.type, target: i.target, note: i.reason, confidence: i.confidence })),
-    ).filter((i) => !request.relations.some((r) => absRef(r.target, requestId) === absRef(i.target, requestId) && r.type === i.type));
     await this.ws.requests.update(
       requestId,
       {
         status: "active",
         areas: [...new Set([...request.areas, ...(run.assessment?.areas ?? [])])],
-        relations: [...request.relations, ...impactRels],
         // 採用した案の作業先の分だけブランチを割り当てる（既にあるものは変えない。作業先なしは割り当てない）
         ...workstreamPatch(this.ws, requestId, plan),
       },
@@ -583,7 +555,6 @@ export class PreflightService {
     state.done = true;
     await this.ws.preflight.save(run);
 
-    this.index.invalidate();
     this.ws.emit({ type: "changed", kind: "task", request: requestId });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
     return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
@@ -681,14 +652,6 @@ export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): Pr
     risks: strs(a.risks),
     questions: strs(a.questions),
     areas: strs(a.areas),
-    impacts: (Array.isArray(a.impacts) ? a.impacts : [])
-      .filter((i: any) => i && typeof i.target === "string" && i.type in RELATION_TYPES)
-      .map((i: any) => ({
-        target: i.target,
-        type: i.type as RelationType,
-        reason: String(i.reason ?? ""),
-        confidence: Math.max(0, Math.min(1, Number(i.confidence ?? 0.5))),
-      })),
     ...(Array.isArray(a.evidence) ? { evidence: parseEvidence(a.evidence, refs) } : {}),
   };
 }

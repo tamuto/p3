@@ -49,7 +49,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --repo <参照先>|none（作業先）  --all（全要望）
-  show <T003|要望|語句>          詳細と関係（明示・暗黙・影響範囲）
+  show <T003|要望|語句>          詳細と関係（依存・置き換え）
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
                                --repo <参照先>|none 作業先（作業先にできる参照先だけ。足りないブランチは割り当てる）
@@ -58,10 +58,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   move <T003> <ステータス>        --output URL・文章・パス（成果物を足す。繰り返し可。カンマで分けない）
                                --repo-output <参照先>=<URL>  リポジトリごとの成果物（最後のタスクに全リポジトリの PR を残す）
   check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
-  link <T003> <種類> <相手>       --note 理由 --confidence 0..1（相手は T004 / <要望>/T004 / <要望>）
-  unlink <T003> <種類> <相手>
   archive <T003>               .archive/ へ移す
-  find <語句> / impact <T003>    対象を探す / 変更が波及する項目
+  find <語句>                    参照・タイトルで探す
 
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
@@ -84,7 +82,7 @@ Preflight
   --actor 名前   変更者（既定: $P3_ACTOR → human:<git の user.name>）
   --rev 番号     楽観ロック。指定した rev でなければ更新しない（set / move）
 
-関係の種類（A → B と張る。A の詳細には「相手の役割 B」、B の詳細には「相手の役割 A」と出る）:
+タスクの関係（同じ要望の中だけ。Preflight のタスク化が張り、手では張らない。A → B のとき A には「相手の役割 B」、B には「相手の役割 A」と出る）:
 ${relationTypes.map((t) => `  ${t.padEnd(13)} ${RELATION_TYPES[t].verb}  →「${RELATION_TYPES[t].label}」/ 逆「${RELATION_TYPES[t].inverse}」`).join("\n")}
 `;
 

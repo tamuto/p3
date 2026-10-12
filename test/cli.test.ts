@@ -5,6 +5,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
+
+/** タスクの関係をファイルに書く（関係は Preflight のタスク化だけが張るので、CLI には張る操作が無い） */
+function relate(root: string, rid: string, tid: string, relations: { type: string; target: string; note?: string; origin?: string }[]) {
+  const file = join(root, ".p3", "requests", rid, "tasks", `${tid}.md`);
+  const { data, body } = parseFrontmatter(readFileSync(file, "utf8"));
+  writeFileSync(file, stringifyFrontmatter({ ...data, relations: [...((data.relations as unknown[]) ?? []), ...relations.map((r) => ({ origin: "preflight", ...r }))] }, body));
+}
 
 const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 
@@ -141,10 +149,9 @@ describe("p3 のタスク操作（--req で要望を指定）", () => {
     expect(p3(root, ["new", "通知", "--body", "- 箇条書き", ...r]).code).toBe(0);
     expect(readFileSync(join(root, ".p3", "requests", rid, "tasks", "T002.md"), "utf8")).toContain("- 箇条書き");
 
-    expect(p3(root, ["link", "T2", "depends_on", "T1", "--note", "認証が先", ...r]).code).toBe(0);
-    const cycle = p3(root, ["link", "1", "depends_on", "2", ...r]);
-    expect(cycle.code).toBe(1);
-    expect(cycle.err).toContain("循環");
+    relate(root, rid, "T002", [{ type: "depends_on", target: "T001" }]);
+    // 関係を手で張る・影響範囲のコマンドは無い
+    for (const cmd of ["link", "unlink", "impact"]) expect(p3(root, [cmd, "T2", "depends_on", "T1", ...r]).err).toContain("不明なコマンド");
 
     expect(p3(root, ["move", "T2", "doing", ...r]).code).toBe(0);
     expect(p3(root, ["move", "2", "in_progress", ...r]).err).toContain("ステータスは");
@@ -159,14 +166,13 @@ describe("p3 のタスク操作（--req で要望を指定）", () => {
     expect(p3(root, ["show", "T2", "--json", ...r]).json().item.startedAt).toBeTruthy();
 
     const show = p3(root, ["show", "T1", "--json", ...r]).json();
-    expect(show.graph.incoming).toEqual([expect.objectContaining({ from: `${rid}/T002`, type: "depends_on" })]);
-    expect(show.graph.impactScope).toEqual([`${rid}/T002`]);
+    expect(show.dependents).toEqual([{ ref: `${rid}/T002`, title: "通知", status: "doing" }]);
+    expect(show).not.toHaveProperty("graph");
     // 「相手の役割 + 相手」で見せる: T002 → depends_on → T001 なら、T001 には「依存元 T002」、T002 には「依存先 T001」
     expect(p3(root, ["show", "T1", ...r]).out).toMatch(/← 依存元 +T002/);
     expect(p3(root, ["show", "T2", ...r]).out).toMatch(/→ 依存先 +T001/);
     expect(p3(root, ["help"]).out).toContain("depends_on    依存する（相手が先に終わっている必要がある）  →「依存先」/ 逆「依存元」");
     expect(p3(root, ["find", "通知", "--json", ...r]).json().candidates.map((c: any) => c.ref)).toContain(`${rid}/T002`);
-    expect(p3(root, ["impact", "1", "--json", ...r]).json()).toEqual([`${rid}/T002`]);
 
     expect(p3(root, ["archive", "2", ...r]).code).toBe(0);
     expect(p3(root, ["show", "T2", ...r]).code).toBe(2); // アーカイブしたら見つからない
@@ -383,20 +389,15 @@ describe("show --brief（作業に要る項目だけ）", () => {
     for (const t of ["下準備", "本体", "仕上げ", "消す予定", "新しい方式"]) p3(root, ["new", t, "--req", rid, "--body", `${t}の作業内容\n\n## 完了条件\n- できる`]);
     p3(root, ["move", "T001", "done", "--req", rid, "--output", "https://example.com/pull/1"]);
     p3(root, ["move", "T002", "doing", "--req", rid]);
-    for (const [from, to] of [["T002", "T001"], ["T003", "T002"], ["T003", `${other}/T001`], ["T003", other], ["T003", "T004"]]) {
-      const r = p3(root, ["link", from, "depends_on", to, "--req", rid]);
-      expect(r.code, r.err).toBe(0);
-    }
-    p3(root, ["link", "T003", "relates_to", "T005", "--req", rid]);
-    p3(root, ["link", "T005", "supersedes", "T001", "--req", rid, "--note", "新しい方式に替える"]);
+    relate(root, rid, "T002", [{ type: "depends_on", target: "T001" }]);
+    relate(root, rid, "T003", [{ type: "depends_on", target: "T002" }, { type: "depends_on", target: "T004" }]);
+    relate(root, rid, "T005", [{ type: "supersedes", target: "T001", note: "新しい方式に替える" }]);
     p3(root, ["archive", "T004", "--req", rid]);
-    const reqFile = join(root, ".p3", "requests", rid, "request.md");
-    writeFileSync(reqFile, readFileSync(reqFile, "utf8").replace(/^---\n/, `---\nrelations:\n  - { type: supersedes, target: T001 }\n`));
     return { root, rid, other };
   }
 
   it("タスク: 本文・依存とその状態（見つからないものは null）・置き換えの注意・成果物・rev を残し、ほかを省く", async () => {
-    const { root, rid, other } = await prepared();
+    const { root, rid } = await prepared();
     const full = p3(root, ["show", "T003", "--req", rid, "--json"]).json();
     const brief = p3(root, ["show", "T003", "--req", rid, "--brief", "--json"]);
     expect(brief.code, brief.err).toBe(0);
@@ -406,17 +407,13 @@ describe("show --brief（作業に要る項目だけ）", () => {
     expect(Object.keys(b.item)).toEqual(["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"]);
     for (const k of Object.keys(b.item)) if (k !== "relations") expect(b.item[k]).toEqual(full.item[k]);
     expect(b.item.body).toContain("## 完了条件");
-    // 依存だけ（関係しそうな相手・relates_to は省く）。type / target は元のまま
+    // 依存だけ。type / target は元のまま
     expect(b.item.relations.map((r: any) => [r.type, r.target])).toEqual([
       ["depends_on", "T002"],
-      ["depends_on", `${other}/T001`],
-      ["depends_on", other],
       ["depends_on", "T004"],
     ]);
     const deps = [
       { ref: `${rid}/T002`, title: "本体", status: "doing" },
-      { ref: `${other}/T001`, title: "別の要望のタスク", status: "todo" },
-      { ref: other, title: "別の要望", status: "draft" },
       { ref: `${rid}/T004`, title: null, status: null }, // アーカイブした: 状態不明（完了とは扱わない）
     ];
     expect(b.dependencies).toEqual(deps);
@@ -426,7 +423,7 @@ describe("show --brief（作業に要る項目だけ）", () => {
     expect(b.item).not.toHaveProperty("createdAt");
 
     const text = p3(root, ["show", "T003", "--req", rid, "--brief"]).out;
-    expect(text).toContain("依存    T002 doing / " + `${other}/T001 todo / ${other} draft / T004 （状態不明）`);
+    expect(text).toContain("依存    T002 doing / T004 （状態不明）");
     expect(text).toContain("仕上げの作業内容");
     expect(text).not.toContain("関係しそう");
     expect(text).not.toContain("影響範囲");
@@ -439,10 +436,10 @@ describe("show --brief（作業に要る項目だけ）", () => {
     expect(done.dependencies).toEqual([]);
   });
 
-  it("置き換え: タスクから・要望からの複数の印と警告を、通常・短い出力で同じ形で出す", async () => {
+  it("置き換え: 印と警告を、通常・短い出力で同じ形で出す", async () => {
     const { root, rid } = await prepared();
-    const superseded = [{ from: rid }, { from: `${rid}/T005`, note: "新しい方式に替える" }];
-    const warnings = [{ code: "superseded", target: `${rid}/T001`, from: [rid, `${rid}/T005`], message: expect.stringContaining("置き換えられています") }];
+    const superseded = [{ from: `${rid}/T005`, note: "新しい方式に替える" }];
+    const warnings = [{ code: "superseded", target: `${rid}/T001`, from: [`${rid}/T005`], message: expect.stringContaining("置き換えられています") }];
     for (const extra of [[], ["--brief"]]) {
       const j = p3(root, ["show", "T001", "--req", rid, ...extra, "--json"]).json();
       expect(j.superseded).toEqual(superseded);
@@ -487,7 +484,7 @@ describe("show --brief（作業に要る項目だけ）", () => {
 });
 
 describe("置き換えられたタスク", () => {
-  /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を置き換えると書かれた状態を作る */
+  /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を、D2 が T003 を置き換えると書かれた状態を作る */
   async function reassessed() {
     const { root, rid } = await initialized();
     p3(root, ["preflight", rid, "--engine", "mock"]);
@@ -497,10 +494,9 @@ describe("置き換えられたタスク", () => {
     expect(run, JSON.stringify({ status: run.status, error: run.error, log: run.log?.slice(-3) })).toMatchObject({ status: "completed" });
     const dir = join(root, ".p3", "requests", rid, "preflight", run.id);
     const d1 = join(dir, "drafts", "D1.md");
-    writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "relations:\n  - { type: supersedes, target: T001 }\n  - { type: supersedes, target: T002 }\ninclude: true"));
-    const runJson = JSON.parse(readFileSync(join(dir, "run.json"), "utf8"));
-    runJson.assessment.impacts = [{ target: `${rid}/T003`, type: "supersedes", reason: "評価での置き換え", confidence: 0.9 }];
-    writeFileSync(join(dir, "run.json"), JSON.stringify(runJson));
+    writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "supersedes: [T001, T002]\ninclude: true"));
+    const d2 = join(dir, "drafts", "D2.md");
+    writeFileSync(d2, readFileSync(d2, "utf8").replace("include: true", "supersedes: [T003]\ninclude: true"));
     return { root, rid };
   }
 
@@ -511,7 +507,7 @@ describe("置き換えられたタスク", () => {
       ["T002", "doing"],
       ["T003", "todo"],
     ]);
-    // D2・D3 を外しても D1 の置き換えと評価の置き換えは残る
+    // D2・D3 を外すと、D1 の置き換えだけが残る
     const accepted = p3(root, ["accept", rid, "--only", "D1"]);
     expect(accepted.code, accepted.err).toBe(0);
     expect(accepted.out).toContain("置き換えられるタスクを残しました");
@@ -519,12 +515,12 @@ describe("置き換えられたタスク", () => {
     expect(ls.map((t: any) => [t.id, (t.superseded ?? []).map((m: any) => m.from)])).toEqual([
       ["T001", [`${rid}/T004`]],
       ["T002", [`${rid}/T004`]],
-      ["T003", [rid]], // 評価にだけあった置き換えは要望単位
+      ["T003", []], // 不採用の D2 にだけあった
       ["T004", []],
     ]);
     expect(p3(root, ["ls", "--req", rid]).out).toMatch(/T001 .*※置換 ← T004/);
     expect(p3(root, ["ls", "--all"]).out).toContain("※置換");
-    expect(p3(root, ["show", "T003", "--req", rid]).out).toContain(`※ 置き換えられています: ${rid}（評価での置き換え）`);
+    expect(p3(root, ["show", "T003", "--req", rid]).out).not.toContain("※ 置き換えられています");
     expect(p3(root, ["show", "T001", "--req", rid, "--json"]).json().superseded).toEqual([{ from: `${rid}/T004` }]);
 
     // 着手は止めずに警告する。--json の stdout は JSON のまま、warnings で返す
@@ -535,15 +531,16 @@ describe("置き換えられたタスク", () => {
     // 作業中のままの再指定や、置き換えられていないタスクでは出さない
     expect(p3(root, ["move", "T001", "doing", "--req", rid, "--json"]).json().warnings).toBeUndefined();
     expect(p3(root, ["move", "T004", "doing", "--req", rid]).err).not.toContain("警告");
-    expect(p3(root, ["set", "T003", "status=doing", "--req", rid]).err).toContain("警告");
+    expect(p3(root, ["set", "T002", "status=todo", "--req", rid]).err).not.toContain("警告");
+    expect(p3(root, ["set", "T002", "status=doing", "--req", rid]).err).toContain("警告");
   });
 
   it("--archive-superseded で確定時点の候補をアーカイブする", async () => {
     const { root, rid } = await reassessed();
     const r = p3(root, ["accept", rid, "--only", "d1", "--archive-superseded", "--json"]);
     expect(r.code, r.err).toBe(0);
-    expect(r.json()).toMatchObject({ tasks: [{ id: "T004" }], archived: ["T001", "T002", "T003"], kept: [] });
-    expect(p3(root, ["ls", "--req", rid, "--json"]).json().map((t: any) => t.id)).toEqual(["T004"]);
+    expect(r.json()).toMatchObject({ tasks: [{ id: "T004" }], archived: ["T001", "T002"], kept: [] });
+    expect(p3(root, ["ls", "--req", rid, "--json"]).json().map((t: any) => t.id)).toEqual(["T003", "T004"]);
     // 最大番号をアーカイブしても番号は再利用しない
     p3(root, ["archive", "T004", "--req", rid]);
     expect(p3(root, ["new", "次の作業", "--req", rid, "--json"]).json().id).toBe("T005");

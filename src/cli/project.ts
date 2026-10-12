@@ -127,7 +127,6 @@ export const AGENTS_SNIPPET = `
 - 要望のタスクを全部終えたら \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
-- 関係と影響範囲を調べるときは \`--brief\` を付けずに \`p3 show T003 --json\` で確認し、\`p3 link T004 depends_on T003\` で張る
 `;
 
 /** 同梱のスキルの原本と、プロジェクトに置く場所（Claude Code のプロジェクトのスキル） */

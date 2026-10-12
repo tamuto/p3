@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
 import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
 import { unknownEngine } from "../src/web/lib/engineStatus.ts";
-import { ProjectIndex } from "../src/core/intel/index.ts";
 import { machineSettingsSource } from "../src/core/machineSettings.ts";
 import { CodexWorkspaceEngine, codexConfig } from "../src/core/preflight/codexEngine.ts";
 import { MockEngine } from "../src/core/preflight/mockEngine.ts";
@@ -29,7 +28,6 @@ async function setup(env: Record<string, string | undefined> = {}) {
   const launched: { workspace: string; data: string }[] = [];
   const ws = new Workspace(repo.dataDir, { main: repo.root });
   await ws.load();
-  const index = new ProjectIndex(ws);
   const initial = await source.get().catch(() => undefined);
   const codex = new CodexWorkspaceEngine({
     account: new ChatGptAccount(join(tempDir(), "none.json")),
@@ -41,11 +39,11 @@ async function setup(env: Record<string, string | undefined> = {}) {
       },
     }),
   });
-  const preflight = new PreflightService(ws, index, { codex, mock: new MockEngine({ delay: 0 }) }, {
+  const preflight = new PreflightService(ws, { codex, mock: new MockEngine({ delay: 0 }) }, {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  const ctx = { ws, index, preflight };
+  const ctx = { ws, preflight };
   const write = (yaml: string) => writeFile(configPath, yaml);
   const legacy = "codex:\n  authVolume: vol\n  ensureImage: false\n";
   const runOnce = async (opts: { engine?: "codex" | "mock" } = {}) => {

@@ -127,7 +127,7 @@ describe("画面資料の検証", () => {
   });
 
   it("必要な画面イメージが足りなければ go を clarify にし、no_go は変えない。一覧が無いだけなら変えない", () => {
-    const a = (verdict: PreflightAssessment["verdict"]): PreflightAssessment => ({ summary: "", verdict, validity: { score: 80, reasons: [] }, feasibility: { score: 80, reasons: [] }, risks: [], questions: [], areas: [], impacts: [] });
+    const a = (verdict: PreflightAssessment["verdict"]): PreflightAssessment => ({ summary: "", verdict, validity: { score: 80, reasons: [] }, feasibility: { score: 80, reasons: [] }, risks: [], questions: [], areas: [] });
     const lacking = { status: "missing" as const, needed: true, reason: "画面イメージが足りないタスク案: D1", targets: ["D1"], items: [], problems: [] };
     const go = a("go");
     expect(applyUiShortage(go, lacking).verdictAdjusted).toEqual({ from: "go", to: "clarify" });

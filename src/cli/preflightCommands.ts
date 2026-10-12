@@ -151,7 +151,7 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
           r.archived.length ? `\n置き換えられたタスクをアーカイブしました: ${r.archived.join(", ")}` : "",
           r.kept.length
             ? `\n置き換えられるタスクを残しました（着手前に確かめ、不要なら p3 archive <T> か accept --archive-superseded）:\n${table(
-                r.kept.map((c) => [c.id, c.status, c.title, c.reasons.map((x) => (x.source === "draft" ? `案 ${x.draft}` : "評価")).join(",")]),
+                r.kept.map((c) => [c.id, c.status, c.title, c.reasons.map((x) => `案 ${x.draft}`).join(",")]),
               )}`
             : "",
         ].join("\n"),
@@ -189,7 +189,6 @@ function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof p
     lines.push("", `判定: ${a.verdict}  妥当性 ${a.validity.score} / 実現可能性 ${a.feasibility.score}`, indent(a.summary));
     if (a.risks.length) lines.push("", "リスク:", ...a.risks.map((x) => `  - ${x}`));
     if (a.questions.length) lines.push("", "確認事項:", ...a.questions.map((x) => `  - ${x}`));
-    if (a.impacts.length) lines.push("", "既存項目への影響:", ...a.impacts.map((i) => `  ${i.type} ${i.target} (${i.confidence})  ${i.reason}`));
   }
   lines.push("", ...scopeLines(run.scope));
   if (a) lines.push("", ...evidenceLines(a.evidence));

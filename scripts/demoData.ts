@@ -7,7 +7,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
-import { ProjectIndex } from "../src/core/intel/index.ts";
 import { MockEngine } from "../src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../src/core/preflight/service.ts";
 import { listScreenPng } from "../src/core/preflight/wireframe.ts";
@@ -44,8 +43,7 @@ export async function seedDemo(dir: string) {
   );
   const ws = new Workspace(dir);
   await ws.load();
-  const index = new ProjectIndex(ws);
-  const preflight = new PreflightService(ws, index, { mock: new MockEngine({ delay: 0 }) }, "mock");
+  const preflight = new PreflightService(ws, { mock: new MockEngine({ delay: 0 }) }, "mock");
 
   /** 要望を作って Preflight し、タスク化する（skip したタスク案はタスクにしない） */
   async function request(r: Partial<Request> & { title: string; body: string }, opts: { materialize?: boolean; skip?: string[] } = {}) {
@@ -57,7 +55,6 @@ export async function seedDemo(dir: string) {
       for (const key of opts.skip ?? []) await preflight.updateDraft(req.id, run.id, key, { include: false });
       await preflight.materialize(req.id, run.id, "human:demo");
     }
-    index.invalidate();
     return req.id;
   }
   /** AI が作業を進める（作業中 → 完了 + 成果物。成果物は1つか、URL・文章・パスを混ぜた複数） */
@@ -140,7 +137,7 @@ export async function seedDemo(dir: string) {
   await task(views, "T004", { created: -8 });
   // 作業中に AI が見つけて足したタスク
   await ws.tasksOf(views).create(
-    { title: "完了カードに成果物のリンクを出す", body: "作業中に見つかった追加の作業。", relations: [{ type: "relates_to", target: "T001" }] },
+    { title: "完了カードに成果物のリンクを出す", body: "作業中に見つかった追加の作業。" },
     "ai:claude",
   );
   await task(views, "T005", { created: -1 });
@@ -162,9 +159,6 @@ export async function seedDemo(dir: string) {
   );
   await work(cli, "T001", "done", pr(6));
   await work(cli, "T002", "doing");
-  // 要望をまたぐ依存（CLI の find はストアの楽観ロックが前提）
-  const t1 = ws.tasksOf(cli).require("T003");
-  await ws.tasksOf(cli).update("T003", { relations: [...t1.relations, { type: "depends_on", target: `${store}/T002`, origin: "human" }] }, { actor: "human:demo" });
   await req(cli, -7);
   await task(cli, "T001", { created: -6, started: -5, done: -3, checked: -3 });
   await task(cli, "T002", { created: -6, started: -2 });

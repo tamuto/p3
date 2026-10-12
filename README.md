@@ -17,7 +17,7 @@
 - 進捗は、左に要望・右にスケジュールで横断して見る。タスクボードは要望の中で見る
 - タスクは予定の日付や見積りを持たない。ステータスを変えた日時（作業中にした・完了にした）を p3 が記録し、
   完了したものは人が確認して「済み」にする
-- タスク間の関係は多元的（型付き・有向・由来/確信度つきのエッジ + 構造 + 暗黙の近さ）。要望をまたぐ影響も辿れる
+- タスクの関係は、同じ要望の中の順序（依存）と、再評価での置き換えの2つだけ。どちらも Preflight のタスク化が張る
 - DB なし。1タスク = 1 Markdown ファイル。人・AI・Codex が直接編集しても整合する
 - 人も AI も同じ **CLI**（`p3`）で操作する。ファイルを直接読み書きするので認証が要らない
 - ブラウザはローカルのビューア兼エディタ（`p3 serve`）。データはすべてローカルで完結する
@@ -213,13 +213,12 @@ p3 move T001 done --output https://github.com/me/myapp/pull/42
 | `p3 milestone ls\|add\|set\|rm` | マイルストーン（`--title` `--due` `--done`） |
 | `p3 request new\|ls\|show\|set\|archive` | 要望の作成・一覧・詳細・更新（`status=resolved` `due=` `milestone=` `tags=` / `--tag`）・アーカイブ |
 | `p3 ls` | 今の要望のタスク（`--status` `--area` `-q`、`--all` で全要望）。置き換えられたタスクには `※置換` |
-| `p3 show <T003\|要望\|語句>` | 詳細と関係（明示・暗黙・影響範囲）。`--brief` で作業に要る項目だけ（下の「短い出力」） |
+| `p3 show <T003\|要望\|語句>` | 詳細と関係（依存・置き換え）。`--brief` で作業に要る項目だけ（下の「短い出力」） |
 | `p3 new <タイトル>` | 今の要望にタスクを足す（`--body -` で標準入力から本文） |
 | `p3 set <T003> key=value ...` | 更新（`outputs=URL,...` など。値を空にすると消す） |
 | `p3 move <T003> <status>` | 列を移動（`--output` で成果物を足す。繰り返し可）。置き換えられたタスクを作業中にすると警告（移動はする） |
 | `p3 check <T003> [--off]` | 完了したタスクを人が確認して「済み」にする / 外す |
-| `p3 link\|unlink <T003> <種類> <相手>` | 関係（相手は `T004` / `<要望>/T004` / `<要望>`。`depends_on` は循環チェックあり） |
-| `p3 find <語句>` / `p3 impact <T003>` | 対象の特定 / 変更が波及する項目（要望をまたいで） |
+| `p3 find <語句>` | 参照・タイトルで探す |
 | `p3 preflight\|drafts\|accept [<要望>]` | Preflight の実行（`--note` でメモを足して再評価）・確認・タスク化（`--archive-superseded` で置き換えられるタスクをアーカイブ） |
 | `p3 notes [<要望>]` | Preflight へのメモと、次に渡すもの |
 | `p3 init` / `p3 config` / `p3 whoami` | 初期設定 / 設定 / 変更者と今の要望 |
@@ -248,15 +247,7 @@ JSON の項目名と階層は通常の `--json` と同じで、項目を省く�
 
 テキストの短い出力は、見出し・状態と rev・依存（`T002 doing / … / T004 （状態不明）`）・成果物・注意・本文の順。
 
-どれだけ減るか（6タスクの `show` の stdout の合計。UTF-8 のバイト数）:
-
-| 対象 | テキスト（通常 → 短い） | JSON（通常 → 短い） |
-| --- | --- | --- |
-| 261011-wng6f の6タスク（実データ。2026-10-11） | 31,556 → 13,344（57% 減） | 54,618 → 16,895（69% 減） |
-| 周辺の関係が多い固定データ（`test/showBrief.test.ts`） | 21,761 → 4,726（78% 減） | 52,292 → 7,318（86% 減） |
-
-目安は「周辺の関係が多い6タスクで半分以下」（テストで確かめる）。減るのは関係しそう・影響範囲・日時などなので、
-本文が長く関係の少ないタスクほど減り方は小さい（本文は切り詰めない）。測り直すときは:
+短い出力は、日時・作業先の詳細・ファイルの場所などを省く（本文は切り詰めない）。どれだけ減るかを測るときは:
 
 ```bash
 for t in T001 T002 T003 T004 T005 T006; do p3 show <要望ID>/$t | wc -c; p3 show <要望ID>/$t --brief | wc -c; done
@@ -280,7 +271,6 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
       attachments/A-.../                添付（meta.json と原本 file.png / file.jpg / file.xlsx。1件1フォルダ）
       preflight/PF-.../
         request.md                      評価時点の要望のスナップショット（run.json の input と同じ。タスク化の前に今の要望と比べる）
-        context.md                      インテリジェンス層が選んだ関連項目と理由
         carryover.md                    引き継いだ前回の評価・タスク案と、渡したメモ（開始時点で固定）
         assessment.json                 評価（Codex が書く）
         drafts/D1.md, D2.md ...         タスク案（Codex が書く。1案1ファイル。人が直してもよい）
@@ -300,7 +290,7 @@ pnpm vitest run test/showBrief.test.ts --reporter=verbose   # 固定データの
 id: T003
 title: ファイル監視で外部編集を取り込む
 status: done
-areas: [src/server/store/workspace.ts]
+areas: [src/core/store/workspace.ts]
 outputs:                                     # 成果物（1項目ずつ。URL・文章・パスを混ぜてよい）
   - https://github.com/me/myapp/pull/42      # 項目全体が http(s) の URL なら画面でリンクになる
   - 判断の理由は docs/notify.md にまとめた    # 文章はそのまま出す（中の URL やパスはリンクにしない）
@@ -310,10 +300,7 @@ checkedAt: 2026-10-10T09:00:00.000Z         # 人が確認して「済み」に�
 relations:
   - type: depends_on
     target: T002                             # 同じ要望のタスク
-  - type: impacts
-    target: 261001-ab3cd/T001                # 別の要望のタスク
-    origin: ai                               # human | ai | preflight
-    confidence: 0.6
+    origin: preflight                        # Preflight のタスク化が張った
 rev: 3                                       # 楽観ロック
 updatedBy: ai:claude
 ---
@@ -332,7 +319,7 @@ AI やエディタがファイルを直接変更したら、画面の「再読�
 - **画面からの変更・Preflight の進み具合と終了** は、serve の中から変更通知（SSE, `/api/events`）で、開いているほかのタブにもすぐ届く。
   ファイル監視には頼らない
 - **外での変更（CLI・AI・エディタ・git pull）** は、ヘッダーの「再読み込み」で取り込む。serve がデータのフォルダを全部
-  （project.yaml・要望・タスク・関係の索引。外で足した・消した・アーカイブしたものも）読み直してから、画面が取り直す
+  （project.yaml・要望・タスク。外で足した・消した・アーカイブしたものも）読み直してから、画面が取り直す
   （ブラウザのリロードはしないので、URL・開いているタスク・入力中の内容はそのまま）。タブやウィンドウに戻ったときも1回同じことをする。
   定期的な問い合わせはしない。読み直している間にまた押す・戻ると、終わってからもう1回だけ読む
 - serve はデータのフォルダの監視も続けるが、補助にすぎない。NFS などでは通知が届かず、Node の再帰的な監視は、置き換えて
@@ -433,36 +420,19 @@ ID の順は数を含む部分を数として比べる（T2 < T10）。要望・
 | メモ | 作成日時の古い順 | メモ ID の順 |
 | 対応済み（済みにしたタスク） | 済みにした日時の新しい順 | タスク ID の順 |
 
-## タスクの関係（多元的な紐付け）
+## タスクの関係
 
-単純な親子や1本の依存では表せないので、3つの次元を重ねて扱う（`src/core/intel/`）。
+関係は2つだけで、どちらも **同じ要望の中のタスク** を指す（`src/shared/types.ts` の `RELATION_TYPES`）。Preflight の
+タスク化が張り、手で張る・外す操作（CLI・API・画面）は持たない。過去の経緯や別の要望とのつながりは、関係ではなく
+git の履歴と過去の要望・タスクのファイルから調べる（Preflight もそうする）。
 
-1. **明示エッジ** — `relations` に型付きで持つ。`depends_on` / `part_of` / `derived_from` / `impacts` /
-   `relates_to` / `duplicates` / `supersedes`。エッジは張った側のファイルに保存し、逆向きはインデックスで導く。
-   誰が張ったか（`origin`）と AI の確信度（`confidence`）を持ち、AI 由来の関係は人が見直せる。
-2. **構造** — タスクは要望（フォルダ）に所属する。
-3. **暗黙の近さ** — 影響領域（`areas`、パスの包含関係を考慮）の重なりと、内容の類似（TF-IDF、日本語は bigram）。
-   明示されていないが関係しそうなもの（過去の要望の作業を含む）を「理由つき」で提示する。
-
-関係は「相手の役割 + 相手」で見せる（`src/shared/types.ts` の `RELATION_TYPES`）。A → B と張ると、A の詳細には B の役割、
-B の詳細には A の役割が出る。保存する種類の名前（`depends_on` など）と向きは変わらない。
-
-| 種類 | 意味（A → B） | A に出る | B に出る | 例 |
+| 種類 | 意味（A → B） | A に出る | B に出る | 張るもの |
 | --- | --- | --- | --- | --- |
-| `depends_on` | A は B が先に終わっている必要がある | 依存先 B | 依存元 A | T002 → T001: T002「依存先 T001」、T001「依存元 T002」 |
-| `part_of` | A は B の一部 | 親 B | 子 A | T003 → 要望: T003「親 要望」、要望「子 T003」 |
-| `derived_from` | A は B から生まれた | 派生元 B | 派生先 A | 要望 X → 要望 Y: X「派生元 Y」、Y「派生先 X」 |
-| `impacts` | A は B に影響が及ぶ | 影響先 B | 影響元 A | T001 → 別の要望の T004: T001「影響先 …/T004」 |
-| `relates_to` | 関連する | 関連 B | 関連 A | |
-| `duplicates` | A は B と同じ内容 | 重複 B | 重複 A | |
-| `supersedes` | A は B を置き換える（B は古い案） | 旧案 B | 新案 A | T005 → T001: T005「旧案 T001」、T001「新案 T005」 |
+| `depends_on` | A は B が先に終わっている必要がある | 依存先 B | 依存元 A | タスク案の `dependsOn` |
+| `supersedes` | A は B を置き換える（B は古い案） | 旧案 B | 新案 A | 再評価のタスク案の `supersedes` |
 
-これらから次を導く:
-
-- **影響範囲** — `depends_on` / `part_of` の逆向きと `impacts` を、要望をまたいで推移的に辿る
-- **循環検出** — `depends_on` を追加するときに拒否する
-- **文脈選定** — Preflight で Codex に渡す関連項目を、全件ではなくスコア上位に絞る（トークン節約）
-
+依存は着手してよいかの判定（`show --brief` の `dependencies`）に、置き換えは古いタスクの印と着手の警告・タスク化での
+アーカイブの選択に使う。
 
 ## Preflight
 
@@ -516,7 +486,6 @@ repos:
 
 - **参照の書き方**: 要望・タスクの `areas` と根拠（`evidence`）は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
   書ける。名前なしは先頭の参照先の中のパス（今までの書き方のまま読める）。登録に無い名前・絶対パス・`..` は読まない。
-  文脈の選定（関係しそうな項目）は、同じ参照先の中だけで領域の重なりを見る（別の参照先の同じ `src` は重ならない）
 - **本体**: `p3 init` が本体のリポジトリを参照先として登録する。足すのは、ドキュメント・基盤・依存しているライブラリなど
   ほかのリポジトリ・フォルダだけ
 - **Preflight での扱い**: 読める参照先を全部 `/workspace/<名前>` に **読むだけで** マウントする（`/workspace` 自体は空。
@@ -599,8 +568,8 @@ p3 chatgpt logout       # 接続を解除（ChatGPT 側の取り消しも行う�
   （届かないときは「はじめかた」の「DevContainer の中で使うとき」）。詳しい設計は [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md)
 
 ```
-要望を書く ─▶ 文脈選定 ─▶ Codex が評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
-             (intel)      (codex-workspace)         (drafts/D*.md)              (tasks/T*.md + 関係 + ブランチ)
+要望を書く ─▶ Codex が調べて評価・細分化 ─▶ レビュー（案を取捨・編集）─▶ タスク化
+             (codex-workspace)                 (drafts/D*.md)              (tasks/T*.md + 依存・置き換え + ブランチ)
 ```
 
 Codex は llmcs の [codex-workspace-ts](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)
@@ -904,9 +873,8 @@ Preflight の評価の下には **画面資料** の欄を置き、提案（Code
 範囲・未確認の部分と原本・取り出した内容へのリンク）。必要な画面イメージが足りなければ、タスク化のボタンの上に知らせる。
 新しい承認の状態は作らない。画像への意見はメモに書いて再評価に渡す。
 
-関係の一覧（タスク詳細の「関係」、Preflight の「既存項目への影響」）は同じ形で並べる（`src/web/components/RelationRow.tsx`）:
-役割の列は幅を決め、その右に相手の参照と題、次の行に理由。確信度・由来・削除は右端。題が長ければ切って、マウスを乗せると全文
-（狭い画面では2行まで）。理由は折り返す。狭い画面（375px）ではタスクボードの列を縦に積み、見出しやタブの文字は折り返さない。
+タスク詳細の「関係」は見るだけで、役割（依存先・依存元・旧案・新案）・相手のタスク・題を並べる。狭い画面（375px）では
+タスクボードの列を縦に積み、見出しやタブの文字は折り返さない。
 
 再評価のタスク化では、置き換えられる既存タスクをタスク案の下に出す。チェックしたものだけをタスク化と一緒に
 アーカイブし、チェックしなければ残す（作業中のタスクには印を付ける。アーカイブしても作業そのものは止まらない）。
@@ -1041,10 +1009,9 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は core/requestOps.ts を通す）
     args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
   core/              CLI と serve の共通の中核（HTTP は使わない）
-    requestOps.ts    要望・タスク・関係の変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
+    requestOps.ts    要望・タスクの変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
     ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
     store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
-    intel/           関係グラフ・影響範囲・類似検索（インテリジェンス層）
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
     chatgpt/         ChatGPT の接続（サインイン・トークン）
     context.ts / userConfig.ts / machineSettings*.ts   プロジェクトを開く・個人設定・マシンごとの設定
@@ -1058,7 +1025,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
 bin/p3.mjs        CLI の起動口（tsx でソースをそのまま動かす）
 scripts/demo.ts      開発用のデモデータを作る
 docs/                設計の方針
-test/                ユニットテスト（store / locate / intel / ops / preflight / api / cli）
+test/                ユニットテスト（store / locate / ops / preflight / api / cli など）
 ```
 
 技術: TypeScript, React 19, TanStack Router, Tailwind CSS 4, Vite, Hono, Node 24（tsx）, pnpm, [@infodb/codex-workspace](https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts)

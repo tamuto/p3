@@ -24,7 +24,6 @@ import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
-import type { RelatedItem } from "../../shared/types.ts";
 import { ASSESSMENT_SPEC, DRAFT_SPEC, type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
 const run = promisify(execFile);
@@ -502,11 +501,6 @@ function refsSection(job: PreflightJob) {
   ].join("\n");
 }
 
-function contextList(ctx: RelatedItem[]) {
-  if (!ctx.length) return "（関連しそうな既存項目は見つかりませんでした）";
-  return ctx.map((c) => `- ${c.ref} [${c.kind}] ${c.title} — score ${c.score}: ${c.reasons.join(" / ")}`).join("\n");
-}
-
 function developerInstructions(job: PreflightJob, paths: ContainerPaths) {
   return `あなたはプロジェクト管理ツール p3 の preflight 担当です。要望を実装に着手する前に評価し、タスクへ細分化します。
 ${refsSection(job)}
@@ -578,14 +572,11 @@ ${codeMapSection(job)}
 ## 要望（${paths.runDir}/request.md にも同じ内容があります）
 ${r.body.trim() || "(本文なし)"}
 ${carryoverSection(job, paths)}${attachmentsSection(job, paths)}
-## p3 のインテリジェンス層が選んだ関連項目
-要望は ${paths.dataDir}/requests/<要望ID>/request.md、タスクは ${paths.dataDir}/requests/<要望ID>/tasks/<T00x>.md にあります。必要なものだけ読んでください。
-${contextList(job.context)}
 
 ## やること
 1. 要望の妥当性（目的・価値・既存方針との整合）を評価する。
 2. 参照先のコードを必要な範囲で調べ（「最初に読むもの」を先に読み、主なフォルダの案内があればそこから）、実現可能性・影響範囲・リスクを評価する。
-3. 既存のタスク/要望との関係（依存・影響・重複など）を洗い出す。関係は1対1とは限らない。
+3. 再評価で、この要望の既存のタスクを新しい案で置き換えるなら、案の supersedes に書く（同じ要望のタスクだけ）。
 4. 1つの成果物（PR / MR / ドキュメント）で完結する粒度のタスクへ細分化し、タスク間の依存を示す。
    タスクは主に AI エージェントが実施するので、作業量の見積り（人日など）は書かないでください。
    verdict が no_go の場合はタスク案は不要です。

@@ -18,11 +18,13 @@ export class Output {
   }
 }
 
-export function formatEntity(ctx: P3Context, item: Task | Request, graph: ReturnType<P3Context["index"]["neighborhood"]>, file: string): string {
+/** 同じ要望の中で、このタスクに依存しているタスク */
+export const dependentsOf = (ctx: P3Context, t: Task): Task[] =>
+  ctx.ws.tasksOf(t.request).list().filter((x) => x.relations.some((r) => r.type === "depends_on" && r.target === t.id));
+
+export function formatEntity(ctx: P3Context, item: Task | Request, file: string): string {
   const head = "ref" in item ? item.ref : item.id;
   const home = "ref" in item ? item.request : item.id;
-  /** 同じ要望の中は T003 と短く見せる */
-  const short = (ref: string) => (ref.startsWith(`${home}/`) ? ref.slice(home.length + 1) : ref);
   const lines = [`${head}  ${item.title}`, ""];
   if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
   const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo"]);
@@ -31,19 +33,14 @@ export function formatEntity(ctx: P3Context, item: Task | Request, graph: Return
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
   }
   if (item.body.trim()) lines.push("", indent(item.body.trim()));
-  if (graph.outgoing.length || graph.incoming.length) {
-    lines.push("", "関係:");
-    for (const e of graph.outgoing) {
-      const origin = e.origin !== "human" ? `  [${e.origin}${e.weight !== undefined ? ` ${e.weight}` : ""}]` : "";
-      lines.push(`  → ${pad(relationRole(e.type, "out"))} ${short(e.to)} ${titleOf(ctx, e.to)}${origin}`);
-    }
-    for (const e of graph.incoming) lines.push(`  ← ${pad(relationRole(e.type, "in"))} ${short(e.from)} ${titleOf(ctx, e.from)}`);
+  if ("ref" in item) {
+    const out = item.relations.map((r) => `  → ${pad(relationRole(r.type, "out"))} ${r.target} ${titleOf(ctx, `${home}/${r.target}`)}`);
+    const inc = [
+      ...dependentsOf(ctx, item).map((t) => `  ← ${pad(relationRole("depends_on", "in"))} ${t.id} ${t.title}`),
+      ...ctx.ws.tasksOf(home).list().filter((t) => t.relations.some((r) => r.type === "supersedes" && r.target === item.id)).map((t) => `  ← ${pad(relationRole("supersedes", "in"))} ${t.id} ${t.title}`),
+    ];
+    if (out.length || inc.length) lines.push("", "関係:", ...out, ...inc);
   }
-  if (graph.implicit.length) {
-    lines.push("", "関係しそう:");
-    for (const r of graph.implicit) lines.push(`  ${r.score.toFixed(2)}  ${short(r.ref)} ${r.title}  (${r.reasons.join(" / ")})`);
-  }
-  if (graph.impactScope.length) lines.push("", `影響範囲: ${graph.impactScope.map(short).join(", ")}`);
   lines.push("", `ファイル: ${file}`);
   return lines.join("\n");
 }

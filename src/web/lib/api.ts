@@ -1,12 +1,10 @@
 import type { RepoRef } from "../../shared/repos.ts";
 import type {
-  Neighborhood,
   MaterializeResult,
   PreflightNote,
   PreflightRun,
   ProjectConfig,
   ProposedTask,
-  Relation,
   Request,
   RequestProgress,
   SupersedeCandidate,
@@ -76,14 +74,11 @@ const taskPath = (ref: string) => {
   const [rid, tid] = ref.split("/");
   return `/requests/${rid}/tasks/${tid}`;
 };
-/** 関係の操作先（要望かタスク） */
-const relPath = (ref: string) => (ref.includes("/") ? `${taskPath(ref)}/relations` : `/requests/${ref}/relations`);
 
 export interface RequestDetail {
   request: Request;
   tasks: Task[];
   runs: RunInfo[];
-  graph: Neighborhood;
   /** 置き換えられたタスクの印（T001 → 置き換えた側） */
   superseded: Record<string, SupersededMark[]>;
   /** 対応済なのに未完了のタスクがある（外部の直接編集など）ときの知らせ */
@@ -162,14 +157,11 @@ export const api = {
   createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[] }) => call<Request>("POST", "/requests", r),
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) => call<Request>("PATCH", `/requests/${rid}`, patch),
 
-  task: (ref: string) => call<{ task: Task; graph: Neighborhood; superseded: SupersededMark[] }>("GET", taskPath(ref)),
+  task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** checked: 完了したタスクに人が「済み」を付ける / 外す */
   patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) =>
     call<WithWarnings<Task>>("PATCH", taskPath(ref), patch),
-  addRelation: (ref: string, r: Relation) => call<Task>("POST", relPath(ref), r),
-  removeRelation: (ref: string, r: Pick<Relation, "type" | "target">) =>
-    call<Task>("DELETE", `${relPath(ref)}?type=${r.type}&target=${encodeURIComponent(r.target)}`),
 
   /** note: メモを書き足してから実行する。始められなければ ApiError の body.note に保存したメモが入る */
   startPreflight: (rid: string, opts: { engine?: string; note?: string } = {}) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, opts),

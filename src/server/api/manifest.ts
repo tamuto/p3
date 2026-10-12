@@ -14,7 +14,7 @@ export const AI_MANIFEST = {
     request: "<要望ID>（例: 261009-k7m3x）",
     task: "<要望ID>/T003。同じ要望の中なら T003",
   },
-  relationTypes: RELATION_TYPES,
+  relationTypes: RELATION_TYPES, // タスクの関係は depends_on と supersedes だけ（Preflight のタスク化が張る。手で張る API は無い）
   endpoints: [
     { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
     {
@@ -32,7 +32,7 @@ export const AI_MANIFEST = {
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
     { method: "POST", path: "/api/requests", desc: "要望の作成" },
-    { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・関係・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },
+    { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },
     {
       method: "PATCH",
       path: "/api/requests/:rid",
@@ -42,7 +42,6 @@ export const AI_MANIFEST = {
     },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },
-    { method: "POST|DELETE", path: "/api/requests/:rid[/tasks/:tid]/relations", desc: "関係の追加・削除" },
     { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
     {
@@ -71,7 +70,7 @@ export const AI_MANIFEST = {
         "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}。" +
         "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict",
     },
-    { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },
+    { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトルから対象を特定" },
     { method: "GET", path: "/api/chatgpt", desc: "ChatGPT プランの接続の状態（トークンは返さない）。このマシンからだけ" },
     { method: "POST", path: "/api/chatgpt/login|cancel|paste|logout", desc: "サインインの開始・取消・コールバックの URL の貼り付け・解除。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET|PUT", path: "/api/user-theme", desc: "画面のテーマ {theme: system|light|dark}（個人設定の ui.theme。このマシンのすべてのプロジェクトで共通。ほかの個人設定は返さない）。PUT はこのマシンのローカルの画面（Origin）からだけ" },

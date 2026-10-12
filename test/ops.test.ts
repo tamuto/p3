@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listTasks, progress, resolve, resolveRef, resolveRequestId } from "../src/core/ops.ts";
-import { addRelation, removeRelation } from "../src/core/requestOps.ts";
-import { NotFoundError } from "../src/core/store/collection.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 async function setup() {
@@ -55,35 +53,6 @@ describe("listTasks", () => {
     expect(refs({ status: ["todo"] }).sort()).toEqual([`${A}/T003`, `${B}/T001`].sort());
     expect(refs({ area: "src/server" })).toEqual([`${B}/T001`]);
     expect(refs({ q: "期限切れ" })).toEqual([`${B}/T001`]);
-  });
-});
-
-describe("addRelation / removeRelation", () => {
-  it("同じ要望のタスクは T003、別の要望は絶対参照でファイルに書く。変更者が AI なら origin: ai", async () => {
-    const { ctx, A, B } = await setup();
-    const t = await addRelation(ctx, `${A}/T001`, { type: "impacts", target: `${A}/T002` }, "human:a");
-    expect(t.relations).toEqual([{ type: "impacts", target: "T002", origin: "human" }]);
-    const u = await addRelation(ctx, `${A}/T001`, { type: "relates_to", target: `${B}/T1`, confidence: 0.6 }, "ai:claude");
-    expect(u.relations.at(-1)).toEqual({ type: "relates_to", target: `${B}/T001`, origin: "ai", confidence: 0.6 });
-    // 同じ種類・相手は張り直しで上書き（相対・絶対どちらで書いても同じ相手）
-    const v = await addRelation(ctx, `${A}/T001`, { type: "impacts", target: "T2", note: "見直し" }, "human:a");
-    expect(v.relations.filter((r) => r.type === "impacts")).toEqual([{ type: "impacts", target: "T002", note: "見直し", origin: "human" }]);
-  });
-
-  it("自分自身・存在しない相手・依存の循環を拒む", async () => {
-    const { ctx, A } = await setup();
-    await expect(addRelation(ctx, `${A}/T001`, { type: "relates_to", target: "T001" }, "h")).rejects.toThrow("自分自身");
-    await expect(addRelation(ctx, `${A}/T001`, { type: "relates_to", target: "T404" }, "h")).rejects.toBeInstanceOf(NotFoundError);
-    await addRelation(ctx, `${A}/T001`, { type: "depends_on", target: "T002" }, "h");
-    await expect(addRelation(ctx, `${A}/T002`, { type: "depends_on", target: "T003" }, "h")).rejects.toThrow("循環");
-  });
-
-  it("要望にも関係を張れる。無い関係を外そうとしたら NotFound", async () => {
-    const { ctx, A, B } = await setup();
-    const r = await addRelation(ctx, B, { type: "impacts", target: A }, "h");
-    expect(r.relations).toEqual([{ type: "impacts", target: A, origin: "human" }]);
-    expect((await removeRelation(ctx, B, { type: "impacts", target: A }, "h")).relations).toEqual([]);
-    await expect(removeRelation(ctx, B, { type: "impacts", target: A }, "h")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
 

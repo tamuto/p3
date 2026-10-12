@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ServerEvent } from "../src/shared/types.ts";
-import { addRelation, archiveTask, createRequest, createTask, OpRuleError, removeRelation, updateRequest, updateTask } from "../src/core/requestOps.ts";
+import { archiveTask, createRequest, createTask, OpRuleError, updateRequest, updateTask } from "../src/core/requestOps.ts";
 import { StatusRuleError } from "../src/core/requestStatus.ts";
 import { RepoTargetError } from "../src/core/workTargets.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
@@ -98,18 +98,5 @@ describe("要望の作成と更新", () => {
     await expect(updateRequest(ctx, rid, { status: "resolved" })).rejects.toBeInstanceOf(StatusRuleError);
     await expect(updateRequest(ctx, rid, { milestone: "nope" })).rejects.toBeInstanceOf(OpRuleError);
     expect(ctx.ws.requests.require(rid).rev).toBe(rev);
-  });
-});
-
-describe("関係", () => {
-  it("張る・外すと変更を通知する（タスクなら task、要望なら request）", async () => {
-    const { ctx, rid, events } = await setup();
-    const a = await newTask(ctx, rid, { title: "A" });
-    const b = await newTask(ctx, rid, { title: "B" });
-    await addRelation(ctx, a.ref, { type: "depends_on", target: b.id }, "human:a");
-    expect(events).toContainEqual({ type: "changed", kind: "task", request: rid, ref: a.ref });
-    await removeRelation(ctx, a.ref, { type: "depends_on", target: b.id }, "human:a");
-    await addRelation(ctx, rid, { type: "relates_to", target: b.ref }, "human:a");
-    expect(events).toContainEqual({ type: "changed", kind: "request", request: rid, ref: rid });
   });
 });
