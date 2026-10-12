@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { DOCS, links } from "./docLinks.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
@@ -49,6 +50,11 @@ describe("npm で配る中身", () => {
     }
     // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）
     if (existsSync(new URL("dist/web/index.html", root))) expect(files).toContain("dist/web/index.html");
+    // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）
+    for (const doc of DOCS) {
+      expect(files).toContain(doc);
+      for (const { target } of links(doc)) expect(files, `${doc} → ${target}`).toContain(target);
+    }
     const unwanted = files.filter((f) =>
       /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || /\.test\.ts$/.test(f),
     );

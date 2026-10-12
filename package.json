@@ -34,7 +34,8 @@
     "src/server",
     "src/shared",
     "dist/web",
-    "skills"
+    "skills",
+    "docs"
   ],
   "publishConfig": {
     "access": "public"
