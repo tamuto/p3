@@ -489,6 +489,7 @@ export interface Milestone {
  *   no_candidates:   収録する要望が無い / no_sources: 要約の材料（変更の記録）が無い
  *   unknown_milestone: project.yaml に無いマイルストーン（直接編集で消えた。ノートだけが残っている）
  *   material_changed: 生成・保存のあとで材料が変わった（古い材料からの本文。自動では直さない）
+ *   suspicious_content: 生成した要約に内部のパス・秘密らしい文字列がある（公開の前に確かめる）
  */
 export type ReleaseWarningCode =
   | "broken_request"
@@ -501,7 +502,8 @@ export type ReleaseWarningCode =
   | "no_candidates"
   | "no_sources"
   | "unknown_milestone"
-  | "material_changed";
+  | "material_changed"
+  | "suspicious_content";
 
 export interface ReleaseWarning {
   code: ReleaseWarningCode;
@@ -575,6 +577,45 @@ export interface ReleaseNote {
   version: string;
 }
 
+/** 生成した機能の要約1項目。sources は出典（要望 ID か <要望ID>/T001。材料にあるものだけ） */
+export interface ReleaseSummaryItem {
+  text: string;
+  sources: string[];
+}
+
+export type ReleaseGenerationStatus = "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * 生成の失敗の種類。unavailable: Codex を使えない（未接続など）/ usage_limit: 使用量の上限 / timeout: 時間切れ /
+ * invalid_output: 結果の形が違う・出典が材料に無い・長すぎる / error: そのほか
+ */
+export type ReleaseGenerationFailure = "unavailable" | "usage_limit" | "timeout" | "invalid_output" | "error";
+
+/**
+ * リリースノートの要約の生成（1回分）。保存とは別で、生成は保存したノートを変えない。
+ * このプロセスのメモリにだけ置く（serve を止めれば消える。CLI は終わるまで待つ）
+ */
+export interface ReleaseGeneration {
+  id: string;
+  milestone: string;
+  status: ReleaseGenerationStatus;
+  startedAt: string;
+  finishedAt?: string;
+  startedBy?: string;
+  /** 生成に渡した材料の hash */
+  materialHash: string;
+  /** 生成のあとで材料が変わった（終わったときに確かめる。古い材料からの生成） */
+  materialChanged?: boolean;
+  /** 要約（completed のとき） */
+  items?: ReleaseSummaryItem[];
+  /** 要約から P3 が組み立てた本文の案（保存はしない） */
+  markdown?: string;
+  warnings: ReleaseWarning[];
+  error?: string;
+  failure?: ReleaseGenerationFailure;
+  log: PreflightLogEntry[];
+}
+
 /** マイルストーンごとのノートの有無（一覧） */
 export interface ReleaseNoteSummary {
   milestone: string;
@@ -615,6 +656,8 @@ export type ServerEvent =
   | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
   | { type: "changed"; kind: "release-note"; milestone: string }
+  /** リリースノートの要約の生成の状態が変わった */
+  | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
 

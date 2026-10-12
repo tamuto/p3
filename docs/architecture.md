@@ -275,7 +275,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
-| リリースノート（材料の規則・保存・出力） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`） |
+| リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
@@ -398,6 +398,25 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   操作は行ったうえで `warnings`（code・対象・置き換えた側・文言）を返す。作業中のままの再指定では出さない。
 - API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### リリースノートの要約（生成の境界）
+
+マイルストーンのリリースノートの機能の要約は、Preflight と同じ Codex の接続（個人設定・認証・イメージの確かめ・起動の診断）で頼む
+（`CodexWorkspaceEngine.ask`、`core/releaseNotes/generate.ts`）。Preflight の評価・タスク化は行わない。
+
+- **渡すもの**: 始めるときに固定した材料（[リリースノートのデータ](#リリースノートのデータ)）のうち、マイルストーンのタイトルと、
+  収録する要望とタスクの ID・タイトル・変更の記録だけを依頼文に入れる。要望やタスクの本文・成果物・参照先・データのフォルダは
+  渡さず、コンテナには何もマウントしない（`/workspace` は空の tmpfs で、終われば消える。パスの対応も要らない）
+- **受け取るもの**: 最後の応答の JSON（項目ごとの文と出典）。P3 が形・件数（100）・長さ（1項目 600 文字・合計 2 万文字）・
+  出典が依頼文に入れた要望とタスクにあるかを確かめ、だめなら `invalid_output` で失敗にする。ローカルのパス・秘密らしい文字列・
+  メールアドレスは `suspicious_content` の警告にする。本文の案（Markdown）は確かめた項目から P3 が組み立て、出典は本文に入れない
+- **頼まないとき**: 材料（記録のある完了したタスク）が無ければ Codex を呼ばずに断る（本文は手で書いて保存できる）。
+  入力（記録とタイトルの合計）が 12 万文字を超えたら、黙って切らずに断る
+- **生成と保存は別**: 生成は保存したノートを変えない。結果（実行 ID・生成中・完了・失敗・取消、失敗の種類 `unavailable`・
+  `usage_limit`・`timeout`（既定 15 分）・`invalid_output`・`error`）はこのプロセスのメモリにだけ置き、変更通知
+  `release-generation` を出す。同じマイルストーンでは1つずつ。終わったら材料を読み直し、変わっていれば `material_changed`
+  （古い材料からの生成）を付ける。作り直しも上書きもしない
+- ChatGPT のトークンは Preflight と同じく、ログとエラーから伏せる
 
 ### codex-workspace の依存
 

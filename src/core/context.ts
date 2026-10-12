@@ -6,6 +6,7 @@ import type { PreflightEngine } from "./preflight/engine.ts";
 import { MockEngine } from "./preflight/mockEngine.ts";
 import { PreflightService } from "./preflight/service.ts";
 import { Workspace } from "./store/workspace.ts";
+import { ReleaseGenerator } from "./releaseNotes/generate.ts";
 
 /** p3 本体（パッケージ）のルート */
 export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -13,6 +14,8 @@ export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export interface P3Context {
   ws: Workspace;
   preflight: PreflightService;
+  /** リリースノートの要約の生成（Codex の接続を Preflight と共有する） */
+  releaseGenerator: ReleaseGenerator;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
   /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
@@ -38,13 +41,11 @@ export async function openProject(
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
   // Mock は preflight.engine: mock（P3_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
   const chatgpt = new ChatGptAccount();
-  const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = {
-    codex: new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt }),
-    mock: new MockEngine(),
-  };
+  const codex = new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt });
+  const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { codex, mock: new MockEngine() };
   const preflight = new PreflightService(ws, engines, {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  return { ws, preflight, chatgpt, projectName: opts.projectName };
+  return { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, codex), chatgpt, projectName: opts.projectName };
 }
