@@ -96,7 +96,7 @@ export async function seedDemo(dir: string) {
       milestone: "v0.1",
       tags: ["core"],
       due: day(-12),
-      areas: ["src/server/store"],
+      areas: ["src/core/store"],
       body: `DB を使わず 1タスク=1ファイル で管理したい。AI や人がファイルを直接編集しても整合が取れること。
 
 - frontmatter のパーサと書き出し
@@ -191,7 +191,7 @@ export async function seedDemo(dir: string) {
   const emb = await request({
     title: "埋め込みベクトルによる関連検索",
     tags: ["intel"],
-    areas: ["src/server/intel"],
+    areas: ["src/core/intel"],
     body: `llmcs の embedding-server (bge-m3, OpenAI 互換 /v1/embeddings) を使い、
 TF-IDF より精度の高い関連タスク検索を行いたい。サーバが無い環境では TF-IDF にフォールバックする。`,
   });
