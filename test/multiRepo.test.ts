@@ -1,0 +1,124 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
+import { CodexWorkspaceEngine, type HostMount } from "../src/server/preflight/codexEngine.ts";
+import { writeRepoEntry } from "../src/server/store/projectFile.ts";
+import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
+
+const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
+
+/**
+ * 参照先が3つ（git のリポジトリ・別のリポジトリの中のサブフォルダ・git でないフォルダ）と、このマシンのパスが無いもの1つ。
+ * 偽の app-server で、マウント・指示文・記録を確かめる
+ */
+async function setup(opts: { missingAll?: boolean; docs?: string[] } = {}) {
+  const repo = await makeRepo({ docs: opts.docs ?? ["README.md", "docs:intro.md", "gone:x.md", "unknown:y.md"] });
+  const docsRepo = tempDir("allescdoc-");
+  gitInit(docsRepo);
+  await mkdir(join(docsRepo, "standard_guide"));
+  await writeFile(join(docsRepo, "standard_guide", "intro.md"), "# 標準ガイド\n");
+  const infra = tempDir("allescinfra-");
+  await mkdir(join(infra, "terraform"));
+  const file = join(repo.dataDir, "project.yaml");
+  const base = { readFirst: false, writable: false, map: [] };
+  await writeRepoEntry(file, "allesc", { ...base, name: "allesc", role: "システム本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API", entry: "src/server/main.ts" }] });
+  await writeRepoEntry(file, "docs", { ...base, name: "docs", role: "ドキュメント", mapFile: "MAP.md" });
+  await writeRepoEntry(file, "infra", { ...base, name: "infra", role: "基盤", map: [{ path: "terraform", role: "環境の定義" }] });
+  await writeRepoEntry(file, "gone", { ...base, name: "gone", role: "誰も登録していない" });
+  const local = opts.missingAll ? { allesc: "/nonexistent/a", docs: "/nonexistent/b", infra: join(repo.dataDir, "project.yaml") } : { allesc: repo.root, docs: join(docsRepo, "standard_guide"), infra };
+  const logFile = join(tempDir(), "codex.jsonl");
+  const launched: { repos: HostMount[]; data: string }[] = [];
+  const codex = new CodexWorkspaceEngine({
+    authVolume: "vol",
+    account: new ChatGptAccount(join(tempDir(), "none.json")),
+    pathMap: [[repo.root, "/host/allesc"], [docsRepo, "/host/allescdoc"]],
+    ensureImage: false,
+    command: ({ repos, data }) => {
+      launched.push({ repos, data });
+      return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, `FAKE_LOG=${logFile}`, process.execPath, FAKE_CODEX];
+    },
+  });
+  const ctx = await openTestProject(repo.dataDir, { codex }, { repos: local });
+  const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
+  const { id } = await ctx.preflight.start(req.id);
+  const run = (await ctx.preflight.wait(req.id, id))!;
+  const sent = (await readFile(logFile, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+  const instructions = sent.find((m) => m.method === "thread/start").params.developerInstructions as string;
+  const prompt = sent.find((m) => m.method === "turn/start").params.input[0].text as string;
+  const saved = await readFile(join(ctx.ws.preflight.runDir(req.id, id), "run.json"), "utf8");
+  return { repo, docsRepo, infra, run, launched, instructions, prompt, saved, log: run.log.map((l) => l.text).join("\n") };
+}
+
+describe("複数の参照先を Preflight に渡す", () => {
+  it("読める参照先を全部 /workspace/<名前> に読むだけでマウントし（パスの対応も効かせる）、見ていないものを記録する", async () => {
+    const s = await setup();
+    expect(s.run.status).toBe("completed");
+    expect(s.launched[0].repos).toEqual([
+      { name: "allesc", host: "/host/allesc", container: "/workspace/allesc" },
+      { name: "docs", host: "/host/allescdoc/standard_guide", container: "/workspace/docs" },
+      { name: "infra", host: s.infra, container: "/workspace/infra" },
+    ]);
+    expect(s.launched[0].data).toBe("/host/allesc/.pcube");
+    // 調べた範囲は P3 が決めて残す（このマシンのパスは入れない）
+    expect(s.run.scope).toEqual([
+      { name: "allesc", mount: "allesc", role: "システム本体", readFirst: true, status: "ok" },
+      { name: "docs", mount: "docs", role: "ドキュメント", readFirst: false, status: "ok" },
+      { name: "infra", mount: "infra", role: "基盤", readFirst: false, status: "ok" },
+      { name: "gone", mount: "gone", role: "誰も登録していない", readFirst: false, status: "unregistered", reason: "このマシンのパスが登録されていません（p3 repo path gone <パス>）" },
+    ]);
+    expect(JSON.stringify(JSON.parse(s.saved).scope)).not.toContain(s.infra);
+    expect(s.log).toContain("見ていない参照先: gone（このマシンのパスが登録されていません（p3 repo path gone <パス>））");
+    expect(s.log).toContain("地図のファイルがありません: docs:MAP.md");
+  });
+
+  it("指示文に参照先の名前・役割・コンテナの中のパス・最初に読むもの、見ていないもの、地図と docs を入れる", async () => {
+    const { instructions, prompt } = await setup();
+    expect(instructions).toContain("- /workspace/allesc — allesc（システム本体）［最初に読む］");
+    expect(instructions).toContain("- /workspace/docs — docs（ドキュメント）");
+    expect(instructions).toContain("読むだけで、書き込めません");
+    expect(instructions).toContain("見ていない参照先: gone（");
+    // docs: 名前なしは先頭の参照先、名前つきはその参照先。読めないものは理由
+    expect(prompt).toContain("- /workspace/allesc/README.md");
+    expect(prompt).toContain("- /workspace/docs/intro.md");
+    expect(prompt).toContain("- gone:x.md（読めません: 参照先 gone は見ていません");
+    expect(prompt).toContain("- unknown:y.md（読めません: 参照先「unknown」は登録されていません）");
+    // コードの地図（案内であって全部読む指示ではない）
+    expect(prompt).toContain("## コードの地図（どこから読むかの案内。全部を読む必要はありません）");
+    expect(prompt).toContain("- /workspace/allesc/src/server — API（入口 /workspace/allesc/src/server/main.ts）");
+    expect(prompt).toContain("- 地図の説明: /workspace/docs/MAP.md（ファイルがありません）");
+    expect(prompt).toContain("- /workspace/infra/terraform — 環境の定義");
+  });
+
+  it("どの参照先も読めなくても、資料だけで評価する（制約を伝える）", async () => {
+    const s = await setup({ missingAll: true });
+    expect(s.run.status).toBe("completed");
+    expect(s.launched[0].repos).toEqual([]);
+    expect(s.run.scope!.map((x) => x.status)).toEqual(["missing", "missing", "notdir", "unregistered"]);
+    expect(s.instructions).toContain("読める参照先（リポジトリ・フォルダ）はありません");
+    expect(s.log).toContain("読める参照先がありません。要望と P3 のデータだけで評価します");
+  });
+
+  it("共有の参照先が無い今までのプロジェクトは main だけ（docs は今までの書き方のまま）", async () => {
+    const repo = await makeRepo({ docs: ["README.md"] });
+    const launched: HostMount[][] = [];
+    const codex = new CodexWorkspaceEngine({
+      authVolume: "vol",
+      account: new ChatGptAccount(join(tempDir(), "none.json")),
+      pathMap: [],
+      ensureImage: false,
+      command: ({ repos }) => {
+        launched.push(repos);
+        return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", process.execPath, FAKE_CODEX];
+      },
+    });
+    const ctx = await openTestProject(repo.dataDir, { codex });
+    const req = await newRequest(ctx, { title: "x", status: "draft" });
+    const { id } = await ctx.preflight.start(req.id);
+    const run = (await ctx.preflight.wait(req.id, id))!;
+    expect(run.status).toBe("completed");
+    expect(launched[0]).toEqual([{ name: "main", host: repo.root, container: "/workspace/main" }]);
+    expect(run.scope).toEqual([{ name: "main", mount: "main", role: "", readFirst: true, status: "ok" }]);
+  });
+});

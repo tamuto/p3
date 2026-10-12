@@ -50,7 +50,7 @@ function runTurn(id, text) {
   );
   notify("item/completed", { item: { type: "commandExecution", id: "c1", command: "rg -l foo", exitCode: 0 } });
   const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];
-  if (scenario === "stray") changes.push("/workspace/src/main.ts");
+  if (scenario === "stray") changes.push("/workspace/main/src/main.ts");
   notify("item/completed", { item: { type: "fileChange", id: "p1", changes: changes.map((path) => ({ path, kind: "add" })) } });
   notify("item/completed", { item: { type: "agentMessage", id: "m1", text: "書きました" } });
   notify("turn/completed", { turn: { id, status: "completed" } });
