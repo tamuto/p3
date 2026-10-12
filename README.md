@@ -544,8 +544,6 @@ repos:
   今の画面が要るときは、利用者が撮った画像を添付する（対象のアプリを起動・撮影したり、URL を自動で撮ったりはしない）
   `p3 drafts` の「画面資料」（`--json` では `ui`）と、画像は `GET /api/requests/<要望>/preflight/<run>/ui/<資料 ID>` で
   取る（パスは受け取らない。原稿の HTML は配信しない）。パスは ui/ からの相対なので、データのフォルダを動かしても辿れる
-- テストは偽の app-server で、マウントの引数・指示文・記録・根拠の扱いを確かめる。本物の Codex が実際にどこまで読むか、
-  読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない（Docker での確認は docs/architecture.md）
 
 ### 作業先とリポジトリごとのブランチ
 
@@ -687,17 +685,11 @@ p3 attach rm <A-ID>
 - API: `GET|POST /api/requests/<要望>/attachments`（POST は multipart の file・description・source）、
   `GET|DELETE /api/requests/<要望>/attachments/<A-ID>`、`GET /api/requests/<要望>/preflight/<run>/attachments/<A-ID>`
 
-- Codex に書かせるのは要望のフォルダの `preflight/<RUN>/` 配下だけ。それ以外の変更があればログに警告を出す。
-  Codex のスレッドは `danger-full-access`・`approvalPolicy: never` で動く（コンテナを囲いにするため）が、これは何かを
-  追加で許す保証ではない。コマンドの実行は禁止していない。参照先は読むだけのマウントで書けない。データのフォルダ（`/data`）は
-  書けるマウントなので、「run の中だけ」は指示と事後の警告で守っている（書き込みを run に閉じ込める囲いは今は無い）。
-  画面イメージの描画は、この Codex のコンテナではなく別のコンテナで行う
-- 結果は戻り値ではなく **ファイル契約**（`assessment.json` + `drafts/*.md`）。Mock エンジンでも人手でも同じ取り込み処理になる
-- 存在しない要望・タスクへの関係はタスク化のときに捨てる
+- Codex が書くのは要望のフォルダの `preflight/<RUN>/` 配下だけ（ほかを変えたらログに警告）。参照先は読むだけ。
+  書ける範囲・囲い・ファイル契約の詳細は [docs/architecture.md](docs/architecture.md)「Codex の使い方」
 - 旧来の認証では、使用量の上限に当たっている場合は頼まずに失敗させる。ChatGPT プランには使用量を読む公式の API が無いので、
   上限に当たったら「Usage limit reached」として失敗させ、Manage usage（https://chatgpt.com/settings/usage）を案内する
-- 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモをプロンプトに資料として渡す。
-  Codex との会話は続けず、毎回新しいコンテナ・スレッドで評価し直す（経緯はファイルに残る）
+- 再評価では、前回の評価・確認事項・タスク案（人の編集と採否を含む）と、その後のメモを資料として渡す（毎回新しく評価し直す）
 - 要望のタイトル・本文はいつでも書き換えられる。Preflight は始めたときの内容を run に固定し（実行中に書き換えても、その run は
   固定した内容で評価する）、**評価のあとでタイトル・本文が変わった run からはタスク化しない**（タグ・期限・ステータスだけの変更は
   比べない。元に戻せばタスク化できる）。`p3 drafts` と API の run の `inputMatch`（same / changed / unknown）で分かる。
@@ -864,9 +856,7 @@ app-server（docker run）が初期化の前に終わりました（終了コー
 | `docker` が無い（ENOENT） | Docker を入れて PATH を確かめる |
 
 イメージの自動の確認（`codex.ensureImage`）で失敗したときは「Codex のイメージを用意できません（app-server を起こす前）」と出し、
-`docker run` の失敗と分ける。@infodb/codex-workspace は app-server の stderr を捨てるので、P3 は小さな中継
-（`src/server/preflight/launcher.mjs`）を挟んで、stdin / stdout はそのまま通し、stderr と終わり方だけを一時フォルダに残す
-（読んだら消す）。
+`docker run` の失敗と分ける。
 
 既定のエンジンは Codex で、認証は次の順に選ぶ: `codex.auth: legacy` と旧来の設定 → 旧来の `auth.json` /
 ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`codex.authVolume` / `codex.authFile`）だけ → 旧来の `auth.json` /

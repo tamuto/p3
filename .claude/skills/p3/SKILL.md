@@ -30,3 +30,7 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
 - 依存の `@infodb/codex-workspace` は公開版を使う。手元の llmcs で試すときの一時的な手順は `docs/architecture.md`（codex-workspace の依存）
 - `skills/p3/SKILL.md` と `src/cli/project.ts` の `AGENTS_SNIPPET` は内容をそろえる（役割・終わり方を変えたら両方を直す。
   `test/agents.test.ts` が確かめる）
+- 機能を足す・変えるときに直す場所: 規則は `docs/architecture.md` の「規則の置き場所」の1か所（CLI と API の両方に書かない）。
+  ドキュメントは、使い方を README、設計と規則を docs/architecture.md に書き、同じ説明を両方に書かない。CLI のヘルプ
+  （`cli/help.ts`）・API の説明（`server/api/manifest.ts`）は入口が変わったときだけ。AI の手順が変わったら
+  `skills/p3/SKILL.md` と `AGENTS_SNIPPET` の両方。確認作業の記録（どの幅で確かめたか）はドキュメントに書かず、PR とタスクの成果物に残す
