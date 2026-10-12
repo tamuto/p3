@@ -304,6 +304,16 @@ export function apiRoutes(ctx: PcubeContext) {
     if (!run) throw new NotFoundError(c.req.param("run"));
     return c.json(run);
   });
+  // 画面資料の画像（PNG / JPEG）。要望 / run / 資料 ID で決め、パスは受け取らない。原稿（HTML）は配信しない
+  app.get("/requests/:rid/preflight/:run/ui/:material", async (c) => {
+    const { data, type } = await preflight.uiImage(rid(c), c.req.param("run"), c.req.param("material"));
+    return c.body(new Uint8Array(data), 200, {
+      "Content-Type": type,
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'",
+      "Cache-Control": "private, max-age=3600",
+    });
+  });
   app.post("/requests/:rid/preflight/:run/cancel", (c) => {
     preflight.cancel(c.req.param("run"));
     return c.json({ ok: true });

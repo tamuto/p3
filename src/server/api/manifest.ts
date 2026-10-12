@@ -39,6 +39,11 @@ export const AI_MANIFEST = {
     { method: "POST|DELETE", path: "/api/requests/:rid[/tasks/:tid]/relations", desc: "関係の追加・削除" },
     { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
+    {
+      method: "GET",
+      path: "/api/requests/:rid/preflight/:run/ui/:material",
+      desc: "画面資料の画像（PNG / JPEG）。資料の一覧は run の ui（items の id・対象のタスク案・説明・前提）。原稿（HTML）は返さない",
+    },
     { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補。何も変えない）" },
     { method: "POST", path: "/api/requests/:rid/preflight/:run/materialize", desc: "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}" },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトル・自然文から対象を特定" },

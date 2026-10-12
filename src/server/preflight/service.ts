@@ -27,6 +27,7 @@ import type { PreflightEngine, PreflightJob } from "./engine.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
 import { hideConfigPath } from "../userConfig.ts";
+import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -162,6 +163,7 @@ export class PreflightService {
       log: [],
       drafts: [],
       scope: refs.map(refScope),
+      ui: { status: "generating", targets: [], items: [], problems: [] },
     };
     const runDir = this.ws.preflight.runDir(requestId, id);
     await this.ws.preflight.save(run);
@@ -256,9 +258,15 @@ export class PreflightService {
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
+      // 画面資料: 確かめて取り込む。不正なものは除いて理由を残す（評価は消さない）。必要な画面イメージが足りなければ go を clarify に
+      run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, run.drafts.map((d) => d.key)));
+      for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
+      if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
+      if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
       run.status = "completed";
     } catch (e) {
       run.status = "failed";
+      run.ui = { status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] };
       run.error = redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
@@ -274,6 +282,25 @@ export class PreflightService {
       this.active.delete(run.id);
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
       this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
+    }
+  }
+
+  /**
+   * 画面資料の画像（要望 / run / 資料 ID で決める。パスは受け取らない）。取り込んだときと同じ確かめ方をもう一度してから返す。
+   * 原稿（HTML）は返さない
+   */
+  async uiImage(requestId: string, runId: string, materialId: string): Promise<{ data: Buffer; type: string; item: NonNullable<PreflightRun["ui"]>["items"][number] }> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(runId);
+    this.ws.requests.require(requestId);
+    const run = await this.get(requestId, runId);
+    const item = run?.ui?.items.find((x) => x.id === materialId);
+    if (!run || !item) throw new NotFoundError(`${requestId}/${runId}/${materialId}`);
+    try {
+      const { data, info } = await readUiImage(join(this.ws.preflight.runDir(requestId, runId), UI_DIR), item.file);
+      return { data, type: IMAGE_TYPES[info.format], item };
+    } catch (e) {
+      if (e instanceof UiMaterialError) throw new NotFoundError(`${materialId}（${e.message}）`);
+      throw e;
     }
   }
 

@@ -321,6 +321,12 @@ CLI がファイルを直接触る形なら、API ごとに認証を持たせる
   認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
+- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`src/server/preflight/uiMaterials.ts`）。エンジンは画像と
+  `ui/index.json` を書き、P3 が取り込む前に確かめて `run.json` の `ui` に記録する。画像の形式と大きさは拡張子ではなく
+  中身から読み、配信のときも同じ確かめ方をもう一度する（取り込んだ後に差し替えられた画像は返さない）。画像は
+  要望 / run / 資料 ID で決め、パスを受け取らない。応答には `X-Content-Type-Options: nosniff` と
+  `Content-Security-Policy: default-src 'none'` を付け、HTML / SVG は配信しない。資料が不正でも評価は残し、
+  必要な画面イメージが足りないときだけ go を clarify にする（新しい承認の状態は作らない）
 - 同じ要望を複数人が Preflight しても、run ごとに別ディレクトリ（ID に乱数を含む）なので衝突しない。
   「直近の run」は開始時刻の新しい順で決めるが、時計は戻ることがある（WSL2 の時刻の補正など）ので、前回を引き継いだ run
   （`previous`）は引き継いだ相手より必ず新しいとする（`preflightStore.ts` の `newestFirst`）

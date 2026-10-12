@@ -235,6 +235,62 @@ export interface RelatedItem {
 
 export type PreflightStatus = "running" | "completed" | "failed";
 
+/**
+ * Preflight の画面資料の種類。proposal: エンジンが作った画面イメージ（提案。現状の証拠ではない）/
+ * current: 人が添付した現状の画像 / spec: 仕様書（xlsx など）から取り出した画像
+ */
+export const UI_MATERIAL_KINDS = { proposal: "提案", current: "現状（添付）", spec: "仕様書から" } as const;
+export type UiMaterialKind = keyof typeof UI_MATERIAL_KINDS;
+
+/** 画面資料1つ（画像は PNG / JPEG。パスは run の ui/ からの相対なので、データのフォルダを動かしても辿れる） */
+export interface UiMaterial {
+  /** run の中で一意（U1, U2 ...）。画像の取得は 要望 / run / この ID で行う */
+  id: string;
+  kind: UiMaterialKind;
+  /** 画像（run の ui/ からの相対パス） */
+  file: string;
+  format: "png" | "jpeg";
+  /** 画像の実際の大きさ（P3 が画像から読む） */
+  width: number;
+  height: number;
+  bytes: number;
+  /** 説明 */
+  title: string;
+  /** 出典（提案なら原稿、添付なら添付の ID など） */
+  source?: string;
+  /** 原稿（HTML。run の ui/ からの相対パス。画面には配信しない） */
+  html?: string;
+  /** 対象のタスク案（D キー。1枚に複数をまとめてもよい） */
+  drafts: string[];
+  /** 想定した画面の幅（px） */
+  viewport?: number;
+  /** 前提（仮のデータ・省いたものなど） */
+  assumptions: string[];
+  /** 資料を作った run */
+  run: string;
+}
+
+/**
+ * 画面資料の状態。generating: 評価中 / ready: そろった / not_needed: UI を伴わない（理由つき）/ missing: 足りない（理由つき）。
+ * run に記録が無ければ以前の run（記録なし）
+ */
+export type UiMaterialsStatus = "generating" | "ready" | "not_needed" | "missing";
+
+export interface UiMaterials {
+  status: UiMaterialsStatus;
+  /** UI を伴う案か（エンジンの判定。分からなければ無し） */
+  needed?: boolean;
+  /** 不要・不足の理由 */
+  reason?: string;
+  /** 画面イメージが要るタスク案（D キー） */
+  targets: string[];
+  items: UiMaterial[];
+  /** 取り込めなかった資料とその理由 */
+  problems: string[];
+  /** 必要な画面イメージが足りないので、判定を go から clarify にした */
+  verdictAdjusted?: { from: "go"; to: "clarify" };
+}
+
 export interface PreflightRun {
   id: string;
   requestId: string;
@@ -275,6 +331,8 @@ export interface PreflightRun {
    * 無ければ以前の run（記録なし）
    */
   scope?: RefScope[];
+  /** 画面資料（ui/）。無ければ以前の run（記録なし） */
+  ui?: UiMaterials;
 }
 
 /** タスクが置き換えられていることの印。from は置き換えた側（<要望ID> なら要望単位の置き換え、<要望ID>/T004 ならタスク） */

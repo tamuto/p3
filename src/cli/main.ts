@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
-import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
+import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS } from "../shared/types.ts";
 import { openProject, type PcubeContext } from "../server/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../server/machineSettings.ts";
 import { addRelation, listTasks, progress, removeRelation, resolve, resolveRef, resolveRequestId, titleOf } from "../server/ops.ts";
@@ -819,8 +819,29 @@ function formatRun(ctx: PcubeContext, rid: string, run: Awaited<ReturnType<typeo
     );
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
+  lines.push("", ...uiLines(run.ui, relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "ui"))));
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);
   return lines.join("\n");
+}
+
+const UI_STATUS: Record<UiMaterialsStatus, string> = { generating: "評価中", ready: "そろっています", not_needed: "不要", missing: "足りません" };
+
+/** 画面資料（ui/）。資料 ID は画面・API（/api/requests/<要望>/preflight/<run>/ui/<ID>）と同じ */
+function uiLines(ui: PreflightRun["ui"], dir: string): string[] {
+  if (!ui) return ["画面資料: 記録なし（以前の run）"];
+  const lines = [`画面資料: ${UI_STATUS[ui.status]}${ui.reason ? `（${ui.reason}）` : ""}`];
+  if (ui.verdictAdjusted) lines.push("  → 必要な画面イメージが足りないので、判定を go から clarify にしました");
+  if (ui.items.length) {
+    lines.push(
+      table(
+        ui.items.map((m) => [`  ${m.id}`, UI_MATERIAL_KINDS[m.kind], m.drafts.join(","), `${m.width}x${m.height}`, m.title, `ui/${m.file}`]),
+      ),
+    );
+    for (const m of ui.items.filter((x) => x.assumptions.length)) lines.push(`  ${m.id} の前提: ${m.assumptions.join(" / ")}`);
+    lines.push(`  ファイル: ${dir}/`);
+  }
+  for (const p of ui.problems) lines.push(`  [取り込めない] ${p}`);
+  return lines;
 }
 
 // --- 入力 -----------------------------------------------------------------
