@@ -524,11 +524,48 @@ codex:
 
 `PCUBE_ACTOR`（変更者）と `PCUBE_REQUEST`（今の要望）は操作ごとの指定なので、環境変数（と `--actor` / `--req`）だけで決める。
 
+**serve を起動し直さずに効く設定:** `p3 serve` は Codex と Preflight の設定（`codex.*` と `preflight.engine`）を、
+**Preflight を始めるたび** と **エンジンの状態を見るたび**（概要ページ・設定画面の ChatGPT の欄）に個人設定から読み直す。
+始めたときの設定（認証・パスの対応・モデル・イメージの確認）はその Preflight の間ずっと使い、実行中に書き換えても途中の
+run や並んで動いている run は変わらない。待ち受け（`serve.host` / `serve.port`）と、開いているプロジェクト・リポジトリ・
+データのフォルダは起動のときのまま（変えるときは起動し直す）。環境変数は serve を起動したときのもの。
+
+個人設定が読めない（壊れた YAML・読めないファイル・`codex:` などの形が違う・読めないパスの対応）ときは、serve は止めずに、
+その Preflight を **設定のエラーとして失敗** にする（Docker は起こさず、古い設定や Mock に落とさない）。エラーとログには
+直すファイルと項目を出す。概要ページのエンジンの状態にも同じ理由を出して実行のボタンを止め、直すと次の Preflight から効く。
+`--engine mock` を明示したときは個人設定を読まずに動く。概要ページのエンジンの状態は、画面を取り直すとき（「再読み込み」・
+タブやウィンドウに戻ったとき・変更通知）に確かめ直す（定期的には問い合わせない）。取れなかったときは使えると見せない。
+
 **これまでの `.env` からの移し方:** P3 は前の版まで、P3 の置き場所の `.env` を読んでいた。今は読まないので、その中の値を
 上の表に従って個人設定に書き写す（または環境変数で渡す）。秘密の値を自動でコピーしたり、旧来の `auth.json` を ChatGPT の
 接続に変えたりはしない。書き写したら `.env` は消してよい。
 
 概要ページには評価エンジンの状態を出す（Codex なら Docker・認証情報・イメージを確かめ、使えなければ理由を出して実行させない）。
+
+**Docker のエラーを見る:** Preflight の開始のログに、リポジトリとデータのフォルダそれぞれの「このマシンのパス → Docker の
+ホストのパス（当たった `codex.pathMap` の対応。対応なし・パスが変わらない対応も書く）→ コンテナの中のパス」を出す。
+app-server（`docker run`）がすぐ・途中で終わったときは、Docker の出力（stderr。長ければ先頭と末尾を残して省略を明示）と
+終了コード（またはシグナル）をログとエラーに出し、よくある原因には次にすることを添える（要約にはエラーらしい最後の行を出す）。
+トークンなどは伏せてから残す。
+
+```text
+app-server（docker run）が初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /workspaces/pcube
+Docker のホストにこのパス（/workspaces/pcube）がありません。個人設定の codex.pathMap を確かめてください（~/.config/infodb-p3/config.yaml）
+今のパスの対応:
+  リポジトリ: /workspaces/pcube → Docker のホスト /workspaces/pcube（対応なし（codex.pathMap が空。このパスのまま渡す））→ コンテナ /workspace
+```
+
+| Docker の出力 | 次にすること |
+| --- | --- |
+| `bind source path does not exist` | DevContainer などでは Docker のホストから見たパスが違う。`codex.pathMap` に「このマシンのパス: ホストのパス」を書く（直せば serve はそのままで次から効く） |
+| `Cannot connect to the Docker daemon` など | Docker を起動し、接続先（`DOCKER_HOST`・docker context）と権限を確かめる |
+| `Unable to find image` / `pull access denied` | `p3 codex update` でイメージを作る |
+| `docker` が無い（ENOENT） | Docker を入れて PATH を確かめる |
+
+イメージの自動の確認（`codex.ensureImage`）で失敗したときは「Codex のイメージを用意できません（app-server を起こす前）」と出し、
+`docker run` の失敗と分ける。@infodb/codex-workspace は app-server の stderr を捨てるので、P3 は小さな中継
+（`src/server/preflight/launcher.mjs`）を挟んで、stdin / stdout はそのまま通し、stderr と終わり方だけを一時フォルダに残す
+（読んだら消す）。
 
 既定のエンジンは Codex で、認証は次の順に選ぶ: `codex.auth: legacy` と旧来の設定 → 旧来の `auth.json` /
 ChatGPT に接続済み → ChatGPT プラン / 旧来の設定（`codex.authVolume` / `codex.authFile`）だけ → 旧来の `auth.json` /

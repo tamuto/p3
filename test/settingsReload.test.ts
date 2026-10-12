@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { apiRoutes } from "../src/server/api/routes.ts";
 import { ChatGptAccount } from "../src/server/chatgpt/account.ts";
+import { unknownEngine } from "../src/web/lib/engineStatus.ts";
 import { ProjectIndex } from "../src/server/intel/index.ts";
 import { machineSettingsSource } from "../src/server/machineSettings.ts";
 import { CodexWorkspaceEngine, codexConfig } from "../src/server/preflight/codexEngine.ts";
@@ -149,5 +151,33 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
     const s = await setup();
     const status = await s.preflight.engineStatus();
     expect(status.detail).not.toContain("個人設定を読めない");
+  });
+});
+
+describe("エンジンの状態（/api/engine・ChatGPT の状態）も読み直す", () => {
+  it("設定を変える・壊す・直すと、serve を起動し直さずに状態が変わる", async () => {
+    const s = await setup();
+    const app = apiRoutes({ ...s.ctx, chatgpt: new ChatGptAccount(join(tempDir(), "none.json")) } as never);
+    const engine = async () => (await (await app.request("/engine")).json()) as { name: string; ok: boolean; detail: string };
+    await s.write(`${s.legacy}preflight:\n  engine: mock\n`);
+    expect(await engine()).toMatchObject({ name: "mock", ok: true });
+    await s.write("preflight: [壊れた\n");
+    const broken = await engine();
+    expect(broken).toMatchObject({ ok: false, detail: expect.stringContaining("個人設定を読めないので Preflight を始められません") });
+    expect(broken.detail).toContain(s.configPath);
+    const local = { incoming: { socket: { remoteAddress: "127.0.0.1" } } };
+    const chatgpt = (await (await app.request("/chatgpt", {}, local)).json()) as { engine: { ok: boolean; detail: string } };
+    expect(chatgpt.engine).toMatchObject({ ok: false, detail: expect.stringContaining("YAML が壊れています") });
+    await s.write(`${s.legacy}preflight:\n  engine: mock\n`);
+    expect(await engine()).toMatchObject({ name: "mock", ok: true });
+    // 既定のエンジンを Codex に戻すと、Codex の状態になる（Docker が無くても設定のエラーではない）
+    await s.write(s.legacy);
+    const codex = await engine();
+    expect(codex.name).toBe("codex");
+    expect(codex.detail).not.toContain("個人設定を読めない");
+  });
+
+  it("取れなかったときは使えると見せない", () => {
+    expect(unknownEngine("Failed to fetch")).toMatchObject({ ok: false, detail: expect.stringContaining("Failed to fetch") });
   });
 });

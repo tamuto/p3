@@ -305,8 +305,8 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       const r = await launch.result({ waitMs: 3000, stopIfRunning: phase === "start" });
       if (phase === "run" && !r.exit) return undefined;
       const d = diagnoseLaunch(r, { ...diag, phase });
+      // 診断（d.message）はエラーとしてログに残る（PreflightService）。ここでは Docker の出力だけを出す
       if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
-      log({ kind: "error", text: d.message });
       return new Error(d.message, { cause: e });
     };
     try {

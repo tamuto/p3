@@ -44,12 +44,14 @@ export interface LaunchDiagnosis {
   stderr: string;
 }
 
-const lastLine = (s: string) =>
-  s
+/** 要約に出す行: エラーらしい最後の行（docker の「Run 'docker run --help'…」のような案内の行は避ける）。無ければ最後の行 */
+const lastLine = (s: string) => {
+  const lines = s
     .split("\n")
     .map((l) => l.trim())
-    .filter(Boolean)
-    .at(-1);
+    .filter(Boolean);
+  return lines.findLast((l) => /error|denied|cannot|unable|not found|no such|does not exist|failed|killed/i.test(l)) ?? lines.at(-1);
+};
 
 export function diagnoseLaunch(
   r: LaunchResult,

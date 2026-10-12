@@ -52,7 +52,9 @@ describe("app-server（docker run）がすぐ終わったときの診断", () =>
   it("マウントのエラー: Docker のメッセージと終了コード、codex.pathMap の案内と今の対応を出す", async () => {
     const { run, log, repo } = await runWith("mount");
     expect(run.status).toBe("failed");
-    expect(run.error).toContain("初期化の前に終わりました（終了コード 125）: See 'docker run --help'.");
+    expect(run.error).toContain('初期化の前に終わりました（終了コード 125）: docker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /host/repo');
+    // 診断はエラーのログに1回だけ
+    expect(run.log.filter((l) => l.text.includes("codex.pathMap を確かめてください"))).toHaveLength(1);
     expect(run.error).toContain("Docker のホストにこのパス（/host/repo）がありません。個人設定の codex.pathMap を確かめてください（/home/u/.config/infodb-p3/config.yaml）");
     expect(run.error).toContain(`リポジトリ: ${repo.root} → Docker のホスト /host/repo（対応 ${repo.root}=/host/repo）→ コンテナ /workspace`);
     expect(run.error).toContain(`データ: ${repo.dataDir} → Docker のホスト /host/repo/.pcube（対応 ${repo.root}=/host/repo）→ コンテナ /data`);
