@@ -1,4 +1,13 @@
-import { ATTACHMENT_FORMATS, UI_MATERIAL_KINDS, type Attachment, type PreflightRun, type UiMaterial, type UiMaterialKind } from "../../shared/types.ts";
+import {
+  ATTACHMENT_FILE_LIMITS,
+  ATTACHMENT_FORMATS,
+  UI_MATERIAL_KINDS,
+  type Attachment,
+  type AttachmentFormat,
+  type PreflightRun,
+  type UiMaterial,
+  type UiMaterialKind,
+} from "../../shared/types.ts";
 
 /** 画像の URL（要望 / run / 資料 ID。パスは使わない） */
 export const materialUrl = (rid: string, runId: string, id: string) =>
@@ -65,3 +74,65 @@ export async function submitAttach(form: AttachForm, send: (f: { file: File; des
 
 /** 選べるファイル */
 export const ATTACH_ACCEPT = ".png,.jpg,.jpeg,.xlsx,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** 作成と同時に添付するファイル（説明・出典つき）。失敗したら理由を持って残る */
+export interface PendingAttach {
+  key: string;
+  file: File;
+  description: string;
+  source: string;
+  error?: string;
+}
+
+/** 拡張子から形式を決める（中身はサーバで確かめる） */
+export function attachFormatOf(name: string): AttachmentFormat | undefined {
+  const ext = name.toLowerCase().split(".").pop();
+  return ext === "png" ? "png" : ext === "jpg" || ext === "jpeg" ? "jpeg" : ext === "xlsx" ? "xlsx" : undefined;
+}
+
+/**
+ * 作成の前に分かる問題（形式・1件の大きさ・件数・合計）。中身の確かめはサーバで行う。
+ * items は各ファイルの問題（無ければ undefined）、total は全体の問題
+ */
+export function checkPending(files: Pick<File, "name" | "size">[]): { items: (string | undefined)[]; total?: string } {
+  const L = ATTACHMENT_FILE_LIMITS;
+  const items = files.map((f) => {
+    const format = attachFormatOf(f.name);
+    if (!format) return "PNG / JPEG / xlsx だけ添付できます";
+    const max = format === "xlsx" ? L.xlsxBytes : L.imageBytes;
+    return f.size > max ? `大きすぎます（上限 ${formatBytes(max)}）` : undefined;
+  });
+  const sum = files.reduce((n, f) => n + f.size, 0);
+  const total =
+    files.length > L.count ? `添付は1つの要望に ${L.count} 件までです` : sum > L.totalBytes ? `添付の合計が上限（${formatBytes(L.totalBytes)}）を超えます` : undefined;
+  return { items, ...(total ? { total } : {}) };
+}
+
+/** 順に添付し、失敗したものだけを理由つきで返す。onProgress は送り終えた件数 */
+export async function sendPending(
+  items: PendingAttach[],
+  send: (f: { file: File; description: string; source: string }) => Promise<unknown>,
+  onProgress?: (done: number) => void,
+): Promise<PendingAttach[]> {
+  const failed: PendingAttach[] = [];
+  for (const [i, it] of items.entries()) {
+    try {
+      await send({ file: it.file, description: it.description, source: it.source });
+    } catch (e) {
+      failed.push({ ...it, error: (e as Error).message });
+    }
+    onProgress?.(i + 1);
+  }
+  return failed;
+}
+
+/**
+ * 作成時に添付できなかったファイル（要望の画面で付け直す）。この画面を開いている間だけ持つ（再読み込みで消える）。
+ * 読むだけでは消さない（React の二重実行でも同じ値が返るように）。空を書くと消える
+ */
+const unsent = new Map<string, PendingAttach[]>();
+export const unsentAttachments = (rid: string): PendingAttach[] => unsent.get(rid) ?? [];
+export function setUnsentAttachments(rid: string, items: PendingAttach[]) {
+  if (items.length) unsent.set(rid, items);
+  else unsent.delete(rid);
+}

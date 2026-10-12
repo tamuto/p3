@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Attachment, AttachmentFormat, FixedAttachment } from "../../shared/types.ts";
+import { ATTACHMENT_FILE_LIMITS, type Attachment, type AttachmentFormat, type FixedAttachment } from "../../shared/types.ts";
 import { imageInfo, UI_LIMITS } from "../preflight/uiMaterials.ts";
 import { nowIso, writeFileAtomic } from "./fsutil.ts";
 
@@ -9,11 +9,7 @@ export const ATTACHMENT_ID = /^A-\d{8}-\d{6}-[0-9a-f]{4}$/;
 
 /** 上限（1つの要望あたり） */
 export const ATTACHMENT_LIMITS = {
-  count: 20,
-  /** 画面資料の画像と同じ上限（run の中で同じ確かめ方をするため） */
-  imageBytes: UI_LIMITS.bytes,
-  xlsxBytes: 20 * 1024 * 1024,
-  totalBytes: 100 * 1024 * 1024,
+  ...ATTACHMENT_FILE_LIMITS,
   /** xlsx（ZIP）の項目数と、展開したときの合計（中身は読まない。一覧だけで断る） */
   zipEntries: 10_000,
   zipUncompressed: 200 * 1024 * 1024,

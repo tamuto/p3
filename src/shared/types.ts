@@ -383,6 +383,14 @@ export interface PreflightNote {
 /** 添付の形式（初期は画像と Excel だけ） */
 export const ATTACHMENT_FORMATS = { png: "PNG 画像", jpeg: "JPEG 画像", xlsx: "Excel（xlsx）" } as const;
 export type AttachmentFormat = keyof typeof ATTACHMENT_FORMATS;
+/** 添付の上限（1つの要望あたり）。サーバで確かめ、画面でも作成の前に同じ値で知らせる */
+export const ATTACHMENT_FILE_LIMITS = {
+  count: 20,
+  /** 画面資料の画像と同じ上限（run の中で同じ確かめ方をするため） */
+  imageBytes: 5 * 1024 * 1024,
+  xlsxBytes: 20 * 1024 * 1024,
+  totalBytes: 100 * 1024 * 1024,
+} as const;
 
 /**
  * 要望の添付（requests/<要望ID>/attachments/<ID>/）。原本は内部の名前で保存し、元の名前・説明・出典を残す。

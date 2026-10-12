@@ -153,7 +153,7 @@ function RequestPanel({
         </pre>
       </section>
 
-      <AttachmentsPanel requestId={request.id} tick={ctx.tick} />
+      <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
         <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun}>

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
 import { renderCommand } from "./render.ts";
-import { AttachmentError, safeFileName } from "../server/store/attachments.ts";
+import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment, safeFileName } from "../server/store/attachments.ts";
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { absRef } from "../shared/refs.ts";
 import { RELATION_TYPES, REQUEST_STATUSES, relationRole, relationTypes, type Relation, type RelationType, type Request, type SupersededMark, type Task, TASK_STATUSES, isTaskStatus, type TaskStatus, type PreflightRun, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
@@ -73,6 +73,7 @@ const HELP = `p3（infodb p3）— 要望ごとにフォルダを分けて管理
 
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
+                               --attach ファイル（PNG / JPEG / xlsx。繰り返し可。作る前に全部確かめ、だめなら要望を作らない）
   request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか）
   request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
   request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
@@ -139,6 +140,7 @@ const OPTIONS = {
   due: { type: "string" },
   milestone: { type: "string" },
   tag: { type: "string", multiple: true },
+  attach: { type: "string", multiple: true },
   title: { type: "string" },
   done: { type: "boolean" },
   off: { type: "boolean" },
@@ -674,11 +676,31 @@ async function requestCommand(
       const title = rest.join(" ").trim();
       if (!title) throw new UsageError("タイトルを指定してください");
       if (o.milestone) checkMilestone(ctx, o.milestone);
+      const files = await readAttachFiles(o.attach ?? []);
       const r = await ctx.ws.requests.create(
         { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone, status: "draft" },
         actor,
       );
-      return out.result(r, () => `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`);
+      const head = `作成: ${r.id}  ${r.title}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`;
+      if (!files.length) return out.result(r, () => head);
+      // 確かめ済みなので通常は失敗しない。失敗しても要望は残し、付け直す方法を出す
+      const attachments: Attachment[] = [];
+      const failed: { file: string; error: string }[] = [];
+      for (const f of files) {
+        try {
+          attachments.push(await ctx.preflight.addAttachment(r.id, { data: f.data, name: basename(f.path) }, actor));
+        } catch (e) {
+          failed.push({ file: f.path, error: (e as Error).message });
+        }
+      }
+      out.result({ ...r, attachments, ...(failed.length ? { failedAttachments: failed } : {}) }, () =>
+        [
+          head,
+          ...attachments.map((a) => `  添付: ${a.id}  ${a.name}`),
+          ...failed.map((f) => `  添付できませんでした: ${f.file}（${f.error}）→ p3 attach add ${f.file} --req ${r.id}`),
+        ].join("\n"),
+      );
+      return failed.length ? 1 : 0;
     }
     case undefined:
     case "ls":
@@ -990,6 +1012,26 @@ async function reopened_(ctx: PcubeContext, rid: string, actor: string): Promise
 const warn = (warnings: Warning[]) => {
   for (const w of warnings) process.stderr.write(`警告: ${w.message}\n`);
 };
+
+/** request new --attach のファイルを読み、要望を作る前に全部確かめる（1つでもだめなら作らない） */
+async function readAttachFiles(paths: string[]): Promise<{ path: string; data: Buffer }[]> {
+  if (paths.length > ATTACHMENT_LIMITS.count) throw new UsageError(`添付は1つの要望に ${ATTACHMENT_LIMITS.count} 件までです`);
+  const files = [];
+  for (const path of paths) {
+    const data = await readFile(resolvePath(process.cwd(), path)).catch(() => {
+      throw new UsageError(`ファイルが読めません: ${path}`);
+    });
+    try {
+      inspectAttachment(data, basename(path));
+    } catch (e) {
+      throw e instanceof AttachmentError ? new UsageError(`${path}: ${e.message}（要望は作っていません）`) : e;
+    }
+    files.push({ path, data });
+  }
+  const total = files.reduce((n, f) => n + f.data.length, 0);
+  if (total > ATTACHMENT_LIMITS.totalBytes) throw new UsageError(`添付の合計が上限（${ATTACHMENT_LIMITS.totalBytes} バイト）を超えます（要望は作っていません）`);
+  return files;
+}
 
 const deps = (t: Task) => {
   const d = t.relations.filter((r) => r.type === "depends_on").map((r) => (absRef(r.target, t.request)?.startsWith(`${t.request}/`) ? r.target : (absRef(r.target, t.request) ?? r.target)));

@@ -880,6 +880,37 @@ describe("作業先とリポジトリごとのブランチ（CLI）", () => {
   });
 });
 
+describe("p3 request new --attach", () => {
+  it("作るときに添付する。どれかがだめなら要望を作らない", async () => {
+    const { root } = await initialized();
+    const { png } = await import("./imageFixture.ts");
+    const { makeXlsx } = await import("./zipFixture.ts");
+    writeFileSync(join(root, "今の画面.png"), png(640, 480));
+    writeFileSync(join(root, "仕様.xlsx"), makeXlsx());
+    writeFileSync(join(root, "偽物.png"), "<html>");
+    const before = pcube(root, ["request", "ls", "--json"]).json().length;
+    const bad = pcube(root, ["request", "new", "添付つき", "--attach", "今の画面.png", "--attach", "偽物.png"]);
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain("偽物.png: PNG / JPEG として読めません（要望は作っていません）");
+    expect(pcube(root, ["request", "new", "添付つき", "--attach", "無い.png"]).err).toContain("ファイルが読めません: 無い.png");
+    expect(pcube(root, ["request", "ls", "--json"]).json().length).toBe(before);
+
+    const made = pcube(root, ["request", "new", "添付つき", "--attach", "今の画面.png", "--attach", "仕様.xlsx", "--json"]);
+    expect(made.code, made.err).toBe(0);
+    const r = made.json();
+    expect(r.attachments.map((a: { name: string; format: string }) => [a.name, a.format])).toEqual([
+      ["今の画面.png", "png"],
+      ["仕様.xlsx", "xlsx"],
+    ]);
+    expect(r.failedAttachments).toBeUndefined();
+    const ls = pcube(root, ["attach", "--req", r.id]);
+    expect(ls.out).toContain("今の画面.png");
+    expect(ls.out).toContain("仕様.xlsx");
+    const text = pcube(root, ["request", "new", "添付つき2", "--attach", "今の画面.png"]);
+    expect(text.out).toMatch(/添付: A-\d{8}-\d{6}-[0-9a-f]{4}  今の画面.png/);
+  });
+});
+
 describe("p3 attach", () => {
   it("serve なしで添付を足し・一覧し・書き出し・外す。不正な形式は使い方の誤り", async () => {
     const { root, rid } = await initialized();
