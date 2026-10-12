@@ -15,13 +15,13 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     expect(writableRepos(legacy)).toEqual(["main"]);
     expect(taskRepo({}, legacy)).toBe("main");
     expect(taskRepo({ repo: null }, legacy)).toBeUndefined();
-    const multi = { repos: [{ ...base, name: "docs" }, { ...base, name: "allesc", writable: true }, { ...base, name: "infra", writable: true }] };
-    expect(primaryRepo(multi)).toBe("allesc");
-    expect(writableRepos(multi)).toEqual(["allesc", "infra"]);
-    expect(taskRepo({}, multi)).toBe("allesc");
+    const multi = { repos: [{ ...base, name: "docs" }, { ...base, name: "app", writable: true }, { ...base, name: "infra", writable: true }] };
+    expect(primaryRepo(multi)).toBe("app");
+    expect(writableRepos(multi)).toEqual(["app", "infra"]);
+    expect(taskRepo({}, multi)).toBe("app");
     expect(taskRepo({ repo: "infra" }, multi)).toBe("infra");
     expect(requestWorkstreams({ workstream: { branch: "req/a", worktree: ".worktrees/a" }, workstreams: { infra: { branch: "req/a", worktree: ".worktrees/a" } } }, multi)).toEqual({
-      allesc: { branch: "req/a", worktree: ".worktrees/a" },
+      app: { branch: "req/a", worktree: ".worktrees/a" },
       infra: { branch: "req/a", worktree: ".worktrees/a" },
     });
     expect(repoTargetProblem("docs", multi)).toContain("参照だけ");
@@ -33,8 +33,8 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
   it("ファイルとの往復: 作業先なし（null）・任意の名前・複数の PR を残し、以前のファイルは更新しても項目を落とさない", async () => {
     const repo = await makeRepo();
     const file = join(repo.dataDir, "project.yaml");
-    await writeRepoEntry(file, "標準ガイド", { ...base, name: "標準ガイド", writable: true });
-    await writeRepoEntry(file, "allesc", { ...base, name: "allesc", writable: true });
+    await writeRepoEntry(file, "ガイド", { ...base, name: "ガイド", writable: true });
+    await writeRepoEntry(file, "app", { ...base, name: "app", writable: true });
     const ctx = await openTestProject(repo.dataDir);
     const r = await newRequest(ctx, { title: "要望" });
     // 以前のタスク（repo が無い）
@@ -42,13 +42,13 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     const none = await newTask(ctx, r.id, { title: "調査", repo: null });
     const named = await newTask(ctx, r.id, {
       title: "ドキュメント",
-      repo: "標準ガイド",
+      repo: "ガイド",
       repoOutputs: [
-        { repo: "標準ガイド", output: "https://example.com/doc/pull/2" },
-        { repo: "allesc", output: "https://example.com/app/pull/3" },
+        { repo: "ガイド", output: "https://example.com/doc/pull/2" },
+        { repo: "app", output: "https://example.com/app/pull/3" },
       ],
     });
-    await ctx.ws.requests.update(r.id, { workstream: { branch: "req/x", worktree: ".worktrees/x" }, workstreams: { 標準ガイド: { branch: "req/x", worktree: ".worktrees/x" } } });
+    await ctx.ws.requests.update(r.id, { workstream: { branch: "req/x", worktree: ".worktrees/x" }, workstreams: { ガイド: { branch: "req/x", worktree: ".worktrees/x" } } });
     const text = await readFile(join(repo.dataDir, "requests", r.id, "tasks", `${none.id}.md`), "utf8");
     expect(text).toContain("repo: null");
     const fresh = new Workspace(repo.dataDir);
@@ -56,8 +56,8 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     const col = fresh.tasksOf(r.id);
     expect("repo" in col.require(old.id)).toBe(false);
     expect(col.require(none.id).repo).toBeNull();
-    expect(col.require(named.id)).toMatchObject({ repo: "標準ガイド", repoOutputs: [{ repo: "標準ガイド" }, { repo: "allesc" }] });
-    expect(fresh.requests.require(r.id)).toMatchObject({ workstream: { branch: "req/x" }, workstreams: { 標準ガイド: { branch: "req/x" } } });
+    expect(col.require(named.id)).toMatchObject({ repo: "ガイド", repoOutputs: [{ repo: "ガイド" }, { repo: "app" }] });
+    expect(fresh.requests.require(r.id)).toMatchObject({ workstream: { branch: "req/x" }, workstreams: { ガイド: { branch: "req/x" } } });
     // 以前のタスクを更新しても repo は付かない（主リポジトリのまま）、outputs も残る
     await col.update(old.id, { status: "doing" });
     const again = new Workspace(repo.dataDir);
@@ -75,7 +75,7 @@ describe("作業先とリポジトリごとのブランチ（データの形）"
     const dir = join(ctx.ws.preflight.runDir(r.id, id), "drafts");
     const d1 = join(dir, "D1.md");
     const t = await readFile(d1, "utf8");
-    for (const [v, expected] of [["none", null], ['""', null], ["null", null], ["allesc", "allesc"]] as const) {
+    for (const [v, expected] of [["none", null], ['""', null], ["null", null], ["app", "app"]] as const) {
       await writeFile(d1, t.replace(/^key: D1$/m, `key: D1\nrepo: ${v}`));
       expect((await ctx.ws.preflight.loadDrafts(r.id, id)).find((d) => d.key === "D1")!.repo).toBe(expected);
     }

@@ -687,23 +687,23 @@ describe("p3 repo（Preflight が読む参照先）", () => {
     const before = pcube(root, ["repo", "ls", "--json"]).json();
     expect(before.map((r: any) => [r.name, r.status, r.local, r.legacy])).toEqual([["main", "ok", root, true]]);
 
-    const docsRepo = tempDir("allescdoc-");
+    const docsRepo = tempDir("docsrepo-");
     gitInit(docsRepo);
-    await mkdir(join(docsRepo, "standard_guide"));
-    const infra = tempDir("allescinfra-"); // git でないフォルダ
-    expect(pcube(root, ["repo", "add", "allesc", root, "role=システム本体", "readFirst=true", "writable=true"]).code).toBe(0);
-    expect(pcube(root, ["repo", "add", "docs", join(docsRepo, "standard_guide"), "role=ドキュメント", "mapFile=MAP.md"]).code).toBe(0);
+    await mkdir(join(docsRepo, "guide"));
+    const infra = tempDir("infrarepo-"); // git でないフォルダ
+    expect(pcube(root, ["repo", "add", "app", root, "role=システム本体", "readFirst=true", "writable=true"]).code).toBe(0);
+    expect(pcube(root, ["repo", "add", "docs", join(docsRepo, "guide"), "role=ドキュメント", "mapFile=MAP.md"]).code).toBe(0);
     const added = pcube(root, ["repo", "add", "infra", infra, "role=基盤"]);
     expect(added.code, added.err).toBe(0);
     const ls = pcube(root, ["repo", "ls", "--json"]).json();
     expect(ls.map((r: any) => [r.name, r.role, r.readFirst, r.writable, r.status, r.mount])).toEqual([
-      ["allesc", "システム本体", true, true, "ok", "allesc"],
+      ["app", "システム本体", true, true, "ok", "app"],
       ["docs", "ドキュメント", false, false, "ok", "docs"],
       ["infra", "基盤", false, false, "ok", "infra"],
     ]);
     // 共有の定義は project.yaml、このマシンのパスは個人設定（パスを共有のファイルに書かない）
     const yaml = readFileSync(join(root, ".pcube", "project.yaml"), "utf8");
-    expect(yaml).toContain("allesc:");
+    expect(yaml).toContain("app:");
     expect(yaml).not.toContain(infra);
     const config = readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8");
     expect(config).toContain(infra);
@@ -721,7 +721,7 @@ describe("p3 repo（Preflight が読む参照先）", () => {
     expect(pcube(root, ["project", "add", "other", join(root, ".pcube"), "--repo", root], {}, otherHome).code).toBe(0);
     const theirs = pcube(root, ["--project", "other", "repo", "ls"], {}, otherHome);
     expect(theirs.out).toContain("未登録 → p3 repo path docs <このマシンのパス>");
-    expect(pcube(root, ["--project", "other", "repo", "path", "docs", join(docsRepo, "standard_guide")], {}, otherHome).code).toBe(0);
+    expect(pcube(root, ["--project", "other", "repo", "path", "docs", join(docsRepo, "guide")], {}, otherHome).code).toBe(0);
     expect(pcube(root, ["--project", "other", "repo", "ls", "--json"], {}, otherHome).json().find((r: any) => r.name === "docs").status).toBe("ok");
 
     // このマシンのパスだけ外す（共有は残る）・共有ごと消す
@@ -729,10 +729,10 @@ describe("p3 repo（Preflight が読む参照先）", () => {
     expect(pcube(root, ["repo", "rm", "infra", "--local"]).code).toBe(0);
     expect(pcube(root, ["repo", "ls", "--json"]).json().find((r: any) => r.name === "infra").status).toBe("unregistered");
     expect(pcube(root, ["repo", "rm", "docs"]).code).toBe(0);
-    expect(pcube(root, ["repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["allesc", "infra"]);
+    expect(pcube(root, ["repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["app", "infra"]);
     expect(readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8")).toContain("theme: dark"); // ほかの個人設定は残る
     // --dir で指しても読める（登録していないフォルダではパスの登録は案内）
-    expect(pcube(root, ["--dir", join(root, ".pcube"), "repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["allesc", "infra"]);
+    expect(pcube(root, ["--dir", join(root, ".pcube"), "repo", "ls", "--json"]).json().map((r: any) => r.name)).toEqual(["app", "infra"]);
   });
 });
 

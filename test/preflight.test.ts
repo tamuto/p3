@@ -304,16 +304,16 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
 
   it("codex-workspace の docker run を、/workspace は tmpfs・参照先は /workspace/<名前> に読むだけ・データは /data にする", () => {
     const repos = [
-      { name: "allesc", host: "/host/allesc", container: "/workspace/allesc" },
-      { name: "docs", host: "/host/allescdoc/standard_guide", container: "/workspace/docs" },
+      { name: "app", host: "/host/app", container: "/workspace/app" },
+      { name: "docs", host: "/host/docsrepo/guide", container: "/workspace/docs" },
       { name: "infra", host: "/host/infra", container: "/workspace/infra" },
     ];
     const command = withMounts(dockerCommand("/p3-placeholder", { authVolume: "vol" }), repos, "/host/data");
     const mounts = command.flatMap((a: string, i: number) => (command[i - 1] === "--mount" ? [a] : []));
     expect(mounts).toEqual([
       "type=tmpfs,dst=/workspace",
-      "type=bind,src=/host/allesc,dst=/workspace/allesc,readonly",
-      "type=bind,src=/host/allescdoc/standard_guide,dst=/workspace/docs,readonly",
+      "type=bind,src=/host/app,dst=/workspace/app,readonly",
+      "type=bind,src=/host/docsrepo/guide,dst=/workspace/docs,readonly",
       "type=bind,src=/host/infra,dst=/workspace/infra,readonly",
       "type=bind,src=/host/data,dst=/data",
       expect.stringContaining("volume"),

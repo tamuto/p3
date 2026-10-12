@@ -15,25 +15,25 @@ const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.met
  */
 async function setup(opts: { missingAll?: boolean; docs?: string[] } = {}) {
   const repo = await makeRepo({ docs: opts.docs ?? ["README.md", "docs:intro.md", "gone:x.md", "unknown:y.md"] });
-  const docsRepo = tempDir("allescdoc-");
+  const docsRepo = tempDir("docsrepo-");
   gitInit(docsRepo);
-  await mkdir(join(docsRepo, "standard_guide"));
-  await writeFile(join(docsRepo, "standard_guide", "intro.md"), "# 標準ガイド\n");
-  const infra = tempDir("allescinfra-");
+  await mkdir(join(docsRepo, "guide"));
+  await writeFile(join(docsRepo, "guide", "intro.md"), "# ガイド\n");
+  const infra = tempDir("infrarepo-");
   await mkdir(join(infra, "terraform"));
   const file = join(repo.dataDir, "project.yaml");
   const base = { readFirst: false, writable: false, map: [] };
-  await writeRepoEntry(file, "allesc", { ...base, name: "allesc", role: "システム本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API", entry: "src/server/main.ts" }] });
+  await writeRepoEntry(file, "app", { ...base, name: "app", role: "システム本体", readFirst: true, writable: true, map: [{ path: "src/server", role: "API", entry: "src/server/main.ts" }] });
   await writeRepoEntry(file, "docs", { ...base, name: "docs", role: "ドキュメント", mapFile: "MAP.md" });
   await writeRepoEntry(file, "infra", { ...base, name: "infra", role: "基盤", map: [{ path: "terraform", role: "環境の定義" }] });
   await writeRepoEntry(file, "gone", { ...base, name: "gone", role: "誰も登録していない" });
-  const local = opts.missingAll ? { allesc: "/nonexistent/a", docs: "/nonexistent/b", infra: join(repo.dataDir, "project.yaml") } : { allesc: repo.root, docs: join(docsRepo, "standard_guide"), infra };
+  const local = opts.missingAll ? { app: "/nonexistent/a", docs: "/nonexistent/b", infra: join(repo.dataDir, "project.yaml") } : { app: repo.root, docs: join(docsRepo, "guide"), infra };
   const logFile = join(tempDir(), "codex.jsonl");
   const launched: { repos: HostMount[]; data: string }[] = [];
   const codex = new CodexWorkspaceEngine({
     authVolume: "vol",
     account: new ChatGptAccount(join(tempDir(), "none.json")),
-    pathMap: [[repo.root, "/host/allesc"], [docsRepo, "/host/allescdoc"]],
+    pathMap: [[repo.root, "/host/app"], [docsRepo, "/host/docsrepo"]],
     ensureImage: false,
     command: ({ repos, data }) => {
       launched.push({ repos, data });
@@ -56,14 +56,14 @@ describe("複数の参照先を Preflight に渡す", () => {
     const s = await setup();
     expect(s.run.status).toBe("completed");
     expect(s.launched[0].repos).toEqual([
-      { name: "allesc", host: "/host/allesc", container: "/workspace/allesc" },
-      { name: "docs", host: "/host/allescdoc/standard_guide", container: "/workspace/docs" },
+      { name: "app", host: "/host/app", container: "/workspace/app" },
+      { name: "docs", host: "/host/docsrepo/guide", container: "/workspace/docs" },
       { name: "infra", host: s.infra, container: "/workspace/infra" },
     ]);
-    expect(s.launched[0].data).toBe("/host/allesc/.pcube");
+    expect(s.launched[0].data).toBe("/host/app/.pcube");
     // 調べた範囲は P3 が決めて残す（このマシンのパスは入れない）
     expect(s.run.scope).toEqual([
-      { name: "allesc", mount: "allesc", role: "システム本体", readFirst: true, status: "ok" },
+      { name: "app", mount: "app", role: "システム本体", readFirst: true, status: "ok" },
       { name: "docs", mount: "docs", role: "ドキュメント", readFirst: false, status: "ok" },
       { name: "infra", mount: "infra", role: "基盤", readFirst: false, status: "ok" },
       { name: "gone", mount: "gone", role: "誰も登録していない", readFirst: false, status: "unregistered", reason: "このマシンのパスが登録されていません（p3 repo path gone <パス>）" },
@@ -75,18 +75,18 @@ describe("複数の参照先を Preflight に渡す", () => {
 
   it("指示文に参照先の名前・役割・コンテナの中のパス・最初に読むもの、見ていないもの、地図と docs を入れる", async () => {
     const { instructions, prompt } = await setup();
-    expect(instructions).toContain("- /workspace/allesc — allesc（システム本体）［最初に読む］");
+    expect(instructions).toContain("- /workspace/app — app（システム本体）［最初に読む］");
     expect(instructions).toContain("- /workspace/docs — docs（ドキュメント）");
     expect(instructions).toContain("読むだけで、書き込めません");
     expect(instructions).toContain("見ていない参照先: gone（");
     // docs: 名前なしは先頭の参照先、名前つきはその参照先。読めないものは理由
-    expect(prompt).toContain("- /workspace/allesc/README.md");
+    expect(prompt).toContain("- /workspace/app/README.md");
     expect(prompt).toContain("- /workspace/docs/intro.md");
     expect(prompt).toContain("- gone:x.md（読めません: 参照先 gone は見ていません");
     expect(prompt).toContain("- unknown:y.md（読めません: 参照先「unknown」は登録されていません）");
     // コードの地図（案内であって全部読む指示ではない）
     expect(prompt).toContain("## コードの地図（どこから読むかの案内。全部を読む必要はありません）");
-    expect(prompt).toContain("- /workspace/allesc/src/server — API（入口 /workspace/allesc/src/server/main.ts）");
+    expect(prompt).toContain("- /workspace/app/src/server — API（入口 /workspace/app/src/server/main.ts）");
     expect(prompt).toContain("- 地図の説明: /workspace/docs/MAP.md（ファイルがありません）");
     expect(prompt).toContain("- /workspace/infra/terraform — 環境の定義");
   });

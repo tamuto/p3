@@ -116,10 +116,9 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
     `readonly` で、データを `/data` に置く。Codex の cwd は `/workspace` のまま。変更のパスは参照先の対応で戻す
   - 調べた範囲（`run.scope`）は P3 が始めるときに決めて残す（パスは入れない）。根拠（`assessment.evidence`）は Codex が書き、
     P3 が `parseEvidence` で確かめる（verified は読めた参照先の中の、ある相対パスを指すときだけ）
-  - 本物の Docker（29.3.0）での確認（2026-10-12）: 生成した docker run の引数で、`/workspaces/allesc`・
-    `/workspaces/allescdoc/standard_guide`（リポジトリの中のサブフォルダ）・`/workspaces/allescinfra` の3つを `codex.pathMap`
-    （`/workspaces=/root/workspaces`）で対応させてマウントし、コンテナの中で3つとも読め（27・16・12 項目）、それぞれへの書き込みは
-    `Read-only file system` で拒まれ、`/workspace`（tmpfs）には書けた。ホストのフォルダには何もできていない。イメージの
+  - 本物の Docker（29.3.0）での確認（2026-10-12）: 生成した docker run の引数で、このマシンの3つのフォルダ（git のリポジトリ
+    2つと、別のリポジトリの中のサブフォルダ1つ）を `codex.pathMap` で対応させてマウントし、コンテナの中で3つとも読め、それぞれへの
+    書き込みは `Read-only file system` で拒まれ、`/workspace`（tmpfs）には書けた。ホストのフォルダには何もできていない。イメージの
     entrypoint を sh にして確かめたので、本物の Codex に評価させてはいない（認証が要る）
 - タスクの成果物（`outputs: string[]`）は URL・文章・パスを1項目ずつ混ぜてよい。画面は `components/Outputs.tsx` で、
   項目全体が絶対の http(s) URL（`web/lib/outputs.ts` の `outputHref`。前後の空白は判定でだけ除く）ならリンク、ほかは文字。

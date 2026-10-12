@@ -459,11 +459,11 @@ Preflight の Codex が読むリポジトリ・フォルダ（参照先）を、
   なくてもよい（フォルダだけ・リポジトリの中のサブフォルダも可）
 
 ```bash
-p3 repo add allesc /workspaces/allesc role=システム本体 readFirst=true writable=true
-p3 repo add docs /workspaces/allescdoc/standard_guide role=ドキュメント mapFile=MAP.md   # リポジトリの中のサブフォルダ
-p3 repo add infra /workspaces/allescinfra role=基盤
+p3 repo add app /workspaces/app role=システム本体 readFirst=true writable=true
+p3 repo add docs /workspaces/docsrepo/guide role=ドキュメント mapFile=MAP.md   # リポジトリの中のサブフォルダ
+p3 repo add infra /workspaces/infrarepo role=基盤
 p3 repo ls                       # 一覧。このマシンのパスが無いものは「未登録 → p3 repo path <名前> <パス>」
-p3 repo path docs ~/src/allescdoc/standard_guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
+p3 repo path docs ~/src/docsrepo/guide   # ほかの人が足した参照先に、自分のマシンのパスだけを登録する
 p3 repo set infra role=基盤（Terraform）            # 共有の定義を変える（role readFirst writable mapFile）
 p3 repo rm infra --local         # このマシンのパスだけ外す（共有の定義は残る）
 p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の Preflight でも読まなくなる。フォルダは消さない）
@@ -472,7 +472,7 @@ p3 repo rm infra                 # 共有の定義ごと消す（ほかの人の
 ```yaml
 # project.yaml（共有）
 repos:
-  allesc:
+  app:
     role: システム本体
     readFirst: true
     writable: true
@@ -486,7 +486,7 @@ repos:
 docs: [README.md, "docs:guide/"]      # <参照先>:<パス>。名前なしは先頭の参照先
 ```
 
-- **参照の書き方**: `docs` と要望・タスクの `areas` は `<参照先>:<パス>`（例 `docs:standard_guide/`・`infra:terraform`）で
+- **参照の書き方**: `docs` と要望・タスクの `areas` は `<参照先>:<パス>`（例 `docs:guide/`・`infra:terraform`）で
   書ける。名前なしは先頭の参照先の中のパス（今までの書き方のまま読める）。登録に無い名前・絶対パス・`..` は読まない。
   文脈の選定（関係しそうな項目）は、同じ参照先の中だけで領域の重なりを見る（別の参照先の同じ `src` は重ならない）
 - **今までのプロジェクト**: `repos` が無ければ、今までどおりリポジトリ1つ（名前 `main`。個人設定の `repos.main`、無ければ
