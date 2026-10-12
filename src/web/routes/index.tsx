@@ -9,7 +9,7 @@ import { TaskDrawer } from "../components/TaskDrawer.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
-import { CLOSED_STATUSES, matchesShow, parseShow, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
+import { CLOSED_STATUSES, filterRequests, parseShow, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
 import {
   addDays,
@@ -69,16 +69,13 @@ function ProgressPage() {
   const today = localToday();
   const tags = [...new Set(ctx.requests.flatMap((p) => p.request.tags))].sort();
 
-  // マイルストーンの順 → 期限の順。完了・見送りは既定で隠す（対応済は確認待ちなので出す）
+  // マイルストーンの順 → 期限の順。既定（未完了）では対応済・完了済・見送りを隠す
   const rows = useMemo(() => {
     const order = (p: RequestProgress) => {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
-    return ctx.requests
-      .filter((p) => matchesShow(p.request.status, show))
-      .filter((p) => !tag || p.request.tags.includes(tag))
-      .sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
+    return filterRequests(ctx.requests, show, tag).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
   }, [ctx.requests, milestones, show, tag]);
 
   // 描く期間: データのある全期間（上限なし）
