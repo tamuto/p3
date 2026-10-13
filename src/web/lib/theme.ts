@@ -36,12 +36,13 @@ export function applyTheme(root: ThemeRoot, theme: Theme, prefersDark: boolean) 
 export const initialTheme = (root: ThemeRoot): Theme => (isTheme(root.dataset.theme) ? root.dataset.theme : "system");
 
 export interface ThemeController {
-  get(): Theme;
+  // this を使わない（useSyncExternalStore にそのまま渡す）ので、メソッドでなく関数の項目にする
+  get: () => Theme;
   /** 反映する（保存は呼ぶ側が先に済ませる） */
-  set(theme: Theme): void;
-  subscribe(l: () => void): () => void;
+  set: (theme: Theme) => void;
+  subscribe: (l: () => void) => () => void;
   /** 止める（OS の明暗の購読をやめる） */
-  stop(): void;
+  stop: () => void;
 }
 
 /** media は (prefers-color-scheme: dark)。無い環境（テスト・古いブラウザ）では明るいとみなす */
@@ -68,7 +69,7 @@ export function createThemeController(root: ThemeRoot, media: MediaQuery | undef
   return {
     get: () => theme,
     set,
-    subscribe(l) {
+    subscribe: (l) => {
       listeners.add(l);
       return () => listeners.delete(l);
     },

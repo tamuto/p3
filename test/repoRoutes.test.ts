@@ -25,7 +25,7 @@ describe("/api/repos（設定画面の参照先）", () => {
         { method, headers: { "content-type": "application/json", ...(opt.origin !== undefined ? { origin: opt.origin } : { origin: "http://localhost:4310" }) }, body: body === undefined ? undefined : JSON.stringify(body) },
         { incoming: { socket: { remoteAddress: opt.addr ?? "127.0.0.1" } } },
       );
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     return { repo, ctx, call };
   }

@@ -113,7 +113,7 @@ describe("置き換えの API", () => {
     const app = apiRoutes(p.ctx);
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     return { ...p, call, base: `/requests/${p.req.id}/preflight/${p.runId}/materialize` };
   }

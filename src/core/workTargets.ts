@@ -58,7 +58,7 @@ export function planWorkstreams(ws: Workspace, requestId: string, repos: readonl
     if (id) seen.set(id, name);
   }
   const branch = branchName(ws, requestId, request.title);
-  for (const name of [...new Set(repos)]) {
+  for (const name of new Set(repos)) {
     if (existing[name]) continue;
     const ref = refs.get(name);
     if (ref?.status === "ok" && ref.local) {
@@ -83,7 +83,7 @@ export function planWorkstreams(ws: Workspace, requestId: string, repos: readonl
 /** 割当を要望に書く（足すだけ。既存は消さない） */
 export function workstreamPatch(ws: Workspace, requestId: string, plan: WorkstreamPlan): { workstreams?: Record<string, Workstream> } {
   const request = ws.requests.require(requestId);
-  return Object.keys(plan.add).length ? { workstreams: { ...(request.workstreams ?? {}), ...plan.add } } : {};
+  return Object.keys(plan.add).length ? { workstreams: { ...request.workstreams, ...plan.add } } : {};
 }
 
 /** 作業先を足したタスク（手で足した・作業先を変えた）に要る割当を書く */

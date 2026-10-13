@@ -168,7 +168,7 @@ export class Workspace {
       const tasks = await Promise.allSettled(requests.ids.map((id) => this.tasksOf(id).prepareLoad()));
       for (const t of tasks) if (t.status === "fulfilled") loads.push(t.value);
       const failed = tasks.find((t) => t.status === "rejected");
-      if (failed) throw (failed as PromiseRejectedResult).reason;
+      if (failed) throw failed.reason;
     } catch (e) {
       for (const l of loads) l.abort();
       throw e;
@@ -176,7 +176,7 @@ export class Workspace {
     // 公開: ここから同期でまとめて入れ替える。タスクのコレクションは作り直さない（処理中の操作が持っている参照を生かす）
     this.project = project;
     for (const l of loads) l.commit();
-    for (const rid of [...this.taskCollections.keys()]) if (!this.requests.get(rid)) this.taskCollections.delete(rid);
+    for (const rid of this.taskCollections.keys()) if (!this.requests.get(rid)) this.taskCollections.delete(rid);
   }
 
   /** 要望のタスク（要望の中で T001, T002, ... と連番） */

@@ -29,7 +29,11 @@ export async function renderManuscripts(runDir: string, opts: RenderOptions & { 
   const items = index.items.filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
   // 「P3 が描いた」は P3 だけが書く（エンジンが書いたものは消す）
   let forged = false;
-  for (const item of items) if ("rendered" in item) (forged = true), delete item.rendered;
+  for (const item of items) {
+    if (!("rendered" in item)) continue;
+    forged = true;
+    delete item.rendered;
+  }
   const jobs: RenderJob[] = [];
   const byId = new Map<string, Record<string, unknown>>();
   for (const item of items) {
@@ -65,8 +69,9 @@ export async function renderManuscripts(runDir: string, opts: RenderOptions & { 
           delete item.renderError;
           if (r.blocked.length) opts.log({ kind: "info", text: `${r.id}: 読み込みを ${r.blocked.length} 件止めました` });
         } else {
-          item.renderError = r.error ?? "描画できませんでした";
-          opts.log({ kind: "error", text: `${r.id} を描画できません: ${item.renderError}` });
+          const error = r.error ?? "描画できませんでした";
+          item.renderError = error;
+          opts.log({ kind: "error", text: `${r.id} を描画できません: ${error}` });
         }
       }
     } catch (e) {

@@ -27,7 +27,7 @@ async function setup() {
   const app = apiRoutes(ctx);
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: res.status, body: (await res.json()) as any };
+    return { status: res.status, body: await res.json() };
   };
   /** Mock で評価して、案ごとに作業先と採否を決める */
   const evaluate = async (repos: (string | null)[], include?: boolean[]) => {

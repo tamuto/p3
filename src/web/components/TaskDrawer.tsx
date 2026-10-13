@@ -160,7 +160,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 破棄
               </Button>
             )}
-            <Button variant="primary" disabled={!dirty || gone} onClick={save}>
+            <Button variant="primary" disabled={!dirty || gone} onClick={() => void save()}>
               保存
             </Button>
             <Button variant="ghost" onClick={onClose}>

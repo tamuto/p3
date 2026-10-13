@@ -110,7 +110,7 @@ export function Drafts({
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={d.include} disabled={done} onChange={(e) => patch(d, { include: e.target.checked })} />
+                  <input type="checkbox" checked={d.include} disabled={done} onChange={(e) => void patch(d, { include: e.target.checked })} />
                   <span className="font-mono text-sm text-slate-500">{d.key}</span>
                   {d.dependsOn.length > 0 && <span className="text-sm text-slate-400">← {d.dependsOn.join(", ")}</span>}
                 </div>
@@ -135,7 +135,9 @@ export function Drafts({
                   rows={2}
                   disabled={done}
                   defaultValue={d.title}
-                  onBlur={(e) => e.target.value !== d.title && patch(d, { title: e.target.value })}
+                  onBlur={(e) => {
+                    if (e.target.value !== d.title) void patch(d, { title: e.target.value });
+                  }}
                   className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
                 />
                 <details>
@@ -208,7 +210,7 @@ export function Drafts({
           </p>
         ) : (
           <>
-            <Button variant="primary" disabled={busy || !included.length || !!stopped} onClick={materialize}>
+            <Button variant="primary" disabled={busy || !included.length || !!stopped} onClick={() => void materialize()}>
               {included.length} 件をタスク化{selected.size && candidates.some((c) => selected.has(c.id)) ? `（${archiveSelection(candidates, selected).length} 件をアーカイブ）` : ""}
             </Button>
             <span className={stopped ? "text-amber-700 dark:text-amber-400" : "text-slate-500"}>

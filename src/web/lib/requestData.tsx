@@ -37,6 +37,8 @@ export function RequestDataProvider({ requestId, children, fallback }: { request
   useEffect(() => {
     void reload();
   }, [reload, tick]);
+  // 失敗は state に入れて知らせる（reload は投げない）ので、子には待たない関数として渡す
+  const reloadNow = useCallback(() => void reload(), [reload]);
 
   const { data, gone, error } = state;
   if (data === undefined)
@@ -51,7 +53,7 @@ export function RequestDataProvider({ requestId, children, fallback }: { request
       <div className="p-8 text-slate-500">Loading…</div>
     );
   if (data === null) return <>{fallback}</>;
-  return <Ctx.Provider value={{ ...data, reload, gone, loadError: error }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ...data, reload: reloadNow, gone, loadError: error }}>{children}</Ctx.Provider>;
 }
 
 export function useRequestData(): RequestData {

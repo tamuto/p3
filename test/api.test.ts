@@ -11,7 +11,7 @@ async function setup() {
       headers: { "content-type": "application/json", ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, body: (await res.json()) as any };
+    return { status: res.status, body: await res.json() };
   };
   const req = await newRequest(p.ctx, { title: "要望" });
   return { ...p, call, rid: req.id };

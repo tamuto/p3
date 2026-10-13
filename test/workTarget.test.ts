@@ -103,7 +103,7 @@ describe("画面の作業先の選択肢と成果物の表示", () => {
     const app = apiRoutes(ctx);
     const call = async (method: string, path: string, body: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     const r = await newRequest(ctx, { title: "要望" });
     const made = await call("POST", `/requests/${r.id}/tasks`, { title: "t", repo: "app", repoOutputs: [{ repo: "app", output: "https://x/pull/1" }] });

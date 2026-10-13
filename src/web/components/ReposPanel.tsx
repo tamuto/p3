@@ -41,7 +41,6 @@ export function ReposPanel({ tick, onChanged, onDirtyChange }: { tick: number; o
     );
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
   /** 操作して読み直す。失敗は知らせて入力は残す */
@@ -208,6 +207,11 @@ function AddRepo({ local, act, onDirty }: { local: boolean; act: Act; onDirty: O
   const [f, setF] = useState(empty);
   const typed = !same(f, empty);
   useEffect(() => onDirty(ADD_KEY, typed), [onDirty, typed]);
+  // 失敗は act が知らせる（入力は残す）
+  async function add() {
+    const ok = await act(() => api.addRepo({ name: f.name.trim(), role: f.role, readFirst: f.readFirst, writable: f.writable, ...(f.path.trim() ? { path: f.path.trim() } : {}) }));
+    if (ok) setF(empty);
+  }
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">参照先を足す</p>
@@ -236,12 +240,7 @@ function AddRepo({ local, act, onDirty }: { local: boolean; act: Act; onDirty: O
         <Button
           variant="primary"
           disabled={!f.name.trim()}
-          onClick={async () => {
-            const ok = await act(() =>
-              api.addRepo({ name: f.name.trim(), role: f.role, readFirst: f.readFirst, writable: f.writable, ...(f.path.trim() ? { path: f.path.trim() } : {}) }),
-            );
-            if (ok) setF(empty);
-          }}
+          onClick={() => void add()}
         >
           足す
         </Button>

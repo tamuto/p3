@@ -19,7 +19,7 @@ async function setup() {
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, body: (await res.json()) as any };
+    return { status: res.status, body: await res.json() };
   };
   const events: ServerEvent[] = [];
   p.ctx.ws.on((e) => events.push(e));

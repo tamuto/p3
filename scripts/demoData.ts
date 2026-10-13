@@ -79,7 +79,7 @@ export async function seedDemo(dir: string) {
   async function backdate(path: string, fields: Record<string, number | undefined>) {
     const { data, body } = parseFrontmatter(await readFile(path, "utf8"));
     for (const [k, v] of Object.entries(fields)) if (v !== undefined) data[k] = at(v, k === "createdAt" ? 9 : k === "checkedAt" ? 17 : 11);
-    data.updatedAt = [data.createdAt, data.startedAt, data.doneAt, data.checkedAt].filter(Boolean).sort().at(-1);
+    data.updatedAt = [data.createdAt, data.startedAt, data.doneAt, data.checkedAt].filter((v): v is string => typeof v === "string").sort().at(-1);
     await writeFile(path, stringifyFrontmatter(data, body));
   }
   const task = (rid: string, tid: string, f: { created?: number; started?: number; done?: number; checked?: number }) =>

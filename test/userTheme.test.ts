@@ -91,10 +91,10 @@ describe("画面のテーマ（個人設定の ui.theme）", () => {
   });
 
   it("ChatGPT の接続のファイルと互いに消し合わない", async () => {
-    await saveConnection({ hostId: "urn:uuid:h", clientId: "oaiapp_1" } as never);
+    await saveConnection({ hostId: "urn:uuid:h", clientId: "oaiapp_1" });
     await writeTheme("dark");
     expect(await loadConnection()).toMatchObject({ hostId: "urn:uuid:h", clientId: "oaiapp_1" });
-    await saveConnection({ hostId: "urn:uuid:h2" } as never);
+    await saveConnection({ hostId: "urn:uuid:h2" });
     expect(await readTheme()).toBe("dark");
     expect(connectionPath()).not.toBe(file());
   });
@@ -232,7 +232,7 @@ describe("/api/user-theme", () => {
         { incoming: { socket: { remoteAddress: opt.addr ?? "127.0.0.1" } } },
       );
       const text = await res.text();
-      return { status: res.status, headers: res.headers, body: text ? (JSON.parse(text) as any) : undefined };
+      return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : undefined };
     };
     return { call, events };
   }

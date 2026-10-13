@@ -74,7 +74,7 @@ describe("画面の保存と再評価（API を通して）", () => {
     const app = apiRoutes(ctx);
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     const req = await newRequest(ctx, { title: "通知", status: "draft", body: "- 送信" });
     const first = await ctx.preflight.wait(req.id, (await call("POST", `/requests/${req.id}/preflight`, { engine: "mock" })).body.id);

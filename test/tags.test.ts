@@ -43,7 +43,7 @@ describe("タグの保存（API・ファイル）", () => {
     const app = apiRoutes(p.ctx);
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     const created = await call("POST", "/requests", { title: "外部 ID", tags: values });
     expect(created.status).toBe(201);

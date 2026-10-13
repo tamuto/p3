@@ -22,13 +22,13 @@ export function ChatGptPanel({ tick }: { tick: number }) {
       },
       (e: Error) => setError(e.message),
     );
-  useEffect(() => void load(), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => void load(), [tick]);
   // 待っている間は、変更通知が届かない場合に備えて読み直す
   useEffect(() => {
     if (!s?.pending) return;
     const t = setInterval(() => void load(), 3000);
     return () => clearInterval(t);
-  }, [s?.pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [s?.pending]);
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);

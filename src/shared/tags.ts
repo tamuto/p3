@@ -22,6 +22,6 @@ export function addTag(tags: readonly string[], v: string): readonly string[] {
 export const removeTag = (tags: readonly string[], v: string): string[] => tags.filter((t) => t !== v);
 
 /** CLI の --tag の並び（新しく入れる値）をタグにする */
-export const tagsFrom = (values: readonly string[]): string[] => [...values.reduce<readonly string[]>(addTag, [])];
+export const tagsFrom = (values: readonly string[]): string[] => values.reduce<readonly string[]>(addTag, []).slice();
 
 export const sameTags = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((t, i) => t === b[i]);

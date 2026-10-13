@@ -1,0 +1,31 @@
+{
+  // pnpm lint（oxlint --type-aware）の設定。規則を選んだ理由・外した規則・対象と除外は docs/development.md の「lint」
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import", "promise", "vitest"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["src/web/routeTree.gen.ts"],
+  "rules": {
+    // correctness 以外から足すもの
+    "react/rules-of-hooks": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "import/no-duplicates": "error",
+    "import/no-cycle": "error",
+
+    // correctness の調整
+    "eslint/no-unused-vars": ["error", { "ignoreRestSiblings": true }],
+    "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+
+    // correctness から外すもの（理由は docs/development.md）
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "typescript/no-base-to-string": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/require-mock-type-parameters": "off"
+  }
+}

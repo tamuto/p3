@@ -18,7 +18,7 @@ CI は使わず、手元で確かめてから公開する。
 ```bash
 git clone <このリポジトリ> /tmp/p3-release && cd /tmp/p3-release   # 隣に llmcs が無い場所で
 pnpm install --frozen-lockfile
-pnpm -s check                                                    # 型検査・テスト・画面のビルド
+pnpm -s check                                                    # 型検査・lint・テスト・画面のビルド
 ```
 
 ## 3. 配布物の確認

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { type PreflightRun } from "../../../../shared/types.ts";
 import { Badge, Button, cx } from "../../../components/ui.tsx";
+import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
 import { notesPanelState, PLAIN_RUN_BLOCKED } from "../../../lib/notes.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
@@ -158,7 +159,7 @@ function RequestPanel({
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={start} disabled={running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
+        <Button variant="primary" onClick={() => void start()} disabled={running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
           {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
         {engine && (
@@ -170,7 +171,7 @@ function RequestPanel({
           </span>
         )}
         {running && run && (
-          <Button variant="ghost" onClick={() => api.cancelRun(request.id, run.id)}>
+          <Button variant="ghost" onClick={() => runAction(() => api.cancelRun(request.id, run.id), (m) => setError(`中止できませんでした: ${m}`))}>
             中止
           </Button>
         )}

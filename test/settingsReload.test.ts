@@ -96,7 +96,7 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
   it("実行中の run は始めたときの設定のまま。後から始めた run は新しい設定", async () => {
     const s = await setup();
     await s.write(`${s.legacy}  pathMap:\n    ${s.repo.root}: /first\n`);
-    const r1 = await newRequest(s.ctx as never, { title: "1", status: "draft" });
+    const r1 = await newRequest(s.ctx, { title: "1", status: "draft" });
     const first = await s.preflight.start(r1.id);
     // 始めた直後（偽の app-server が動いている間）に直す
     await s.write(`${s.legacy}  pathMap:\n    ${s.repo.root}: /second\n`);
@@ -157,7 +157,7 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
 describe("エンジンの状態（/api/engine・ChatGPT の状態）も読み直す", () => {
   it("設定を変える・壊す・直すと、serve を起動し直さずに状態が変わる", async () => {
     const s = await setup();
-    const app = apiRoutes({ ...s.ctx, chatgpt: new ChatGptAccount(join(tempDir(), "none.json")) } as never);
+    const app = apiRoutes({ ...s.ctx, chatgpt: new ChatGptAccount(join(tempDir(), "none.json")) });
     const engine = async () => (await (await app.request("/engine")).json()) as { name: string; ok: boolean; detail: string };
     await s.write(`${s.legacy}preflight:\n  engine: mock\n`);
     expect(await engine()).toMatchObject({ name: "mock", ok: true });

@@ -28,8 +28,9 @@ pnpm はスクリプトをパッケージの場所で動かすが、P3 は呼び
 pnpm dev                     # API サーバ（p3 serve, tsx watch）+ Vite  http://localhost:5173
 pnpm build && pnpm start     # ビルドした画面を p3 serve から配信  http://localhost:4310
 pnpm typecheck
+pnpm lint                    # oxlint（型情報も使う。下の「lint」）
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
-pnpm check                   # 型検査 + テスト + ビルド
+pnpm check                   # 型検査 + lint + テスト + ビルド
 pnpm demo:reset              # デモデータ（.p3-demo/）を作り直す
 pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 ```
@@ -55,6 +56,54 @@ pnpm verify:pack             # 配布物を別の場所に入れて動かす（-
   for t in T001 T002 T003; do p3 show <要望ID>/$t | wc -c; p3 show <要望ID>/$t --brief | wc -c; done
   pnpm vitest run test/showBrief.test.ts --reporter=verbose
   ```
+
+## lint
+
+`pnpm lint` は [oxlint](https://oxc.rs/docs/guide/usage/linter) で、型情報を使う規則（`--type-aware`。`oxlint-tsgolint` が
+TypeScript 7 の型検査器で tsconfig.json を読む）も動かす。設定は `.oxlintrc.json`。ESLint・Biome・整形の道具は入れていない
+（書式はそろえて書く）。指摘は全部エラーで、警告も使われていない無効化コメントも `pnpm check` を落とす。
+
+- **対象**: tsconfig.json の include と同じ `src`・`scripts`・`test`・`vite.config.ts`・`vitest.config.ts`。この中の `.mjs`
+  （起動の補助・偽の app-server など）も、TypeScript の対象ではないが型情報なしの規則で検査する。`bin/` は対象の外
+- **除外**: 生成したルート一覧 `src/web/routeTree.gen.ts`。`dist/`・`node_modules/`・`.p3-demo/` は対象のフォルダの外
+- **規則**: plugin は typescript・unicorn・oxc・react・import・promise・vitest。それぞれの correctness（誤りか無意味なコード）を全部
+  使い、ほかのカテゴリは一括では入れず、次を選んで足す
+
+| 足した規則 | 理由 |
+| --- | --- |
+| `react/rules-of-hooks` | Hooks を条件の中で呼ばない（`react/exhaustive-deps` は correctness に入っている） |
+| `typescript/no-misused-promises` | Promise を返す関数を `onClick` など void を期待する所に渡さない（失敗が未処理になる。下の「待たない Promise」）。`typescript/no-floating-promises` は correctness に入っている |
+| `typescript/no-unnecessary-type-assertion` | 要らない `as` / `!` を残さない（型が変わったときに隠れる） |
+| `typescript/switch-exhaustiveness-check` | 状態の union の switch で漏れを出さない（`default` があればよい） |
+| `typescript/only-throw-error`・`typescript/prefer-promise-reject-errors` | Error 以外を投げない・拒否しない（画面は `e.message` で知らせる） |
+| `import/no-duplicates`・`import/no-cycle` | 同じモジュールの import を分けない・循環させない（層の向きは `test/layers.test.ts`） |
+
+| 調整・外した規則 | 理由 |
+| --- | --- |
+| `eslint/no-unused-vars` に `ignoreRestSiblings` | `const { drafts, ...meta } = run` のように、項目を外すための分割代入を許す（使っていない変数そのものは tsc の `noUnused*` も見る） |
+| `vitest/valid-expect` に `maxArgs: 2` | vitest の `expect(値, 失敗時の文言)` を許す |
+| `react/refs`・`react/set-state-in-effect`（off） | React Compiler を前提にした規則。P3 は Compiler を使わず、最新の handler を ref に持つ形（`lib/live.ts`）や、外で変わった設定を編集中でなければ取り込む effect（設定の画面）を意図して書いている。直すと再取得・入力を残す約束を書き換えることになる |
+| `typescript/no-base-to-string`（off） | YAML・frontmatter の読めない値を `String(v)` で文字にするところ（`core/store/normalize.ts` など）を全部指摘する。値の正規化の振る舞いは変えない |
+| `vitest/no-conditional-expect`（off） | 画面をビルドしてあるときだけ確かめるなど、環境で分ける確認を意図して書いている |
+| `vitest/require-mock-type-parameters`（off） | `vi.fn(async () => …)` の型は実装から推論される |
+
+入れなかった規則: `typescript/no-unnecessary-condition`（nursery で、まだ変わる。試すと 56 件で、`?.` の防御も指摘する）、
+suspicious カテゴリの一括（JSX で要らない `react-in-jsx-scope` などが大量に出る）、`typescript/no-unsafe-*`（テストの応答の JSON
+など `any` を読む所が多く、試すと合わせて 1,400 件を超える。型を付ける作業は別にする）。
+
+無効化のコメントは、その行で意図して違反するときだけ、規則と理由を付けて書く
+（`// oxlint-disable-next-line no-control-regex -- 制御文字を外すのが目的`）。使われなくなったコメントは lint が落とす。
+`eslint-disable` の形の既存のコメント（`react-hooks/exhaustive-deps`）も oxlint が読む。
+
+**待たない Promise**: 画面の操作から非同期の処理を呼ぶときは、失敗を必ずどこかで知らせる。
+
+- 中で try / catch して画面に知らせる関数（保存・Preflight の開始など）は `onClick={() => void save()}`。`void` は
+  「待たない」の印で、失敗を隠すためには使わない
+- 失敗を受け止めない処理は `runAction(処理, (文言) => …)`（`src/web/lib/action.ts`）で、失敗を画面に渡す
+- 読み直し（`reload`）のように失敗を状態に入れて投げない関数は、子には `() => void reload()` を渡す
+
+`test/lint.test.ts` が、採用した規則の代表的な違反（Hooks・待たない Promise・Promise の渡し方）で lint が失敗することと、
+対象と除外を実際に動かして確かめる。
 
 ## 構成
 
@@ -108,7 +157,7 @@ test/                ユニットテスト
 | bin | `p3`。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
 
 ```bash
-pnpm -s check                       # 型検査・テスト・画面のビルド
+pnpm -s check                       # 型検査・lint・テスト・画面のビルド
 pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
 # DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
 P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp

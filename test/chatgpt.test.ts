@@ -33,7 +33,7 @@ function fakeOAuth() {
     sub: "user-1",
     email: "a@example.com",
     scope: SCOPES.join(" "),
-    idKey: keys.privateKey as KeyObject,
+    idKey: keys.privateKey,
     aud: undefined as string | undefined,
     nonce: undefined as string | undefined, // 認可の nonce をそのまま返すなら undefined
     refreshError: undefined as string | undefined,
@@ -173,7 +173,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
     expect((await account.status()).pending?.url).toBe(a.url);
     a.cancel();
     await expect(a.done).rejects.toThrow("取り消しました");
-    await expect(fetch(a.redirectUri)).rejects.toThrow();
+    await expect(fetch(a.redirectUri)).rejects.toThrow(TypeError); // 待ち受けを閉じた（fetch failed）
     expect((await account.status()).pending).toBeUndefined();
 
     const t = await account.startLogin({ port: 0, timeoutMs: 30 });
@@ -216,7 +216,7 @@ describe("Sign in with ChatGPT: トークンの更新と解除", () => {
   it("更新できないエラーならトークンを消してサインインし直してもらう。通信の失敗では消さない", async () => {
     const { f, account } = await connected();
     f.advance(60 * 60_000);
-    const down = new ChatGptAccount(file, { ...f.deps, fetch: (async () => { throw new Error("ECONNRESET"); }) as typeof fetch });
+    const down = new ChatGptAccount(file, { ...f.deps, fetch: async () => { throw new Error("ECONNRESET"); } });
     await expect(down.accessToken()).rejects.toMatchObject({ code: "network" });
     expect((await loadConnection(file))?.tokens).toBeDefined(); // 一時的な失敗では消さない（再起動しても同じ接続を使える）
 
@@ -287,7 +287,7 @@ describe("ChatGPT の API（画面から）", () => {
         { incoming: { socket: { remoteAddress: opt.addr ?? "127.0.0.1" } } },
       );
       const text = await res.text();
-      return { status: res.status, text, body: text ? (JSON.parse(text) as any) : undefined };
+      return { status: res.status, text, body: text ? JSON.parse(text) : undefined };
     };
     return { f, account, call, p };
   }
