@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { ChatGptAccount } from "./chatgpt/account.ts";
+import { chatgptAccount, type ChatGptAccount } from "./chatgpt.ts";
 import { CodexWorkspaceEngine, codexConfig } from "./preflight/codexEngine.ts";
 import { fixedSettings, machineSettingsSource, type MachineSettings, type SettingsSource } from "./machineSettings.ts";
 import type { PreflightEngine } from "./preflight/engine.ts";
@@ -41,7 +41,7 @@ export async function openProject(
   await ws.load();
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
   // Mock は preflight.engine: mock（P3_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
-  const chatgpt = new ChatGptAccount();
+  const chatgpt = chatgptAccount();
   const codex = new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt });
   const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { codex, mock: new MockEngine() };
   const preflight = new PreflightService(ws, engines, {

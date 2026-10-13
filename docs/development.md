@@ -119,7 +119,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
     store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
     preflight/       エンジン（codex-workspace / mock）と実行・タスク化
-    chatgpt/         ChatGPT の接続（サインイン・トークン）
+    chatgpt.ts       ChatGPT の接続（アプリ名・保存先・トークンの長さ。サインインと保存は @infodb/chatgpt-plan）
     context.ts / userConfig.ts / machineSettings*.ts   プロジェクトを開く・個人設定・マシンごとの設定
   server/            HTTP だけ（p3 serve）
     server.ts        待ち受けと画面の配信
@@ -151,7 +151,7 @@ test/                ユニットテスト
 | --- | --- |
 | 同梱するもの（`files`） | `bin/`・`src/cli`・`src/core`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/core/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、`docs/`（README から辿る文書）、README・LICENSE |
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
-| 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`。React などの画面の部品はビルドに使うだけなので開発用 |
+| 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`。React などの画面の部品はビルドに使うだけなので開発用 |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ）。開発（Vite 8）は Node 24 |
 | 公開前のビルド | `prepack` で `pnpm build`。利用者が入れるときにはビルドも Docker の操作もしない |
 | bin | `p3`。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |

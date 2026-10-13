@@ -5,11 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { chatgptCommand } from "../src/cli/chatgpt.ts";
 import { apiRoutes } from "../src/server/api/routes.ts";
 import { chatgptView } from "../src/web/lib/chatgpt.ts";
-import { ChatGptAccount, ChatGptAuthError } from "../src/core/chatgpt/account.ts";
-import { OPENAI_ENDPOINTS, PLAN_SCOPE, resetJwksCache, SCOPES, type OAuthDeps } from "../src/core/chatgpt/oauth.ts";
-import { loadConnection, saveConnection } from "../src/core/chatgpt/store.ts";
+import { loadConnection, OPENAI_ENDPOINTS, PLAN_SCOPE, SCOPES, type ChatGptAccount, type OAuthDeps } from "@infodb/chatgpt-plan";
+import { chatgptAccount, ChatGptAuthError, CODEX_TOKEN_MIN_VALID_MS, signInFailure } from "../src/core/chatgpt.ts";
 import { loadUserConfig, saveUserConfig } from "../src/core/userConfig.ts";
-import { makeProject, tempDir } from "./helpers.ts";
+import { makeProject, tempDir, writeConnection } from "./helpers.ts";
 
 const KID = "k1";
 const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -25,7 +24,10 @@ function jwt(claims: Record<string, unknown>, key: KeyObject = keys.privateKey, 
  * 偽の auth.openai.com。トークンの発行・更新・取り消しと JWKS を返し、受けた要求を記録する。
  * opts で ID トークンや応答を崩して、検証や失敗の扱いを確かめる。
  */
+let fakes = 0;
 function fakeOAuth() {
+  // 部品は JWKS を URL ごとに覚えるので、偽ごとに URL を変えて取り直させる
+  const endpoints = { ...OPENAI_ENDPOINTS, jwks: `${OPENAI_ENDPOINTS.jwks}?fake=${++fakes}` };
   let now = Date.parse("2026-10-10T00:00:00Z");
   const calls: { url: string; body: Record<string, string> }[] = [];
   const st = {
@@ -46,7 +48,7 @@ function fakeOAuth() {
     const url = String(input);
     const body = Object.fromEntries(new URLSearchParams(String(init?.body ?? "")));
     calls.push({ url, body });
-    if (url === OPENAI_ENDPOINTS.jwks) return json(200, { keys: [{ ...keys.publicKey.export({ format: "jwk" }), kid: KID, alg: "RS256", use: "sig" }] });
+    if (url === endpoints.jwks) return json(200, { keys: [{ ...keys.publicKey.export({ format: "jwk" }), kid: KID, alg: "RS256", use: "sig" }] });
     if (url === OPENAI_ENDPOINTS.revoke) return st.revokeFails ? json(503, {}) : new Response("", { status: 200 });
     if (url === OPENAI_ENDPOINTS.token) {
       if (body.grant_type === "refresh_token" && st.refreshError) return json(400, { error: st.refreshError });
@@ -56,7 +58,7 @@ function fakeOAuth() {
     }
     return json(404, {});
   }) as typeof globalThis.fetch;
-  const deps: OAuthDeps = { endpoints: OPENAI_ENDPOINTS, fetch, now: () => now };
+  const deps: OAuthDeps = { endpoints, fetch, now: () => now };
   return { st, calls, deps, advance: (ms: number) => (now += ms) };
 }
 
@@ -65,7 +67,6 @@ let file = "";
 beforeEach(() => {
   dir = tempDir("p3-chatgpt-");
   file = join(dir, "chatgpt.json");
-  resetJwksCache();
 });
 
 /** ブラウザの代わり: authorize の URL から state・nonce を読み、コールバックを呼ぶ */
@@ -82,9 +83,10 @@ async function signIn(account: ChatGptAccount, f: ReturnType<typeof fakeOAuth>, 
 describe("Sign in with ChatGPT: サインイン", () => {
   it("初回は dynamic_agent_client で登録し、PKCE で換えた ID トークンを検証して 0600 で保存する", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const { auth, res, result } = await signIn(account, f);
     expect(res.status).toBe(200);
+    expect(await res.text()).toContain("P3 に戻ってください");
     const r = await result;
     expect(r.ok && r.s).toMatchObject({ connected: true, planAllowed: true, email: "a@example.com", registered: true });
 
@@ -114,7 +116,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
 
   it("別の試行の応答（state が違う）は断って待ち続け、正しい応答で終わる", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const attempt = await account.startLogin({ port: 0 });
     f.st.lastNonce = new URL(attempt.url).searchParams.get("nonce")!;
     const bad = new URL(attempt.redirectUri);
@@ -132,7 +134,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
     ["nonce が違う", (f: ReturnType<typeof fakeOAuth>) => (f.st.nonce = "replayed"), "nonce"],
   ])("ID トークンの%sときは保存しない（既存の接続も変えない）", async (_, spoil, msg) => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     await (await signIn(account, f)).result;
     const before = readFileSync(file, "utf8");
     spoil(f);
@@ -144,18 +146,21 @@ describe("Sign in with ChatGPT: サインイン", () => {
 
   it("別のアカウントでのサインインは上書きしない", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     await (await signIn(account, f)).result;
     f.st.sub = "user-2";
     const r = await (await signIn(account, f)).result;
     expect(!r.ok && r.e.message).toContain("違うアカウント");
+    // CLI では P3 のコマンドで案内する
+    expect(!r.ok && signInFailure(r.e).message).toMatch(/違うアカウント.*p3 chatgpt logout --forget/);
+    expect(!r.ok && signInFailure(r.e).message).not.toContain("logout({");
     expect((await loadConnection(file))?.account?.sub).toBe("user-1");
   });
 
   it("プランの利用が許可されなければ、接続はするが Preflight には使わない", async () => {
     const f = fakeOAuth();
     f.st.scope = "openid profile email offline_access";
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const r = await (await signIn(account, f)).result;
     expect(r.ok && r.s).toMatchObject({ connected: true, planAllowed: false });
     await expect(account.accessToken()).rejects.toMatchObject({ code: "plan_not_allowed" });
@@ -163,7 +168,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
 
   it("拒否・取消・タイムアウト。取り消した後のコールバックは届かない", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const denied = await signIn(account, f, { error: "access_denied" });
     const r = await denied.result;
     expect(!r.ok && r.e.message).toContain("取り消されました");
@@ -183,7 +188,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
 
   it("ブラウザが届かないときは、アドレスバーの URL を貼って続けられる", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const a = await account.startLogin({ port: 0 });
     const p = new URL(a.url).searchParams;
     f.st.lastNonce = p.get("nonce")!;
@@ -196,7 +201,7 @@ describe("Sign in with ChatGPT: サインイン", () => {
 describe("Sign in with ChatGPT: トークンの更新と解除", () => {
   async function connected() {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     await (await signIn(account, f)).result;
     return { f, account };
   }
@@ -205,7 +210,7 @@ describe("Sign in with ChatGPT: トークンの更新と解除", () => {
     const { f, account } = await connected();
     expect(await account.accessToken()).toBe("at-1");
     f.advance(30 * 60_000); // 残り 30 分 < 35 分
-    const [a, b] = await Promise.all([account.accessToken(), new ChatGptAccount(file, f.deps).accessToken()]);
+    const [a, b] = await Promise.all([account.accessToken(CODEX_TOKEN_MIN_VALID_MS), chatgptAccount(file, f.deps).accessToken(CODEX_TOKEN_MIN_VALID_MS)]);
     expect([a, b]).toEqual(["at-2", "at-2"]);
     const refreshes = f.calls.filter((c) => c.body.grant_type === "refresh_token");
     expect(refreshes.map((c) => c.body)).toEqual([{ grant_type: "refresh_token", client_id: "oaiapp_1", refresh_token: "rt-1", resource: "https://api.openai.com/v1" }]);
@@ -216,7 +221,7 @@ describe("Sign in with ChatGPT: トークンの更新と解除", () => {
   it("更新できないエラーならトークンを消してサインインし直してもらう。通信の失敗では消さない", async () => {
     const { f, account } = await connected();
     f.advance(60 * 60_000);
-    const down = new ChatGptAccount(file, { ...f.deps, fetch: async () => { throw new Error("ECONNRESET"); } });
+    const down = chatgptAccount(file, { ...f.deps, fetch: async () => { throw new Error("ECONNRESET"); } });
     await expect(down.accessToken()).rejects.toMatchObject({ code: "network" });
     expect((await loadConnection(file))?.tokens).toBeDefined(); // 一時的な失敗では消さない（再起動しても同じ接続を使える）
 
@@ -230,7 +235,7 @@ describe("Sign in with ChatGPT: トークンの更新と解除", () => {
   });
 
   it("未接続ならサインインを案内する", async () => {
-    await expect(new ChatGptAccount(file, fakeOAuth().deps).accessToken()).rejects.toMatchObject({ code: "not_connected" });
+    await expect(chatgptAccount(file, fakeOAuth().deps).accessToken()).rejects.toMatchObject({ code: "not_connected" });
   });
 
   it("解除は refresh token を取り消してからトークンを消す。--forget で登録ごと。取り消しが通らなくてもローカルは消す", async () => {
@@ -254,7 +259,7 @@ describe("Sign in with ChatGPT: トークンの更新と解除", () => {
 describe("Sign in with ChatGPT: 秘密を出さない・個人設定と分ける", () => {
   it("CLI の状態にトークンを出さない。個人設定の保存で接続は消えず、その逆も同じ", async () => {
     const f = fakeOAuth();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     await (await signIn(account, f)).result;
     const s = await chatgptCommand(["status"], {}, account);
     const text = JSON.stringify(s.data) + s.text;
@@ -265,7 +270,7 @@ describe("Sign in with ChatGPT: 秘密を出さない・個人設定と分ける
     await saveUserConfig({ projects: { p: { dir: "/data/p", repos: {} } }, ui: { theme: "dark" }, settings: {} }, cfgPath);
     expect((await loadConnection(file))?.tokens?.accessToken).toBe("at-1");
     const c = (await loadConnection(file))!;
-    await saveConnection({ ...c, tokens: undefined }, file);
+    await writeConnection(file, { ...c, tokens: undefined });
     expect(await loadUserConfig(cfgPath)).toMatchObject({ projects: { p: { dir: "/data/p" } }, ui: { theme: "dark" } });
   });
 });
@@ -274,7 +279,7 @@ describe("ChatGPT の API（画面から）", () => {
   async function setup() {
     const f = fakeOAuth();
     const p = await makeProject();
-    const account = new ChatGptAccount(file, f.deps);
+    const account = chatgptAccount(file, f.deps);
     const app = apiRoutes({ ...p.ctx, chatgpt: account });
     /** addr: 接続元、origin: ページの Origin（undefined なら付けない） */
     const call = async (method: string, path: string, opt: { body?: unknown; addr?: string; origin?: string | null } = {}) => {

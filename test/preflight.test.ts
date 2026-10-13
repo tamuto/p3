@@ -5,9 +5,8 @@ import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_IMAGE, dockerCommand } from "@infodb/codex-workspace";
 import { progress } from "../src/core/ops.ts";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
-import { OPENAI_ENDPOINTS } from "../src/core/chatgpt/oauth.ts";
-import { saveConnection } from "../src/core/chatgpt/store.ts";
+import { OPENAI_ENDPOINTS } from "@infodb/chatgpt-plan";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { redact } from "../src/core/redact.ts";
 import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/core/preflight/codexEngine.ts";
 import { resolveMachineSettings } from "../src/core/machineSettings.ts";
@@ -16,7 +15,7 @@ import { parseAssessment } from "../src/core/preflight/service.ts";
 import type { Renderer } from "../src/core/preflight/uiRender.ts";
 import { RenderError } from "../src/core/preflight/render.ts";
 import { wireframePng } from "../src/core/preflight/wireframe.ts";
-import { makeProject, MAIN_REF, makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
+import { makeProject, MAIN_REF, makeRepo, newRequest, newTask, openTestProject, tempDir, writeConnection, writeTestProject } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 
@@ -128,7 +127,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     return new CodexWorkspaceEngine({
       render,
       authVolume: "vol", // 旧来の auth.json（ChatGPT には接続していない）
-      account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
+      account: chatgptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [
         [repo, "/host/repo"],
         [data, "/host/data"],
@@ -302,7 +301,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     let supersede = "";
     const codex = new CodexWorkspaceEngine({
       authVolume: "vol",
-      account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
+      account: chatgptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [],
       ensureImage: false,
       command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
@@ -419,7 +418,8 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
   async function account(opts: { scopes?: string[]; expiresInMs?: number; tokens?: boolean; refresh?: () => Response } = {}) {
     const file = join(tempDir(), "chatgpt.json");
     if (opts.tokens !== false) {
-      await saveConnection(
+      await writeConnection(
+        file,
         {
           hostId: "urn:uuid:h",
           clientId: "oaiapp_1",
@@ -432,11 +432,10 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
             savedAt: new Date().toISOString(),
           },
         },
-        file,
       );
     }
     const fetch = (async () => opts.refresh?.() ?? new Response("{}", { status: 500 })) as typeof globalThis.fetch;
-    return new ChatGptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch, now: Date.now });
+    return chatgptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch, now: Date.now });
   }
 
   it("選び方: 旧来の明示 > ChatGPT の接続 > 旧来だけ > 無し（サインインを案内）", async () => {
@@ -458,7 +457,7 @@ describe("CodexWorkspaceEngine の認証（Sign in with ChatGPT）", () => {
     // CLI で（プラン利用の同意なしに）サインインした
     const file = (acc as unknown as { file: string }).file;
     await new Promise((r) => setTimeout(r, 20));
-    await saveConnection({ hostId: "h", clientId: "c", account: { sub: "u" }, tokens: { accessToken: "a", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), scopes: ["openid"], savedAt: "" } }, file);
+    await writeConnection(file, { hostId: "h", clientId: "c", account: { sub: "u" }, tokens: { accessToken: "a", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), scopes: ["openid"], savedAt: "" } });
     expect(await engine.status()).toMatchObject({ ok: false, detail: expect.stringContaining("許可されていません") });
   });
 

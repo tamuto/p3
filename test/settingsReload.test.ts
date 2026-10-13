@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { unknownEngine } from "../src/web/lib/engineStatus.ts";
 import { machineSettingsSource } from "../src/core/machineSettings.ts";
 import { CodexWorkspaceEngine, codexConfig } from "../src/core/preflight/codexEngine.ts";
@@ -31,7 +31,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
   await ws.load();
   const initial = await source.get().catch(() => undefined);
   const codex = new CodexWorkspaceEngine({
-    account: new ChatGptAccount(join(tempDir(), "none.json")),
+    account: chatgptAccount(join(tempDir(), "none.json")),
     load: async () => ({
       ...codexConfig(await source.get()),
       command: ({ repos, data }) => {
@@ -157,7 +157,7 @@ describe("個人設定を serve の起動し直しなしで効かせる", () => 
 describe("エンジンの状態（/api/engine・ChatGPT の状態）も読み直す", () => {
   it("設定を変える・壊す・直すと、serve を起動し直さずに状態が変わる", async () => {
     const s = await setup();
-    const app = apiRoutes({ ...s.ctx, chatgpt: new ChatGptAccount(join(tempDir(), "none.json")) });
+    const app = apiRoutes({ ...s.ctx, chatgpt: chatgptAccount(join(tempDir(), "none.json")) });
     const engine = async () => (await (await app.request("/engine")).json()) as { name: string; ok: boolean; detail: string };
     await s.write(`${s.legacy}preflight:\n  engine: mock\n`);
     expect(await engine()).toMatchObject({ name: "mock", ok: true });

@@ -11,8 +11,7 @@ import {
   dockerCommand,
   type WorkspaceEvent,
 } from "@infodb/codex-workspace";
-import { ChatGptAccount, ChatGptAuthError } from "../chatgpt/account.ts";
-import { APP_NAME } from "../chatgpt/oauth.ts";
+import { APP_NAME, chatgptAccount, ChatGptAuthError, CODEX_TOKEN_MIN_VALID_MS, type ChatGptAccount } from "../chatgpt.ts";
 import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
@@ -158,11 +157,11 @@ export class CodexWorkspaceEngine implements PreflightEngine {
    */
   constructor(cfg: CodexWorkspaceConfig | { load: () => Promise<CodexWorkspaceConfig>; account?: ChatGptAccount }) {
     if ("load" in cfg) {
-      this.account = cfg.account ?? new ChatGptAccount();
+      this.account = cfg.account ?? chatgptAccount();
       this.source = cfg.load;
       this.cfg = { pathMap: [], ensureImage: true };
     } else {
-      this.account = cfg.account ?? new ChatGptAccount();
+      this.account = cfg.account ?? chatgptAccount();
       this.source = async () => cfg;
       this.cfg = cfg;
     }
@@ -315,7 +314,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     let env: Record<string, string> | undefined;
     if (auth.mode === "chatgpt") {
       try {
-        env = { [ACCESS_TOKEN_ENV]: await this.account.accessToken(35 * 60_000) };
+        env = { [ACCESS_TOKEN_ENV]: await this.account.accessToken(CODEX_TOKEN_MIN_VALID_MS) };
       } catch (e) {
         if (e instanceof ChatGptAuthError) this.checked = undefined;
         throw e;

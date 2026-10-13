@@ -4,29 +4,28 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_IMAGE } from "@infodb/codex-workspace";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
-import { OPENAI_ENDPOINTS } from "../src/core/chatgpt/oauth.ts";
-import { saveConnection } from "../src/core/chatgpt/store.ts";
+import { OPENAI_ENDPOINTS } from "@infodb/chatgpt-plan";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
 import { describeMapping, diagnoseLaunch, mapPath } from "../src/core/preflight/diagnose.ts";
 import { prepareLaunch } from "../src/core/preflight/launch.ts";
-import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
+import { makeRepo, newRequest, openTestProject, tempDir, writeConnection } from "./helpers.ts";
 
 const FAKE_RUN = fileURLToPath(new URL("./fixtures/fake-docker-run.mjs", import.meta.url));
 const PLAN = ["openid", "offline_access", "chatgpt.tokens.use.direct"];
 
-async function chatgptAccount() {
+async function connectedAccount() {
   const file = join(tempDir(), "chatgpt.json");
-  await saveConnection(
+  await writeConnection(
+    file,
     {
       hostId: "urn:uuid:h",
       clientId: "oaiapp_1",
       account: { sub: "u", email: "a@example.com" },
       tokens: { accessToken: "at-secret-value", refreshToken: "rt", expiresAt: new Date(Date.now() + 3_600_000).toISOString(), scopes: PLAN, savedAt: new Date().toISOString() },
     },
-    file,
   );
-  return new ChatGptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch: async () => new Response("{}", { status: 500 }), now: Date.now });
+  return chatgptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch: async () => new Response("{}", { status: 500 }), now: Date.now });
 }
 
 /** 偽の docker run で Preflight を1回動かす */
@@ -34,7 +33,7 @@ async function runWith(mode: string | string[], opts: { chatgpt?: boolean; pathM
   const repo = await makeRepo();
   const codex = new CodexWorkspaceEngine({
     authVolume: opts.chatgpt ? undefined : "vol",
-    account: opts.chatgpt ? await chatgptAccount() : new ChatGptAccount(join(tempDir(), "none.json")),
+    account: opts.chatgpt ? await connectedAccount() : chatgptAccount(join(tempDir(), "none.json")),
     pathMap: opts.pathMap ?? [[repo.root, "/host/repo"]],
     ensureImage: false,
     command: () => (Array.isArray(mode) ? mode : [process.execPath, FAKE_RUN, mode]),
