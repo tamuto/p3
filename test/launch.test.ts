@@ -26,7 +26,7 @@ async function chatgptAccount() {
     },
     file,
   );
-  return new ChatGptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch: (async () => new Response("{}", { status: 500 })) as typeof fetch, now: Date.now });
+  return new ChatGptAccount(file, { endpoints: OPENAI_ENDPOINTS, fetch: async () => new Response("{}", { status: 500 }), now: Date.now });
 }
 
 /** 偽の docker run で Preflight を1回動かす */

@@ -147,7 +147,7 @@ export function ReleaseNotePanel({ milestone }: { milestone: string }) {
       <MaterialView material={detail.material} />
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <GenerationView gen={gen} currentHash={detail.material.hash} hasSources={hasSources} onGenerate={generate} onTake={takeGenerated} />
+        <GenerationView gen={gen} currentHash={detail.material.hash} hasSources={hasSources} onGenerate={() => void generate()} onTake={takeGenerated} />
         <NoteEditor
           milestone={milestone}
           detail={detail}
@@ -243,7 +243,7 @@ function GenerationView({
           </Button>
         )}
         {running ? (
-          <Button onClick={() => void api.cancelReleaseGeneration(gen!.id)}>生成を取り消す</Button>
+          <Button onClick={() => void api.cancelReleaseGeneration(gen.id)}>生成を取り消す</Button>
         ) : (
           <Button variant={gen?.status === "completed" ? "secondary" : "primary"} disabled={!hasSources} onClick={onGenerate}>
             {gen?.status === "failed" || gen?.status === "cancelled" ? "もう一度生成する" : gen ? "生成し直す" : "機能の要約を生成"}

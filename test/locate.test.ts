@@ -1,8 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { findDataDir, resolveProject } from "../src/core/store/locate.ts";
-import { readFile } from "node:fs/promises";
 import { loadUserConfig, normalizeUserConfig, saveUserConfig, type UserConfig } from "../src/core/userConfig.ts";
 import { git, makeRepo, tempDir } from "./helpers.ts";
 

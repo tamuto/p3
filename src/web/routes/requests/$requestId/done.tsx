@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { DoneMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { Button, Empty, Id } from "../../../components/ui.tsx";
+import { runAction } from "../../../lib/action.ts";
 import { api } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
@@ -20,6 +22,7 @@ function DonePage() {
   const ctx = useAppCtx();
   const { tasks, reload } = useRequestData();
   const items = tasks.filter((t) => t.checkedAt).sort(byCheckedDesc);
+  const [error, setError] = useState<string | null>(null);
 
   if (!items.length) {
     return (
@@ -31,6 +34,11 @@ function DonePage() {
 
   return (
     <div className="mx-auto max-w-5xl p-8">
+      {error && (
+        <p role="alert" className="mb-4 text-rose-600">
+          {error}
+        </p>
+      )}
       <table className="w-full">
         <thead className="text-left text-sm text-slate-500">
           <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -58,10 +66,20 @@ function DonePage() {
                 <Button
                   variant="ghost"
                   title="タスクボードの完了欄に戻す"
-                  onClick={async () => {
-                    await api.patchTask(t.ref, { checked: false, rev: t.rev });
-                    reload();
-                    ctx.reload();
+                  onClick={() => {
+                    setError(null);
+                    // 外で変わっていた（rev が違う）・消えたときは知らせて読み直す
+                    runAction(
+                      async () => {
+                        await api.patchTask(t.ref, { checked: false, rev: t.rev });
+                        reload();
+                        ctx.reload();
+                      },
+                      (m) => {
+                        setError(`${t.id} の「済み」を外せませんでした: ${m}`);
+                        reload();
+                      },
+                    );
                   }}
                 >
                   済みを外す

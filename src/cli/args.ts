@@ -111,7 +111,7 @@ export function parseTaskAssignments(pairs: string[]): Partial<Task> {
       patch[key] = raw;
     } else patch[key] = raw;
   }
-  return patch as Partial<Task>;
+  return patch;
 }
 
 export function splitPair(pair: string): [string, string] {

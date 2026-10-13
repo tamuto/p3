@@ -1,6 +1,6 @@
 // テスト用の偽 codex app-server。@infodb/codex-workspace と JSON-RPC で話し、
 // preflight の指示文から run ディレクトリを読み取って、assessment.json と drafts/*.md を書く。
-//   FAKE_REPO     作業場所（コンテナの /workspace に当たる）
+//   FAKE_REPO     作業場所（コンテナの /workspace に当たる。受け取るが読み書きしない）
 //   FAKE_DATA     データディレクトリ（コンテナの /data に当たる）
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
 //   FAKE_SUPERSEDE 置き換えられるタスクの参照（<要望ID>/T001）。D2 の supersedes に書く
@@ -11,7 +11,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const { FAKE_REPO: repo, FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_SUPERSEDE: supersede = "" } = process.env;
+const { FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_SUPERSEDE: supersede = "" } = process.env;
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 

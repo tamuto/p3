@@ -56,7 +56,7 @@ describe("npm で配る中身", () => {
       for (const { target } of links(doc)) expect(files, `${doc} → ${target}`).toContain(target);
     }
     const unwanted = files.filter((f) =>
-      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || /\.test\.ts$/.test(f),
+      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || f.endsWith(".test.ts"),
     );
     expect(unwanted).toEqual([]);
   });

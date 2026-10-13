@@ -83,6 +83,7 @@ export function inspectAttachment(data: Buffer, name: string): { format: Attachm
 
 /** ダウンロードの名前（制御文字・パスの区切りを外す） */
 export function safeFileName(name: string, format: AttachmentFormat): string {
+  // oxlint-disable-next-line no-control-regex -- 制御文字を外すのが目的
   const base = name.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, "_").replace(/^\.+/, "").trim().slice(0, 120);
   const ext = `.${EXT[format]}`;
   const withExt = /\.(png|jpe?g|xlsx)$/i.test(base) ? base : `${base || "attachment"}${ext}`;

@@ -118,7 +118,7 @@ export function Meter({ value, tone }: { value: number; tone: "emerald" | "amber
   );
 }
 
-export const scoreTone = (v: number) => (v >= 70 ? "emerald" : v >= 45 ? "amber" : "rose") as "emerald" | "amber" | "rose";
+export const scoreTone = (v: number) => (v >= 70 ? "emerald" : v >= 45 ? "amber" : "rose");
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-500 dark:border-slate-700">{children}</p>;

@@ -86,7 +86,7 @@ export const indent = (s: string) => s.split("\n").map((l) => `  ${l}`).join("\n
 
 /** 関係の役割を同じ幅にそろえる（全角は2桁として数える。CLI の詳細で相手の列がそろうように） */
 export function pad(label: string, width = 8): string {
-  const w = [...label].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
+  const w = Array.from(label).reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
   return label + " ".repeat(Math.max(1, width - w));
 }
 

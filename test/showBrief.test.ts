@@ -49,9 +49,7 @@ async function fixture() {
       areas,
       status: n <= 2 ? "done" : n === 3 ? "doing" : "todo",
       outputs: n <= 2 ? [`https://example.com/commit/${n}`] : [],
-      relations: [
-        ...(n > 1 ? [{ type: "depends_on" as const, target: `T00${n - 1}`, origin: "preflight" as const }] : []),
-      ],
+      relations: n > 1 ? [{ type: "depends_on" as const, target: `T00${n - 1}`, origin: "preflight" as const }] : [],
     });
     refs.push(t.ref);
   }

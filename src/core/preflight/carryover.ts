@@ -39,7 +39,7 @@ export async function selectCarryover(ws: Workspace, requestId: string): Promise
   }
   const used = new Set<string>();
   const seen = new Set<string>();
-  for (let r = previous; r && !seen.has(r.id); r = r.previous ? runs.find((x) => x.id === r!.previous) : undefined) {
+  for (let r = previous; r && !seen.has(r.id); r = r.previous ? runs.find((x) => x.id === r.previous) : undefined) {
     seen.add(r.id);
     for (const n of r.notes ?? []) used.add(n);
   }

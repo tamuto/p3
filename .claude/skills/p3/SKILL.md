@@ -25,7 +25,8 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
 
 ## 開発の決まり
 
-- タスクを完了にする前に `pnpm -s check`（型検査・テスト・画面のビルド）を通す。CI は足さない
+- タスクを完了にする前に `pnpm -s check`（型検査・lint・テスト・画面のビルド）を通す。CI は足さない。lint の規則と
+  例外の書き方は `docs/development.md` の「lint」（指摘を無効化のコメントで一律に黙らせない）
 - 成果物の `--output` には push したコミットの URL（`git remote get-url origin` のリポジトリの `/commit/<sha>`）か PR の URL
 - 依存の `@infodb/codex-workspace` は公開版を使う。手元の llmcs で試すときの一時的な手順は `docs/architecture.md`（codex-workspace の依存）
 - `skills/p3/SKILL.md` と `src/cli/project.ts` の `AGENTS_SNIPPET` は内容をそろえる（役割・終わり方を変えたら両方を直す。

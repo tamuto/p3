@@ -264,7 +264,7 @@ export function extractXlsx(data: Buffer, title: string, now: () => number = Dat
     const sheetRels = rels(zip, rel.target);
     for (const r of sheetRels.values()) {
       if (r.external) unsupported.add(`シート「${sheet.name}」の外部への参照（取りに行きません）`);
-      if (/\/oleObject$/.test(r.type)) unsupported.add(`シート「${sheet.name}」の埋め込みのオブジェクト（OLE）`);
+      if (r.type.endsWith("/oleObject")) unsupported.add(`シート「${sheet.name}」の埋め込みのオブジェクト（OLE）`);
     }
     const drawing = [...sheetRels.values()].find((r) => r.type.endsWith("/drawing") && !r.external);
     if (drawing && !stopped) lines.push(...readDrawing(zip, drawing.target, sheet.name, images, truncated, unsupported));

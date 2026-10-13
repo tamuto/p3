@@ -140,6 +140,28 @@ describe("要約の生成（偽の頼み先）", () => {
     expect(g.materialHash).not.toBe((await releaseMaterial(ctx, "v1")).hash);
   });
 
+  it("終わった（running でない）と見えるときは、材料の比較と終わった日時まで入っている", async () => {
+    const fake: Summarizer = {
+      async ask(input) {
+        const refs = [...input.prompt.matchAll(/"ref": "([^"]+)"/g)].map((m) => m[1]);
+        return { message: JSON.stringify({ items: [{ text: "まとめ", sources: refs }] }), seconds: 0 };
+      },
+    };
+    const { ctx } = await setup(fake);
+    const g = await startGeneration(ctx, "v1", "human:test");
+    // 終わりの処理（材料の読み直し）の間も、API と同じく get で何度も覗く
+    const seen: ReleaseGeneration[] = [];
+    for (let i = 0; i < 10_000; i++) {
+      const now = ctx.releaseGenerator.get(g.id)!;
+      if (now.status !== "running") {
+        seen.push(structuredClone(now));
+        break;
+      }
+      await new Promise((r) => setImmediate(r));
+    }
+    expect(seen[0]).toMatchObject({ status: "completed", materialChanged: false, finishedAt: expect.any(String) });
+  });
+
   it("材料が無い・入力が上限を超えるときは頼まずに断る（手で書いて保存はできる）", async () => {
     let calls = 0;
     const fake: Summarizer = {

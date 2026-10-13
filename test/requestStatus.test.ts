@@ -112,7 +112,7 @@ describe("対応済の API", () => {
     const app = apiRoutes(ctx);
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     await newTask(ctx, req.id, { title: "A" });
     const before = ctx.ws.requests.get(req.id)!;

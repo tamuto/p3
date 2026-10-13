@@ -16,7 +16,7 @@ export const defaultRepo = (p: Pick<ProjectConfig, "repos">): string | null => {
 export const taskRepo = (t: Pick<Task, "repo">): string | undefined => t.repo ?? undefined;
 
 /** 要望のリポジトリごとのブランチ */
-export const requestWorkstreams = (r: Pick<Request, "workstreams">): Record<string, Workstream> => ({ ...(r.workstreams ?? {}) });
+export const requestWorkstreams = (r: Pick<Request, "workstreams">): Record<string, Workstream> => ({ ...r.workstreams });
 
 /** 作業先にできない理由（できれば undefined）。null（作業先なし）はいつでもよい */
 export function repoTargetProblem(repo: string | null | undefined, p: Pick<ProjectConfig, "repos">): string | undefined {

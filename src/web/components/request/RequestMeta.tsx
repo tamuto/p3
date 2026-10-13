@@ -35,7 +35,7 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
       return null;
     }
     try {
-      const saved = await api.patchRequest(request.id, { ...patch, rev } as never);
+      const saved = await api.patchRequest(request.id, { ...patch, rev });
       setError(null);
       data.reload();
       ctx.reload();

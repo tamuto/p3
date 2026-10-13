@@ -34,6 +34,26 @@ function NewRequest() {
   const check = checkPending(files.map((f) => f.file));
   const blocked = !!check.total || check.items.some(Boolean);
   const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+
+  async function create() {
+    setBusy("作成中…");
+    setError(null);
+    let id: string;
+    try {
+      ({ id } = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] }));
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(null);
+      return;
+    }
+    // 要望はできた。添付の失敗は要望の画面で知らせて付け直す（ここに残ると作成を繰り返してしまう）
+    if (files.length) {
+      const failed = await sendPending(files, (f) => api.addAttachment(id, f), (n) => setBusy(`添付中 ${n}/${files.length}`));
+      setUnsentAttachments(id, failed);
+    }
+    onCreated(id);
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-8">
       <h2 className="text-xl font-bold">新しい要望</h2>
@@ -75,24 +95,7 @@ function NewRequest() {
       <Button
         variant="primary"
         disabled={!title.trim() || blocked || !!busy}
-        onClick={async () => {
-          setBusy("作成中…");
-          setError(null);
-          let id: string;
-          try {
-            ({ id } = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] }));
-          } catch (e) {
-            setError((e as Error).message);
-            setBusy(null);
-            return;
-          }
-          // 要望はできた。添付の失敗は要望の画面で知らせて付け直す（ここに残ると作成を繰り返してしまう）
-          if (files.length) {
-            const failed = await sendPending(files, (f) => api.addAttachment(id, f), (n) => setBusy(`添付中 ${n}/${files.length}`));
-            setUnsentAttachments(id, failed);
-          }
-          onCreated(id);
-        }}
+        onClick={() => void create()}
       >
         {busy ?? (files.length ? `作成して ${files.length} 件を添付` : "作成")}
       </Button>

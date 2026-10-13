@@ -56,7 +56,7 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
 
     case "generate": {
       if (o.engine !== undefined && o.engine !== "codex" && o.engine !== "mock") throw new UsageError("--engine は codex か mock");
-      const g = await startGeneration(ctx, need(), actor, o.engine as "codex" | "mock" | undefined);
+      const g = await startGeneration(ctx, need(), actor, o.engine);
       const gen = ctx.releaseGenerator;
       // 進み具合は stderr（stdout は本文の案か JSON だけにする）
       let shown = 0;
@@ -69,7 +69,8 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
       process.removeListener("SIGINT", onInt);
       flushLog(done, shown);
       if (done.status !== "completed") {
-        out.json ? out.result(done, () => "") : process.stderr.write(`${failureLine(done)}\n`);
+        if (out.json) out.result(done, () => "");
+        else process.stderr.write(`${failureLine(done)}\n`);
         return 1;
       }
       if (!out.json) {

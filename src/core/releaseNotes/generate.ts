@@ -131,6 +131,8 @@ export class ReleaseGenerator {
     const log = (e: Omit<PreflightLogEntry, "at">) => job.log.push({ at: new Date().toISOString(), ...e });
     const timeout = AbortSignal.timeout(this.opts.timeoutMs ?? SUMMARY_TIMEOUT_MS);
     const signal = AbortSignal.any([abort.signal, timeout]);
+    // 終わりの状態は、項目を全部埋めてから最後に入れる（API で途中の状態を「終わった」と見せない）
+    let status: ReleaseGeneration["status"];
     try {
       log({ kind: "info", text: `材料: 要望 ${material.sources.length} 件・変更の記録 ${material.sources.reduce((n, s) => n + s.tasks.length, 0)} 件（${input.prompt.length} 文字）` });
       const r = await summarizer.ask({ ...input, label: "リリースノートの要約" }, log, signal);
@@ -139,26 +141,26 @@ export class ReleaseGenerator {
       job.items = items;
       job.markdown = summaryMarkdown(material, items);
       job.warnings.push(...warnings);
-      job.status = "completed";
-    } catch (e) {
-      if (abort.signal.aborted) {
-        job.status = "cancelled";
-        job.error = "取り消しました";
-      } else {
-        job.status = "failed";
-        [job.failure, job.error] = timeout.aborted ? ["timeout", `時間切れです（${Math.round((this.opts.timeoutMs ?? SUMMARY_TIMEOUT_MS) / 1000)} 秒）`] : classify(e);
-      }
-      log({ kind: "error", text: job.error! });
-    }
-    // 終わったときに材料を読み直し、生成のあとで変わっていれば知らせる（作り直さない）
-    if (job.status === "completed") {
+      // 終わったときに材料を読み直し、生成のあとで変わっていれば知らせる（作り直さない）
       const now = await extractMaterial(this.ws.dataDir, job.milestone).catch(() => undefined);
+      if (signal.aborted) throw signal.reason;
       job.materialChanged = !now || now.hash !== job.materialHash;
       if (job.materialChanged) {
         job.warnings.push({ code: "material_changed", target: job.milestone, message: "生成のあとで要望・タスクが変わっています（古い材料からの要約です）。必要なら生成し直してください" });
       }
+      status = "completed";
+    } catch (e) {
+      if (abort.signal.aborted) {
+        status = "cancelled";
+        job.error = "取り消しました";
+      } else {
+        status = "failed";
+        [job.failure, job.error] = timeout.aborted ? ["timeout", `時間切れです（${Math.round((this.opts.timeoutMs ?? SUMMARY_TIMEOUT_MS) / 1000)} 秒）`] : classify(e);
+      }
+      log({ kind: "error", text: job.error });
     }
     job.finishedAt = new Date().toISOString();
+    job.status = status;
     this.aborts.delete(job.id);
     this.emit(job);
     return job;

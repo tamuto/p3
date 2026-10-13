@@ -149,7 +149,7 @@ function SettingsPage() {
       {tab === "project" && (
         <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
           <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
-            <Button variant="primary" disabled={!dirty} onClick={save}>
+            <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
               保存
             </Button>
             <Button variant="ghost" disabled={!dirty} onClick={() => (setDraft(ctx.info.project), setDirty(false), setMsg(null))}>

@@ -237,7 +237,7 @@ describe("API", () => {
     const app = apiRoutes(ctx);
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as any };
+      return { status: res.status, body: await res.json() };
     };
     const run = await preflight();
     expect((await call("GET", `/requests/${req.id}/preflight/${run.id}`)).body.inputMatch).toEqual({ status: "same" });
