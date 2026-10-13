@@ -85,9 +85,37 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   読んだ結果ではなくその時点の状態を残す（タスク化や画面からの保存を、先に読んだ古い内容で戻さない）。タスクのコレクションは
   作り直さない（処理中の操作が持っている参照に書いた結果も残る）。同時には走らせず、読み込み中の呼び出しは終わってから
   もう1回にまとめる。project.yaml とデータのフォルダが読めなければ ReloadError（503）で何も変えない。終えたら変更通知
-  `changed`/`reload` を出す。Preflight の履歴・メモは問い合わせのたびに
+  `changed`/`reload` を出す。Preflight の履歴・メモ・リリースノートは問い合わせのたびに
   ディスクを読むので扱わない。応答は読み直しを終えた後（画面はその後に取り直す）。ほかの serve・CLI が同時に書いている
   最中のファイルは、読んだ時点の内容になる（次の読み直しで追いつく）
+
+### リリースノートのデータ
+
+マイルストーンごとに1件、`<data>/release-notes/<マイルストーンID>.md` に置く（`core/releaseNotes/`）。要望のフォルダの外に
+置くのは、複数の要望をまとめるものだから。
+
+- **材料**（`releaseNotes/material.ts`）: マイルストーンに属する要望（アーカイブしたものは除く）を全部返し、収録するかを決める。
+  収録するのは、要望が対応済か完了済で、タスクが1件以上あり、全部が完了で、読めないタスクが無いもの（完了済でもタスクの
+  実態を確かめる）。見送りは理由だけ、ほかの状態は未完了として警告する。要約の材料は、収録する要望の **変更の記録のある
+  完了したタスク** だけで、記録の無いものは警告し、要望やタスクの本文・タイトルで補わない。読めない要望は所属が分からないので
+  全体の警告に残す。並びは要望が作成日時 → ID、タスクが ID。抽出のたびにディスクから読み直した別の `Workspace` を使い、
+  その時点を固定する。`hash` は所属・状態・タイトル・収録の可否と材料（記録まで）から作り、生成や保存のあとの変更を見つける
+- **ファイル**: frontmatter に `milestone`・`title`・作成と更新の日時と変更者・`materialHash`・`sources`（保存したときの材料:
+  要望とタスクの ID・タイトル・状態・変更の記録）、本文に公開する Markdown を書く。出力（`p3 release-notes export` など）は
+  本文だけで、frontmatter と出典は出さない
+- **保存**（`releaseNotes/store.ts`）: 明示的に保存したときだけ書く。要望・タスクが後で変わっても、保存した本文と出典は
+  変えない（詳細で `materialChanged` として知らせる）。新規は排他作成で、既にあれば（読めないファイルでも）上書きしない。
+  更新は読んだときの **版**（ファイル全体の sha256）が必須で、プロセス間のロック（`release-notes/.<ID>.lock`）の中で
+  ディスクの今のファイルと照らし、違えば競合で何も書かない。rev のような番号ではなく中身で照らすので、番号を増やさない
+  直接編集も見つかる。マイルストーンの ID は project.yaml と同じ形（英数字と `. _ -`、`.` と `..` は不可）で、保存先の外を
+  指すものは断る。キャッシュを持たず問い合わせのたびに読むので、再読み込みは要らない。監視は `changed`/`release-note` を出す
+- **マイルストーンとの関係**: ノート（読めないファイルも含む）のあるマイルストーンは消せない（`requestOps.ts` の
+  `checkMilestoneRemoval`。CLI の `milestone rm` と画面の設定の保存で同じ）。保存は要望・マイルストーンの状態を変えない
+- **直接編集の限界と直し方**: ロックを使わない外部のエディタとの完全な排他は保証しない（保存の直前に照らすので、
+  照らした後・書く前の一瞬の書き込みは失われうる）。frontmatter を壊す・`milestone` をファイル名と違えると「読めない」と
+  示し、空のノートとして扱わない（直すまで新規保存もしない）。直すときは frontmatter を戻すか、本文を退避してファイルを
+  消してから保存し直す。project.yaml を直接編集してマイルストーンが消えても、ノートは一覧・閲覧・出力でき、孤立を警告する
+  （マイルストーンを足し直すか、不要ならファイルを消す）
 
 ### 参照先と作業先
 
@@ -246,7 +274,9 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
+| リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
+| リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
@@ -370,6 +400,25 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
   要望の詳細と タスクの GET は印 `superseded` を返す。
 
+### リリースノートの要約（生成の境界）
+
+マイルストーンのリリースノートの機能の要約は、Preflight と同じ Codex の接続（個人設定・認証・イメージの確かめ・起動の診断）で頼む
+（`CodexWorkspaceEngine.ask`、`core/releaseNotes/generate.ts`）。Preflight の評価・タスク化は行わない。
+
+- **渡すもの**: 始めるときに固定した材料（[リリースノートのデータ](#リリースノートのデータ)）のうち、マイルストーンのタイトルと、
+  収録する要望とタスクの ID・タイトル・変更の記録だけを依頼文に入れる。要望やタスクの本文・成果物・参照先・データのフォルダは
+  渡さず、コンテナには何もマウントしない（`/workspace` は空の tmpfs で、終われば消える。パスの対応も要らない）
+- **受け取るもの**: 最後の応答の JSON（項目ごとの文と出典）。P3 が形・件数（100）・長さ（1項目 600 文字・合計 2 万文字）・
+  出典が依頼文に入れた要望とタスクにあるかを確かめ、だめなら `invalid_output` で失敗にする。ローカルのパス・秘密らしい文字列・
+  メールアドレスは `suspicious_content` の警告にする。本文の案（Markdown）は確かめた項目から P3 が組み立て、出典は本文に入れない
+- **頼まないとき**: 材料（記録のある完了したタスク）が無ければ Codex を呼ばずに断る（本文は手で書いて保存できる）。
+  入力（記録とタイトルの合計）が 12 万文字を超えたら、黙って切らずに断る
+- **生成と保存は別**: 生成は保存したノートを変えない。結果（実行 ID・生成中・完了・失敗・取消、失敗の種類 `unavailable`・
+  `usage_limit`・`timeout`（既定 15 分）・`invalid_output`・`error`）はこのプロセスのメモリにだけ置き、変更通知
+  `release-generation` を出す。同じマイルストーンでは1つずつ。終わったら材料を読み直し、変わっていれば `material_changed`
+  （古い材料からの生成）を付ける。作り直しも上書きもしない
+- ChatGPT のトークンは Preflight と同じく、ログとエラーから伏せる
+
 ### codex-workspace の依存
 
 Codex をコンテナで動かす部品は npm の `@infodb/codex-workspace`（llmcs の codex-workspace-ts）。package.json では
@@ -392,6 +441,17 @@ P3 が使う公開 API と約束:
     失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/core/preflight/codexImage.ts`）
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のままでよい）
+
+手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
+
+```bash
+pnpm add @infodb/codex-workspace@link:../llmcs/codex-workspace-ts   # 一時的に手元の llmcs を使う
+# …試す…
+git checkout package.json pnpm-lock.yaml pnpm-workspace.yaml && pnpm install   # 公開版に戻す
+```
+
+`npm pack` やコミットの前に、`package.json` と `pnpm-lock.yaml` に `link:` が無いことを確かめる。
+llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる。
 
 ### 画面イメージの描画のイメージ
 
@@ -421,17 +481,6 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - xlsx の取り出し（`preflight/xlsx.ts`）は Preflight を始めて run に固定した原本から行う。展開後 1 項目 30MB・合計 200MB、
   セル 5 万、画像 20、10 秒で打ち切り、打ち切ったこと・扱っていないもの（図形・グラフ・リンクの画像・EMF など）を記録する。
   外部のブック・URL は取りに行かず、マクロ・OLE は動かさず、XML の DOCTYPE は読まない
-
-手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
-
-```bash
-pnpm add @infodb/codex-workspace@link:../llmcs/codex-workspace-ts   # 一時的に手元の llmcs を使う
-# …試す…
-git checkout package.json pnpm-lock.yaml pnpm-workspace.yaml && pnpm install   # 公開版に戻す
-```
-
-`npm pack` やコミットの前に、`package.json` と `pnpm-lock.yaml` に `link:` が無いことを確かめる。
-llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる。
 
 ## プロジェクトのドキュメントの扱い
 

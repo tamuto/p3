@@ -11,6 +11,8 @@ import { PreflightService } from "../src/core/preflight/service.ts";
 import { writeProjectFile, writeRepoEntry } from "../src/core/store/projectFile.ts";
 import type { RepoRef } from "../src/shared/repos.ts";
 import { Workspace } from "../src/core/store/workspace.ts";
+import { ReleaseGenerator, type Summarizer } from "../src/core/releaseNotes/generate.ts";
+import { MockSummarizer } from "../src/core/releaseNotes/mockSummarizer.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする
@@ -65,14 +67,14 @@ export async function makeRepo(config: Partial<ProjectConfig> = {}) {
 export async function openTestProject(
   dataDir: string,
   engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { mock: new MockEngine({ delay: 0 }) },
-  opts: { repos?: Record<string, string> } = {},
+  opts: { repos?: Record<string, string>; summarizer?: Summarizer } = {},
 ): Promise<P3Context> {
   // 個人設定のこのマシンのパスの代わり。既定は makeRepo のリポジトリ（.p3 の親）を main に
   const repos = opts.repos ?? (basename(dataDir) === ".p3" ? { main: dirname(dataDir) } : {});
   const ws = new Workspace(dataDir, repos);
   await ws.load();
   const preflight = new PreflightService(ws, engines, engines.codex ? "codex" : "mock");
-  return { ws, preflight };
+  return { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, { codex: opts.summarizer, mock: new MockSummarizer({ delayMs: 0 }) }) };
 }
 
 export async function makeProject(config: Partial<ProjectConfig> = {}) {

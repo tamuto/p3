@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestsRequestIdRouteImport } from './routes/requests/$requestId'
 import { Route as RequestsNewRouteImport } from './routes/requests/new'
@@ -20,6 +21,11 @@ import { Route as RequestsRequestIdDoneRouteImport } from './routes/requests/$re
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
+  id: '/release-notes',
+  path: '/release-notes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -55,6 +61,7 @@ const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/new': typeof RequestsNewRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
@@ -73,6 +81,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
@@ -84,6 +93,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/release-notes'
     | '/settings'
     | '/requests/$requestId'
     | '/requests/new'
@@ -93,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/release-notes'
     | '/settings'
     | '/requests/new'
     | '/requests/$requestId/board'
@@ -101,6 +112,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/release-notes'
     | '/settings'
     | '/requests/$requestId'
     | '/requests/new'
@@ -111,6 +123,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ReleaseNotesRoute: typeof ReleaseNotesRoute
   SettingsRoute: typeof SettingsRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRouteWithChildren
   RequestsNewRoute: typeof RequestsNewRoute
@@ -123,6 +136,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/release-notes': {
+      id: '/release-notes'
+      path: '/release-notes'
+      fullPath: '/release-notes'
+      preLoaderRoute: typeof ReleaseNotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -187,6 +207,7 @@ const RequestsRequestIdRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ReleaseNotesRoute: ReleaseNotesRoute,
   SettingsRoute: SettingsRoute,
   RequestsRequestIdRoute: RequestsRequestIdRouteWithChildren,
   RequestsNewRoute: RequestsNewRoute,

@@ -12,6 +12,7 @@ import { CodexWorkspaceEngine, codexConfig } from "../src/core/preflight/codexEn
 import { MockEngine } from "../src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../src/core/preflight/service.ts";
 import { Workspace } from "../src/core/store/workspace.ts";
+import { ReleaseGenerator } from "../src/core/releaseNotes/generate.ts";
 import { makeRepo, newRequest, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
@@ -34,7 +35,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
     load: async () => ({
       ...codexConfig(await source.get()),
       command: ({ repos, data }) => {
-        launched.push({ workspace: repos[0]?.host ?? "", data });
+        launched.push({ workspace: repos[0]?.host ?? "", data: data ?? "" });
         return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, "FAKE_LOG=/dev/null", process.execPath, FAKE_CODEX];
       },
     }),
@@ -43,7 +44,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  const ctx = { ws, preflight };
+  const ctx = { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, {}) };
   const write = (yaml: string) => writeFile(configPath, yaml);
   const legacy = "codex:\n  authVolume: vol\n  ensureImage: false\n";
   const runOnce = async (opts: { engine?: "codex" | "mock" } = {}) => {

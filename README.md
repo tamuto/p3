@@ -46,6 +46,7 @@ DevContainer の中で動かすとき（Docker はホストのもの）は、こ
 | --- | --- |
 | 入れて最初の Preflight を動かすまで（Docker・パスの対応・ChatGPT・つまずいたとき・マシンごとの設定） | [導入ガイド](docs/installation.md) |
 | 要望を1件、作ってから人が確認して閉じるまで。状態・データ・画面・CLI のリファレンス | [使い方ガイド](docs/how-to-use.md) |
+| マイルストーンのリリースノート（タスクの変更の記録から機能の要約を作る） | [使い方ガイド: リリースノート](docs/how-to-use.md#リリースノート) |
 | P3 そのものの開発・ソースの構成・配布物 | [開発ガイド](docs/development.md) |
 | 設計の方針と規則（なぜそうするか） | [docs/architecture.md](docs/architecture.md) |
 | ChatGPT のサインインの設計 | [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md) |

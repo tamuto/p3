@@ -11,6 +11,7 @@ import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
+import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -53,6 +54,7 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  *   <data>/requests/<要望ID>/preflight/PF-.../{run.json, assessment.json, carryover.md, drafts/D1.md}
  *   <data>/requests/<要望ID>/notes/N-....md   Preflight へのメモ
  *   <data>/requests/<要望ID>/attachments/A-.../{meta.json, file.*}   添付（画像・xlsx）
+ *   <data>/release-notes/<マイルストーンID>.md   リリースノート（マイルストーンごとに1件。releaseNotes/store.ts）
  *
  * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */
@@ -62,6 +64,7 @@ export class Workspace {
   readonly preflight: PreflightStore;
   readonly notes: NoteStore;
   readonly attachments: AttachmentStore;
+  readonly releaseNotes: ReleaseNoteStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private abort = new AbortController();
@@ -79,6 +82,7 @@ export class Workspace {
     this.preflight = new PreflightStore(this.requestsDir);
     this.notes = new NoteStore(this.requestsDir);
     this.attachments = new AttachmentStore(this.requestsDir);
+    this.releaseNotes = new ReleaseNoteStore(dataDir);
   }
 
   get requestsDir() {
@@ -114,7 +118,7 @@ export class Workspace {
    *   - project.yaml・要望・全タスクを読み、読み終えてから入れ替える（途中の状態は見せない）
    *   - 同時には走らせない。読み込み中に呼ばれたら、今のものが終わってからもう1回だけ読む（待っている呼び出しはまとめる）
    *   - project.yaml やデータのフォルダが読めなければ ReloadError（何も変えない）。個々の Markdown が壊れていても続け、errors() に出す
-   *   - ファイルは書かない。Preflight の履歴・メモは問い合わせのたびにディスクを読むので、ここでは扱わない
+   *   - ファイルは書かない。Preflight の履歴・メモ・リリースノートは問い合わせのたびにディスクを読むので、ここでは扱わない
    * 終えたら変更通知（kind: "reload"）を出す。関係・検索の索引はこれを受けて作り直す
    */
   reloadAll(): Promise<ReloadResult> {
@@ -287,6 +291,11 @@ export class Workspace {
 
   private async onFileChanged(rel: string) {
     const [top, rid, kind, file] = rel.split(/[\\/]/);
+    if (top === RELEASE_NOTES_DIR) {
+      // リリースノートの作成・更新・削除（ロックのファイル .<ID>.lock は除く）
+      if (rid?.endsWith(".md") && !rid.startsWith(".") && kind === undefined) this.emit({ type: "changed", kind: "release-note", milestone: rid.slice(0, -3) });
+      return;
+    }
     if (top === "project.yaml") {
       await this.loadProject();
       this.emit({ type: "changed", kind: "project" });

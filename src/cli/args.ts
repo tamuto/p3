@@ -60,6 +60,9 @@ const OPTIONS = {
   out: { type: "string" },
   source: { type: "string" },
   width: { type: "string" },
+  version: { type: "string" },
+  file: { type: "string" },
+  "based-on": { type: "string" },
 } as const;
 
 export const parse = (argv: string[]) => parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });

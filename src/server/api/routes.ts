@@ -17,7 +17,8 @@ import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
 import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
-import { archiveTask, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 
 /**
@@ -28,6 +29,7 @@ import { StaleInputError } from "../../core/preflight/input.ts";
  *   /requests/:rid/tasks[/:tid]            要望のタスク
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
+ *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
  */
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -142,11 +144,8 @@ export function apiRoutes(ctx: P3Context) {
   );
   app.put("/project", async (c) => {
     const patch = projectPatch.parse(await c.req.json());
-    if (patch.milestones) {
-      const ids = new Set(patch.milestones.map((m) => m.id));
-      const used = ws.requests.list().filter((r) => r.milestone && !ids.has(r.milestone));
-      if (used.length) throw new Error(`使用中のマイルストーンは消せません: ${[...new Set(used.map((r) => r.milestone))].join(", ")}`);
-    }
+    // 使っている要望・リリースノートのあるマイルストーンは消さない（CLI の milestone rm と同じ規則）
+    if (patch.milestones) await checkMilestoneRemoval(ctx, patch.milestones.map((m) => m.id));
     return c.json(await ws.saveProject(patch));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
@@ -161,6 +160,9 @@ export function apiRoutes(ctx: P3Context) {
   app.route("/user-theme", userThemeRoutes(() => ws.emit({ type: "changed", kind: "user" })));
   /** 最初の描画の前に読むスクリプト（index.html の先頭）。テーマだけを埋め込み、キャッシュさせない */
   app.route("/user-theme.js", userThemeScriptRoute());
+
+  /** マイルストーンのリリースノート（材料・保存・出力・要約の生成） */
+  app.route("/", releaseNoteRoutes(ctx));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => c.json(progress(ctx)));

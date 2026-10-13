@@ -11,6 +11,7 @@ import { useAppCtx } from "../lib/appCtx.ts";
  *   /requests/$requestId                要望の概要と Preflight（?run=）
  *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
  *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
+ *   /release-notes?m=                   リリースノート（マイルストーンごと）
  *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
@@ -26,6 +27,7 @@ export const Route = createRootRoute({
 
 const NAV = [
   { to: "/", label: "進捗", hint: "要望ごとの状況" },
+  { to: "/release-notes", label: "リリースノート", hint: "マイルストーンごとの機能の要約" },
   { to: "/settings", label: "設定", hint: "個人・プロジェクトの基本・参照先" },
 ] as const;
 
@@ -41,12 +43,13 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-        {/* 狭い画面ではプロジェクト名を省略して、見出しが画面の幅に収まるようにする */}
+        {/* 狭い画面ではプロジェクト名を出さず（ロゴの title にある）、見出しが画面の幅に収まるようにする */}
         <Link to="/" className="flex min-w-0 items-center gap-3" title={`infodb p3 · ${ctx.info.project.name}`}>
           <Logo />
-          <span className="truncate font-medium">{ctx.info.project.name}</span>
+          <span className="hidden truncate font-medium sm:inline">{ctx.info.project.name}</span>
         </Link>
-        <nav className="flex shrink-0 gap-1">
+        {/* 狭い画面では、ナビゲーションを横にスクロールさせて画面の幅に収める（ページ全体は横にはみ出さない） */}
+        <nav className="flex min-w-0 shrink gap-1 overflow-x-auto">
           {NAV.map((n) => (
             <Link
               key={n.to}
@@ -62,8 +65,9 @@ function Layout() {
           ))}
         </nav>
         <RefreshButton running={ctx.refreshing.running} onClick={() => void ctx.refresh()} />
-        <Link to="/requests/new" className={buttonCls("primary", "whitespace-nowrap")}>
-          ＋ 新しい要望
+        {/* 狭い画面では「＋」だけにして、ナビゲーションの幅を空ける */}
+        <Link to="/requests/new" className={buttonCls("primary", "whitespace-nowrap")} title="新しい要望">
+          ＋<span className="sr-only sm:not-sr-only">新しい要望</span>
         </Link>
         {errors.length > 0 && (
           <span className="text-sm text-rose-600" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>

@@ -1,7 +1,7 @@
 import { basename, relative } from "node:path";
 import { REQUEST_STATUSES, type Request, type Attachment } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
-import { archiveRequest, checkMilestone, createRequest, updateRequest } from "../core/requestOps.ts";
+import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, updateRequest } from "../core/requestOps.ts";
 import { resolvedIssue } from "../core/requestStatus.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
@@ -155,7 +155,7 @@ export async function milestoneCommand(ctx: P3Context, out: Output, args: string
   }
   if (sub === "rm" || sub === "remove") {
     if (!id || !ms.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id ?? ""}`);
-    if (count(id)) throw new UsageError(`${id} を使っている要望があります（${count(id)} 件）。要望の milestone を外してから消してください`);
+    await checkMilestoneRemoval(ctx, ms.filter((m) => m.id !== id).map((m) => m.id));
     await ctx.ws.saveProject({ milestones: ms.filter((m) => m.id !== id) });
     return out.result({ removed: id }, () => `外しました: ${id}`);
   }

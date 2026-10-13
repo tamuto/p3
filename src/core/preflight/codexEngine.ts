@@ -56,8 +56,8 @@ export interface CodexWorkspaceConfig {
   /** "ローカル=ホスト" の対応（カンマ区切り）。Docker デーモンから見たパスへ変換する */
   pathMap: [string, string][];
   ensureImage: boolean;
-  /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える */
-  command?: (m: { repos: HostMount[]; data: string; auth: CodexAuth["mode"] }) => string[];
+  /** app-server を起こすコマンド（既定は codex-workspace の docker run）。テストで偽の app-server に差し替える。data: null はデータのフォルダを渡さない（ask） */
+  command?: (m: { repos: HostMount[]; data: string | null; auth: CodexAuth["mode"] }) => string[];
   /** テスト用: 画面イメージの描画を差し替える（既定は描画のコンテナ） */
   render?: Renderer;
 }
@@ -98,17 +98,16 @@ const PLACEHOLDER = "/p3-placeholder";
  * codex-workspace の docker run のマウントを、P3 の形にする:
  *   /workspace         tmpfs（Codex の cwd。何も置かない）
  *   /workspace/<名前>   参照先（読むだけ。リポジトリでもフォルダでもよい）
- *   /data              データのフォルダ（run のフォルダに書く）
+ *   /data              データのフォルダ（run のフォルダに書く）。null なら渡さない（ask: tmpfs だけ）
  */
-export function withMounts(command: string[], repos: HostMount[], data: string): string[] {
+export function withMounts(command: string[], repos: HostMount[], data: string | null): string[] {
   const at = command.indexOf(`type=bind,src=${PLACEHOLDER},dst=${CONTAINER_WORKSPACE}`);
   if (at < 0) throw new Error("codex-workspace の docker run にリポジトリのマウントが見つかりません");
   return [
     ...command.slice(0, at),
     `type=tmpfs,dst=${CONTAINER_WORKSPACE}`,
     ...repos.flatMap((r) => ["--mount", `type=bind,src=${r.host},dst=${r.container},readonly`]),
-    "--mount",
-    `type=bind,src=${data},dst=${CONTAINER_DATA}`,
+    ...(data === null ? [] : ["--mount", `type=bind,src=${data},dst=${CONTAINER_DATA}`]),
     ...command.slice(at + 1),
   ];
 }
@@ -262,15 +261,56 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   async run(job: PreflightJob, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
-    // 始めるときの設定をこの run の間ずっと使う（途中で個人設定が変わっても、ほかの run には影響しない）
+    return this.authorized("Preflight", log, (a) => this.runWith(a.cfg, job, a.auth, a.env, a.log, signal));
+  }
+
+  /**
+   * Preflight 以外の1回の頼みごと（リリースノートの要約など）。設定・認証・イメージ・起動の診断は Preflight と同じものを使い、
+   * 参照先もデータのフォルダもマウントしない（/workspace は空の tmpfs で、終われば消える）。渡すのは依頼文だけで、
+   * 結果は最後の応答の文。評価やタスク化はしない。結果を確かめて取り込むのは呼ぶ側
+   */
+  async ask(input: { instructions: string; prompt: string; label: string }, log: Log, signal: AbortSignal): Promise<AskResult> {
+    return this.authorized(input.label, log, async ({ cfg, auth, env, log }) => {
+      await this.prepareImage(cfg, log);
+      const command =
+        cfg.command?.({ repos: [], data: null, auth: auth.mode }) ??
+        withMounts(dockerCommand(PLACEHOLDER, auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: cfg.authVolume, authFile: cfg.authFile }), [], null);
+      return this.launched(cfg, command, [], log, signal, (launch, onError) =>
+        this.session(cfg, launch, env, log, onError, async (session) => {
+          await checkUsage(session, auth, log);
+          await session.startThread(input.instructions);
+          log({ kind: "info", text: `スレッドを立てました (model: ${session.model})` });
+          try {
+            const result = await session.runTurn(input.prompt, { signal });
+            if (result.status === "interrupted" || signal.aborted) throw new Error("中止しました");
+            if (result.status !== "completed") throw new Error(`Codex が終わりませんでした（${result.status}）`);
+            log({ kind: "info", text: `完了 (${result.seconds}s, ${result.commands.length} commands)` });
+            return { message: result.message ?? "", seconds: result.seconds, usage: result.usage ?? undefined, model: session.model ?? undefined };
+          } catch (e) {
+            throw limitError(e, auth);
+          }
+        }),
+      );
+    });
+  }
+
+  /**
+   * 頼む前の準備: 始めるときの設定に決め（途中で個人設定が変わっても、ほかの頼みごとには影響しない）、認証を選び、
+   * ChatGPT プランならトークンを取る。渡したトークンそのものも、ログとエラーに残さない
+   */
+  private async authorized<T>(
+    label: string,
+    log: Log,
+    fn: (a: { cfg: CodexWorkspaceConfig; auth: Exclude<CodexAuth, { mode: "none" }>; env?: Record<string, string>; log: Log }) => Promise<T>,
+  ): Promise<T> {
     let cfg: CodexWorkspaceConfig;
     try {
       cfg = await this.config();
     } catch (e) {
-      throw new Error(`個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
+      throw new Error(`個人設定を読めないので ${label} を始めません（Docker は起動していません）: ${hideConfigPath(e)}`, { cause: e });
     }
     const auth = await this.auth(cfg);
-    if (auth.mode === "none") throw new Error(auth.reason);
+    if (auth.mode === "none") throw new CodexUnavailableError(auth.reason);
     // ChatGPT プラン: 1ターン（最長 30 分）より長く使えるトークンにしてから始める（実行の途中では更新しない）
     let env: Record<string, string> | undefined;
     if (auth.mode === "chatgpt") {
@@ -282,15 +322,58 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       }
       log({ kind: "info", text: `ChatGPT プラン（${auth.email ?? "サインイン済み"}）で動かします` });
     }
-    // 渡したトークンそのものも、ログとエラーに残さない
     const secret = env?.[ACCESS_TOKEN_ENV];
-    const raw = log;
-    log = (e) => raw({ ...e, text: redact(e.text, [secret]) });
+    const safe: Log = (e) => log({ ...e, text: redact(e.text, [secret]) });
     try {
-      return await this.runWith(cfg, job, auth, env, log, signal);
+      return await fn({ cfg, auth, env, log: safe });
     } catch (e) {
       if (e instanceof Error) e.message = redact(e.message, [secret]);
       throw e;
+    }
+  }
+
+  /** イメージが古ければ作り直す（個人設定で止められる） */
+  private async prepareImage(cfg: CodexWorkspaceConfig, log: Log) {
+    if (!cfg.ensureImage) return;
+    log({ kind: "info", text: "コンテナのイメージを確かめています" });
+    try {
+      log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
+    } catch (e) {
+      // docker run の前（イメージの用意）で失敗した
+      throw new Error(`Codex のイメージを用意できません（app-server を起こす前）: ${(e as Error).message}`, { cause: e });
+    }
+  }
+
+  /**
+   * 中継ごしに起こして（launcher.mjs）、すぐ終わったときの Docker の出力と終わり方を残す。
+   * work には、中継ごしのコマンドと、app-server が終わったことによる失敗に診断を付ける onError を渡す
+   */
+  private async launched<T>(
+    cfg: CodexWorkspaceConfig,
+    command: string[],
+    mappings: PathMapping[],
+    log: Log,
+    signal: AbortSignal,
+    work: (command: string[], onError: (e: unknown, phase: "start" | "run") => Promise<unknown>) => Promise<T>,
+  ): Promise<T> {
+    const launch = await prepareLaunch(command);
+    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length };
+    /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
+    const diagnosed = async (e: unknown, phase: "start" | "run") => {
+      if (signal.aborted) return undefined;
+      const ended = /app-server が終わりました/.test((e as Error)?.message ?? "");
+      if (phase === "run" && !ended) return undefined;
+      const r = await launch.result({ waitMs: 3000, stopIfRunning: phase === "start" });
+      if (phase === "run" && !r.exit) return undefined;
+      const d = diagnoseLaunch(r, { ...diag, phase });
+      // 診断（d.message）はエラーとしてログに残る（PreflightService）。ここでは Docker の出力だけを出す
+      if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
+      return new Error(d.message, { cause: e });
+    };
+    try {
+      return await work(launch.command, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+    } finally {
+      await launch.cleanup();
     }
   }
 
@@ -312,15 +395,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
     for (const r of readable) for (const m of r.map) if (m.entry && entryMissing(r, m.entry)) log({ kind: "info", text: `入口のファイルがありません: ${r.name}:${m.entry}` });
-    if (cfg.ensureImage) {
-      log({ kind: "info", text: "コンテナのイメージを確かめています" });
-      try {
-        log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
-      } catch (e) {
-        // docker run の前（イメージの用意）で失敗した
-        throw new Error(`Codex のイメージを用意できません（app-server を起こす前）: ${(e as Error).message}`, { cause: e });
-      }
-    }
+    await this.prepareImage(cfg, log);
 
     const command =
       cfg.command?.({ repos, data, auth: auth.mode }) ??
@@ -329,44 +404,24 @@ export class CodexWorkspaceEngine implements PreflightEngine {
         repos,
         data,
       );
-    // 中継ごしに起こして、すぐ終わったときの Docker の出力と終わり方を残す（launcher.mjs）
-    const launch = await prepareLaunch(command);
-    const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length };
-    /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
-    const diagnosed = async (e: unknown, phase: "start" | "run") => {
-      if (signal.aborted) return undefined;
-      const ended = /app-server が終わりました/.test((e as Error)?.message ?? "");
-      if (phase === "run" && !ended) return undefined;
-      const r = await launch.result({ waitMs: 3000, stopIfRunning: phase === "start" });
-      if (phase === "run" && !r.exit) return undefined;
-      const d = diagnoseLaunch(r, { ...diag, phase });
-      // 診断（d.message）はエラーとしてログに残る（PreflightService）。ここでは Docker の出力だけを出す
-      if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
-      return new Error(d.message, { cause: e });
-    };
-    let outcome: EngineOutcome;
-    try {
-      outcome = await this.session(cfg, launch.command, job, auth, env, log, signal, async (e, phase) => (await diagnosed(e, phase)) ?? e);
-    } finally {
-      await launch.cleanup();
-    }
+    const outcome = await this.launched(cfg, command, mappings, log, signal, (launch, onError) =>
+      this.session(cfg, launch, env, log, onError, (session) => this.turn(session, job, auth, log, signal)),
+    );
     // 画面イメージ: Codex が書いた原稿を、Codex の後に P3 が描画のコンテナで PNG にする（Codex のコンテナに Docker は渡さない）。
     // 描けなくても評価は残す（取り込みで不足として扱う）
     await renderManuscripts(job.runDir, { pathMap: cfg.pathMap, signal, log, render: cfg.render });
     return outcome;
   }
 
-  /** 起こして、スレッドを立てて、1回頼む。失敗は onError で診断をつけてから投げる */
-  private async session(
+  /** 起こして、work（スレッドを立てて頼む）を行う。失敗は onError で診断をつけてから投げる */
+  private async session<T>(
     cfg: CodexWorkspaceConfig,
     command: string[],
-    job: PreflightJob,
-    auth: Exclude<CodexAuth, { mode: "none" }>,
     env: Record<string, string> | undefined,
     log: Log,
-    signal: AbortSignal,
     onError: (e: unknown, phase: "start" | "run") => Promise<unknown>,
-  ): Promise<EngineOutcome> {
+    work: (session: WorkspaceSession) => Promise<T>,
+  ): Promise<T> {
     let opened: WorkspaceSession;
     try {
       opened = await WorkspaceSession.open(command, {
@@ -382,25 +437,14 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     }
     await using session = opened;
     try {
-      return await this.turn(session, job, auth, log, signal);
+      return await work(session);
     } catch (e) {
       throw await onError(e, "run");
     }
   }
 
   private async turn(session: WorkspaceSession, job: PreflightJob, auth: Exclude<CodexAuth, { mode: "none" }>, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
-    if (auth.mode === "legacy") {
-      const usage = await session.usage();
-      log({
-        kind: "info",
-        text: `使用量: ${Object.entries(usage.windows).map(([m, p]) => `${Number(m) / 60}h窓 ${p}%`).join(" / ")}`,
-      });
-      if (usage.reached) throw new Error(`Codex の使用量上限です: ${usage.reached}`);
-    } else {
-      // プラン利用では使用量を読む公式の API が無い。上限に当たればターンの失敗として分かる
-      log({ kind: "info", text: "使用量: ChatGPT プランでは取得できません（上限に当たると失敗として知らせます）" });
-    }
-
+    await checkUsage(session, auth, log);
     const paths = containerPaths(job);
     await session.startThread(developerInstructions(job, paths));
     log({ kind: "info", text: `スレッドを立てました (model: ${session.model})` });
@@ -410,16 +454,48 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       log({ kind: "info", text: `完了 (${result.seconds}s, ${result.commands.length} commands, 変更 ${result.changed.length} files)` });
       return { changed: result.changed.map((p) => localPath(job, p)), usage: result.usage ?? undefined, threadModel: session.model ?? undefined };
     } catch (e) {
-      if (e instanceof UsageLimitError) {
-        throw new Error(
-          auth.mode === "chatgpt"
-            ? "Usage limit reached: ChatGPT プランの使用量の上限に当たりました。Manage usage: https://chatgpt.com/settings/usage"
-            : `Codex の使用量上限: ${e.message}`,
-        );
-      }
-      throw e;
+      throw limitError(e, auth);
     }
   }
+}
+
+/** ask の結果（最後の応答の文） */
+export interface AskResult {
+  message: string;
+  seconds: number;
+  usage?: Record<string, unknown>;
+  model?: string;
+}
+
+/** Codex を使えない（未接続など。Docker は起動していない） */
+export class CodexUnavailableError extends Error {}
+
+/** Codex の使用量の上限（頼み直しても同じように失敗する） */
+export class CodexUsageLimitError extends Error {}
+
+/** 旧来の認証なら頼む前に使用量を読み、上限なら頼まない */
+async function checkUsage(session: WorkspaceSession, auth: Exclude<CodexAuth, { mode: "none" }>, log: Log) {
+  if (auth.mode === "legacy") {
+    const usage = await session.usage();
+    log({
+      kind: "info",
+      text: `使用量: ${Object.entries(usage.windows).map(([m, p]) => `${Number(m) / 60}h窓 ${p}%`).join(" / ")}`,
+    });
+    if (usage.reached) throw new CodexUsageLimitError(`Codex の使用量上限です: ${usage.reached}`);
+  } else {
+    // プラン利用では使用量を読む公式の API が無い。上限に当たればターンの失敗として分かる
+    log({ kind: "info", text: "使用量: ChatGPT プランでは取得できません（上限に当たると失敗として知らせます）" });
+  }
+}
+
+/** ターンの失敗のうち、使用量の上限を分かる文にする */
+function limitError(e: unknown, auth: Exclude<CodexAuth, { mode: "none" }>): unknown {
+  if (!(e instanceof UsageLimitError)) return e;
+  return new CodexUsageLimitError(
+    auth.mode === "chatgpt"
+      ? "Usage limit reached: ChatGPT プランの使用量の上限に当たりました。Manage usage: https://chatgpt.com/settings/usage"
+      : `Codex の使用量上限: ${e.message}`,
+  );
 }
 
 function logEvent(e: WorkspaceEvent, log: Log) {

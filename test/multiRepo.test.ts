@@ -38,7 +38,7 @@ async function setup(opts: { missingAll?: boolean } = {}) {
     pathMap: [[repo.root, "/host/app"], [docsRepo, "/host/docsrepo"]],
     ensureImage: false,
     command: ({ repos, data }) => {
-      launched.push({ repos, data });
+      launched.push({ repos, data: data ?? "" });
       return ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${repo.dataDir}`, `FAKE_LOG=${logFile}`, process.execPath, FAKE_CODEX];
     },
   });

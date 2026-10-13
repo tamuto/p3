@@ -70,10 +70,35 @@ export const AI_MANIFEST = {
         "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}。" +
         "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict",
     },
+    { method: "GET", path: "/api/release-notes", desc: "マイルストーンごとのリリースノートの有無（ok / invalid / none）・要望の数。project.yaml に無いノートは known: false と警告" },
+    {
+      method: "GET",
+      path: "/api/release-notes/:mid",
+      desc: "保存したノート {note（本文・出典・版 version）, noteError（読めない理由）, material（対象の要望・収録の可否・警告・材料の hash）, materialChanged（保存のあとで材料が変わった）}",
+    },
+    {
+      method: "PUT",
+      path: "/api/release-notes/:mid",
+      desc:
+        "保存 {body, title?, basedOn?（元にした材料の hash）, version?（更新は読んだときの版が必須）}。版が違う・既にあるは 409 code: rev_conflict {reason, current}、消えたノートの更新は 404。" +
+        "要望・マイルストーンの状態は変えない。材料が変わっていれば warnings に material_changed",
+    },
+    { method: "GET", path: "/api/release-notes/:mid/export", desc: "保存した本文だけ（Markdown のダウンロード。出典・frontmatter は含めない）" },
+    {
+      method: "POST",
+      path: "/api/release-notes/:mid/generate",
+      desc: "機能の要約の生成を始める {engine?: codex|mock}（202。保存しない）。材料が無い・上限超えは 400 code: no_material / too_large（Codex は呼ばない）、実行中は 409 code: running",
+    },
+    { method: "GET", path: "/api/release-notes/:mid/generations", desc: "このマイルストーンの生成（新しい順。serve のメモリにだけある）" },
+    {
+      method: "GET|POST",
+      path: "/api/release-generations/:id[/cancel]",
+      desc: "生成1件 {status: running|completed|failed|cancelled, failure?, items（文と出典）, markdown（本文の案）, warnings, materialChanged, log} / 取り消し",
+    },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトルから対象を特定" },
     { method: "GET", path: "/api/chatgpt", desc: "ChatGPT プランの接続の状態（トークンは返さない）。このマシンからだけ" },
     { method: "POST", path: "/api/chatgpt/login|cancel|paste|logout", desc: "サインインの開始・取消・コールバックの URL の貼り付け・解除。このマシンのローカルの画面（Origin）からだけ" },
     { method: "GET|PUT", path: "/api/user-theme", desc: "画面のテーマ {theme: system|light|dark}（個人設定の ui.theme。このマシンのすべてのプロジェクトで共通。ほかの個人設定は返さない）。PUT はこのマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/events", desc: "変更通知 (SSE)" },
+    { method: "GET", path: "/api/events", desc: "変更通知 (SSE)。リリースノートは changed/release-note {milestone}、生成は release-generation {id, milestone, status}" },
   ],
 };

@@ -473,6 +473,167 @@ export interface Milestone {
   done?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// リリースノート — マイルストーンごとに1件（<data>/release-notes/<マイルストーンID>.md）
+// ---------------------------------------------------------------------------
+
+/**
+ * 材料の警告の種類。
+ *   broken_request:  読めない要望のファイル（所属が分からないので全体の警告）
+ *   not_finished:    未完了の要望（対応済・完了済でない。収録しない）
+ *   no_tasks:        タスクの無い要望（収録しない）
+ *   open_tasks:      対応済・完了済なのに完了していないタスクがある（状態の不整合。収録しない）
+ *   broken_task:     読めないタスクのファイル（収録しない）
+ *   missing_record:  変更の記録の無い完了したタスク（要約の材料にしない）
+ *   no_material:     収録する要望に変更の記録が1つも無い（要約に入らない）
+ *   no_candidates:   収録する要望が無い / no_sources: 要約の材料（変更の記録）が無い
+ *   unknown_milestone: project.yaml に無いマイルストーン（直接編集で消えた。ノートだけが残っている）
+ *   material_changed: 生成・保存のあとで材料が変わった（古い材料からの本文。自動では直さない）
+ *   suspicious_content: 生成した要約に内部のパス・秘密らしい文字列がある（公開の前に確かめる）
+ */
+export type ReleaseWarningCode =
+  | "broken_request"
+  | "not_finished"
+  | "no_tasks"
+  | "open_tasks"
+  | "broken_task"
+  | "missing_record"
+  | "no_material"
+  | "no_candidates"
+  | "no_sources"
+  | "unknown_milestone"
+  | "material_changed"
+  | "suspicious_content";
+
+export interface ReleaseWarning {
+  code: ReleaseWarningCode;
+  /** 対象（要望 ID・<要望ID>/T001・データのフォルダからの相対パス・マイルストーン ID） */
+  target: string;
+  message: string;
+}
+
+/** 材料のタスク（完了したもの）。record があるものだけが要約の材料 */
+export interface ReleaseSourceTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  record?: string;
+}
+
+/** 材料の要望1件（収録するもの） */
+export interface ReleaseSource {
+  request: string;
+  title: string;
+  status: RequestStatus;
+  tasks: ReleaseSourceTask[];
+}
+
+/** マイルストーンに属する要望1件と、収録するかどうか */
+export interface ReleaseRequestItem {
+  id: string;
+  title: string;
+  status: RequestStatus;
+  createdAt: string;
+  /** 収録する（要望が対応済か完了済で、タスクが1件以上あり、全部が完了で読める） */
+  included: boolean;
+  /** 収録しない理由 */
+  reason?: string;
+  /** タスク（アーカイブしたものは含まない）。record はここでは持たない（sources にある） */
+  tasks: { id: string; title: string; status: TaskStatus; hasRecord: boolean }[];
+  warnings: ReleaseWarning[];
+}
+
+/**
+ * マイルストーンのリリースノートの材料。抽出したときのディスクの状態を固定したもの。
+ * hash は材料（要望の所属・状態・タイトル、収録するタスクの記録）の識別子で、生成・保存のあとの変更を見つけるのに使う
+ */
+export interface ReleaseMaterial {
+  milestone: { id: string; title: string; due?: string; done?: boolean; known: boolean };
+  /** 作成日時 → ID の順 */
+  requests: ReleaseRequestItem[];
+  /** 収録する要望と、変更の記録のある完了したタスク（要約の材料） */
+  sources: ReleaseSource[];
+  /** 全体の警告（読めない要望・候補なし・材料なしなど）。要望ごとの警告は requests[].warnings */
+  warnings: ReleaseWarning[];
+  hash: string;
+  extractedAt: string;
+}
+
+/** 保存したリリースノート。本文（公開する Markdown）と、内部の出典（frontmatter）を分けて持つ */
+export interface ReleaseNote {
+  milestone: string;
+  title: string;
+  /** 公開する本文（出力はこれだけ） */
+  body: string;
+  /** 保存したときの材料（出典。公開しない） */
+  sources: ReleaseSource[];
+  /** 保存したときの材料の hash */
+  materialHash?: string;
+  createdAt: string;
+  createdBy?: string;
+  updatedAt: string;
+  updatedBy?: string;
+  /** 編集の版（ファイル全体の sha256）。更新はこの版を渡し、違えば競合にする */
+  version: string;
+}
+
+/** 生成した機能の要約1項目。sources は出典（要望 ID か <要望ID>/T001。材料にあるものだけ） */
+export interface ReleaseSummaryItem {
+  text: string;
+  sources: string[];
+}
+
+export type ReleaseGenerationStatus = "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * 生成の失敗の種類。unavailable: Codex を使えない（未接続など）/ usage_limit: 使用量の上限 / timeout: 時間切れ /
+ * invalid_output: 結果の形が違う・出典が材料に無い・長すぎる / error: そのほか
+ */
+export type ReleaseGenerationFailure = "unavailable" | "usage_limit" | "timeout" | "invalid_output" | "error";
+
+/**
+ * リリースノートの要約の生成（1回分）。保存とは別で、生成は保存したノートを変えない。
+ * このプロセスのメモリにだけ置く（serve を止めれば消える。CLI は終わるまで待つ）
+ */
+export interface ReleaseGeneration {
+  id: string;
+  milestone: string;
+  /** 頼んだ先（mock は明示したときだけ。要約はしない） */
+  engine: "codex" | "mock";
+  status: ReleaseGenerationStatus;
+  startedAt: string;
+  finishedAt?: string;
+  startedBy?: string;
+  /** 生成に渡した材料の hash */
+  materialHash: string;
+  /** 生成のあとで材料が変わった（終わったときに確かめる。古い材料からの生成） */
+  materialChanged?: boolean;
+  /** 要約（completed のとき） */
+  items?: ReleaseSummaryItem[];
+  /** 要約から P3 が組み立てた本文の案（保存はしない） */
+  markdown?: string;
+  warnings: ReleaseWarning[];
+  error?: string;
+  failure?: ReleaseGenerationFailure;
+  log: PreflightLogEntry[];
+}
+
+/** マイルストーンごとのノートの有無（一覧） */
+export interface ReleaseNoteSummary {
+  milestone: string;
+  title: string;
+  due?: string;
+  done?: boolean;
+  /** project.yaml にあるか（無ければノートだけが残っている） */
+  known: boolean;
+  /** 属する要望の数（アーカイブしたものは含まない） */
+  requests: number;
+  note:
+    | { state: "none" }
+    | { state: "ok"; version: string; updatedAt: string; updatedBy?: string }
+    | { state: "invalid"; error: string };
+}
+
 export interface ProjectConfig {
   name: string;
   /** 何を作っているプロジェクトか。Preflight の前提になる */
@@ -495,6 +656,10 @@ export interface ProjectConfig {
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
 export type ServerEvent =
   | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
+  /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
+  | { type: "changed"; kind: "release-note"; milestone: string }
+  /** リリースノートの要約の生成の状態が変わった */
+  | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
 

@@ -599,7 +599,7 @@ describe("p3 milestone と要望の管理項目", () => {
     const text = p3(root, ["progress"]).out;
     expect(text).toContain("■ 要望単位の運用（v0.2 · 2026-11-30）");
     expect(text).toContain("■ マイルストーンなし");
-    expect(p3(root, ["milestone", "rm", "v0.2"]).err).toContain("使っている要望があります");
+    expect(p3(root, ["milestone", "rm", "v0.2"]).err).toContain("使用中のマイルストーンは消せません");
     expect(p3(root, ["milestone", "set", "v0.2", "--done"]).code).toBe(0);
     expect(p3(root, ["milestone", "--json"]).json()).toEqual([{ id: "v0.2", title: "要望単位の運用", due: "2026-11-30", done: true }]);
   });
