@@ -419,14 +419,20 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   （古い材料からの生成）を付ける。作り直しも上書きもしない
 - ChatGPT のトークンは Preflight と同じく、ログとエラーから伏せる
 
-### codex-workspace の依存
+### llmcs の部品の依存（codex-workspace・chatgpt-plan）
 
-Codex をコンテナで動かす部品は npm の `@infodb/codex-workspace`（llmcs の codex-workspace-ts）。package.json では
-公開版の版の範囲（`^0.2.0`）で指定し、手元のフォルダへのリンク（`link:` / `file:`）は置かない。新しくチェックアウトしても
-隣に llmcs が無くて構わない。新しく公開された版は、pnpm の `minimumReleaseAge`（公開から1日）を過ぎるまで入れない。
-待たずに入れるための例外（`minimumReleaseAgeExclude`）はリポジトリに残さない。
+llmcs の部品を npm の公開版で使う:
 
-P3 が使う公開 API と約束:
+- `@infodb/codex-workspace`（codex-workspace-ts）: Codex をコンテナで動かす
+- `@infodb/chatgpt-plan`（chatgpt-plan-ts）: Sign in with ChatGPT のサインイン・トークンの保存と更新・解除（[docs/chatgpt-sign-in.md](chatgpt-sign-in.md)）
+
+package.json では公開版の版の範囲（`^0.2.0` など）で指定し、手元のフォルダへのリンク（`link:` / `file:`）は置かない。
+新しくチェックアウトしても隣に llmcs が無くて構わない。新しく公開された版は、pnpm の `minimumReleaseAge`（公開から1日）を
+過ぎてから入れる。待たずに入れる例外（`pnpm-workspace.yaml` の `minimumReleaseAgeExclude`）は、自分たちが公開した
+`@infodb/*` の部品を、版を固定して書くときだけ置く（`@infodb/chatgpt-plan@0.1.1` の形。`test/package.test.ts` が確かめる）。
+公開から1日を過ぎたら外してよい。
+
+`@infodb/codex-workspace` について P3 が使う公開 API と約束:
 
 - `dockerCommand(workspace, { accessTokenEnv | authVolume, authFile })` が作る `docker run` は、作業場所を
   `/workspace` にマウントする。P3 はそのマウントの直後に、データのフォルダを `/data` にマウントする引数を足す
@@ -451,7 +457,7 @@ git checkout package.json pnpm-lock.yaml pnpm-workspace.yaml && pnpm install   #
 ```
 
 `npm pack` やコミットの前に、`package.json` と `pnpm-lock.yaml` に `link:` が無いことを確かめる。
-llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる。
+llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P3 の版の範囲を上げる（chatgpt-plan も同じ）。
 
 ### 画面イメージの描画のイメージ
 

@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import type { Connection } from "@infodb/chatgpt-plan";
 import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
 import type { P3Context } from "../src/core/context.ts";
 import type { PreflightEngine } from "../src/core/preflight/engine.ts";
@@ -88,4 +89,10 @@ export function newRequest(ctx: P3Context, r: Partial<Request> & { title: string
 
 export function newTask(ctx: P3Context, requestId: string, t: Partial<Task> & { title: string }, actor = "test") {
   return ctx.ws.tasksOf(requestId).create({ status: "todo", ...t }, actor);
+}
+
+/** ChatGPT の接続のファイルを直接書く（@infodb/chatgpt-plan が読む保存の形式。0600）。既にサインインした状態を作る */
+export async function writeConnection(file: string, c: Connection): Promise<void> {
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  await writeFile(file, `${JSON.stringify(c, null, 2)}\n`, { mode: 0o600 });
 }

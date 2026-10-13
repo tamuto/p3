@@ -2,23 +2,26 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { DOCS, links } from "./docLinks.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
 
 describe("依存の指定", () => {
-  it("codex-workspace は公開版の範囲で指定し、手元のフォルダへのリンクを残さない", () => {
+  it("llmcs の部品（codex-workspace・chatgpt-plan）は公開版の範囲で指定し、手元のフォルダへのリンクを残さない", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.dependencies["@infodb/codex-workspace"]).toMatch(/^\^\d+\.\d+\.\d+$/);
+    expect(pkg.dependencies["@infodb/chatgpt-plan"]).toMatch(/^\^\d+\.\d+\.\d+$/);
     expect(pkg.dependencies["@llmcs/codex-workspace"]).toBeUndefined();
     const all = { ...pkg.dependencies, ...pkg.devDependencies };
     expect(Object.entries(all).filter(([, v]) => /^(link|file|portal):/.test(String(v)))).toEqual([]);
     expect(read("pnpm-lock.yaml")).not.toMatch(/\b(link|file):\.\.?\//);
   });
 
-  it("公開から日の浅い版を待たずに入れる例外を置かない", () => {
-    expect(read("pnpm-workspace.yaml")).not.toMatch(/minimumReleaseAgeExclude/);
+  it("公開から日の浅い版を待たずに入れる例外は、自分たちが公開した @infodb の部品の版を固定したものだけ", () => {
+    const ws = parse(read("pnpm-workspace.yaml")) as { minimumReleaseAgeExclude?: string[] };
+    for (const e of ws.minimumReleaseAgeExclude ?? []) expect(e).toMatch(/^@infodb\/[a-z0-9-]+@\d+\.\d+\.\d+$/);
   });
 });
 
@@ -38,7 +41,7 @@ describe("npm で配る中身", () => {
   });
 
   it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用）", () => {
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/codex-workspace", "hono", "tsx", "yaml", "zod"]);
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/chatgpt-plan", "@infodb/codex-workspace", "hono", "tsx", "yaml", "zod"]);
   });
 
   it("npm pack の一覧に、動かすのに要るものがあり、設定・テスト・開発用のものが無い", () => {

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
 import { GenerationRejected, parseSummary, ReleaseGenerator, SUMMARY_INPUT_LIMIT, summaryInput, type Summarizer } from "../src/core/releaseNotes/generate.ts";
 import { releaseMaterial, saveReleaseNote, startGeneration } from "../src/core/releaseNotes/service.ts";
@@ -15,7 +15,7 @@ const FAKE = fileURLToPath(new URL("./fixtures/fake-summarizer.mjs", import.meta
 function codex(scenario: string, logFile: string, launched: unknown[], opts: { connected?: boolean } = {}) {
   return new CodexWorkspaceEngine({
     authVolume: opts.connected === false ? undefined : "vol",
-    account: new ChatGptAccount(join(tempDir(), "chatgpt.json")),
+    account: chatgptAccount(join(tempDir(), "chatgpt.json")),
     pathMap: [],
     ensureImage: false,
     command: (m) => {

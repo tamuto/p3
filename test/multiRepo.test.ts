@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { CodexWorkspaceEngine, type HostMount } from "../src/core/preflight/codexEngine.ts";
 import { writeRepoEntry } from "../src/core/store/projectFile.ts";
 import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
@@ -34,7 +34,7 @@ async function setup(opts: { missingAll?: boolean } = {}) {
   const launched: { repos: HostMount[]; data: string }[] = [];
   const codex = new CodexWorkspaceEngine({
     authVolume: "vol",
-    account: new ChatGptAccount(join(tempDir(), "none.json")),
+    account: chatgptAccount(join(tempDir(), "none.json")),
     pathMap: [[repo.root, "/host/app"], [docsRepo, "/host/docsrepo"]],
     ensureImage: false,
     command: ({ repos, data }) => {
@@ -120,7 +120,7 @@ describe("複数の参照先を Preflight に渡す", () => {
     const launched: HostMount[][] = [];
     const codex = new CodexWorkspaceEngine({
       authVolume: "vol",
-      account: new ChatGptAccount(join(tempDir(), "none.json")),
+      account: chatgptAccount(join(tempDir(), "none.json")),
       pathMap: [],
       ensureImage: false,
       command: ({ repos }) => {

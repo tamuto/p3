@@ -4,6 +4,10 @@
 P3 が自分でサインインした ChatGPT アカウント（Sign in with ChatGPT のプラン利用）で動かす。
 P3 自体の本人認証は足さない（ローカルの個人用ツールのまま）。
 
+サインイン・保存・更新・解除の実装は、llmcs の chatgpt-plan-ts（npm の `@infodb/chatgpt-plan`）にある（P3 の実装を
+アプリ名と保存先を引数にして切り出したもの）。P3 は `src/core/chatgpt.ts` で、アプリ名（`infodb_p3`）・保存先・
+Codex に渡すトークンの長さ・CLI の案内だけを決めて使う。以下は部品と P3 の約束（部品を上げるときに確かめること）。
+
 公式資料（2026-10-10 に確認。以下の契約はこれに合わせる）:
 
 - 登録とサインイン: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
@@ -23,7 +27,7 @@ Preflight
      docker run -e ACCESS_TOKEN … codex app-server -c model_provider=openai_chatgpt_plan …
 ```
 
-## サインイン（P3 側。T006）
+## サインイン（@infodb/chatgpt-plan。T006）
 
 | 項目 | 値 |
 | --- | --- |
@@ -39,7 +43,8 @@ Preflight
   コールバックの `client_id`（`oaiapp_...`）が発行された client ID。別の登録窓口や client secret は無い。
 - **ホスト ID**（`ext_agent_host_id`）: マシンごとに1つ、`urn:uuid:<乱数>` を作って `chatgpt.json` に残し、ずっと使う。
 - **再サインイン**: 保存した client ID と `id_token_hint`（あれば `login_hint`）で authorize する（`agent_name_hint` は送らない）。
-  新しい ID トークンの `sub` が保存したアカウントと違えば、**保存を上書きせず失敗**にする（別のアカウントに切り替えるには、先に接続を解除する）。
+  新しい ID トークンの `sub` が保存したアカウントと違えば、**保存を上書きせず失敗**にする（別のアカウントに切り替えるには、先に接続を解除する。
+  CLI では `p3 chatgpt logout --forget` と案内する）。
 - **ID トークンの検証**: JWKS で署名（RS256）、`iss=https://auth.openai.com`、`aud` に発行された client ID、`exp`、保存した `nonce`。
   検証した `sub` をアカウントの識別に使う。
 - **プラン利用の確認**: トークン応答の `scope` に `chatgpt.tokens.use.direct` が無ければ「サインインはできたがプラン利用は許可されていない」
@@ -82,6 +87,7 @@ Preflight
 ### 更新
 
 - 期限の 35 分前を過ぎていたら、使う前に更新する（Preflight の1ターンの上限 30 分 + 余裕。access token は 1 時間）。
+  部品の `accessToken()` の既定は 5 分なので、P3 は Codex に渡すときに 35 分（`CODEX_TOKEN_MIN_VALID_MS`）を渡す。
 - `refresh_token` グラント（発行された client ID、`resource`、`scope` は送らない）。応答の access token・期限・scope・新しい refresh token を
   まとめて書き換える（refresh token は毎回入れ替わる）。
 - 同じマシンの CLI・serve・並行する Preflight が同時に更新しないよう、lock を取り、取ったら読み直して、まだ必要なら更新する。
@@ -145,9 +151,10 @@ llmcs の `restart` / `resumeThread` は、記録を残す使い方（`ephemeral
 
 ## 依存
 
-- 足さない。PKCE・JWT の検証は Node の `crypto`（`createPublicKey({ format: "jwk" })`、`verify`）、HTTP は `fetch`。
-- pnpm（12.10）の `minimumReleaseAge` はこのリポジトリでも個人設定でも明示されていない（`pnpm config get` で undefined）。
-  依存を足すときは pnpm の既定値に従う。
+- `@infodb/chatgpt-plan`（依存なし。PKCE・JWT の検証は Node の `crypto`、HTTP は `fetch`）。版と待機の決まりは
+  [docs/architecture.md](architecture.md) の「llmcs の部品の依存」。
+- 保存の形式・ファイル・ロック（`chatgpt.json` / `chatgpt.lock`）は部品に切り替える前と同じ。切り替えの前にサインインした接続を
+  そのまま使える。
 
 ## 範囲外・今後
 

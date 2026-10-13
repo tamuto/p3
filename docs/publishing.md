@@ -5,12 +5,12 @@ CI は使わず、手元で確かめてから公開する。
 
 ## 1. 外部のパッケージ
 
-- [ ] P3 が使う `@infodb/codex-workspace`（llmcs の codex-workspace-ts）の必要な版が npm に公開されている
+- [ ] P3 が使う llmcs の部品（`@infodb/codex-workspace`・`@infodb/chatgpt-plan`）の必要な版が npm に公開されている
   （`npm view @infodb/codex-workspace versions`）。llmcs を変えたら、llmcs 側で先に公開し、P3 の版の範囲を上げる
-- [ ] その版が公開から1日を過ぎている。pnpm の `minimumReleaseAge`（既定 1日）より新しい版は、新しいチェックアウトで
+- [ ] 依存の版が公開から1日を過ぎている。pnpm の `minimumReleaseAge`（既定 1日）より新しい版は、新しいチェックアウトで
   `pnpm install` が `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` で止まる。待たずに入れる例外（`minimumReleaseAgeExclude`）は
-  リポジトリに入れない（`test/package.test.ts` が確かめる）。待てない確認だけ、その場で
-  `pnpm install --config.minimum-release-age=0` を使う
+  自分たちの `@infodb/*` の部品を版で固定したものだけ（[docs/architecture.md](architecture.md) の「llmcs の部品の依存」。
+  `test/package.test.ts` が確かめる）。1日を過ぎた版の例外は、公開の前に外す
 - [ ] `package.json` と `pnpm-lock.yaml` に手元のフォルダへのリンク（`link:` / `file:`）が無い（`test/package.test.ts`）
 
 ## 2. クリーンな依存の解決と検査

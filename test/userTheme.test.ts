@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { apiRoutes } from "../src/server/api/routes.ts";
-import { connectionPath, loadConnection, saveConnection } from "../src/core/chatgpt/store.ts";
+import { loadConnection } from "@infodb/chatgpt-plan";
+import { connectionPath } from "../src/core/chatgpt.ts";
 import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../src/core/userConfig.ts";
 import { readTheme, ThemeInputError, writeTheme } from "../src/core/userTheme.ts";
-import { makeProject, tempDir } from "./helpers.ts";
+import { makeProject, tempDir, writeConnection } from "./helpers.ts";
 
 const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
 
@@ -91,10 +92,10 @@ describe("画面のテーマ（個人設定の ui.theme）", () => {
   });
 
   it("ChatGPT の接続のファイルと互いに消し合わない", async () => {
-    await saveConnection({ hostId: "urn:uuid:h", clientId: "oaiapp_1" });
+    await writeConnection(connectionPath(), { hostId: "urn:uuid:h", clientId: "oaiapp_1" });
     await writeTheme("dark");
-    expect(await loadConnection()).toMatchObject({ hostId: "urn:uuid:h", clientId: "oaiapp_1" });
-    await saveConnection({ hostId: "urn:uuid:h2" });
+    expect(await loadConnection(connectionPath())).toMatchObject({ hostId: "urn:uuid:h", clientId: "oaiapp_1" });
+    await writeConnection(connectionPath(), { hostId: "urn:uuid:h2" });
     expect(await readTheme()).toBe("dark");
     expect(connectionPath()).not.toBe(file());
   });

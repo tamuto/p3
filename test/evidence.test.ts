@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ChatGptAccount } from "../src/core/chatgpt/account.ts";
+import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
 import { parseAssessment, parseEvidence } from "../src/core/preflight/service.ts";
 import { writeRepoEntry } from "../src/core/store/projectFile.ts";
@@ -23,7 +23,7 @@ async function setup() {
   let evidence: unknown[] | undefined;
   const codex = new CodexWorkspaceEngine({
     authVolume: "vol",
-    account: new ChatGptAccount(join(tempDir(), "none.json")),
+    account: chatgptAccount(join(tempDir(), "none.json")),
     pathMap: [],
     ensureImage: false,
     command: () => [

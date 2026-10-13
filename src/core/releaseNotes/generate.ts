@@ -9,7 +9,7 @@ import type {
 } from "../../shared/types.ts";
 import type { AskResult } from "../preflight/codexEngine.ts";
 import { CodexUnavailableError, CodexUsageLimitError } from "../preflight/codexEngine.ts";
-import { ChatGptAuthError } from "../chatgpt/account.ts";
+import { ChatGptAuthError } from "../chatgpt.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { extractMaterial } from "./material.ts";
 

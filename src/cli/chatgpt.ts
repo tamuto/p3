@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { ChatGptAccount, type ChatGptStatus } from "../core/chatgpt/account.ts";
+import { chatgptAccount, signInFailure, type ChatGptStatus } from "../core/chatgpt.ts";
 import { UsageError } from "./project.ts";
 
 /**
@@ -10,7 +10,7 @@ import { UsageError } from "./project.ts";
 export async function chatgptCommand(
   args: string[],
   o: { port?: string; paste?: boolean; "no-browser"?: boolean; forget?: boolean },
-  account = new ChatGptAccount(),
+  account = chatgptAccount(),
 ): Promise<{ data: unknown; text: string; code?: number }> {
   const [sub = "status"] = args;
   switch (sub) {
@@ -33,12 +33,16 @@ export async function chatgptCommand(
       );
       if (!o["no-browser"] && !o.paste) openBrowser(attempt.url);
       let s: ChatGptStatus;
-      if (o.paste) {
-        const rl = createInterface({ input: process.stdin });
-        const line = new Promise<string>((res) => rl.once("line", res));
-        s = await Promise.race([attempt.done, line.then((url) => attempt.submit(url))]).finally(() => rl.close());
-      } else {
-        s = await attempt.done;
+      try {
+        if (o.paste) {
+          const rl = createInterface({ input: process.stdin });
+          const line = new Promise<string>((res) => rl.once("line", res));
+          s = await Promise.race([attempt.done, line.then((url) => attempt.submit(url))]).finally(() => rl.close());
+        } else {
+          s = await attempt.done;
+        }
+      } catch (e) {
+        throw signInFailure(e);
       }
       return { data: s, text: `サインインしました: ${describe(s)}`, code: s.planAllowed ? 0 : 1 };
     }
