@@ -6,7 +6,7 @@ import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts"
 import { OpRuleError } from "../core/requestOps.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
-import { ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
+import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
 import { loadUserConfig, UserConfigError } from "../core/userConfig.ts";
 import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
@@ -14,6 +14,7 @@ import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
+import { readsOnly } from "./readOnly.ts";
 import { parse, type CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
@@ -102,6 +103,12 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
+  // 登録が1つだけで決まった（今いる場所では決まっていない）なら、変える操作は何も読み書きする前に止め、読むだけなら警告する
+  if (target.via === "only") {
+    const write = !readsOnly(cmd, args);
+    if (write) throw new ProjectNotResolvedError(onlyRegistrationNotice(target, true));
+    process.stderr.write(`${onlyRegistrationNotice(target, false)}\n`);
+  }
   // マシンごとの設定は環境変数と個人設定から（.env は読まない）
   const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
 

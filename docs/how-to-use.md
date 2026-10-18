@@ -159,6 +159,17 @@ p3 request set k7m3x status=done               # 要望を完了済にする（�
 
 決まらなければ、登録済みのプロジェクトと選び方を出す。AI 向けの指示では、`via` が `cwd` でなければ操作を止めて人に確かめる。
 
+`only`（登録が1つだけ）は p3 を使わないフォルダでも当たるので、そのときは **読むだけ** にする。変える操作は何も読み書きする前に
+止まり（終了コード 1）、`--project <名前>` での明示と、リポジトリ・データのフォルダの中に移る方法を案内する。読むだけの操作は
+標準エラーに同じ案内の警告を出して続ける（`--json` の標準出力には混ぜない）。
+
+| 登録が1つだけで決まったとき | コマンド |
+| --- | --- |
+| 警告して続ける | `whoami`・`progress`・`ls`・`show`・`find`・`notes`・`drafts`、`request ls / show`、`milestone`（一覧）、`config`（表示）、`repo`（一覧）、`attach`（一覧）、`release-notes ls / show / export` |
+| 止まる | 上のほか全部。要望・タスク・マイルストーン・設定・参照先の変更、`preflight`（`--note-only` も）、`accept`、`attach add / get / rm`（`get` はファイルを書く）、`release-notes generate / save`（`generate` は保存しなくても生成を始める）、`serve`（画面から変えられる） |
+
+`init`・`project`・`user-config`・`chatgpt`・`codex`・`render` はプロジェクトを選ばないので対象外。
+
 `p3 project` で一覧、`p3 project add <名前> <フォルダ>` で init せずに登録、`p3 project rm <名前>` で登録を外す（データは消さない）。
 
 **今の要望** は `--req <要望>` → 環境変数 `P3_REQUEST` → 今いる参照先に割り当てたブランチ → ブランチ名の要望 ID の順で決まる

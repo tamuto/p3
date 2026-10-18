@@ -29,6 +29,22 @@ export const VIA_LABEL: Record<ResolvedProject["via"], string> = {
 export class ProjectNotResolvedError extends Error {}
 
 /**
+ * 登録が1つだけで決まった（via: only）ときの案内。今いる場所とは関係なく決まるので、p3 を使わないフォルダでも当たる。
+ * 変える操作は止め（write）、読むだけの操作は警告して続ける。どちらも、プロジェクトを明示する方法と移る先を示す
+ */
+export function onlyRegistrationNotice(p: ResolvedProject, write: boolean): string {
+  const name = p.name ?? "<名前>";
+  return [
+    write
+      ? `今いる場所ではプロジェクトが決まりません（登録が1つだけなので「${name}」になりますが、変える操作はしません）。`
+      : `※ 今いる場所ではプロジェクトが決まらず、登録が1つだけなので「${name}」を表示しています。変える操作の前には対象を明示してください。`,
+    `  プロジェクト: ${name}  ${p.dataDir}`,
+    `  → p3 --project ${name} <コマンド> で明示する`,
+    `  → または登録したリポジトリ（p3 --project ${name} repo ls）かデータのフォルダの中で実行する`,
+  ].join("\n");
+}
+
+/**
  * 操作するプロジェクトを決める。環境変数では切り替えない（同じ人が複数のプロジェクトを行き来するため）。
  *
  *   1. --dir <フォルダ>          データのフォルダを直接指す
