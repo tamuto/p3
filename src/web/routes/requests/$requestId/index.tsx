@@ -287,7 +287,14 @@ function RequestPanel({
       {notice && <PreflightNotice run={notice.run} fresh={notice.fresh} onOpen={() => setRunId(notice.run.id)} />}
 
       {run ? (
-        <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} blocked={blocked} />
+        <RunView ctx={ctx} request={request} run={run} onChanged={(u) =>
+            setRun((cur) => {
+              if (!cur) return cur;
+              const next = typeof u === "function" ? u(cur) : u;
+              // 表示中の run でなければ取り込まない（切り替えたあとに届いた応答）
+              return next.id === runIdRef.current ? next : cur;
+            })
+          } onOpenRun={setRunId} notes={notes} blocked={blocked} />
       ) : (
         // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
         notes

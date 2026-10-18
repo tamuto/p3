@@ -19,7 +19,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
-import { PulseInputError } from "../../core/preflight/service.ts";
+import { DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -113,6 +113,7 @@ export function apiRoutes(ctx: P3Context) {
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     // 409 は code で分ける: rev_conflict（読み直してやり直す）/ stale_input（評価のあとで要望が変わった。再評価する）
+    if (err instanceof DraftConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
     if (err instanceof StaleInputError) return c.json({ error: err.message, code: err.code, inputMatch: err.match }, 409);
     if (err instanceof ConflictError) {
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
@@ -322,11 +323,12 @@ export function apiRoutes(ctx: P3Context) {
     return c.json({ ok: true });
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
-    const patch = z
-      .object({ title: z.string(), description: z.string(), include: z.boolean(), repo: z.string().nullable() })
+    // expectedTitle: 編集を始めたときの題（制御用。案には書かない）。今の題と違えば 409 で書かない
+    const { expectedTitle, ...patch } = z
+      .object({ title: z.string(), description: z.string(), include: z.boolean(), repo: z.string().nullable(), expectedTitle: z.string() })
       .partial()
       .parse(await c.req.json());
-    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch));
+    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
   });
   app.get("/requests/:rid/preflight/:run/materialize", async (c) => c.json(await preflight.previewMaterialize(rid(c), c.req.param("run"))));
   app.post("/requests/:rid/preflight/:run/materialize", async (c) => {
