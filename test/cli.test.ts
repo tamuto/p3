@@ -713,6 +713,169 @@ describe("個人設定のプロジェクト（データはリポジトリの外�
   });
 });
 
+/** フォルダの中身（相対パス → 内容）。変わっていないことを比べる */
+function snapshot(dir: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (const f of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (f.isFile()) files[join(f.parentPath, f.name).slice(dir.length)] = readFileSync(join(f.parentPath, f.name), "base64");
+  }
+  return files;
+}
+
+describe("登録が1つだけで決まったとき（今いる場所では決まっていない）", () => {
+  /** 登録が1つのプロジェクトに、要望・マイルストーン・添付を用意する（リポジトリの中で） */
+  async function single() {
+    const app = await repo();
+    const data = join(tempDir("p3-assets-"), "app");
+    expect(p3(app, ["init", "--yes", "--project", "app", "--dir", data]).code).toBe(0);
+    const rid = p3(app, ["request", "new", "通知", "--json"]).json().id as string;
+    expect(p3(app, ["new", "送信", "--req", rid]).code).toBe(0);
+    expect(p3(app, ["milestone", "add", "v1"]).code).toBe(0);
+    const { png } = await import("./imageFixture.ts");
+    writeFileSync(join(app, "画面.png"), png(64, 48));
+    const aid = p3(app, ["attach", "add", "画面.png", "--req", rid, "--json"]).json().id as string;
+    return { app, data, rid, aid, nowhere: tempDir() };
+  }
+
+  it("変える操作は、何も読み書きせずに止まり、明示の方法と移る先を案内する", async () => {
+    const { data, rid, aid, nowhere } = await single();
+    writeFileSync(join(nowhere, "メモ.md"), "回答");
+    const before = snapshot(data);
+    const writes: string[][] = [
+      ["request", "new", "関係ない作業"],
+      ["req", "add", "関係ない作業"],
+      ["new", "req", "関係ない作業"],
+      ["add", "request", "関係ない作業"],
+      ["new", "task", "x", "--req", rid],
+      ["new", "x", "--req", rid],
+      ["set", "T001", "title=x", "--req", rid],
+      ["move", "T001", "doing", "--req", rid],
+      ["check", "T001", "--req", rid],
+      ["archive", "T001", "--req", rid],
+      ["request", "set", rid, "status=active"],
+      ["req", "archive", rid],
+      ["request"],
+      ["milestone", "add", "v2"],
+      ["milestones", "set", "v1", "--title", "x"],
+      ["milestone", "rm", "v1"],
+      ["milestone", "remove", "v1"],
+      ["config", "set", "name=x"],
+      ["config", "x"],
+      ["repo", "add", "infra"],
+      ["repo", "set", "app", "role=x"],
+      ["repo", "path", "app", nowhere],
+      ["repo", "rm", "app"],
+      ["preflight", rid],
+      ["preflight", rid, "--note", "-", "--note-only"],
+      ["accept", rid],
+      ["attach", "add", "メモ.md", "--req", rid],
+      ["attach", "get", aid, "--req", rid],
+      ["attach", "get", aid, "--out", "out.png", "--req", rid],
+      ["attach", "rm", aid, "--req", rid],
+      ["release-notes", "generate", "v1"],
+      ["release-note", "save", "v1"],
+      ["serve", "--port", "0"],
+      ["知らないコマンド"],
+    ];
+    for (const args of writes) {
+      const r = spawnSync(process.execPath, [BIN, ...args], {
+        cwd: nowhere,
+        encoding: "utf8",
+        input: "回答",
+        timeout: 10_000, // serve が待ち受けを始めたら止める（その場合は失敗になる）
+        env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: CONFIG_HOME, P3_PREFLIGHT_ENGINE: "mock" },
+      });
+      expect(r.status, args.join(" ")).toBe(1);
+      expect(r.stderr, args.join(" ")).toContain("今いる場所ではプロジェクトが決まりません（登録が1つだけなので「app」になりますが、変える操作はしません）");
+      expect(r.stderr).toContain(data);
+      expect(r.stderr).toContain("p3 --project app <コマンド>");
+      expect(r.stderr).toContain("データのフォルダの中で実行する");
+      expect(r.stdout).toBe("");
+    }
+    expect(snapshot(data)).toEqual(before);
+    expect(readdirSync(nowhere)).toEqual(["メモ.md"]);
+  });
+
+  it("読むだけの操作は続け、標準エラーに警告する（--json の出力はそのまま読める）", async () => {
+    const { rid, nowhere } = await single();
+    const reads: string[][] = [
+      ["whoami"],
+      ["progress"],
+      ["ls", "--req", rid],
+      ["list", "--req", rid],
+      ["show", `${rid}/T001`],
+      ["find", rid],
+      ["resolve", rid],
+      ["request", "ls"],
+      ["req", "list"],
+      ["request", "show", rid],
+      ["milestone"],
+      ["milestones", "ls"],
+      ["config"],
+      ["repo"],
+      ["repo", "ls"],
+      ["notes", rid],
+      ["attach", "--req", rid],
+      ["attach", "ls", "--req", rid],
+      ["release-notes"],
+      ["release-note", "ls"],
+      ["release-notes", "show", "v1"],
+    ];
+    for (const args of reads) {
+      const r = p3(nowhere, [...args, "--json"]);
+      expect(r.code, `${args.join(" ")}: ${r.err}`).toBe(0);
+      expect(r.err).toContain("※ 今いる場所ではプロジェクトが決まらず、登録が1つだけなので「app」を表示しています。変える操作の前には対象を明示してください。");
+      expect(r.err).toContain("p3 --project app <コマンド>");
+      expect(() => r.json()).not.toThrow();
+    }
+    // まだ無いもの（Preflight のタスク案・リリースノート）を読むときも、止めずに「無い」と返す
+    for (const args of [["drafts", rid], ["release-notes", "export", "v1"]]) {
+      const r = p3(nowhere, args);
+      expect(r.code, args.join(" ")).toBe(2);
+      expect(r.err).toContain("を表示しています");
+      expect(r.err).not.toContain("変える操作はしません");
+    }
+    expect(p3(nowhere, ["whoami", "--json"]).json()).toMatchObject({ project: "app", via: "only", here: [] });
+  });
+
+  it("プロジェクトを明示するか、今いる場所で決まれば、変える操作もできる", async () => {
+    const { app, data, nowhere } = await single();
+    const made = (cwd: string, args: string[] = []) => {
+      const r = p3(cwd, ["request", "new", "書ける", ...args, "--json"]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.err).toBe("");
+      expect(existsSync(join(data, "requests", r.json().id, "request.md"))).toBe(true);
+    };
+    made(nowhere, ["--project", "app"]);
+    made(nowhere, ["--dir", data]);
+    made(app);
+    made(join(app, "docs"));
+    made(data);
+    git(app, "add", "-A");
+    git(app, "commit", "-qm", "x");
+    const wt = join(tempDir("p3-wt-"), "wt");
+    git(app, "worktree", "add", "-q", wt, "-b", "topic");
+    made(wt);
+    // 以前の置き方（リポジトリの中の .p3/）は、登録が無くても今いる場所で決まる
+    const { root } = await initialized();
+    const r = p3(root, ["request", "new", "書ける", "--json"], {}, tempDir("p3-config-"));
+    expect(r.code, r.err).toBe(0);
+    expect(r.err).toBe("");
+  });
+
+  it("登録が無い・複数あるときの案内は今までどおり", async () => {
+    const nowhere = tempDir();
+    expect(p3(nowhere, ["request", "new", "x"]).err).toContain("プロジェクトがまだありません");
+    await single();
+    const other = await repo();
+    expect(p3(other, ["init", "--yes", "--project", "other", "--dir", join(tempDir("p3-assets-"), "other")]).code).toBe(0);
+    const r = p3(nowhere, ["request", "new", "x"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("操作するプロジェクトが決まりません");
+    expect(r.err).not.toContain("登録が1つだけ");
+  });
+});
+
 describe("タグ（外部 ID・分類）", () => {
   it("--tag は値ごと（カンマで分けない）。request set --tag で置き換え、tags= はカンマで分ける。両方は使えない", async () => {
     const { root, rid } = await initialized();

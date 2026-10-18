@@ -99,13 +99,25 @@ p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社�
 ```bash
 p3 whoami
 # プロジェクト  myapp  /home/me/p3-data/myapp
+# 決まり方      cwd（今いる場所）
 # 今いる参照先  myapp  ブランチ main
 # 変更者        human:<git の user.name>
 # 要望          （なし）
 ```
 
 プロジェクトが決まらないと、登録済みの一覧と選び方（`--project <名前>`）が出る。リポジトリの外で使うときや、複数のプロジェクトに
-参加しているときに起きる。ほかのリポジトリ（ドキュメント・基盤など）も Preflight に読ませたいときは
+参加しているときに起きる。
+
+登録が1つだけのうちは、関係ないフォルダでも `whoami` が成功する（決まり方が `only`）。これは書き込み先が決まったという意味ではない。
+そのとき読むだけのコマンドは警告を出して動き、要望の登録などの変える操作は止まる。変えるときは、リポジトリかデータのフォルダの中に
+移るか、プロジェクトを明示する:
+
+```bash
+cd ~/src/myapp && p3 request new "通知"         # リポジトリの中で
+p3 --project myapp request new "通知"           # どこからでも、明示して
+```
+
+ほかのリポジトリ（ドキュメント・基盤など）も Preflight に読ませたいときは
 [使い方ガイド](how-to-use.md#参照先と作業先) の「参照先と作業先」。
 
 ## 5. パスの対応を書く（DevContainer のときだけ）
