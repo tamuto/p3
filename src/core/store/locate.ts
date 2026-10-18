@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { UserConfig } from "../userConfig.ts";
 
@@ -27,6 +28,48 @@ export const VIA_LABEL: Record<ResolvedProject["via"], string> = {
 
 /** 操作するプロジェクトが決まらない（次に何をすればよいかをメッセージに含める） */
 export class ProjectNotResolvedError extends Error {}
+
+/** データのフォルダが無い・project.yaml が無い・読めない（次にすることをメッセージに含める）。ファイルは何も変えていない */
+export class DataDirError extends Error {}
+
+/**
+ * データのフォルダとその project.yaml があるかを確かめる（プロジェクトを開く前。CLI と serve の共通の入口 openProject から）。
+ * 無いのに空のプロジェクトとして続けると、書く操作がフォルダを新しく作って別の場所に書いてしまう（移した・共有ドライブが
+ * つながっていない・パスの誤り）。無い（ENOENT）と読めない（権限・入出力）は分けて伝える。フォルダもファイルも作らない。
+ * requests/ は無くてよい（作ったばかりのプロジェクト）
+ */
+export async function checkDataDir(dataDir: string, projectName?: string): Promise<void> {
+  const yaml = join(dataDir, "project.yaml");
+  const problem = async (): Promise<string | undefined> => {
+    const dir = await stat(dataDir).catch((e: NodeJS.ErrnoException) => e);
+    if (dir instanceof Error) {
+      return dir.code === "ENOENT" ? `データのフォルダがありません: ${dataDir}` : `データのフォルダを読めません: ${dataDir}（${dir.code ?? dir.message}）`;
+    }
+    if (!dir.isDirectory()) return `データのフォルダがフォルダではありません: ${dataDir}`;
+    const file = await stat(yaml).catch((e: NodeJS.ErrnoException) => e);
+    if (file instanceof Error) {
+      return file.code === "ENOENT" ? `データのフォルダに project.yaml がありません: ${yaml}` : `project.yaml を読めません: ${yaml}（${file.code ?? file.message}）`;
+    }
+    if (!file.isFile()) return `project.yaml がファイルではありません: ${yaml}`;
+    return undefined;
+  };
+  const head = await problem();
+  if (!head) return;
+  const name = projectName ?? "<名前>";
+  throw new DataDirError(
+    [
+      head,
+      projectName ? `  （個人設定のプロジェクト「${projectName}」の登録先）` : "",
+      "  既にあるデータなら: パスの誤り・フォルダの移動・共有ドライブ（同期するフォルダ）がつながっているかを確かめる",
+      projectName
+        ? `    登録の場所を直すとき: p3 project ls で確かめ、p3 project rm ${name} → p3 project add ${name} <正しいフォルダ>（rm はデータを消さない）`
+        : "    --dir で指すときは、project.yaml のあるフォルダを指す",
+      `  新しく作るなら: 管理したいリポジトリの中で p3 init --project ${name} --dir <フォルダ>`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
 
 /**
  * 登録が1つだけで決まった（via: only）ときの案内。今いる場所とは関係なく決まるので、p3 を使わないフォルダでも当たる。

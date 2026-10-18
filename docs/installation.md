@@ -230,6 +230,7 @@ DevContainer で「対応あり」にならなければ 5. を見直す。評価
 | Preflight | 「Usage limit reached」 | ChatGPT の Manage usage（https://chatgpt.com/settings/usage） | 上限が戻るのを待つ |
 | Preflight・画面 | 個人設定を読めない（YAML の行と直すファイル） | `~/.config/infodb-p3/config.yaml` | 書き間違いを直す。serve はそのままで次の Preflight から効く |
 | CLI | プロジェクトが決まらない | `p3 whoami`、`p3 project` | `--project <名前>`、または `p3 project add <名前> <フォルダ>` |
+| CLI・serve | 「データのフォルダがありません」「データのフォルダに project.yaml がありません」 | `p3 project ls` の登録先、フォルダを移していないか、共有ドライブ（同期するフォルダ）がつながっているか | つながっていなければつないでやり直す。移したなら `p3 project rm <名前>` → `p3 project add <名前> <正しいフォルダ>`（rm はデータを消さない。そのあと `p3 repo path` で手元のリポジトリを登録し直す）。新しく作るなら管理したいリポジトリの中で `p3 init --project <名前> --dir <フォルダ>` |
 | 画面 | 開けない | serve のログ、ポートの転送 | 4310 を転送する。`serve.port` を変えたら転送先も変える |
 
 ## 設定の決まり

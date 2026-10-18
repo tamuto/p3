@@ -5,6 +5,7 @@ import { fixedSettings, machineSettingsSource, type MachineSettings, type Settin
 import type { PreflightEngine } from "./preflight/engine.ts";
 import { MockEngine } from "./preflight/mockEngine.ts";
 import { PreflightService } from "./preflight/service.ts";
+import { checkDataDir } from "./store/locate.ts";
 import { Workspace } from "./store/workspace.ts";
 import { ReleaseGenerator } from "./releaseNotes/generate.ts";
 import { MockSummarizer } from "./releaseNotes/mockSummarizer.ts";
@@ -34,6 +35,8 @@ export async function openProject(
   dataDir: string,
   opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string } = {},
 ): Promise<P3Context> {
+  // データのフォルダと project.yaml が無ければ、空のプロジェクトとして開かずに止める（何も作らない）
+  await checkDataDir(dataDir, opts.projectName);
   const source = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : fixedSettings(opts.settings);
   // 初めの値（画面の表示の既定エンジン）。読めなくても開ける（Preflight を始めるときに設定のエラーとして知らせる）
   const initial = await source.get().catch(() => undefined);
