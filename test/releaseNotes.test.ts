@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkMilestoneRemoval, OpRuleError } from "../src/core/requestOps.ts";
@@ -29,6 +29,15 @@ async function setup() {
 }
 
 const codes = (ws: { code: string; target: string }[]) => ws.map((w) => `${w.code}:${w.target}`);
+
+/** 要望のフォルダと frontmatter の ID・作成日時を決め打ちの値に直す（材料はファイルから読み直すので、これで効く） */
+async function relabel(dataDir: string, from: string, to: string, createdAt: string): Promise<string> {
+  if (from !== to) await rename(join(dataDir, "requests", from), join(dataDir, "requests", to));
+  const file = join(dataDir, "requests", to, "request.md");
+  const text = await readFile(file, "utf8");
+  await writeFile(file, text.replace(/^id: .*$/m, `id: ${to}`).replace(/^createdAt: .*$/m, `createdAt: ${createdAt}`));
+  return to;
+}
 
 describe("リリースノートの材料（マイルストーンごと）", () => {
   it("状態と所属で収録を分け、未完了・記録なし・タスクなし・状態の食い違いを警告する", async () => {
@@ -93,22 +102,28 @@ describe("リリースノートの材料（マイルストーンごと）", () =
     expect(codes(m.warnings)).toEqual(["broken_request:requests/261001-zzzzz/request.md", "no_sources:v1"]);
   });
 
-  it("並びは作成日時 → ID、タスクは ID の順で、同じ材料なら hash も同じ。変わると hash が変わる", async () => {
-    const { ctx, add, dataDir } = await setup();
-    const a = await add("A", "done", [{ status: "done", record: "1" }]);
-    const b = await add("B", "done", [{ status: "done", record: "2" }]);
-    // 作成日時を同じにすると ID の順
-    const text = await readFile(ctx.ws.requests.path(b), "utf8");
-    const createdA = ctx.ws.requests.get(a)!.createdAt;
-    await writeFile(ctx.ws.requests.path(b), text.replace(/createdAt: .*/, `createdAt: ${createdA}`));
+  it("並びは作成日時 → ID（数字の部分は数として比べる）、タスクは ID の順で、同じ材料なら hash も同じ。変わると hash が変わる", async () => {
+    const { add, dataDir } = await setup();
+    // ID と作成日時を決め打ちにする（乱数の ID の組で結果が変わらないように）。8nda1 と 88d8b は、数字を数として比べると
+    // 8 < 88 で 8nda1 が先、既定の文字列の比べ方なら "8" + "8" < "8" + "n" で 88d8b が先になる組
+    const first = await relabel(dataDir, await add("先に作った", "done", [{ status: "done", record: "1" }]), "261019-88d8b", "2026-10-19T01:00:00.000Z");
+    const second = await relabel(dataDir, await add("後に作った", "done", [{ status: "done", record: "2" }]), "261019-8nda1", "2026-10-19T01:00:00.000Z");
     const m1 = await extractMaterial(dataDir, "v1");
-    expect(m1.requests.map((r) => r.id)).toEqual([a, b].sort());
+    // 作成日時が同じなら ID の順（数字の部分は数として）
+    expect(m1.requests.map((r) => r.id)).toEqual(["261019-8nda1", "261019-88d8b"]);
+    expect(m1.sources.map((x) => x.request)).toEqual(["261019-8nda1", "261019-88d8b"]);
     expect((await extractMaterial(dataDir, "v1")).hash).toBe(m1.hash);
+
+    // 作成日時が違えば、ID より作成日時（88d8b を先にする）
+    await relabel(dataDir, first, first, "2026-10-19T00:00:00.000Z");
+    const m2 = await extractMaterial(dataDir, "v1");
+    expect(m2.requests.map((r) => r.id)).toEqual(["261019-88d8b", "261019-8nda1"]);
+    expect(m2.hash).not.toBe(m1.hash);
 
     const ext = new Workspace(dataDir);
     await ext.load();
-    await ext.tasksOf(a).update("T001", { record: "2 に直した" });
-    expect((await extractMaterial(dataDir, "v1")).hash).not.toBe(m1.hash);
+    await ext.tasksOf(second).update("T001", { record: "2 に直した" });
+    expect((await extractMaterial(dataDir, "v1")).hash).not.toBe(m2.hash);
   });
 
   it("project.yaml に無く、ノートも無いマイルストーンは見つからない。ID が保存先の外を指すものは断る", async () => {
