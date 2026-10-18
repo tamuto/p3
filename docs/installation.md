@@ -90,8 +90,9 @@ p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社�
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
   最初に読む・作業先にできる）として登録される
 - 既にあるデータのフォルダ（ほかの人が作って共有したもの）を指したときは、作らずに **参加** だけする
-- `--agents` を付けると、AI エージェント向けの使い方を `AGENTS.md`（無ければ `CLAUDE.md`）に追記し、スキルを
-  `.claude/skills/p3/SKILL.md` に置く。置いたファイルはリポジトリに入れて共有する
+- `--agents` を付けると、AI エージェント向けの使い方を `AGENTS.md`（無ければ `CLAUDE.md`）に追記し、同じスキルを
+  `.claude/skills/p3/SKILL.md`（Claude Code）と `.agents/skills/p3/SKILL.md`（Codex）に置く。置いたファイルはリポジトリに入れて共有する。
+  登録済みのリポジトリでも `p3 init --agents --project <名前> --dir <データのフォルダ>` をもう一度実行すれば、登録はそのままで足りない方だけを置く
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
 
 確かめる:

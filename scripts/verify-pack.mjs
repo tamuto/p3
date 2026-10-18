@@ -117,7 +117,12 @@ try {
     p3(["init", "--yes", "--agents", "--project", "sample", "--dir", join(work, "data"), "--description", "検証用"]);
     check(existsSync(join(work, "data", "project.yaml")), "データのフォルダができていません");
     check(readFileSync(join(repo, "AGENTS.md"), "utf8").includes("タスク管理（infodb p3）"), "AGENTS.md に追記されていません");
-    check(existsSync(join(repo, ".claude", "skills", "p3", "SKILL.md")), "スキルが置かれていません");
+    // スキルは Claude Code と Codex の2か所に、配布物の原本と同じものを置く
+    const original = readFileSync(join(prefix, "node_modules", "@infodb", "p3", "skills", "p3", "SKILL.md"), "utf8");
+    for (const dir of [".claude", ".agents"]) {
+      const placed = join(repo, dir, "skills", "p3", "SKILL.md");
+      check(existsSync(placed) && readFileSync(placed, "utf8") === original, `スキルが ${dir}/skills/p3/SKILL.md に置かれていません（配布物の原本と違います）`);
+    }
   });
 
   await step("p3 whoami", () => {

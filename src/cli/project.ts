@@ -116,7 +116,7 @@ export const AGENTS_SNIPPET = `
 ## ${AGENTS_MARK}
 
 - 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順は \`.claude/skills/p3/SKILL.md\`
+  詳しい手順はスキル \`.claude/skills/p3/SKILL.md\`（Claude Code）・\`.agents/skills/p3/SKILL.md\`（Codex）。中身は同じ
 - 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
 - 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる
 - \`whoami\` の \`via\`（プロジェクトの決まり方）が \`cwd\` でなければ（\`dir\` / \`project\` / \`legacy\` / \`only\`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した \`--project\` / \`--dir\` で避けない。人が指定・確認した後はその対象のまま続ける）
@@ -130,13 +130,20 @@ export const AGENTS_SNIPPET = `
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
 `;
 
-/** 同梱のスキルの原本と、プロジェクトに置く場所（Claude Code のプロジェクトのスキル） */
+/**
+ * 同梱のスキルの原本と、プロジェクトに置く場所（リポジトリのルートからの相対パス。同じ原本を写す）。
+ * 置くのはプロジェクトの中だけ（個人のスキルの場所に置くと、p3 を使わないプロジェクトでも読まれる）
+ */
 export const SKILL_SOURCE = fileURLToPath(new URL("../../skills/p3/SKILL.md", import.meta.url));
-export const SKILL_TARGET = ".claude/skills/p3/SKILL.md";
+export const SKILL_TARGETS = [
+  { path: ".claude/skills/p3/SKILL.md", agent: "Claude Code" },
+  { path: ".agents/skills/p3/SKILL.md", agent: "Codex" },
+] as const;
 
 /**
  * --agents: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）に指示を追記し、スキルを置く。
- * 指示は見出しがあれば足さない。スキルは同じ内容なら何もせず、違えば上書きしない（手で直したものを消さない）。
+ * 指示は見出しがあれば足さない。スキルは置く場所ごとに、無ければ置き、同じ内容なら何もせず、違えば上書きしない
+ * （手で直したものを消さない。片方が違っても、もう片方は置く）。
  */
 async function placeAgents(root: string, cwd: string): Promise<string[]> {
   const lines: string[] = [];
@@ -148,18 +155,19 @@ async function placeAgents(root: string, cwd: string): Promise<string[]> {
     await appendFile(target, AGENTS_SNIPPET);
     lines.push(`  AI 向けの使い方を ${relative(cwd, target) || target} に追記しました`);
   }
-  const skill = join(root, SKILL_TARGET);
   const source = readFileSync(SKILL_SOURCE, "utf8");
-  if (!existsSync(skill)) {
-    await mkdir(dirname(skill), { recursive: true });
-    await copyFile(SKILL_SOURCE, skill);
-    lines.push(`  AI 向けのスキルを ${relative(cwd, skill)} に置きました`);
-  } else if (readFileSync(skill, "utf8") === source) {
-    lines.push(`  AI 向けのスキル ${relative(cwd, skill)} は最新です`);
-  } else {
-    lines.push(
-      `  ※ ${relative(cwd, skill)} は既にあり、同梱の版と違うので上書きしません。手で見比べて更新してください: ${SKILL_SOURCE}`,
-    );
+  for (const t of SKILL_TARGETS) {
+    const skill = join(root, t.path);
+    const shown = relative(cwd, skill);
+    if (!existsSync(skill)) {
+      await mkdir(dirname(skill), { recursive: true });
+      await copyFile(SKILL_SOURCE, skill);
+      lines.push(`  AI 向けのスキル（${t.agent}）を ${shown} に置きました`);
+    } else if (readFileSync(skill, "utf8") === source) {
+      lines.push(`  AI 向けのスキル（${t.agent}）${shown} は最新です`);
+    } else {
+      lines.push(`  ※ ${shown}（${t.agent}）は既にあり、同梱の版と違うので上書きしません。手で見比べて更新してください: ${SKILL_SOURCE}`);
+    }
   }
   return lines;
 }
@@ -226,11 +234,14 @@ export async function init(o: InitOptions): Promise<string> {
     const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
     const askAgents = async () =>
       o.agents ??
-      (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} と .claude/skills/ に AI 向けの p3 の使い方を置きますか (y/n)`, agentsFile ? "y" : "n")) : false);
+      (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} と .claude/skills/・.agents/skills/ に AI 向けの p3 の使い方を置きますか (y/n)`, agentsFile ? "y" : "n")) : false);
 
     // 既に作られたフォルダなら参加だけ
     if (joining) {
-      if (registered && (!refName || registered.repos[refName] === root)) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config）`);
+      // 登録済みのリポジトリでも --agents なら、登録とデータはそのままで AI 向けの使い方だけを置く（あとから置き場所が増えたとき）
+      const already = !!registered && (!refName || registered.repos[refName] === root);
+      if (already && !o.agents) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config。AI 向けの使い方を置くなら --agents）`);
+      if (already) return [`登録済みです: ${key} → ${dir}`, ...(await placeAgents(root, o.cwd))].join("\n");
       const addAgents = await askAgents();
       await register();
       return [
