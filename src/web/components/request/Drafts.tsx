@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { relationRole, type ProposedTask, type Request, type SupersedeCandidate } from "../../../shared/types.ts";
 import { Badge, Button, buttonCls, cx, inputCls, Empty, Id, Section } from "../ui.tsx";
 import { api, type RunInfo } from "../../lib/api.ts";
@@ -9,6 +9,8 @@ import { draftAnchor, uiShortage } from "../../lib/uiMaterials.ts";
 import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { materializeErrorText } from "../../lib/requestEdit.ts";
+import { selectedDraft, type DraftSelection } from "../../lib/markdown.ts";
+import { DraftDetail } from "./DraftDetail.tsx";
 
 /** タスク案とタスク化（置き換えられる既存タスクの選択を含む） */
 
@@ -70,6 +72,18 @@ export function Drafts({
   }
   // 共有の参照先があるときだけ、案ごとに作業先を選ぶ
   const multi = ctx.info.project.repos.length > 0;
+
+  // 詳細（読むだけ）。run と案のキーの組で持ち、run が切り替わる・案が無くなると閉じる。外で更新されたら最新を見せる
+  const [selection, setSelection] = useState<DraftSelection | null>(null);
+  const detail = selectedDraft(selection, run);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const d = dialog.current;
+    if (!d) return;
+    if (detail && !d.open) d.showModal();
+    if (!detail && d.open) d.close();
+  }, [detail]);
 
   async function materialize() {
     setBusy(true);
@@ -140,10 +154,16 @@ export function Drafts({
                   }}
                   className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
                 />
-                <details>
-                  <summary className="cursor-pointer text-sm text-slate-500">内容</summary>
-                  <p className="mt-1 text-sm whitespace-pre-wrap break-words text-slate-600 dark:text-slate-400">{d.description}</p>
-                </details>
+                <Button
+                  className="text-sm"
+                  aria-haspopup="dialog"
+                  onClick={(e) => {
+                    opener.current = e.currentTarget;
+                    setSelection({ runId: run.id, key: d.key });
+                  }}
+                >
+                  内容を見る
+                </Button>
                 <div className="flex flex-wrap gap-1">
                   {d.areas.map((a) => (
                     <Badge key={a} className="max-w-full font-mono" title={a}>
@@ -220,6 +240,15 @@ export function Drafts({
         )}
         {error && <span className="text-rose-600">{error}</span>}
       </div>
+      <DraftDetail
+        dialog={dialog}
+        draft={detail}
+        project={ctx.info.project}
+        onClose={() => {
+          setSelection(null);
+          opener.current?.focus();
+        }}
+      />
     </Section>
   );
 }
