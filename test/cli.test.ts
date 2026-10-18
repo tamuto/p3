@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
@@ -75,6 +75,11 @@ describe("p3 init", () => {
     expect(agents).toContain("タスク管理（infodb p3）");
     expect(agents).toContain("status=resolved"); // 作業を終えたら対応済にする
     expect(agents).toContain("完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める");
+    // サブフォルダから実行しても、スキルはリポジトリのルートに置く
+    for (const t of [".claude", ".agents"]) {
+      expect(existsSync(join(root, t, "skills", "p3", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(root, "src", t))).toBe(false);
+    }
     expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(1); // 2回目は拒む
     expect(p3(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
   });
@@ -82,33 +87,91 @@ describe("p3 init", () => {
 
 describe("p3 init --agents（AI 向けの指示とスキル）", () => {
   const SKILL = fileURLToPath(new URL("../skills/p3/SKILL.md", import.meta.url));
-  const placed = (root: string) => join(root, ".claude", "skills", "p3", "SKILL.md");
+  /** 置く場所（Claude Code・Codex）。中身は同じ原本 */
+  const TARGETS = [".claude/skills/p3/SKILL.md", ".agents/skills/p3/SKILL.md"];
+  const original = () => readFileSync(SKILL, "utf8");
+  const expectPlaced = (root: string) => {
+    for (const t of TARGETS) expect(readFileSync(join(root, t), "utf8"), t).toBe(original());
+  };
+  const put = async (root: string, t: string, text: string) => {
+    await mkdir(dirname(join(root, t)), { recursive: true });
+    writeFileSync(join(root, t), text);
+  };
 
-  it("新しく作るときに、AGENTS.md へ追記してスキルを置く。もう一度でも重ねない", async () => {
+  it("新しく作るときに、AGENTS.md へ追記してスキルを2か所に置く。もう一度でも重ねない", async () => {
     const root = await repo();
     const r = p3(root, ["init", "--yes", "--agents", "--dir", ".p3"]);
     expect(r.code, r.err).toBe(0);
-    expect(r.out).toContain("AI 向けのスキルを .claude/skills/p3/SKILL.md に置きました");
-    expect(readFileSync(placed(root), "utf8")).toBe(readFileSync(SKILL, "utf8"));
+    expect(r.out).toContain("AI 向けのスキル（Claude Code）を .claude/skills/p3/SKILL.md に置きました");
+    expect(r.out).toContain("AI 向けのスキル（Codex）を .agents/skills/p3/SKILL.md に置きました");
+    expectPlaced(root);
 
     // 別の人が同じデータに参加する（同じリポジトリの別のチェックアウト）。指示は重ねず、スキルは最新のまま
     const again = p3(root, ["init", "--yes", "--agents", "--project", "same", "--dir", ".p3"], {}, tempDir("p3-config-"));
     expect(again.code, again.err).toBe(0);
     expect(again.out).toContain("参加しました");
-    expect(again.out).toContain("は最新です");
+    expect(again.out).toContain("（Claude Code）.claude/skills/p3/SKILL.md は最新です");
+    expect(again.out).toContain("（Codex）.agents/skills/p3/SKILL.md は最新です");
     expect(readFileSync(join(root, "AGENTS.md"), "utf8").split("タスク管理（infodb p3）")).toHaveLength(2);
   });
 
   it("参加のときも置き、手で直したスキルは上書きせずに案内する", async () => {
     const root = await repo();
     expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(0);
-    await mkdir(join(root, ".claude", "skills", "p3"), { recursive: true });
-    writeFileSync(placed(root), "# 自分で直したスキル\n");
+    for (const t of TARGETS) await put(root, t, "# 自分で直したスキル\n");
     const r = p3(root, ["init", "--yes", "--agents", "--project", "joined", "--dir", ".p3"], {}, tempDir("p3-config-"));
     expect(r.code, r.err).toBe(0);
+    for (const t of TARGETS) {
+      expect(r.out).toContain(`※ ${t}（`);
+      expect(readFileSync(join(root, t), "utf8")).toBe("# 自分で直したスキル\n");
+    }
     expect(r.out).toContain("上書きしません");
-    expect(readFileSync(placed(root), "utf8")).toBe("# 自分で直したスキル\n");
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+  });
+
+  // 片方だけが既にある（以前の版で .claude だけ置いた・手で直した）。もう片方は置き、ある方は変えない
+  it.each([
+    [TARGETS[0], TARGETS[1]],
+    [TARGETS[1], TARGETS[0]],
+  ])("%s だけがあるとき、%s を置く（同じ内容なら最新、違えば残して知らせる）", async (have, missing) => {
+    for (const [text, message] of [
+      [original(), `${have} は最新です`],
+      ["# 自分で直したスキル\n", `※ ${have}（`],
+    ]) {
+      const root = await repo();
+      expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(0);
+      await put(root, have, text);
+      const r = p3(root, ["init", "--yes", "--agents", "--dir", ".p3"]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain(message);
+      expect(r.out).toContain(`を ${missing} に置きました`);
+      expect(readFileSync(join(root, have), "utf8")).toBe(text);
+      expect(readFileSync(join(root, missing), "utf8")).toBe(original());
+    }
+  });
+
+  it("登録済みのリポジトリでもう一度 --agents を付けると、登録とデータはそのままで置くだけ。--agents が無い・名前が別のフォルダなら拒む", async () => {
+    const root = await repo();
+    expect(p3(root, ["init", "--yes", "--project", "app", "--dir", ".p3"]).code).toBe(0);
+    const cfgFile = join(CONFIG_HOME, "infodb-p3", "config.yaml");
+    const before = { yaml: readFileSync(join(root, ".p3", "project.yaml"), "utf8"), cfg: readFileSync(cfgFile, "utf8") };
+    mkdirSync(join(root, "src"));
+    const r = p3(join(root, "src"), ["init", "--yes", "--agents", "--project", "app", "--dir", "../.p3"]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain("登録済みです: app");
+    expectPlaced(root);
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
+    expect(readFileSync(join(root, ".p3", "project.yaml"), "utf8")).toBe(before.yaml);
+    expect(readFileSync(cfgFile, "utf8")).toBe(before.cfg);
+
+    const plain = p3(root, ["init", "--yes", "--project", "app", "--dir", ".p3"]);
+    expect(plain.code).toBe(1);
+    expect(plain.err).toContain("は登録済みです");
+    const other = join(tempDir("p3-assets-"), "other");
+    const clash = p3(root, ["init", "--yes", "--agents", "--project", "app", "--dir", other]);
+    expect(clash.code).toBe(1);
+    expect(clash.err).toContain("別のフォルダで登録済みです");
+    expect(existsSync(other)).toBe(false);
   });
 
   it("CLAUDE.md だけがあればそちらに追記する", async () => {
@@ -118,12 +181,13 @@ describe("p3 init --agents（AI 向けの指示とスキル）", () => {
     expect(p3(root, ["init", "--yes", "--agents", "--dir", ".p3"]).code).toBe(0);
     expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain("タスク管理（infodb p3）");
     expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+    expectPlaced(root);
   });
 
   it("--agents が無ければ（非対話では）何も置かない", async () => {
     const root = await repo();
     expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(0);
-    expect(existsSync(placed(root))).toBe(false);
+    for (const t of TARGETS) expect(existsSync(join(root, t))).toBe(false);
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe("# rules\n");
   });
 });

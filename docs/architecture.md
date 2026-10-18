@@ -528,7 +528,9 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 ## AI エージェントへの指示（`p3 init --agents` で AGENTS.md / CLAUDE.md に追記する内容）
 
-手順の詳しい版は同梱のスキル（`skills/p3/SKILL.md`。`.claude/skills/p3/SKILL.md` に置く）で、役割と終わり方は両方でそろえる
+手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。プロジェクトの `.claude/skills/p3/SKILL.md`（Claude Code）と
+`.agents/skills/p3/SKILL.md`（Codex）に同じものを写す。置き場所の一覧は `src/cli/project.ts` の `SKILL_TARGETS`。
+個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
 （`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
 `p3 init --agents` は既にあるスキル・追記を上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。
 変えたときは、置いたプロジェクトで手で更新する（`init --agents` が違いを知らせる）。
@@ -537,7 +539,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 ## タスク管理（infodb p3）
 
 - 作業の単位は要望。タスクは `p3` CLI（入っていなければ `pnpx @infodb/p3`）で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順は `.claude/skills/p3/SKILL.md`
+  詳しい手順はスキル `.claude/skills/p3/SKILL.md`（Claude Code）・`.agents/skills/p3/SKILL.md`（Codex）。中身は同じ
 - 変更するときは環境変数 `P3_ACTOR=ai:<エージェント名>` を付ける
 - 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami --json` で確かめる
 - `whoami` の `via`（プロジェクトの決まり方）が `cwd` でなければ（`dir` / `project` / `legacy` / `only`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した `--project` / `--dir` で避けない。人が指定・確認した後はその対象のまま続ける）

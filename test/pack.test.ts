@@ -34,7 +34,9 @@ describe("npm pack の中身だけで動く", () => {
     };
 
     p3(["init", "--yes", "--agents", "--project", "sample", "--dir", join(work, "data")]);
-    expect(readFileSync(join(repo, ".claude", "skills", "p3", "SKILL.md"), "utf8")).toBe(readFileSync(join(ROOT, "skills", "p3", "SKILL.md"), "utf8"));
+    for (const dir of [".claude", ".agents"]) {
+      expect(readFileSync(join(repo, dir, "skills", "p3", "SKILL.md"), "utf8")).toBe(readFileSync(join(ROOT, "skills", "p3", "SKILL.md"), "utf8"));
+    }
     expect(JSON.parse(p3(["whoami", "--json"]))).toMatchObject({ project: "sample" });
     const rid = JSON.parse(p3(["request", "new", "通知", "--body", "- 送信\n- 設定", "--json"])).id;
     expect(JSON.parse(p3(["preflight", rid, "--engine", "mock", "--json"]))).toMatchObject({ status: "completed" });

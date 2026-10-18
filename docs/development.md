@@ -48,6 +48,20 @@ pnpm verify:pack             # 配布物を別の場所に入れて動かす（-
 - テストは一時ディレクトリに git リポジトリと `.p3/` を作って動かす（`test/helpers.ts`）
 - Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。本物の Codex が実際に
   どこまで読むか、読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない
+- `init --agents` で置いたスキルを本物の Codex が見つけて読むかは、偽の app-server では確かめられない。置き場所
+  （`SKILL_TARGETS`）や Codex の版を変えたときは、手で確かめる（結果はタスクの変更の記録に残す）:
+
+  ```bash
+  # 一時フォルダに git リポジトリを作り、個人設定も分けて置く（p3 を使わない別のリポジトリ other/ も作っておく）
+  XDG_CONFIG_HOME=$TMP/cfg node <このチェックアウト>/bin/p3.mjs init --yes --agents --project sample --dir $TMP/data
+  # ルート・サブフォルダ・other/ のそれぞれで、スキルの一覧と場所を聞く（p3 は .agents/skills/p3/SKILL.md、other/ では出ない）
+  codex exec --ephemeral --ignore-user-config -s read-only "List every skill available to you with its SKILL.md path. Also quote what each skill root alias (r0, r1) maps to."
+  # $p3 を明示して、本文だけにあること（whoami --json の via の確認・Preflight と accept は人）を引用させる
+  codex exec --ephemeral --ignore-user-config -s read-only '$p3 Do not run p3. Quote what the skill says to check first and who runs Preflight and accept.'
+  ```
+
+  個人のスキル（`~/.agents/skills`・`/etc/codex/skills`）と `~/.codex/config.toml` の `[[skills.config]]` に p3 が無いことを先に確かめる。
+  Codex がスキルを探す場所は公式の文書（<https://developers.openai.com/codex/skills/> の「Where Codex loads local skills」）
 - CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `P3_*` の環境変数は効かないようにしている
 - `test/layers.test.ts` が src の層の依存の向き、`test/package.test.ts` が配布物の中身と文書のリンクを確かめる
 - 短い出力の量を測るときは:
@@ -129,7 +143,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     routeTree.gen.ts ルート一覧（自動生成）
     components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
 bin/p3.mjs           CLI の起動口（tsx でソースをそのまま動かす）
-skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents で各プロジェクトに置く）
+skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents で各プロジェクトの .claude/skills と .agents/skills に写す）
 scripts/             デモデータ・配布物の確認
 docs/                導入・使い方・開発・設計・公開の文書
 test/                ユニットテスト
