@@ -70,6 +70,13 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/preflight[/:run]",
       desc: "Preflight の run。各 run に inputMatch {status: same|changed|unknown, changed?: [title|body], reason?}（評価対象と今の要望が同じか。タグ・期限・ステータスは比べない）",
     },
+    {
+      method: "PATCH",
+      path: "/api/requests/:rid/preflight/:run/drafts/:key",
+      desc:
+        "タスク案を直す {title?, description?, include?, repo?, expectedTitle?}。expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
+        "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
+    },
     { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）" },
     {
       method: "POST",

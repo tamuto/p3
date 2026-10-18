@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { relationRole, type ProposedTask, type Request, type SupersedeCandidate } from "../../../shared/types.ts";
 import { Badge, Button, buttonCls, cx, inputCls, Empty, Id, Section } from "../ui.tsx";
-import { api, type RunInfo } from "../../lib/api.ts";
+import { api, ApiError, type RunInfo } from "../../lib/api.ts";
 import { archiveSelection } from "../../lib/supersede.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { draftAnchor, uiShortage } from "../../lib/uiMaterials.ts";
@@ -11,6 +11,20 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { materializeErrorText } from "../../lib/requestEdit.ts";
 import { selectedDraft, type DraftSelection } from "../../lib/markdown.ts";
 import { DraftDetail } from "./DraftDetail.tsx";
+import {
+  canSaveTitle,
+  discardTitle,
+  editTitle,
+  startTitleSave,
+  syncTitle,
+  titleDirty,
+  titleDraftOf,
+  titleKey,
+  titlePending,
+  titleSaved,
+  titleSaveFailed,
+  type TitleDraft,
+} from "../../lib/draftTitle.ts";
 
 /** タスク案とタスク化（置き換えられる既存タスクの選択を含む） */
 
@@ -42,15 +56,37 @@ export function Drafts({
   ctx: AppCtx;
   request: Request;
   run: RunInfo;
-  onChanged: (r: RunInfo) => void;
+  /** 表示中の run を変える。関数なら今の run から作る（保存の応答で、そのあいだに取り直した内容を巻き戻さない） */
+  onChanged: (update: RunInfo | ((cur: RunInfo) => RunInfo)) => void;
   blocked: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const done = isMaterialized(run);
+  // 題の下書き（要望 / run / 案のキーごと）。取り直した題に追従し、編集中に外で変わったら知らせる（lib/draftTitle.ts）
+  const [titles, setTitles] = useState<Record<string, TitleDraft>>({});
+  const titlesRef = useRef(titles);
+  titlesRef.current = titles;
+  const titleSig = run.drafts.map((d) => `${d.key}\u0000${d.title}`).join("\u0001");
+  useEffect(() => {
+    setTitles((prev) => {
+      const next: Record<string, TitleDraft> = {};
+      for (const d of run.drafts) {
+        const k = titleKey(request.id, run.id, d.key);
+        next[k] = prev[k] ? syncTitle(prev[k], d.title) : titleDraftOf(d.title);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.id, run.id, titleSig]);
+  const titleOf = (d: ProposedTask) => titles[titleKey(request.id, run.id, d.key)] ?? titleDraftOf(d.title);
+  const setTitle = (k: string, f: (t: TitleDraft) => TitleDraft) => setTitles((prev) => (prev[k] ? { ...prev, [k]: f(prev[k]) } : prev));
+  const titlesPending = !done && run.drafts.some((d) => titlePending(titles[titleKey(request.id, run.id, d.key)]));
   // 評価のあとでタイトル・本文が変わった（か確かめられない）run からはタスク化しない。評価・案は読める
   const stale = !!run.inputMatch && run.inputMatch.status !== "same";
-  const stopped = stale ? "この評価は今の要望と違うので、タスク化できません。もう一度 Preflight を実行してください" : blocked;
+  const stopped = stale
+    ? "この評価は今の要望と違うので、タスク化できません。もう一度 Preflight を実行してください"
+    : (blocked ?? (titlesPending ? "保存していない題があります。欄から離れて保存するか、入力を捨ててからタスク化してください" : null));
   const included = run.drafts.filter((d) => d.include);
   // 置き換えられる既存タスク。採否を変えたら・外で変わったら読み直す。アーカイブは選んだものだけ（既定は残す）
   const [candidates, setCandidates] = useState<SupersedeCandidate[]>([]);
@@ -61,13 +97,36 @@ export function Drafts({
     void api.previewMaterialize(request.id, run.id).then((p) => setCandidates(p.candidates), () => setCandidates([]));
   }, [request.id, run.id, includeKey, done, ctx.tick]);
 
+  /** 保存の応答（今の案）を、同じ run のときだけ表示中の run に入れる（ほかの案は今の内容のまま） */
+  const putDraft = (runId: string, next: ProposedTask) =>
+    onChanged((cur) => (cur.id === runId ? { ...cur, drafts: cur.drafts.map((x) => (x.key === next.key ? next : x)) } : cur));
+
   async function patch(d: ProposedTask, p: Partial<ProposedTask>) {
     try {
       const next = await api.patchDraft(request.id, run.id, d.key, p);
       setError(null);
-      onChanged({ ...run, drafts: run.drafts.map((x) => (x.key === d.key ? next : x)) });
+      putDraft(run.id, next);
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  /** 題を保存する（欄から離れたとき）。編集を始めたときの題を期待値に送り、外で変わっていれば 409 で書かない */
+  async function saveTitle(d: ProposedTask) {
+    const runId = run.id;
+    const k = titleKey(request.id, runId, d.key);
+    const t = titlesRef.current[k];
+    if (!t || !canSaveTitle(t)) return;
+    const sent = t.value;
+    setTitle(k, startTitleSave);
+    try {
+      const next = await api.patchDraft(request.id, runId, d.key, { title: sent, expectedTitle: t.base });
+      setTitle(k, (cur) => titleSaved(cur, next.title));
+      putDraft(runId, next);
+    } catch (e) {
+      const current = e instanceof ApiError && e.status === 409 ? (e.body as { current?: ProposedTask } | null)?.current : undefined;
+      setTitle(k, (cur) => titleSaveFailed(cur, current ? "保存する前に題が他で変わりました" : `保存できませんでした: ${(e as Error).message}`, current?.title));
+      if (current) putDraft(runId, current);
     }
   }
   // 共有の参照先があるときだけ、案ごとに作業先を選ぶ
@@ -86,6 +145,8 @@ export function Drafts({
   }, [detail]);
 
   async function materialize() {
+    // 見えている題と違う題でタスクを作らない（欄から離れた保存が終わる前に押された場合も）
+    if (run.drafts.some((d) => titlePending(titlesRef.current[titleKey(request.id, run.id, d.key)]))) return;
     setBusy(true);
     setError(null);
     try {
@@ -145,14 +206,13 @@ export function Drafts({
                     </select>
                   </label>
                 )}
-                <textarea
-                  rows={2}
-                  disabled={done}
-                  defaultValue={d.title}
-                  onBlur={(e) => {
-                    if (e.target.value !== d.title) void patch(d, { title: e.target.value });
-                  }}
-                  className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
+                <TitleField
+                  draft={titleOf(d)}
+                  title={d.title}
+                  done={done}
+                  onEdit={(v) => setTitle(titleKey(request.id, run.id, d.key), (t) => editTitle(t, v))}
+                  onSave={() => void saveTitle(d)}
+                  onDiscard={() => setTitle(titleKey(request.id, run.id, d.key), discardTitle)}
                 />
                 <Button
                   className="text-sm"
@@ -253,3 +313,59 @@ export function Drafts({
   );
 }
 
+
+/** カードの題の欄。編集中に外で変わったら、入力を残したまま外の最新と「入力を捨てて最新にする」を出す（そのあいだは保存しない） */
+function TitleField({
+  draft,
+  title,
+  done,
+  onEdit,
+  onSave,
+  onDiscard,
+}: {
+  draft: TitleDraft;
+  title: string;
+  done: boolean;
+  onEdit: (v: string) => void;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  const conflict = draft.external !== null && titleDirty(draft);
+  return (
+    <div className="space-y-1">
+      <textarea
+        rows={2}
+        aria-label="題"
+        // タスク化したあとは最新の題を出したまま直せない
+        disabled={done}
+        value={done ? title : draft.value}
+        onChange={(e) => onEdit(e.target.value)}
+        onBlur={onSave}
+        className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
+      />
+      {!done && conflict && (
+        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-2 py-1.5 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <p>編集中に題が他で変わりました。入力はそのままです（このままでは保存しません）。</p>
+          <p className="break-words">
+            最新の題: <span className="font-medium">{draft.external}</span>
+          </p>
+          <Button className="text-sm" onClick={onDiscard}>
+            入力を捨てて最新にする
+          </Button>
+        </div>
+      )}
+      {!done && !conflict && draft.saving !== null && <p className="text-sm text-slate-500">保存中…</p>}
+      {!done && !conflict && draft.error && (
+        <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-rose-600">
+          {draft.error}
+          <Button className="text-sm" onClick={onSave}>
+            もう一度保存
+          </Button>
+          <Button variant="ghost" className="text-sm" onClick={onDiscard}>
+            入力を捨てる
+          </Button>
+        </p>
+      )}
+    </div>
+  );
+}

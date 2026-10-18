@@ -39,6 +39,13 @@ const failing = (name: PreflightEngine["name"], message: string): PreflightEngin
   run: async () => Promise.reject(new Error(message)),
 });
 
+/** タスク案の題が、編集を始めたあとに外で変わった（409 code: rev_conflict。current に今の案） */
+export class DraftConflictError extends Error {
+  constructor(readonly current: ProposedTask) {
+    super(`${current.key} の題が他で変わりました（今の題: ${current.title}）`);
+  }
+}
+
 /** pulse の問い合わせの ID の形が違う（400） */
 export class PulseInputError extends Error {}
 
@@ -408,10 +415,16 @@ export class PreflightService {
     return readFile(file, "utf8");
   }
 
-  async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>) {
+  /**
+   * タスク案を直す（案のファイルを読み直してから書く）。opts.expectedTitle: 編集を始めたときの題。今の題と違えば（外で
+   * 変わった）DraftConflictError で書かない。画面から題を変えるときは必ず渡す。CLI・内部の呼び出しは渡さなくてよい
+   * （その場合は確かめない）。期待値はファイルに書かない。読んでから書くまでの間に外のプロセスが書くことまでは防げない
+   */
+  async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>, opts: { expectedTitle?: string } = {}) {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
     if (!run || !draft) throw new Error(`${runId}/${key} not found`);
+    if (opts.expectedTitle !== undefined && draft.title !== opts.expectedTitle) throw new DraftConflictError(draft);
     // 作業先は作業先にできる参照先だけ（変える前に断る）
     if ("repo" in patch) checkRepoTarget(this.ws, patch.repo);
     const next = { ...draft, ...patch, key };

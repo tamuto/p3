@@ -31,7 +31,7 @@ export function RunView({
   ctx: AppCtx;
   request: Request;
   run: RunInfo;
-  onChanged: (r: RunInfo) => void;
+  onChanged: (update: RunInfo | ((cur: RunInfo) => RunInfo)) => void;
   onOpenRun: (runId: string) => void;
   /** メモ欄。評価の下の決まった場所に置く（評価が無い間＝実行中・失敗も同じ場所。入れ替えて作り直さない） */
   notes: ReactNode;

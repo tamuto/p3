@@ -216,7 +216,8 @@ export const api = {
   releaseGenerations: (mid: string) => call<ReleaseGeneration[]>("GET", `/release-notes/${encodeURIComponent(mid)}/generations`),
   releaseGeneration: (id: string) => call<ReleaseGeneration>("GET", `/release-generations/${id}`),
   cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
-  patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask>) =>
+  /** expectedTitle: 編集を始めたときの題（題を変えるときは必ず渡す。今の題と違えば 409 rev_conflict、body.current に今の案） */
+  patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask> & { expectedTitle?: string }) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */
   previewMaterialize: (rid: string, runId: string) =>
