@@ -6,7 +6,7 @@ import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts"
 import { OpRuleError } from "../core/requestOps.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
-import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
+import { DataDirError, onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
 import { loadUserConfig, UserConfigError } from "../core/userConfig.ts";
 import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
@@ -242,7 +242,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`設定: ${e.message}\n`);
       process.exit(1);
     }
-    if (e instanceof ProjectNotResolvedError) {
+    if (e instanceof ProjectNotResolvedError || e instanceof DataDirError) {
       process.stderr.write(`${e.message}\n`);
       process.exit(1);
     }

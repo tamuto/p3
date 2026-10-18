@@ -58,6 +58,10 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 - **操作するプロジェクトは環境変数では決めない**（同じ人が複数のプロジェクトを行き来するため）。
   `--project <名前>` → 今いる場所（登録したリポジトリ・作業ツリー・データのフォルダの中）→ 登録が1つならそれ、の順で決め、
   決まらなければ登録済みの一覧と選び方を出す（`src/core/store/locate.ts`）
+- プロジェクトを開く共通の入口（`core/context.ts` の `openProject`。CLI も `serve` の `startServer` もここを通る）で、
+  データのフォルダと `project.yaml` があるかを確かめる（`locate.ts` の `checkDataDir`）。無ければ空のプロジェクトとして続けず
+  `DataDirError`（終了コード 1）。何も作らない。無い（ENOENT）と読めない（権限・入出力）は分けて伝える。`init`（作成・参加）と
+  `project` は開かないので妨げない。起動した後の切断は、画面の「再読み込み」の `ReloadError`（状態は変えない）が受け持つ
 - 登録が1つだけで決まった（`via: only`）ときは、今いる場所と関係なく当たるので読むだけにする。CLI の入口（`cli/main.ts`）で、
   プロジェクトを開く前に、読むだけの操作（`cli/readOnly.ts` の `readsOnly`。載っていない操作は変える操作として扱う）以外を止める。
   案内の文は `locate.ts` の `onlyRegistrationNotice`（明示の方法と移る先を示す）

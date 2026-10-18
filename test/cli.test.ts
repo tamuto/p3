@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -937,6 +937,92 @@ describe("登録が1つだけで決まったとき（今いる場所では決ま
     expect(r.code).toBe(1);
     expect(r.err).toContain("操作するプロジェクトが決まりません");
     expect(r.err).not.toContain("登録が1つだけ");
+  });
+});
+
+describe("データのフォルダが無い・project.yaml が無い", () => {
+  /** 登録したプロジェクト（データはリポジトリの外）と、関係ない場所 */
+  async function registered() {
+    const app = await repo();
+    const data = join(tempDir("p3-assets-"), "app");
+    expect(p3(app, ["init", "--yes", "--project", "app", "--dir", data]).code).toBe(0);
+    return { app, data, nowhere: tempDir() };
+  }
+  const cfgOf = () => readFileSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"), "utf8");
+  /** 止まったこと（終了コード 1・標準出力は空・案内は標準エラー） */
+  const expectStopped = (r: ReturnType<typeof p3>, head: string, label: string) => {
+    expect(r.code, `${label}: ${r.err}`).toBe(1);
+    expect(r.out, label).toBe("");
+    expect(r.err, label).toContain(head);
+    expect(r.err).toContain("共有ドライブ");
+    expect(r.err).toContain("p3 init --project");
+  };
+  const commands = (rid?: string): string[][] => [["whoami", "--json"], ["ls", "--json", ...(rid ? ["--req", rid] : [])], ["request", "new", "x", "--json"]];
+
+  it("登録したフォルダが無くなったら、読む・書く・serve のどれも止まり、フォルダを作らない。登録を直せば戻る", async () => {
+    const { app, data, nowhere } = await registered();
+    const moved = `${data}-moved`;
+    renameSync(data, moved);
+    const cfg = cfgOf();
+    for (const [cwd, extra] of [[app, []], [nowhere, ["--project", "app"]]] as const) {
+      for (const args of commands()) {
+        const r = p3(cwd, [...extra, ...args]);
+        expectStopped(r, `データのフォルダがありません: ${data}`, args.join(" "));
+        expect(r.err).toContain("p3 project ls");
+        expect(r.err).toContain("p3 project rm app → p3 project add app <正しいフォルダ>（rm はデータを消さない）");
+      }
+    }
+    // serve は自分で異常終了する（待ち受けを始めてタイムアウトで止められたのではない）
+    const serve = spawnSync(process.execPath, [BIN, "serve", "--port", "39871"], {
+      cwd: app,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: CONFIG_HOME },
+    });
+    expect(serve.signal).toBeNull();
+    expect(serve.status).toBe(1);
+    expect(serve.stderr).toContain("データのフォルダがありません");
+    expect(existsSync(data)).toBe(false);
+    expect(cfgOf()).toBe(cfg);
+
+    // 案内どおりに登録を直す（rm はデータを消さない）
+    expect(p3(nowhere, ["project", "ls"]).out).toContain(data);
+    expect(p3(nowhere, ["project", "rm", "app"]).code).toBe(0);
+    expect(existsSync(join(moved, "project.yaml"))).toBe(true);
+    expect(p3(nowhere, ["project", "add", "app", moved]).code).toBe(0);
+    expect(p3(nowhere, ["--project", "app", "repo", "path", app.split("/").at(-1)!.toLowerCase(), app]).code).toBe(0);
+    const r = p3(app, ["request", "new", "戻った", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    expect(existsSync(join(moved, "requests", r.json().id, "request.md"))).toBe(true);
+  });
+
+  it("フォルダはあるが project.yaml が無いときも止まり、要望を書き足さない（--project・--dir のどちらでも）", async () => {
+    const { app, data, nowhere } = await registered();
+    const rid = p3(app, ["request", "new", "前からある", "--json"]).json().id as string;
+    rmSync(join(data, "project.yaml"));
+    const before = snapshot(data);
+    const cfg = cfgOf();
+    const yaml = join(data, "project.yaml");
+    for (const [cwd, extra] of [[app, []], [nowhere, ["--project", "app"]], [nowhere, ["--dir", data]]] as const) {
+      for (const args of commands(rid)) expectStopped(p3(cwd, [...extra, ...args]), `データのフォルダに project.yaml がありません: ${yaml}`, `${extra.join(" ")} ${args.join(" ")}`);
+    }
+    // 登録していないフォルダを --dir で指したときは、指し方を案内する
+    const other = tempDir("p3-assets-");
+    const r = p3(nowhere, ["--dir", other, "request", "new", "x"]);
+    expectStopped(r, `データのフォルダに project.yaml がありません: ${join(other, "project.yaml")}`, "--dir 未登録");
+    expect(r.err).toContain("--dir で指すときは、project.yaml のあるフォルダを指す");
+    expect(readdirSync(other)).toEqual([]);
+    expect(snapshot(data)).toEqual(before);
+    expect(cfgOf()).toBe(cfg);
+  });
+
+  it("project.yaml があれば requests/ が無くても空のプロジェクトとして開ける", async () => {
+    const { app, data } = await registered();
+    rmSync(join(data, "requests"), { recursive: true });
+    const ls = p3(app, ["request", "ls", "--json"]);
+    expect(ls.code, ls.err).toBe(0);
+    expect(ls.json()).toEqual([]);
+    expect(p3(app, ["request", "new", "最初", "--json"]).code).toBe(0);
   });
 });
 
