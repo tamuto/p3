@@ -59,6 +59,14 @@ export const AI_MANIFEST = {
     { method: "GET", path: "/api/requests/:rid/preflight/:run/attachments/:aid/extract", desc: "その run に固定した xlsx から取り出した内容（Markdown のテキスト）" },
     {
       method: "GET",
+      path: "/api/requests/:rid/preflight-status[?run=PF-...]",
+      desc:
+        "最新の Preflight と見ている run の今の状態だけ（要望と run.json をディスクから読む。読み込んだ内容・ファイル・rev は変えない。案・ログは返さない）。" +
+        "{requestId, state: ok|gone|broken, latest: RunPulse|null, run?: RunPulse}。RunPulse は {id, state: ready|pending|missing|broken, status?, startedAt?, finishedAt?, version?}" +
+        "（pending は保存の途中、version が変われば run を取り直す）。latest は要望の lastPreflight（未実行なら null）。ID の形が違えば 400",
+    },
+    {
+      method: "GET",
       path: "/api/requests/:rid/preflight[/:run]",
       desc: "Preflight の run。各 run に inputMatch {status: same|changed|unknown, changed?: [title|body], reason?}（評価対象と今の要望が同じか。タグ・期限・ステータスは比べない）",
     },

@@ -1,6 +1,6 @@
-import { readdir, readFile, mkdir, rm } from "node:fs/promises";
+import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { PreflightRun, ProposedTask } from "../../shared/types.ts";
+import type { PreflightRun, ProposedTask, RunPulse } from "../../shared/types.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
@@ -63,6 +63,31 @@ export class PreflightStore {
       return { ...meta, drafts: await this.loadDrafts(requestId, runId) };
     } catch {
       return undefined;
+    }
+  }
+
+  /** run の今の状態だけ（run.json の状態と日時。案・ログは返さない）。ファイルは変えない */
+  async pulse(requestId: string, runId: string): Promise<RunPulse> {
+    const file = join(this.runDir(requestId, runId), "run.json");
+    const info = await stat(file).catch((e: NodeJS.ErrnoException) => e);
+    if (info instanceof Error) {
+      if (info.code !== "ENOENT") return { id: runId, state: "broken" };
+      const dir = await stat(this.runDir(requestId, runId)).catch(() => undefined);
+      return { id: runId, state: dir?.isDirectory() ? "pending" : "missing" };
+    }
+    try {
+      const meta = JSON.parse(await readFile(file, "utf8")) as Partial<PreflightRun>;
+      if (!meta || typeof meta !== "object" || typeof meta.status !== "string") return { id: runId, state: "broken" };
+      return {
+        id: runId,
+        state: "ready",
+        status: meta.status,
+        ...(meta.startedAt ? { startedAt: meta.startedAt } : {}),
+        ...(meta.finishedAt ? { finishedAt: meta.finishedAt } : {}),
+        version: `${info.mtimeMs}:${info.size}`,
+      };
+    } catch {
+      return { id: runId, state: "broken" };
     }
   }
 

@@ -14,8 +14,9 @@ import {
   type Evidence,
   type FixedAttachment,
   type InputMatch,
+  type PreflightPulse,
 } from "../../shared/types.ts";
-import { normalizeTaskId } from "../../shared/refs.ts";
+import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
 import { nowIso, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -37,6 +38,9 @@ const failing = (name: PreflightEngine["name"], message: string): PreflightEngin
   status: async () => ({ name, ok: false, detail: message }),
   run: async () => Promise.reject(new Error(message)),
 });
+
+/** pulse の問い合わせの ID の形が違う（400） */
+export class PulseInputError extends Error {}
 
 export class PreflightService {
   private active = new Map<string, { run: PreflightRun; abort: AbortController; done: Promise<void> }>();
@@ -297,6 +301,22 @@ export class PreflightService {
       this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
       this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
     }
+  }
+
+  /**
+   * 最新の Preflight（lastPreflight）と、指定した run の今の状態。要望と run.json をディスクから読むだけで、読み込んだ内容
+   * （キャッシュ）・ファイル・rev は変えない。監視が届かなくても、外（CLI など）で始めた run とその進み・終わりを画面が見つけるため。
+   * ID の形が違えば使い方の誤り（パスは受け取らない）
+   */
+  async pulse(requestId: string, runId?: string): Promise<PreflightPulse> {
+    if (!REQUEST_ID.test(requestId)) throw new PulseInputError(`要望 ID の形ではありません: ${requestId}`);
+    if (runId !== undefined && !/^PF-[\w-]+$/.test(runId)) throw new PulseInputError(`run の ID の形ではありません: ${runId}`);
+    const run = runId ? await this.ws.preflight.pulse(requestId, runId) : undefined;
+    const read = await this.ws.requests.peek(requestId);
+    if (!("item" in read)) return { requestId, state: "missing" in read ? "gone" : "broken", latest: null, ...(run ? { run } : {}) };
+    const last = read.item.lastPreflight;
+    const latest = last ? (last === runId ? run! : await this.ws.preflight.pulse(requestId, last)) : null;
+    return { requestId, state: "ok", latest, ...(run ? { run } : {}) };
   }
 
   /**
