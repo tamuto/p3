@@ -666,6 +666,26 @@ describe("個人設定のプロジェクト（データはリポジトリの外�
     expect(p3(nowhere, ["whoami", "--json"]).json().project).toBe("p3");
   });
 
+  it("whoami はプロジェクトの決まり方（via）を出す。今いる場所で決まったのか、登録が1つだけで決まったのかを区別できる", async () => {
+    const app = await repo();
+    const data = join(tempDir("p3-assets-"), "app");
+    expect(p3(app, ["init", "--yes", "--project", "app", "--dir", data]).code).toBe(0);
+    const nowhere = tempDir();
+    const via = (cwd: string, args: string[] = [], configHome = CONFIG_HOME) => p3(cwd, ["whoami", "--json", ...args], {}, configHome).json();
+
+    expect(via(app)).toMatchObject({ project: "app", dataDir: data, via: "cwd" });
+    expect(via(data).via).toBe("cwd");
+    expect(via(nowhere)).toMatchObject({ project: "app", via: "only", here: [] });
+    expect(via(nowhere, ["--project", "app"]).via).toBe("project");
+    expect(via(nowhere, ["--dir", data]).via).toBe("dir");
+    // 表でも分かる
+    expect(p3(app, ["whoami"]).out).toContain("決まり方      cwd（今いる場所）");
+    expect(p3(nowhere, ["whoami"]).out).toContain("決まり方      only（登録が1つだけ。今いる場所では決まっていない）");
+    // 登録していないリポジトリの中の .p3/（以前の置き方。initialized は自分の個人設定にも登録するので、空の個人設定で見る）
+    const { root } = await initialized();
+    expect(via(root, [], tempDir("p3-config-")).via).toBe("legacy");
+  });
+
   it("既にあるデータのフォルダを指すと、作らずに参加だけする（別の人・別のマシンの想定）", async () => {
     const data = join(tempDir("p3-assets-"), "shared");
     const first = await repo();

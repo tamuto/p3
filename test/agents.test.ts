@@ -10,7 +10,8 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
   const shared = [
     "P3_ACTOR=ai:", // 変更者を名乗る
     "pnpx @infodb/p3", // 入っていなくても動く呼び方
-    "p3 whoami",
+    "p3 whoami --json",
+    "`via`", // プロジェクトの決まり方
     "request new",
     "`preflight`", // Preflight は人
     "`accept`", // タスク化は人
@@ -34,6 +35,14 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
   it("Preflight とタスク化を人が行うことを、どちらもはっきり書く", () => {
     expect(skill).toMatch(/Preflight（評価・細分化）とタスク化（`accept`）は人が行う/);
     expect(AGENTS_SNIPPET).toMatch(/Preflight（\\?`preflight\\?`）とタスク化（\\?`accept\\?`）は人が行う（AI は実行しない/);
+  });
+
+  it("via が cwd でなければ操作を止めて確かめることを、どちらも書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet]) {
+      expect(text).toMatch(/`via`[^\n]*`cwd`[^\n]*でなければ（`dir` \/ `project` \/ `legacy` \/ `only`）、それ以上 p3 を操作せず/);
+      expect(text).toMatch(/推測した `--project`/);
+    }
   });
 
   it("どのプロジェクトでも動く書き方で、作った人の環境の値を含まない", () => {
