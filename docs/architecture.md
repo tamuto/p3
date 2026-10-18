@@ -527,6 +527,8 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 手順の詳しい版は同梱のスキル（`skills/p3/SKILL.md`。`.claude/skills/p3/SKILL.md` に置く）で、役割と終わり方は両方でそろえる
 （`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
+`p3 init --agents` は既にあるスキル・追記を上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。
+変えたときは、置いたプロジェクトで手で更新する（`init --agents` が違いを知らせる）。
 
 ```markdown
 ## タスク管理（infodb p3）
@@ -534,7 +536,8 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 作業の単位は要望。タスクは `p3` CLI（入っていなければ `pnpx @infodb/p3`）で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）。
   詳しい手順は `.claude/skills/p3/SKILL.md`
 - 変更するときは環境変数 `P3_ACTOR=ai:<エージェント名>` を付ける
-- 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami` で確かめる
+- 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami --json` で確かめる
+- `whoami` の `via`（プロジェクトの決まり方）が `cwd` でなければ（`dir` / `project` / `legacy` / `only`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した `--project` / `--dir` で避けない。人が指定・確認した後はその対象のまま続ける）
 - 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
   Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
 - 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む

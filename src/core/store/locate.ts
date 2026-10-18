@@ -16,6 +16,15 @@ export interface ResolvedProject {
   via: "dir" | "project" | "cwd" | "legacy" | "only";
 }
 
+/** プロジェクトの決まり方の説明（whoami の表）。cwd 以外は今いる場所で決まっていない */
+export const VIA_LABEL: Record<ResolvedProject["via"], string> = {
+  dir: "--dir で指定",
+  project: "--project で指定",
+  cwd: "今いる場所",
+  legacy: "リポジトリの中の .p3/",
+  only: "登録が1つだけ。今いる場所では決まっていない",
+};
+
 /** 操作するプロジェクトが決まらない（次に何をすればよいかをメッセージに含める） */
 export class ProjectNotResolvedError extends Error {}
 

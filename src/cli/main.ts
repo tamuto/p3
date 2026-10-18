@@ -6,7 +6,7 @@ import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts"
 import { OpRuleError } from "../core/requestOps.ts";
 import { startServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
-import { ProjectNotResolvedError, resolveProject } from "../core/store/locate.ts";
+import { ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
 import { loadUserConfig, UserConfigError } from "../core/userConfig.ts";
 import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
@@ -157,9 +157,10 @@ async function main(argv: string[]): Promise<number> {
 
     case "whoami": {
       const here = locateHere(ctx, cwd);
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
+          `決まり方      ${target.via}（${VIA_LABEL[target.via]}）`,
           `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
