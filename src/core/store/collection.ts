@@ -123,6 +123,14 @@ export class MarkdownCollection<T extends Entity> {
     };
   }
 
+  /**
+   * 1件をディスクから読むだけ（読み込んだ内容・索引・変更通知には触れない）。監視に頼らずに今のファイルを確かめるため。
+   * 無ければ { missing }、読めなければ { error }
+   */
+  peek(id: string): Promise<ReadResult<T>> {
+    return this.read(id);
+  }
+
   private async read(id: string): Promise<ReadResult<T>> {
     try {
       const { data, body } = parseFrontmatter(await readFile(this.layout.path(id), "utf8"));

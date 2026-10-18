@@ -265,6 +265,14 @@ serve の中で起きたこと（画面からの保存、Preflight の進み具�
 タブ・ウィンドウに戻ったときの読み直し（POST /api/reload）で取り込む。ファイル監視は補助で、届かないことがある
 （NFS や、Node の再帰的な監視が置き換えて保存したファイルの2回目以降の変更を通知しないことがある）。
 
+画面は定期的には問い合わせない、の例外を1つだけ置く: 要望の「概要・Preflight」を開いている間だけ、その要望の最新の Preflight を
+軽く確かめる（`GET /api/requests/:rid/preflight-status`、`PreflightService.pulse`）。CLI など外で始めた run とその進み・終わりは
+serve の SSE に乗らず、監視も届かないことがあるため。返すのは要望の `lastPreflight` と、指定した run の `run.json` の状態・日時と
+更新を見分ける値（`version`）だけで、要望と run.json をディスクから読む（読み込んだ内容・索引・ファイル・rev は変えず、古い
+キャッシュに戻すこともない。`MarkdownCollection.peek`）。run の状態は ready / pending（フォルダはあるが run.json がまだ無い）/
+missing / broken、要望は ok / gone（削除・アーカイブ）/ broken。全件の読み直し・全 run・案・ログの走査はしない。ID は形を確かめ、
+パスは受け取らない
+
 REST API はブラウザのためのローカル API として残すが、AI には CLI を使わせる。
 CLI がファイルを直接触る形なら、API ごとに認証を持たせる問題はそもそも起きない。
 

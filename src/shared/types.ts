@@ -229,6 +229,33 @@ export interface Evidence {
 export type PreflightStatus = "running" | "completed" | "failed";
 
 /**
+ * Preflight の run の今の状態（ディスクから読んだもの。GET /api/requests/:rid/preflight-status）。
+ *   ready: run.json を読めた / pending: run のフォルダはあるが run.json がまだ無い（保存の途中）/
+ *   missing: run のフォルダが無い / broken: run.json が読めない・壊れている
+ * version は run.json の更新を見分ける値（中身の意味は持たない。変わったら取り直す）
+ */
+export interface RunPulse {
+  id: string;
+  state: "ready" | "pending" | "missing" | "broken";
+  status?: PreflightStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  version?: string;
+}
+
+/**
+ * 要望の最新の Preflight（lastPreflight）と、見ている run の今の状態。監視（変更通知）が届かなくても、画面が軽く確かめるため。
+ *   state: ok / gone（要望のファイルが無い。削除・アーカイブ）/ broken（要望のファイルが読めない）
+ *   latest: lastPreflight の run（未実行なら null）。run: 問い合わせで指定した run（指定しなければ無い）
+ */
+export interface PreflightPulse {
+  requestId: string;
+  state: "ok" | "gone" | "broken";
+  latest: RunPulse | null;
+  run?: RunPulse;
+}
+
+/**
  * Preflight の画面資料の種類。proposal: エンジンが作った画面イメージ（提案。現状の証拠ではない）/
  * current: 人が添付した現状の画像 / spec: 仕様書（xlsx など）から取り出した画像
  */

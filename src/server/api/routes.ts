@@ -19,6 +19,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
+import { PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -252,6 +253,15 @@ export function apiRoutes(ctx: P3Context) {
   app.get("/requests/:rid/preflight", async (c) => {
     const id = rid(c);
     return c.json(await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))));
+  });
+  // 最新の Preflight と見ている run の今の状態（ディスクから読むだけ。開いている要望の画面が軽く確かめる）。キャッシュの要望は使わない
+  app.get("/requests/:rid/preflight-status", async (c) => {
+    try {
+      return c.json(await preflight.pulse(c.req.param("rid"), c.req.query("run")));
+    } catch (e) {
+      if (e instanceof PulseInputError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
   });
   app.get("/requests/:rid/preflight/:run", async (c) => {
     const id = rid(c);
