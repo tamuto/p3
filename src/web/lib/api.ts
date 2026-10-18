@@ -2,6 +2,7 @@ import type { RepoRef } from "../../shared/repos.ts";
 import type {
   MaterializeResult,
   PreflightNote,
+  PreflightPulse,
   PreflightRun,
   ProjectConfig,
   ProposedTask,
@@ -185,6 +186,9 @@ export const api = {
   notes: (rid: string) => call<NotesInfo>("GET", `/requests/${rid}/notes`),
   addNote: (rid: string, body: string) => call<PreflightNote>("POST", `/requests/${rid}/notes`, { body }),
   run: (rid: string, runId: string) => call<RunInfo>("GET", `/requests/${rid}/preflight/${runId}`),
+  /** 最新の Preflight と見ている run の今の状態だけ（ディスクから。開いている要望の画面が軽く確かめる） */
+  preflightStatus: (rid: string, runId?: string) =>
+    call<PreflightPulse>("GET", `/requests/${rid}/preflight-status${runId ? `?run=${encodeURIComponent(runId)}` : ""}`),
   cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
   attachments: (rid: string) => call<AttachmentList>("GET", `/requests/${rid}/attachments`),
   /** 添付を足す（multipart。説明・出典は空なら送らない） */

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { type PreflightRun } from "../../../../shared/types.ts";
+import { useEffect, useRef, useState } from "react";
+import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
 import { Badge, Button, cx } from "../../../components/ui.tsx";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
@@ -18,6 +18,9 @@ import { Notes } from "../../../components/request/Notes.tsx";
 import { RequestMeta } from "../../../components/request/RequestMeta.tsx";
 import { BodyEditor } from "../../../components/request/BodyEditor.tsx";
 import { useRequestDrafts } from "../../../lib/requestDrafts.ts";
+import { latestOnly, STALE } from "../../../lib/latest.ts";
+import { createPulsePoller, latestNotice, shownRunChanged } from "../../../lib/preflightWatch.ts";
+import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -42,7 +45,10 @@ function RequestPage() {
   );
 }
 
-/** 要望の詳細。表示する preflight の run は URL（?run=）で選ぶ。無ければ最新 */
+/**
+ * 要望の詳細。表示する preflight の run は URL（?run=）で選ぶ。無ければ開いたときの最新で、そのあと新しい run ができても
+ * 表示は変えずに知らせる（lib/preflightWatch.ts）。切り替えるのは人の操作（知らせの「開く」・履歴の選択・自分で実行）だけ
+ */
 function RequestPanel({
   ctx,
   data,
@@ -55,8 +61,24 @@ function RequestPanel({
   onRunChange: (runId: string) => void;
 }) {
   const { request, runs } = data;
-  const runId = selectedRun ?? request.lastPreflight ?? null;
+  // 表示する run。?run= が変わったとき（選んだ・戻る/進む）だけ決め直す。?run= が無ければ、その時点の最新に留める
+  const [pin, setPin] = useState(() => ({ selected: selectedRun, shown: selectedRun ?? request.lastPreflight ?? null }));
+  if (pin.selected !== selectedRun) setPin({ selected: selectedRun, shown: selectedRun ?? request.lastPreflight ?? null });
+  const runId = pin.shown;
   const [run, setRun] = useState<RunInfo>();
+  // run の取得は最後に頼んだものだけを使い、今表示している run のものでなければ捨てる（応答の逆転・移動のあとの応答）
+  const runIdRef = useRef(runId);
+  runIdRef.current = runId;
+  const runRef = useRef(run);
+  runRef.current = run;
+  const runFetch = useRef(latestOnly());
+  const loadRun = (id: string) =>
+    void runFetch.current.run(() => api.run(request.id, id)).then(
+      (r) => {
+        if (r !== STALE && r.id === runIdRef.current) setRun(r);
+      },
+      () => undefined,
+    );
   const drafts = useRequestDrafts(request);
   // 本文は「本文を編集」で開いたときだけ入力欄にする（ぼかしただけでは保存しない）
   const [editingBody, setEditingBody] = useState(false);
@@ -68,18 +90,78 @@ function RequestPanel({
   const engine = useEngineStatus(ctx.tick);
 
   useEffect(() => {
-    if (!runId) return setRun(undefined);
+    if (!runId) {
+      runFetch.current.cancel();
+      return setRun(undefined);
+    }
     // 取れなければ前の表示のまま（要望が消えた・通信の失敗は要望の枠が知らせる）
-    void api.run(request.id, runId).then(setRun, () => undefined);
+    loadRun(runId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, request.id, ctx.tick]);
 
-  // ログはストリームで追記
+  // 最新の Preflight を、開いている間だけ軽く確かめる（外で始めた run・その進みと終わりを、監視や SSE に頼らずに見つける）
+  const [latest, setLatest] = useState<RunPulse | null>(null);
+  const [pulseError, setPulseError] = useState<string | null>(null);
+  const knownAtOpen = useRef(new Set<string>([...runs.map((r) => r.id), ...(request.lastPreflight ? [request.lastPreflight] : [])]));
+  const poller = useRef<ReturnType<typeof createPulsePoller> | null>(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  useEffect(() => {
+    const fetchPulse = latestOnly();
+    let lastLatest: string | null | undefined;
+    let lastVersion: { id: string; version?: string } | undefined;
+    const p = createPulsePoller({
+      check: async () => {
+        const shown = runIdRef.current;
+        try {
+          const r = await fetchPulse.run(() => api.preflightStatus(request.id, shown ?? undefined));
+          if (r === STALE) return;
+          setPulseError(null);
+          if (r.state !== "ok") {
+            // 消えた・読めない: 要望の枠の扱い（gone・読めない）に任せる
+            if (!dataRef.current.gone) dataRef.current.reload();
+            return;
+          }
+          setLatest(r.latest);
+          // 新しい run ができたら履歴（選択肢）を取り直す。表示中の run と入力は変えない
+          if (lastLatest !== undefined && r.latest?.id !== lastLatest) dataRef.current.reload();
+          lastLatest = r.latest?.id ?? null;
+          // 表示中の run が外で進んだ・終わった（版か状態が変わった）なら取り直す
+          const mine = r.run;
+          if (shownRunChanged(mine, runIdRef.current, lastVersion, runRef.current)) loadRun(mine!.id);
+          if (mine?.state === "ready") lastVersion = { id: mine.id, version: mine.version };
+        } catch (e) {
+          setPulseError((e as Error).message);
+        }
+      },
+    });
+    poller.current = p;
+    const onVisibility = () => (document.hidden ? p.pause() : p.resume());
+    if (document.hidden) p.pause();
+    document.addEventListener("visibilitychange", onVisibility);
+    p.start();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      p.stop();
+      fetchPulse.cancel();
+      poller.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.id]);
+  // 表示する run を替えたら、その run の状態もすぐ確かめる
+  useEffect(() => poller.current?.now(), [runId]);
+  const notice = latestNotice(runId, latest, knownAtOpen.current);
+
+  // ログはストリームで追記。状態の変化は SSE が速い経路（確かめも今すぐ1回）
   useServerEvents((e) => {
     if (e.type === "preflight-log" && e.runId === runId) {
       setRun((r) => (r ? { ...r, log: [...r.log, e.entry] } : r));
-    } else if (e.type === "preflight-status" && e.runId === runId) {
-      void api.run(request.id, runId).then(setRun, () => undefined);
-      data.reload();
+    } else if (e.type === "preflight-status") {
+      if (e.runId === runId) {
+        loadRun(runId);
+        data.reload();
+      }
+      poller.current?.now();
     }
   });
 
@@ -189,10 +271,20 @@ function RequestPanel({
             ))}
           </select>
         )}
+        {pulseError && (
+          <p role="status" className="flex w-full flex-wrap items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+            最新の Preflight を確かめられませんでした（{pulseError}）。表示と入力はそのままです
+            <Button variant="ghost" className="text-sm" onClick={() => poller.current?.now()}>
+              もう一度確かめる
+            </Button>
+          </p>
+        )}
         {blocked && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{blocked}</p>}
         {notesState.blockPlainRun && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
+
+      {notice && <PreflightNotice run={notice.run} fresh={notice.fresh} onOpen={() => setRunId(notice.run.id)} />}
 
       {run ? (
         <RunView ctx={ctx} request={request} run={run} onChanged={(r) => setRun(r)} onOpenRun={setRunId} notes={notes} blocked={blocked} />
