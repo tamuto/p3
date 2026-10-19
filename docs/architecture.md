@@ -522,7 +522,10 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
   `fonts-ja.conf`（`/etc/fonts/conf.d/99-p3-ja.conf` に置く）で、総称（`sans-serif`・`system-ui`・`serif`・`monospace`）と、
   イメージに無い日本語のフォント名を Noto CJK JP に寄せる（対応は how-to-use.md の「画面資料」）。`binding="strong"` にするのは、
   Chromium（Skia）が、名前で探したフォントの代わりに強く結んだものだけを受け入れるため。明示したほかのフォントと埋め込みのフォントは変えない
-- Chromium は無い字を総称に関係なく探すので、`serif` と指定なしの欧文（Liberation Serif）に無いかな・漢字は Noto Sans CJK JP になる。
+- Chromium の既定（フォントの指定なし）は Times New Roman（イメージでは Liberation Serif）で、欧文が明朝系になる。Codex の原稿の多くは
+  フォントを指定しないので、`render.mjs` が原稿の先頭（doctype の後。無ければ先頭で、quirks の判定は変わらない）に
+  `:where(html){font-family:sans-serif}` を足す。詳細度 0 で最初に置くので、原稿の指定（`html`・`body`・`*`・`:root` を含む）が必ず勝つ
+- Chromium は無い字を総称に関係なく探すので、`serif` の欧文（Liberation Serif）に無いかな・漢字は Noto Sans CJK JP になる。
   `Times New Roman` を明朝体に寄せると、`sans-serif` のかな・漢字まで明朝体になったのでやめた
 
 ### 添付の確かめ方と置き場所

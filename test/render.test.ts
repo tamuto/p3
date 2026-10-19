@@ -91,6 +91,12 @@ describe("描画のコンテナ", () => {
     }
   });
 
+  it("フォントを指定していない原稿は、原稿のどの指定よりも弱い既定の sans-serif で描く", () => {
+    const mjs = readFileSync(join(RENDER_IMAGE_DIR, "render.mjs"), "utf8");
+    expect(mjs).toContain('const BASE_STYLE = "<style>:where(html){font-family:sans-serif}</style>";');
+    expect(mjs).toContain("page.setContent(withBaseStyle(");
+  });
+
   it("フォントの設定は日本語の総称と、イメージに無い日本語のフォント名を Noto CJK JP に寄せる", () => {
     const conf = readFileSync(join(RENDER_IMAGE_DIR, "fonts-ja.conf"), "utf8");
     const aliases = new Map([...conf.matchAll(/<alias binding="strong"><family>([^<]+)<\/family><prefer><family>([^<]+)<\/family><\/prefer><\/alias>/g)].map((m) => [m[1], m[2]]));

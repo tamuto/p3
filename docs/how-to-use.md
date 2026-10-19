@@ -382,7 +382,8 @@ p3 render 画面.html --width 1280            # 画面.png ができる（幅 32
 - ゴシック体の `sans-serif`・`system-ui` と、無いフォントの名前 `Noto Sans JP`・`Hiragino Sans`・`Hiragino Kaku Gothic ProN`・
   `ヒラギノ角ゴ ProN`・`Yu Gothic`・`游ゴシック` は Noto Sans CJK JP
 - 明朝体の名前 `Noto Serif JP`・`Hiragino Mincho ProN`・`Yu Mincho`・`游明朝` は Noto Serif CJK JP、`monospace` は Noto Sans Mono CJK JP
-- `serif` と指定なしは、欧文が Liberation Serif、かな・漢字は Noto Sans CJK JP（ゴシック体）。明朝体にするなら上の名前を指定する
+- フォントを指定していない原稿は `sans-serif`（欧文は Liberation Sans、かな・漢字は Noto Sans CJK JP）。原稿の指定はどれもこれより優先する
+- `serif` だけを指定すると、欧文は Liberation Serif、かな・漢字は Noto Sans CJK JP（ゴシック体）。明朝体にするなら上の名前を指定する
 - ほかに明示したフォント（`Noto Sans CJK SC` など）と、`data:` で埋め込んだフォントはそのまま使う
 - 描き方の決まりが変わると、次の描画で描画のイメージを作り直す。保存済みの PNG は描き直さない（新しく描くには Preflight をかけ直す）
 
