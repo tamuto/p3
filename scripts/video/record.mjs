@@ -82,7 +82,7 @@ const now = () => Date.now() / 1000;
 let browser;
 try {
   // 日本語は Noto Sans CJK JP で描く（録画のときだけの fontconfig。中国語の字形のフォントに落ちないように）
-  browser = await chromium.launch({ env: { ...process.env, FONTCONFIG_FILE: join(HERE, "fonts.conf") } });
+  browser = await chromium.launch({ env: { ...process.env, FONTCONFIG_FILE: join(ROOT, "scripts/fonts-ja.conf") } });
 } catch (e) {
   fail(`Chromium を起動できません。pnpm exec playwright-core install chromium-headless-shell で入れてください\n${e.message.split("\n")[0]}`);
 }

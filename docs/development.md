@@ -90,6 +90,16 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   空いたポートで起こす（取られていたら別のポートで試し直す）。ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
 - 主な流れ（`test/ui/flow.ui.test.ts`）: 要望の登録 → Mock の Preflight → 評価と案 → タスク化 → ボード → タスクの着手・完了
   （成果物・変更の記録）→ 済み → 要望の完了済を、すべて画面の操作で進め、再読み込みと CLI でも残っていることを確かめる
+- 表示（`test/ui/layout.ui.test.ts`）: 進捗・新しい要望・概要と Preflight の案・タスクボード・タスクの詳細を幅 1280 と 375 で、
+  案の詳細（Markdown の本文）を幅 375 / 768 / 1280 の明暗のテーマで開き、長い題・長いパス・複数の案・依存・表とコードのある本文で確かめる:
+  ページ全体の横のはみ出し、枠（カード・行・詳細）からのはみ出し、ボードの並び（広い幅は未着手と完了が横、狭い幅は縦に積む）、
+  詳細の枠と閉じるボタンが画面に収まること、局所スクロール（進捗の表・案の段階の列・本文・表・コード）の先へ届くこと、主な操作に届くこと、
+  閉じる / Escape の後に開いたボタンへフォーカスが戻ること。状態（要望・Preflight・タスク化・案の本文）は CLI とデータのファイルで用意し、
+  開く・閉じるなどの確かめる操作はブラウザで行う。測り方（`test/ui/layout.ts`）は DOM の寸法で、意図した局所スクロール（overflow が
+  visible 以外の要素の中）とページ全体のはみ出しを分ける。測り方が崩れを見逃さないことも、わざと崩した要素で確かめる
+- 限界: 画像の比較はしないので、色・重なり方・文字の欠けなど、測っていない見た目の乱れは保証しない。測るのは上の画面・幅・テーマだけ
+- 日本語のフォント: Noto Sans CJK JP があれば、ブラウザを使い方の動画と同じ fontconfig（`scripts/fonts-ja.conf`）で起こし、寸法を
+  日本語のフォントで測る（無い環境では既定のフォントのまま測り、そのことを出す。飛ばしはしない）
 - 操作の対象は画面の文言・role・label で探し、固定の sleep はせず状態を待つ（上限は `UI_TIMEOUT`。`test/ui/scenario.ts`）。
   失敗すると、シナリオと手順・対象・その時の URL・画面の画像（`/tmp/p3-ui-failed-*/page.png`。中身は一時のデータだけ）・
   `p3 serve` のログの末尾を出す。画面の文言を変えたら、そのテストの対象の名前を直す
@@ -214,7 +224,7 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 - 映るのは汎用のパスと名前だけにする（`/home/me/src/expense`・`human:demo`・`github.com/example`）。P3 自身のデータは映さない
 - 前提: Chromium（`pnpm exec playwright-core install chromium-headless-shell`）、ffmpeg（libx264）、日本語のフォント
   Noto Sans CJK JP（Debian / Ubuntu なら `fonts-noto-cjk`）、`/home/me` を作れること（DevContainer の root なら作れる）、
-  ポート 4310 が空いていること。足りなければ録り始める前に止める。日本語は録画のときだけの fontconfig（`scripts/video/fonts.conf`）で
+  ポート 4310 が空いていること。足りなければ録り始める前に止める。日本語は録画のときだけの fontconfig（`scripts/fonts-ja.conf`。UI テストと共用）で
   Noto Sans CJK JP に寄せる（中国語の字形のフォントで描かれないように）
 - `/home/me` は印（`.p3-video-demo`）のあるときだけ消して作り直す。終わったら消す
 - 画面の文言や操作が変わって操作の対象が見つからないと、15 秒で「場面「③ Preflight」で止まりました（対象: ボタンの名前）」と

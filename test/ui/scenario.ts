@@ -4,7 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright-core";
-import { expect } from "vitest";
+import { expect, inject } from "vitest";
 import { makeUiEnv, startServe, type Serve, type UiEnv } from "./env.ts";
 
 /** UI テストの操作・待ちの上限（固定の sleep はしない） */
@@ -16,20 +16,28 @@ export interface Scenario {
   browser: Browser;
   context: BrowserContext;
   page: Page;
-  /** 手順。失敗したら、どのシナリオのどの手順か・画面の画像の場所・サーバのログの末尾を付けて投げ直す */
-  step: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+  /** 手順。失敗したら、どのシナリオのどの手順か・画面の画像の場所・サーバのログの末尾を付けて投げ直す（画像は on の画面。既定は page） */
+  step: <T>(name: string, fn: () => Promise<T>, on?: Page) => Promise<T>;
+  /** 幅とテーマを変えた別の画面（同じサーバ。閉じるのは close でまとめて） */
+  open: (o: { width: number; height?: number; colorScheme?: "light" | "dark" }) => Promise<Page>;
   close: () => Promise<void>;
 }
 
-export async function openScenario(name: string, opts: { viewport?: { width: number; height: number } } = {}): Promise<Scenario> {
+export async function openScenario(
+  name: string,
+  opts: { viewport?: { width: number; height: number }; prepare?: (env: UiEnv) => Promise<void> } = {},
+): Promise<Scenario> {
   const env = await makeUiEnv();
   let serve: Serve | undefined;
   let browser: Browser | undefined;
   try {
+    // 画面の操作の対象ではない状態は、サーバを起こす前に CLI で用意する
+    await opts.prepare?.(env);
     serve = await startServe(env);
-    // ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
-    browser = await chromium.launch();
-    const context = await browser.newContext({ baseURL: serve.url, viewport: opts.viewport ?? { width: 1280, height: 900 }, locale: "ja-JP" });
+    // ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）。日本語のフォントがあれば Noto Sans CJK JP で描く
+    const fontconfig = inject("fontconfig");
+    browser = await chromium.launch(fontconfig ? { env: { ...process.env, FONTCONFIG_FILE: fontconfig } } : {});
+    const context = await browser.newContext({ baseURL: serve.url, viewport: opts.viewport ?? { width: 1280, height: 900 }, colorScheme: "light", locale: "ja-JP" });
     context.setDefaultTimeout(UI_TIMEOUT);
     context.setDefaultNavigationTimeout(UI_TIMEOUT);
     const page = await context.newPage();
@@ -41,12 +49,18 @@ export async function openScenario(name: string, opts: { viewport?: { width: num
       browser: b,
       context,
       page,
-      async step(stepName, fn) {
+      async step(stepName, fn, on = page) {
         try {
           return await fn();
         } catch (e) {
-          throw new Error(await describeFailure(name, stepName, e, page, s), { cause: e });
+          throw new Error(await describeFailure(name, stepName, e, on, s), { cause: e });
         }
+      },
+      async open(o) {
+        const c = await b.newContext({ baseURL: s.url, viewport: { width: o.width, height: o.height ?? 800 }, colorScheme: o.colorScheme ?? "light", locale: "ja-JP" });
+        c.setDefaultTimeout(UI_TIMEOUT);
+        c.setDefaultNavigationTimeout(UI_TIMEOUT);
+        return c.newPage();
       },
       async close() {
         await b.close().catch(() => {});
