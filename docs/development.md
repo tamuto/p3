@@ -33,6 +33,7 @@ pnpm test                    # ユニットテスト（vitest）。pnpm test:wat
 pnpm check                   # 型検査 + lint + テスト + ビルド
 pnpm demo:reset              # デモデータ（.p3-demo/）を作り直す
 pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
+pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-demo.mp4。下の「使い方の動画」）
 ```
 
 - `pnpm dev` / `pnpm start` は P3 自身の開発を題材にしたデモデータ（`.p3-demo/`、git 管理外）を開く。無ければ自動で作る
@@ -144,7 +145,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
 bin/p3.mjs           CLI の起動口（tsx でソースをそのまま動かす）
 skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents で各プロジェクトの .claude/skills と .agents/skills に写す）
-scripts/             デモデータ・配布物の確認
+scripts/             デモデータ・配布物の確認・使い方の動画（video/）
 docs/                導入・使い方・開発・設計・公開の文書
 test/                ユニットテスト
 ```
@@ -176,6 +177,27 @@ pnpm verify:pack --docker           # npm pack → 実行時の依存だけで�
 # DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
 P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
+
+## 使い方の動画
+
+一般公開する使い方の動画（日本語の字幕、約3分）は `pnpm video` で録り直す（`scripts/video/record.mjs`）。機能や画面を
+変えて動画と合わなくなったら、台本（同じファイルの `scenes`。場面ごとの操作と字幕）を直して録り直す。出来上がりは
+`.p3-video/p3-demo.mp4`（git 管理外。`--out <mp4>` で変える）で、リポジトリには入れない（公開先は人が決める）。
+
+- 架空の経費精算アプリのリポジトリを使い捨ての HOME（`/home/me`）に作り、① 導入（`p3 init`）→ ② 要望の登録（AI の CLI と
+  `p3 serve`）→ ③ Preflight → ④ 作業（AI の CLI と再読み込み）→ ⑤ 確認とリリース の順に、実際に p3 を動かしながら録る。
+  ② の前に過去の要望と v1.0 のリリースを入れる（`scripts/video/seed.sh`。その間は録らない）。Preflight とリリースノートの
+  要約は Mock（字幕とタイトルでそう断る）
+- 映るのは汎用のパスと名前だけにする（`/home/me/src/expense`・`human:demo`・`github.com/example`）。P3 自身のデータは映さない
+- 前提: Chromium（`pnpm exec playwright-core install chromium-headless-shell`）、ffmpeg（libx264）、日本語のフォント
+  Noto Sans CJK JP（Debian / Ubuntu なら `fonts-noto-cjk`）、`/home/me` を作れること（DevContainer の root なら作れる）、
+  ポート 4310 が空いていること。足りなければ録り始める前に止める。日本語は録画のときだけの fontconfig（`scripts/video/fonts.conf`）で
+  Noto Sans CJK JP に寄せる（中国語の字形のフォントで描かれないように）
+- `/home/me` は印（`.p3-video-demo`）のあるときだけ消して作り直す。終わったら消す
+- 画面の文言や操作が変わって操作の対象が見つからないと、15 秒で「場面「③ Preflight」で止まりました（対象: ボタンの名前）」と
+  その時の画面の画像の場所を出して止まる（作業のフォルダは残す）。台本の対象の名前を今の画面に合わせて直す
+- 録画は Chrome DevTools Protocol の screencast（変わったときだけ届く JPEG）で、届いた時刻から各フレームの長さを決めて
+  ffmpeg で 30fps の mp4 にする（字幕・カーソル・CLI のパネルはページに重ねる `scripts/video/overlay.js`）
 
 ## 文書を直すとき
 
