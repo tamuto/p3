@@ -1,0 +1,110 @@
+// UI テストの1つのシナリオ: 一時の環境・p3 serve・ブラウザを起こし、手順ごとに失敗の説明（シナリオ・手順・対象・サーバのログ・画面の画像）を付け、
+// 成功・失敗・時間切れのどれでも、ブラウザとサーバを止めてから一時のデータを消す。
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright-core";
+import { expect } from "vitest";
+import { makeUiEnv, startServe, type Serve, type UiEnv } from "./env.ts";
+
+/** UI テストの操作・待ちの上限（固定の sleep はしない） */
+export const UI_TIMEOUT = 15_000;
+
+export interface Scenario {
+  env: UiEnv;
+  serve: Serve;
+  browser: Browser;
+  context: BrowserContext;
+  page: Page;
+  /** 手順。失敗したら、どのシナリオのどの手順か・画面の画像の場所・サーバのログの末尾を付けて投げ直す */
+  step: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+  close: () => Promise<void>;
+}
+
+export async function openScenario(name: string, opts: { viewport?: { width: number; height: number } } = {}): Promise<Scenario> {
+  const env = await makeUiEnv();
+  let serve: Serve | undefined;
+  let browser: Browser | undefined;
+  try {
+    serve = await startServe(env);
+    // ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
+    browser = await chromium.launch();
+    const context = await browser.newContext({ baseURL: serve.url, viewport: opts.viewport ?? { width: 1280, height: 900 }, locale: "ja-JP" });
+    context.setDefaultTimeout(UI_TIMEOUT);
+    context.setDefaultNavigationTimeout(UI_TIMEOUT);
+    const page = await context.newPage();
+    const s = serve;
+    const b = browser;
+    const scenario: Scenario = {
+      env,
+      serve: s,
+      browser: b,
+      context,
+      page,
+      async step(stepName, fn) {
+        try {
+          return await fn();
+        } catch (e) {
+          throw new Error(await describeFailure(name, stepName, e, page, s), { cause: e });
+        }
+      },
+      async close() {
+        await b.close().catch(() => {});
+        await s.stop();
+        await env.cleanup();
+      },
+    };
+    return scenario;
+  } catch (e) {
+    await browser?.close().catch(() => {});
+    await serve?.stop();
+    await env.cleanup();
+    throw e;
+  }
+}
+
+async function describeFailure(name: string, stepName: string, e: unknown, page: Page, serve: Serve): Promise<string> {
+  const msg = e instanceof Error ? e.message : String(e);
+  // 画面の画像は一時の環境の外に残す（中身は一時のデータだけ。個人の設定・プロジェクトは含まない）
+  let shot = "（撮れませんでした）";
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "p3-ui-failed-"));
+    const path = join(dir, "page.png");
+    await page.screenshot({ path, fullPage: true, timeout: 5000 });
+    shot = path;
+  } catch {
+    // 画面が閉じているなど
+  }
+  const log = serve.log().trim().split("\n").slice(-20).join("\n");
+  return [
+    `UI テスト「${name}」の手順「${stepName}」で失敗しました: ${msg.split("\n")[0]}`,
+    ...msg.split("\n").slice(1, 12).map((l) => `  ${l}`),
+    `  その時の URL: ${page.url()}`,
+    `  その時の画面: ${shot}`,
+    `  p3 serve のログ（末尾）:`,
+    ...log.split("\n").map((l) => `    ${l}`),
+  ].join("\n");
+}
+
+// 状態を待つ照合（playwright-core には待つ expect が無いので、vitest の expect.poll で上限まで待つ）
+const opts = { timeout: UI_TIMEOUT, interval: 100 };
+
+export const until = {
+  visible: (l: Locator, timeout = UI_TIMEOUT) => l.waitFor({ state: "visible", timeout }),
+  async text(l: Locator, want: string | RegExp) {
+    if (typeof want === "string") await expect.poll(() => l.innerText(), opts).toBe(want);
+    else await expect.poll(() => l.innerText(), opts).toMatch(want);
+  },
+  async count(l: Locator, n: number) {
+    await expect.poll(() => l.count(), opts).toBe(n);
+  },
+  async value(l: Locator, v: string) {
+    await expect.poll(() => l.inputValue(), opts).toBe(v);
+  },
+  async enabled(l: Locator) {
+    await expect.poll(() => l.isEnabled(), opts).toBe(true);
+  },
+  async url(page: Page, re: RegExp) {
+    await expect.poll(() => page.url(), opts).toMatch(re);
+  },
+};

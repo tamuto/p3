@@ -30,7 +30,8 @@ pnpm build && pnpm start     # ビルドした画面を p3 serve から配信  h
 pnpm typecheck
 pnpm lint                    # oxlint（型情報も使う。下の「lint」）
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
-pnpm check                   # 型検査 + lint + テスト + ビルド
+pnpm test:ui                 # ブラウザで画面を操作する UI テスト（ビルドした画面が要る。下の「UI テスト」）
+pnpm check                   # 型検査 + lint + テスト + ビルド + UI テスト
 pnpm demo:reset              # デモデータ（.p3-demo/）を作り直す
 pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-demo.mp4。下の「使い方の動画」）
@@ -71,6 +72,28 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   for t in T001 T002 T003; do p3 show <要望ID>/$t | wc -c; p3 show <要望ID>/$t --brief | wc -c; done
   pnpm vitest run test/showBrief.test.ts --reporter=verbose
   ```
+
+### UI テスト
+
+`test/ui/*.ui.test.ts` は、ブラウザ（Playwright の Chromium headless shell）で `p3 serve` のビルドした画面を開いて操作する。
+設定は `vitest.ui.config.ts` で、通常の `pnpm test` には入らない。型検査・lint の対象には入る。
+
+- `pnpm check` は、型検査・lint・テスト・ビルドの後に `pnpm test:ui` を流す。単独で流すときは先に `pnpm build` する
+  （ビルドが無ければ、Chromium の有無によらず失敗にする）
+- Chromium は `pnpm exec playwright-core install chromium-headless-shell` で入れる（自動では入れない）。Playwright が起動する
+  実行ファイル（既定のキャッシュか `PLAYWRIGHT_BROWSERS_PATH`）が無いときだけ、理由と入れ方を出して UI テストを飛ばす（件数は
+  vitest の skipped に出る）。実行ファイルがあるのに起動できない（共有ライブラリが無いなど）・サーバが起きない・操作の対象が
+  見つからないときは失敗にする（判定は `test/ui/chromium.ts`、本物の Chromium を使わない確認は `test/uiHarness.test.ts`）
+- シナリオごとに一時のフォルダを作り、その中に HOME・個人設定（`XDG_CONFIG_HOME`）・git リポジトリ・データを置いて、本物の CLI
+  （`bin/p3.mjs init`・`serve`）で動かす（`test/ui/env.ts`）。子の p3 には親の `P3_*`・`INIT_CWD`・`GIT_*`・`XDG_*` を渡さず、
+  Mock のエンジン・変更者・cwd を明示する。手元の個人設定・プロジェクト・`.p3-demo/` には触れない。`p3 serve` は 127.0.0.1 の
+  空いたポートで起こす（取られていたら別のポートで試し直す）。ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
+- 主な流れ（`test/ui/flow.ui.test.ts`）: 要望の登録 → Mock の Preflight → 評価と案 → タスク化 → ボード → タスクの着手・完了
+  （成果物・変更の記録）→ 済み → 要望の完了済を、すべて画面の操作で進め、再読み込みと CLI でも残っていることを確かめる
+- 操作の対象は画面の文言・role・label で探し、固定の sleep はせず状態を待つ（上限は `UI_TIMEOUT`。`test/ui/scenario.ts`）。
+  失敗すると、シナリオと手順・対象・その時の URL・画面の画像（`/tmp/p3-ui-failed-*/page.png`。中身は一時のデータだけ）・
+  `p3 serve` のログの末尾を出す。画面の文言を変えたら、そのテストの対象の名前を直す
+- 成功・失敗・時間切れのどれでも、ブラウザとサーバを止めて終わるのを待ってから一時のフォルダを消す（診断用の画像だけ残る）
 
 ## lint
 
@@ -172,7 +195,7 @@ test/                ユニットテスト
 | bin | `p3`。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
 
 ```bash
-pnpm -s check                       # 型検査・lint・テスト・画面のビルド
+pnpm -s check                       # 型検査・lint・テスト・画面のビルド・UI テスト
 pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
 # DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
 P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp

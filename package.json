@@ -51,10 +51,11 @@
     "demo:reset": "tsx scripts/demo.ts --force",
     "routes": "tsr generate",
     "typecheck": "tsr generate && tsc --noEmit -p .",
-    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error src scripts test vite.config.ts vitest.config.ts",
+    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error src scripts test vite.config.ts vitest.config.ts vitest.ui.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "test:ui": "vitest run -c vitest.ui.config.ts",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm test:ui",
     "prepack": "pnpm build",
     "verify:pack": "node scripts/verify-pack.mjs",
     "video": "node scripts/video/record.mjs"
