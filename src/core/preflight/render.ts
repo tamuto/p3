@@ -104,10 +104,13 @@ export function checkHtml(html: string): string[] {
 
 // --- イメージ ----------------------------------------------------------------
 
-/** イメージの名前（Dockerfile と描画の中身から決める。中身が変われば別の名前になり、作り直す） */
+/** イメージの資材（render-image/ の中。全部をイメージの名前の hash に入れる） */
+export const RENDER_IMAGE_FILES = ["Dockerfile", "fonts-ja.conf", "render.mjs"] as const;
+
+/** イメージの名前（資材の中身から決める。どれかが変われば別の名前になり、作り直す） */
 export async function renderImageTag(dir = RENDER_IMAGE_DIR): Promise<string> {
   const h = createHash("sha256");
-  for (const f of ["Dockerfile", "render.mjs"]) h.update(await readFile(join(dir, f)));
+  for (const f of RENDER_IMAGE_FILES) h.update(await readFile(join(dir, f)));
   return `infodb-p3-render:${h.digest("hex").slice(0, 12)}`;
 }
 
