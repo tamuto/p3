@@ -573,14 +573,17 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
    ファイル内容のハッシュによる楽観ロックに変えれば、`rev` をファイルに書かずに済む。要望単位で人が排他するので優先度は低い（今後）
 3. **git を使わないメンバー。** 閲覧だけなら、静的な HTML に書き出して共有する（`p3 export`、今後）
 
-## AI エージェントへの指示（`p3 init --agents` で AGENTS.md / CLAUDE.md に追記する内容）
+## AI エージェントへの指示（`p3 init --agents` / `p3 agents` で AGENTS.md / CLAUDE.md に足す節）
 
-手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。プロジェクトの `.claude/skills/p3/SKILL.md`（Claude Code）と
-`.agents/skills/p3/SKILL.md`（Codex）に同じものを写す。置き場所の一覧は `src/cli/project.ts` の `SKILL_TARGETS`。
-個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
-（`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
-`p3 init --agents` は既にあるスキル・追記を上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。
-変えたときは、置いたプロジェクトで手で更新する（`init --agents` が違いを知らせる）。
+手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
+`codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `src/cli/project.ts` の `AGENT_TARGETS`、
+選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
+（`src/cli/project.ts` の `agentsSnippet`。節のスキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`。
+`test/agents.test.ts` が確かめる）。置き先を覚えておく共有の設定は持たない（参加の `join` は置かず、置く・最新にするのは人が明示する
+`p3 agents` だけなので、消した先が戻らない）。
+既にあるスキル・節は上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。変えたときは、置いたプロジェクトで
+`p3 agents <先>` で違いを確かめ、`--force` で選んだ先のスキルと p3 の節だけを同梱の版にする（節の前後の文は残す。節が複数・
+見出しになっていなければ変えずに手で整理してもらう）。
 
 ```markdown
 ## タスク管理（infodb p3）

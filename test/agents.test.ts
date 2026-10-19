@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { AGENTS_SNIPPET, SKILL_SOURCE } from "../src/cli/project.ts";
+import { AGENTS_SNIPPET, agentsSnippet, SKILL_SOURCE } from "../src/cli/project.ts";
 
 const skill = readFileSync(SKILL_SOURCE, "utf8");
 const devSkill = readFileSync(new URL("../.claude/skills/p3/SKILL.md", import.meta.url), "utf8");
@@ -63,6 +63,16 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
 });
 
 describe("docs の写し", () => {
+  it("節のスキルの参照は、置いた先だけを書く（両方のときが AGENTS_SNIPPET）", () => {
+    expect(agentsSnippet(["claude", "codex"])).toBe(AGENTS_SNIPPET);
+    expect(agentsSnippet(["codex", "claude"])).toBe(AGENTS_SNIPPET); // 順は固定
+    const claude = agentsSnippet(["claude"]);
+    expect(claude).toContain("詳しい手順はスキル `.claude/skills/p3/SKILL.md`（Claude Code）\n");
+    expect(claude).not.toContain(".agents/skills");
+    expect(agentsSnippet(["codex"])).toContain("詳しい手順はスキル `.agents/skills/p3/SKILL.md`（Codex）\n");
+    expect(AGENTS_SNIPPET).toContain("`.claude/skills/p3/SKILL.md`（Claude Code）・`.agents/skills/p3/SKILL.md`（Codex）。中身は同じ");
+  });
+
   it("docs/architecture.md に載せた追記の内容は AGENTS_SNIPPET と同じ", () => {
     const doc = readFileSync(new URL("../docs/architecture.md", import.meta.url), "utf8");
     expect(doc).toContain(`\`\`\`markdown${AGENTS_SNIPPET.trimEnd()}\n\`\`\``);

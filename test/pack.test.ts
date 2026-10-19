@@ -34,9 +34,19 @@ describe("npm pack の中身だけで動く", () => {
     };
 
     p3(["init", "--yes", "--agents", "--project", "sample", "--dir", join(work, "data")]);
+    const original = readFileSync(join(ROOT, "skills", "p3", "SKILL.md"), "utf8");
     for (const dir of [".claude", ".agents"]) {
-      expect(readFileSync(join(repo, dir, "skills", "p3", "SKILL.md"), "utf8")).toBe(readFileSync(join(ROOT, "skills", "p3", "SKILL.md"), "utf8"));
+      expect(readFileSync(join(repo, dir, "skills", "p3", "SKILL.md"), "utf8")).toBe(original);
     }
+    // 選んだ先だけを最新にする（p3 agents）。選ばなかった先は変えない
+    const claude = join(repo, ".claude", "skills", "p3", "SKILL.md");
+    const codex = join(repo, ".agents", "skills", "p3", "SKILL.md");
+    writeFileSync(claude, "# 古い版\n");
+    writeFileSync(codex, "# 古い版\n");
+    expect(p3(["agents", "claude"])).toContain("保護");
+    expect(p3(["agents", "claude", "--force"])).toContain("更新");
+    expect(readFileSync(claude, "utf8")).toBe(original);
+    expect(readFileSync(codex, "utf8")).toBe("# 古い版\n");
     expect(JSON.parse(p3(["whoami", "--json"]))).toMatchObject({ project: "sample" });
     const rid = JSON.parse(p3(["request", "new", "通知", "--body", "- 送信\n- 設定", "--json"])).id;
     expect(JSON.parse(p3(["preflight", rid, "--engine", "mock", "--json"]))).toMatchObject({ status: "completed" });

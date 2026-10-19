@@ -99,9 +99,11 @@ p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社�
 - `init` は新しく作るだけ。そのフォルダに既にプロジェクト（`project.yaml`）があれば、何も変えずに断って `p3 join` を案内する
 - ほかの人が作って共有したプロジェクトには **`p3 join`** で参加する（下の「参加する」）
 - 既定の `.p3` を git に入れるか（`.gitignore` に書くか）は自分で決める。p3 は `.gitignore` を書き換えず、データをコミットもしない
-- `--agents` を付けると、AI エージェント向けの使い方を `AGENTS.md`（無ければ `CLAUDE.md`）に追記し、同じスキルを
-  `.claude/skills/p3/SKILL.md`（Claude Code）と `.agents/skills/p3/SKILL.md`（Codex）に置く。置いたファイルはリポジトリに入れて共有する。
-  作った後から置く・最新にするのは `p3 agents`（`init --agents` を登録済みのリポジトリで実行し直しても置かない）
+- `--agents claude|codex|both` を付けると、AI エージェント向けの使い方を `AGENTS.md`（無ければ `CLAUDE.md`）に追記し、スキルを
+  選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
+  （値を省くと both。付けなければ置かない。対話では聞き、Enter は置かない）。置いたファイルはリポジトリに入れて共有する。
+  作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md) の「AI エージェントから使う」。`init --agents` を
+  既にあるプロジェクトで実行し直しても置かない）
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
 
 ### 参加する（ほかの人が作ったプロジェクト）

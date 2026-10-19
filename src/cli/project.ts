@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { appendFile, copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -110,15 +110,30 @@ const DOC_ENTRIES = ["README.md", "index.md"];
 
 const AGENTS_MARK = "タスク管理（infodb p3）";
 
+/** AI 向けの使い方を置く先（リポジトリのルートからの相対パス。どれも同じ原本 skills/p3/SKILL.md を写す） */
+export const AGENT_TARGETS = {
+  claude: { path: ".claude/skills/p3/SKILL.md", agent: "Claude Code" },
+  codex: { path: ".agents/skills/p3/SKILL.md", agent: "Codex" },
+} as const;
+export type AgentKind = keyof typeof AGENT_TARGETS;
+/** --agents / p3 agents の選び方（値なしの --agents は both） */
+export const AGENT_CHOICES = { claude: ["claude"], codex: ["codex"], both: ["claude", "codex"] } as const satisfies Record<string, readonly AgentKind[]>;
+export type AgentChoice = keyof typeof AGENT_CHOICES;
+export const isAgentChoice = (v: unknown): v is AgentChoice => typeof v === "string" && Object.hasOwn(AGENT_CHOICES, v);
+const KINDS = Object.keys(AGENT_TARGETS) as AgentKind[];
+
 /**
- * p3 init --agents で AGENTS.md / CLAUDE.md に追記する指示。手順の詳しい版は同梱のスキル（skills/p3/SKILL.md）で、
- * 役割と終わり方はそちらとそろえる（test/agents.test.ts が確かめる）
+ * AGENTS.md / CLAUDE.md に書く指示（節）。スキルの参照は、置いた先（と既にある先）だけを書く。手順の詳しい版は同梱のスキル
+ * （skills/p3/SKILL.md）で、役割と終わり方はそちらとそろえる（test/agents.test.ts が確かめる）
  */
-export const AGENTS_SNIPPET = `
+export function agentsSnippet(kinds: readonly AgentKind[]): string {
+  const list = KINDS.filter((k) => kinds.includes(k));
+  const skills = list.map((k) => `\`${AGENT_TARGETS[k].path}\`（${AGENT_TARGETS[k].agent}）`).join("・") + (list.length > 1 ? "。中身は同じ" : "");
+  return `
 ## ${AGENTS_MARK}
 
 - 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順はスキル \`.claude/skills/p3/SKILL.md\`（Claude Code）・\`.agents/skills/p3/SKILL.md\`（Codex）。中身は同じ
+  詳しい手順はスキル ${skills}
 - 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
 - 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる
 - \`whoami\` の \`via\`（プロジェクトの決まり方）が \`cwd\` でなければ（\`dir\` / \`project\` / \`legacy\` / \`only\`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した \`--project\` / \`--dir\` で避けない。人が指定・確認した後はその対象のまま続ける）
@@ -132,44 +147,101 @@ export const AGENTS_SNIPPET = `
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
 `;
+}
+
+/** 両方に置いたときの節（docs/architecture.md に載せる例。test/agents.test.ts が同じことを確かめる） */
+export const AGENTS_SNIPPET = agentsSnippet(KINDS);
 
 /**
- * 同梱のスキルの原本と、プロジェクトに置く場所（リポジトリのルートからの相対パス。同じ原本を写す）。
- * 置くのはプロジェクトの中だけ（個人のスキルの場所に置くと、p3 を使わないプロジェクトでも読まれる）
+ * 同梱のスキルの原本。置くのはプロジェクトの中だけ（個人のスキルの場所に置くと、p3 を使わないプロジェクトでも読まれる）
  */
 export const SKILL_SOURCE = fileURLToPath(new URL("../../skills/p3/SKILL.md", import.meta.url));
-export const SKILL_TARGETS = [
-  { path: ".claude/skills/p3/SKILL.md", agent: "Claude Code" },
-  { path: ".agents/skills/p3/SKILL.md", agent: "Codex" },
-] as const;
+
+/** 2つの文の最初に違う行（1 から） */
+function firstDiffLine(a: string, b: string): number {
+  const x = a.split("\n");
+  const y = b.split("\n");
+  let i = 0;
+  while (i < x.length && i < y.length && x[i] === y[i]) i++;
+  return i + 1;
+}
+
+/** 指示の節（見出し「タスク管理（infodb p3）」からその見出しと同じか上の段の次の見出しの前まで。コードの囲みの中は見出しに数えない） */
+function findSections(text: string): { start: number; end: number; level: number }[] {
+  const lines = text.split("\n");
+  const heads: { line: number; level: number; mark: boolean }[] = [];
+  let fence = false;
+  lines.forEach((l, i) => {
+    if (/^\s*(```|~~~)/.test(l)) fence = !fence;
+    const m = fence ? null : /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l);
+    if (m) heads.push({ line: i, level: m[1].length, mark: m[2] === AGENTS_MARK });
+  });
+  return heads
+    .filter((h) => h.mark)
+    .map((h) => ({ start: h.line, level: h.level, end: heads.find((n) => n.line > h.line && n.level <= h.level)?.line ?? lines.length }));
+}
 
 /**
- * --agents: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）に指示を追記し、スキルを置く。
- * 指示は見出しがあれば足さない。スキルは置く場所ごとに、無ければ置き、同じ内容なら何もせず、違えば上書きしない
- * （手で直したものを消さない。片方が違っても、もう片方は置く）。
+ * AI 向けの使い方を置く（init --agents と p3 agents）。kinds の先だけを扱い、ほかの先は作らず・変えず・消さない。
+ *   - スキル: 無ければ置く・同じなら何もしない・違えば上書きせず違う行と最新にする方法を出す（force なら同梱の版にする）
+ *   - 指示: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）の節。スキルの参照は kinds と既にある先。
+ *     節が無ければ足す・同じなら何もしない・違えば変えずに知らせる（force なら節だけを置き換え、前後の文は残す）。
+ *     節が複数・見出しの形が分からないときは force でも変えず、手で整理するよう知らせる
  */
-async function placeAgents(root: string, cwd: string): Promise<string[]> {
+export async function placeAgents(root: string, cwd: string, choice: AgentChoice, force = false): Promise<string[]> {
+  const kinds: readonly AgentKind[] = AGENT_CHOICES[choice];
   const lines: string[] = [];
-  const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
-  const target = join(root, agentsFile ?? "AGENTS.md");
-  if (existsSync(target) && readFileSync(target, "utf8").includes(AGENTS_MARK)) {
-    lines.push(`  AI 向けの使い方は ${relative(cwd, target) || target} に書いてあります（追記しません）`);
-  } else {
-    await appendFile(target, AGENTS_SNIPPET);
-    lines.push(`  AI 向けの使い方を ${relative(cwd, target) || target} に追記しました`);
-  }
+  const update = `p3 agents ${choice} --force`;
   const source = readFileSync(SKILL_SOURCE, "utf8");
-  for (const t of SKILL_TARGETS) {
+  for (const k of kinds) {
+    const t = AGENT_TARGETS[k];
     const skill = join(root, t.path);
-    const shown = relative(cwd, skill);
+    const shown = relative(cwd, skill) || skill;
     if (!existsSync(skill)) {
       await mkdir(dirname(skill), { recursive: true });
       await copyFile(SKILL_SOURCE, skill);
-      lines.push(`  AI 向けのスキル（${t.agent}）を ${shown} に置きました`);
-    } else if (readFileSync(skill, "utf8") === source) {
-      lines.push(`  AI 向けのスキル（${t.agent}）${shown} は最新です`);
+      lines.push(`  作成  AI 向けのスキル（${t.agent}）を ${shown} に置きました`);
+      continue;
+    }
+    const now = readFileSync(skill, "utf8");
+    if (now === source) lines.push(`  同一  AI 向けのスキル（${t.agent}）${shown} は最新です`);
+    else if (force) {
+      await copyFile(SKILL_SOURCE, skill);
+      lines.push(`  更新  AI 向けのスキル（${t.agent}）${shown} を同梱の版にしました`);
     } else {
-      lines.push(`  ※ ${shown}（${t.agent}）は既にあり、同梱の版と違うので上書きしません。手で見比べて更新してください: ${SKILL_SOURCE}`);
+      lines.push(`  保護  ※ ${shown}（${t.agent}）は既にあり、同梱の版と違うので上書きしません（${firstDiffLine(now, source)} 行目から違います）。最新にするなら ${update}（原本: ${SKILL_SOURCE}）`);
+    }
+  }
+
+  // 指示の節のスキルの参照: 置いた先と、既にある先（後から片方を足したとき、もう片方も指す。無い先は書かない）
+  const refs = KINDS.filter((k) => kinds.includes(k) || existsSync(join(root, AGENT_TARGETS[k].path)));
+  const snippet = agentsSnippet(refs);
+  const file = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f))) ?? "AGENTS.md";
+  const target = join(root, file);
+  const shown = relative(cwd, target) || target;
+  const text = existsSync(target) ? readFileSync(target, "utf8") : "";
+  const sections = findSections(text);
+  if (!sections.length && !text.includes(AGENTS_MARK)) {
+    await appendFile(target, text ? snippet : snippet.replace(/^\n/, ""));
+    lines.push(`  作成  AI 向けの使い方を ${shown} に${text ? "追記しました" : "書きました"}`);
+  } else if (sections.length !== 1) {
+    lines.push(
+      `  保護  ※ ${shown} の「${AGENTS_MARK}」の節が${sections.length ? `${sections.length} つあります` : "見出しとして見つかりません"}。どこまでが p3 の節か決められないので変えません。手で1つの節（見出し「## ${AGENTS_MARK}」）に整理してから、もう一度実行してください`,
+    );
+  } else {
+    const all = text.split("\n");
+    const { start, end, level } = sections[0];
+    // 見出しの段は今のもの（### などで書かれていればそのまま）
+    const body = snippet.replace(/^\n/, "").replace(/^## /, `${"#".repeat(level)} `);
+    const current = all.slice(start, end).join("\n");
+    if (current.trim() === body.trim()) lines.push(`  同一  AI 向けの使い方（${shown} の節）は最新です`);
+    else if (force) {
+      const before = all.slice(0, start).join("\n");
+      const after = all.slice(end).join("\n");
+      await writeFile(target, `${before}${before ? "\n" : ""}${body.trimEnd()}\n${after ? `\n${after.replace(/^\n+/, "")}` : ""}`);
+      lines.push(`  更新  AI 向けの使い方（${shown} の「${AGENTS_MARK}」の節）を置き換えました（前後の文はそのまま）`);
+    } else {
+      lines.push(`  保護  ※ ${shown} の「${AGENTS_MARK}」の節は同梱の版と違うので変えません。最新にするなら ${update}（節だけを置き換えます）`);
     }
   }
   return lines;
@@ -184,7 +256,8 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
-  agents?: boolean;
+  /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
+  agents?: AgentChoice;
   yes?: boolean;
   /** このリポジトリの参照先の名前（既定はフォルダ名） */
   repoName?: string;
@@ -263,9 +336,15 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
-    const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
-    const addAgents =
-      o.agents ?? (interactive ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} と .claude/skills/・.agents/skills/ に AI 向けの p3 の使い方を置きますか (y/n)`, agentsFile ? "y" : "n")) : false);
+    // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
+    let agents = o.agents;
+    if (agents === undefined && interactive) {
+      const a = await ask("AI 向けの p3 の使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（置かない / claude / codex / both）", "置かない");
+      if (!["置かない", "none", "n", "no"].includes(a)) {
+        if (!isAgentChoice(a)) throw new UsageError(`置く先は 置かない / claude / codex / both のどれか: ${a}`);
+        agents = a;
+      }
+    }
 
     const cfg: ProjectConfig = {
       name,
@@ -281,7 +360,7 @@ export async function init(o: InitOptions): Promise<string> {
     await writeRepoEntry(join(dir, "project.yaml"), refName, cfg.repos[0]);
     await register(key, dir, refName, root);
 
-    const agentLines = addAgents ? await placeAgents(root, o.cwd) : [];
+    const agentLines = agents ? await placeAgents(root, o.cwd, agents) : [];
     return [
       `作りました: ${key} → ${dir}`,
       `  参照先        ${refName}（本体） → ${root}`,

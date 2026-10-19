@@ -12,7 +12,7 @@ import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
-import { config, currentRequest, init, joinProject, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
 import { readsOnly } from "./readOnly.ts";
 import { parse, type CommandEnv } from "./args.ts";
@@ -46,6 +46,20 @@ async function main(argv: string[]): Promise<number> {
   const cwd = process.cwd();
   const out = new Output(o.json ?? false);
 
+  // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
+  if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
+
+  // AI 向けの使い方を置く・最新にする。今いるリポジトリのルートに置くだけで、プロジェクトは決めない（データ・個人設定は変えない）
+  if (cmd === "agents") {
+    const [choice, ...rest] = args;
+    const usage = "p3 agents claude|codex|both [--force]（置く先を選ぶ。省けません）";
+    if (!isAgentChoice(choice) || rest.length) throw new UsageError(choice === undefined ? `置く先を指定してください: ${usage}` : `置く先は claude / codex / both のどれか: ${[choice, ...rest].join(" ")}（${usage}）`);
+    if (o.agents !== undefined) throw new UsageError(`p3 agents に --agents は要りません（${usage}）`);
+    const root = repoRoot(cwd);
+    console.log([`AI 向けの使い方（${root}）`, ...(await placeAgents(root, cwd, choice, o.force))].join("\n"));
+    return 0;
+  }
+
   if (cmd === "join") {
     // 参加は個人設定に登録するだけ。AI 向けのファイルと、作るときだけの項目は受け付けない（黙って無視しない）
     if (o.agents !== undefined) throw new UsageError("join は AI 向けのファイルを置きません（--agents は使えません）。置く・最新にするなら p3 agents claude|codex|both");
@@ -57,6 +71,8 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (cmd === "init") {
+    if (o.agents !== undefined && !isAgentChoice(o.agents)) throw new UsageError(`--agents は claude / codex / both のどれか（値を省くと both）: ${o.agents || "（空）"}`);
+    if (args.length) throw new UsageError(`init は位置引数を取りません: ${args.join(" ")}`);
     console.log(
       await init({
         cwd,
