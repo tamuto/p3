@@ -5,6 +5,15 @@
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
+// フォントを指定していない原稿も、ゴシック体（sans-serif）で描く（Chromium の既定は Times New Roman で、欧文が明朝系になる）。
+// 原稿の先頭（doctype の後）に置き、詳細度 0 にするので、原稿のどの指定よりも弱い
+const BASE_STYLE = "<style>:where(html){font-family:sans-serif}</style>";
+const DOCTYPE = /^\uFEFF?\s*(?:<!--[\s\S]*?-->\s*)*<!doctype[^>]*>/i;
+const withBaseStyle = (html) => {
+  const m = DOCTYPE.exec(html);
+  return m ? m[0] + BASE_STYLE + html.slice(m[0].length) : BASE_STYLE + html;
+};
+
 const MAX_HEIGHT = Number(process.env.P3_RENDER_MAX_HEIGHT ?? 16384);
 const PAGE_TIMEOUT = Number(process.env.P3_RENDER_PAGE_TIMEOUT ?? 20000);
 
@@ -31,7 +40,7 @@ try {
       });
       const page = await context.newPage();
       page.setDefaultTimeout(PAGE_TIMEOUT);
-      await page.setContent(await readFile(`/in/${job.file}`, "utf8"), { waitUntil: "load", timeout: PAGE_TIMEOUT });
+      await page.setContent(withBaseStyle(await readFile(`/in/${job.file}`, "utf8")), { waitUntil: "load", timeout: PAGE_TIMEOUT });
       const path = `/out/${job.id}.png`;
       await page.screenshot({ path, fullPage: true, animations: "disabled", timeout: PAGE_TIMEOUT });
       // 縦に長すぎるときは上から切る

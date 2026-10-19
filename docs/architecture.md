@@ -508,7 +508,8 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 - 版: Playwright 1.63.0（Chromium の headless shell）、Node 22（`node:22-bookworm-slim`）、`fonts-noto-cjk`。
   Playwright はイメージの中で npm から入れる（P3 の依存には足さない）。版は公開から1日を過ぎたものに固定する
-- イメージの名前は Dockerfile と `render.mjs` の中身の hash（`infodb-p3-render:<12桁>`）。中身が変われば次の描画で作り直す。
+- イメージの名前は資材（`Dockerfile`・`fonts-ja.conf`・`render.mjs`。`render.ts` の `RENDER_IMAGE_FILES`）の中身の hash
+  （`infodb-p3-render:<12桁>`）。どれかが変われば（フォントの設定だけでも）次の描画で作り直す。
   大きさは約 1.4GB（amd64 で確かめた）
 - Chromium の sandbox は使わない。コンテナを囲いにする（`--network none`・`--read-only`・`--cap-drop ALL`・
   `no-new-privileges`・root ではない利用者・メモリ / CPU / プロセス数・時間の上限）。読み込みを止めるのは二重目の囲い
@@ -517,6 +518,15 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
   `iframe` / `object` / `embed` / `link` / `base` / `meta http-equiv` は断る。幅は 320〜2560 px、原稿は 2MB まで、高さ 16384 px を超える
   ところは切る。DevContainer の中からは、出力先のフォルダにも `codex.pathMap` が要る
 - 日本語のフォントは Debian の `fonts-noto-cjk`（SIL Open Font License 1.1）。イメージの中にだけ入り、P3 の配布物には含めない
+- Playwright の依存（`--with-deps`）で WenQuanYi Zen Hei（中国語の字形）も入り、fontconfig ではそれが総称の既定に先に来る。
+  `fonts-ja.conf`（`/etc/fonts/conf.d/99-p3-ja.conf` に置く）で、総称（`sans-serif`・`system-ui`・`serif`・`monospace`）と、
+  イメージに無い日本語のフォント名を Noto CJK JP に寄せる（対応は how-to-use.md の「画面資料」）。`binding="strong"` にするのは、
+  Chromium（Skia）が、名前で探したフォントの代わりに強く結んだものだけを受け入れるため。明示したほかのフォントと埋め込みのフォントは変えない
+- Chromium の既定（フォントの指定なし）は Times New Roman（イメージでは Liberation Serif）で、欧文が明朝系になる。Codex の原稿の多くは
+  フォントを指定しないので、`render.mjs` が原稿の先頭（doctype の後。無ければ先頭で、quirks の判定は変わらない）に
+  `:where(html){font-family:sans-serif}` を足す。詳細度 0 で最初に置くので、原稿の指定（`html`・`body`・`*`・`:root` を含む）が必ず勝つ
+- Chromium は無い字を総称に関係なく探すので、`serif` の欧文（Liberation Serif）に無いかな・漢字は Noto Sans CJK JP になる。
+  `Times New Roman` を明朝体に寄せると、`sans-serif` のかな・漢字まで明朝体になったのでやめた
 
 ### 添付の確かめ方と置き場所
 

@@ -1,9 +1,9 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkHtml, diagnoseRender, RENDER_IMAGE_DIR, RENDER_LIMITS, renderArgs, renderHtml, renderImageTag } from "../src/core/preflight/render.ts";
+import { checkHtml, diagnoseRender, RENDER_IMAGE_DIR, RENDER_LIMITS, renderArgs, renderHtml, RENDER_IMAGE_FILES, renderImageTag } from "../src/core/preflight/render.ts";
 import { tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-render-docker.mjs", import.meta.url));
@@ -72,13 +72,41 @@ describe("描画のコンテナ", () => {
     expect(args.at(-1)).toBe("img");
   });
 
-  it("イメージの名前は Dockerfile と描画の中身で決まる（配布物に含まれる）", async () => {
+  it("イメージの名前は資材（Dockerfile・フォントの設定・描画）の中身で決まる（配布物に含まれる）", async () => {
     expect(await renderImageTag()).toMatch(/^infodb-p3-render:[0-9a-f]{12}$/);
-    expect(readdirSync(RENDER_IMAGE_DIR).sort()).toEqual(["Dockerfile", "render.mjs"]);
+    expect(readdirSync(RENDER_IMAGE_DIR).sort()).toEqual([...RENDER_IMAGE_FILES].sort());
     const dockerfile = readFileSync(join(RENDER_IMAGE_DIR, "Dockerfile"), "utf8");
     expect(dockerfile).toMatch(/playwright@\d+\.\d+\.\d+/);
     expect(dockerfile).toContain("fonts-noto-cjk");
+    expect(dockerfile).toContain("COPY fonts-ja.conf /etc/fonts/conf.d/");
     expect(dockerfile).toMatch(/^USER render$/m);
+    // 同じ中身なら同じ名前、どの資材が変わっても別の名前（フォントの設定だけの変更でも作り直す）
+    const tag = await renderImageTag();
+    for (const f of RENDER_IMAGE_FILES) {
+      const dir = tempDir();
+      cpSync(RENDER_IMAGE_DIR, dir, { recursive: true });
+      expect(await renderImageTag(dir)).toBe(tag);
+      appendFileSync(join(dir, f), "\n");
+      expect(await renderImageTag(dir)).not.toBe(tag);
+    }
+  });
+
+  it("フォントを指定していない原稿は、原稿のどの指定よりも弱い既定の sans-serif で描く", () => {
+    const mjs = readFileSync(join(RENDER_IMAGE_DIR, "render.mjs"), "utf8");
+    expect(mjs).toContain('const BASE_STYLE = "<style>:where(html){font-family:sans-serif}</style>";');
+    expect(mjs).toContain("page.setContent(withBaseStyle(");
+  });
+
+  it("フォントの設定は日本語の総称と、イメージに無い日本語のフォント名を Noto CJK JP に寄せる", () => {
+    const conf = readFileSync(join(RENDER_IMAGE_DIR, "fonts-ja.conf"), "utf8");
+    const aliases = new Map([...conf.matchAll(/<alias binding="strong"><family>([^<]+)<\/family><prefer><family>([^<]+)<\/family><\/prefer><\/alias>/g)].map((m) => [m[1], m[2]]));
+    const sans = ["sans-serif", "system-ui", "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "ヒラギノ角ゴ ProN", "Yu Gothic", "游ゴシック"];
+    const serif = ["serif", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "游明朝"];
+    expect(Object.fromEntries(aliases)).toEqual({
+      ...Object.fromEntries(sans.map((f) => [f, "Noto Sans CJK JP"])),
+      ...Object.fromEntries(serif.map((f) => [f, "Noto Serif CJK JP"])),
+      monospace: "Noto Sans Mono CJK JP",
+    });
   });
 
   it("確かめた原稿だけを描画し、パスの対応でマウントし、一時のフォルダを消す", async () => {
