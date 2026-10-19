@@ -48,7 +48,7 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
   });
 });
 
-describe("findDataDir（リポジトリの中の .p3/。以前の置き方）", () => {
+describe("findDataDir（個人設定に登録していないリポジトリの中の .p3/）", () => {
   it("要望ごとの作業ツリーの中でも、メインの作業ツリーの .p3/ を使う（状態をブランチごとに分岐させない）", async () => {
     const { root, dataDir } = await makeRepo();
     git(root, "add", "-A");

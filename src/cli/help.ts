@@ -8,8 +8,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 
 プロジェクト
   init                         管理したいリポジトリの中で実行。データのフォルダを作り（既にあれば参加し）、個人設定に登録する。
-                               このリポジトリを本体の参照先として登録する
-                               --project 名前 --dir フォルダ --repo-name 参照先の名前（既定はフォルダ名）--description
+                               このリポジトリを本体の参照先として登録する。データの既定はリポジトリのルートの .p3
+                               --project 名前 --dir フォルダ（外に置くとき。相対は今いる場所から）--repo-name 参照先の名前（既定はフォルダ名）--description
                                --instructions 観点 --agents --yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
   config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions）

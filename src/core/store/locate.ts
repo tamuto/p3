@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { UserConfig } from "../userConfig.ts";
 
-/** リポジトリの中にデータを置く場合のフォルダ名（以前の既定。今もデモやテストで使う） */
+/** p3 init がデータを置く既定のフォルダ名（リポジトリのルートの直下） */
 export const DATA_DIR_NAME = ".p3";
 
 export interface ResolvedProject {
@@ -93,7 +93,7 @@ export function onlyRegistrationNotice(p: ResolvedProject, write: boolean): stri
  *   1. --dir <フォルダ>          データのフォルダを直接指す
  *   2. --project <名前>          個人設定に登録したプロジェクト
  *   3. 今いる場所                 登録したプロジェクトのデータのフォルダか、そのリポジトリ（作業ツリーを含む）の中
- *   4. リポジトリの中の .p3/   以前の置き方（git のメインの作業ツリー → 上へ辿る）
+ *   4. リポジトリの中の .p3/   個人設定に登録していないとき（git のメインの作業ツリー → 上へ辿る。デモ・登録前の clone など）
  *   5. 登録が1つだけ              それを使う
  */
 export function resolveProject(o: { cwd: string; dir?: string; project?: string; user: UserConfig }): ResolvedProject {
@@ -135,7 +135,7 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
   throw new ProjectNotResolvedError(
     entries.length
       ? `操作するプロジェクトが決まりません（今いる場所: ${o.cwd}）。\n${listing(o.user)}`
-      : "プロジェクトがまだありません。管理したいリポジトリの中で次を実行してください:\n  p3 init --project <名前> --dir <データを置くフォルダ>",
+      : "プロジェクトがまだありません。管理したいリポジトリの中で次を実行してください:\n  p3 init --project <名前>（データはリポジトリのルートの .p3。外に置くなら --dir <フォルダ>）",
   );
 }
 
@@ -153,7 +153,7 @@ function listing(user: UserConfig): string {
 const inside = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep);
 
 /**
- * リポジトリの中の .p3/ を探す（以前の置き方）。
+ * リポジトリの中の .p3/ を探す（個人設定に登録していないとき。登録していれば 3. の今いる場所で決まる）。
  * 要望ごとの作業ツリーの中で実行しても、git のメインの作業ツリーの .p3/ を使う（各作業ツリーの .p3/ はブランチ時点の写し）。
  */
 export function findDataDir(cwd: string): string | undefined {

@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
+import { init } from "../src/cli/project.ts";
 
 /** タスクの関係をファイルに書く（関係は Preflight のタスク化だけが張るので、CLI には張る操作が無い） */
 function relate(root: string, rid: string, tid: string, relations: { type: string; target: string; note?: string; origin?: string }[]) {
@@ -81,7 +82,113 @@ describe("p3 init", () => {
       expect(existsSync(join(root, "src", t))).toBe(false);
     }
     expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(1); // 2回目は拒む
-    expect(p3(root, ["init", "--yes"]).err).toContain("データを置くフォルダを指定"); // フォルダは必須
+    expect(p3(root, ["init", "--yes"]).err).toContain("登録済み"); // 未指定はルートの .p3 なので同じく登録済み
+  });
+});
+
+describe("p3 init のデータのフォルダ（既定はリポジトリのルートの .p3）", () => {
+  const registered = (home = CONFIG_HOME) => readFileSync(join(home, "infodb-p3", "config.yaml"), "utf8");
+
+  it("未指定ならサブフォルダから実行してもルートの .p3 に作り、個人設定も同じ絶対パスを指す", async () => {
+    const root = await repo();
+    await mkdir(join(root, "src"));
+    const r = p3(join(root, "src"), ["init", "--yes", "--project", "app"]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain(`作りました: app → ${join(root, ".p3")}`);
+    expect(existsSync(join(root, ".p3", "project.yaml"))).toBe(true);
+    expect(existsSync(join(root, ".p3", "requests"))).toBe(true);
+    expect(existsSync(join(root, "src", ".p3"))).toBe(false);
+    expect(registered()).toContain(`dir: ${join(root, ".p3")}`);
+    // ルート・サブフォルダのどちらからも同じデータに決まる（今いる場所）
+    for (const at of [root, join(root, "src")]) expect(p3(at, ["whoami", "--json"]).json()).toMatchObject({ dataDir: join(root, ".p3"), via: "cwd" });
+  });
+
+  it("追加の作業ツリーから未指定で実行しても、メインの作業ツリーの .p3 に作る", async () => {
+    const root = await repo();
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "init");
+    const wt = join(tempDir("p3-wt-"), "topic");
+    git(root, "worktree", "add", "-q", wt, "-b", "topic");
+    const r = p3(wt, ["init", "--yes", "--project", "app"]);
+    expect(r.code, r.err).toBe(0);
+    expect(existsSync(join(root, ".p3", "project.yaml"))).toBe(true);
+    expect(existsSync(join(wt, ".p3"))).toBe(false);
+    expect(registered()).toContain(`dir: ${join(root, ".p3")}`);
+    for (const at of [root, wt]) expect(p3(at, ["whoami", "--json"]).json()).toMatchObject({ dataDir: join(root, ".p3"), via: "cwd" });
+  });
+
+  it("git 管理外では実行した場所の .p3", () => {
+    const dir = tempDir("p3-plain-");
+    expect(p3(dir, ["init", "--yes", "--project", "plain"]).code).toBe(0);
+    expect(existsSync(join(dir, ".p3", "project.yaml"))).toBe(true);
+  });
+
+  it("指定したフォルダ（相対は実行した場所から・絶対・~）を使い、既定の .p3 は作らない", async () => {
+    const home = tempDir("p3-home-");
+    const abs = join(tempDir("p3-ext-"), "abs");
+    // [説明, --dir の値, できるはずの場所]。実行するのはサブフォルダ（src）
+    const cases: [string, (root: string) => string, (root: string) => string][] = [
+      ["相対", (root) => `../../${basename(root)}-data`, (root) => `${root}-data`],
+      ["絶対", () => abs, () => abs],
+      ["~", () => "~/p3-data/app", () => join(home, "p3-data", "app")],
+    ];
+    for (const [label, arg, expected] of cases) {
+      const root = await repo();
+      await mkdir(join(root, "src"));
+      const dirArg = arg(root);
+      const configHome = tempDir("p3-config-");
+      const r = p3(join(root, "src"), ["init", "--yes", "--project", "app", "--dir", dirArg], { HOME: home }, configHome);
+      expect(r.code, `${label}: ${r.err}`).toBe(0);
+      expect(existsSync(join(expected(root), "project.yaml")), label).toBe(true);
+      expect(existsSync(join(root, ".p3")), label).toBe(false);
+      expect(registered(configHome), label).toContain(`dir: ${expected(root)}`);
+    }
+  });
+
+  it("明示した空のフォルダは断り、何も作らない", async () => {
+    const root = await repo();
+    const r = p3(root, ["init", "--yes", "--project", "app", "--dir", ""]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("--dir が空です");
+    expect(existsSync(join(root, ".p3"))).toBe(false);
+    expect(existsSync(join(CONFIG_HOME, "infodb-p3", "config.yaml"))).toBe(false);
+  });
+
+  it("ルートの .p3 が既にあれば（clone して共有されたもの）未指定でも参加だけし、データを書き換えない", async () => {
+    const root = await repo();
+    expect(p3(root, ["init", "--yes", "--project", "app", "--description", "共有"]).code).toBe(0);
+    const before = readFileSync(join(root, ".p3", "project.yaml"), "utf8");
+    const other = tempDir("p3-config-");
+    const r = p3(join(root, "docs"), ["init", "--yes", "--project", "app"], {}, other);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toContain(`参加しました: app → ${join(root, ".p3")}`);
+    expect(readFileSync(join(root, ".p3", "project.yaml"), "utf8")).toBe(before);
+    expect(registered(other)).toContain(`dir: ${join(root, ".p3")}`);
+    // 同じ名前で別のフォルダは断る（既定の .p3 と、登録済みの外のフォルダ）
+    const clash = p3(root, ["init", "--yes", "--project", "app", "--dir", join(tempDir("p3-ext-"), "x")], {}, other);
+    expect(clash.code).toBe(1);
+    expect(clash.err).toContain("別のフォルダで登録済み");
+  });
+
+  it("対話では既定値（ルートの .p3 の絶対パス）を示し、Enter でそれを選ぶ", async () => {
+    const root = await repo();
+    await mkdir(join(root, "src"));
+    const questions: string[] = [];
+    const prev = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = CONFIG_HOME;
+    const log = console.log;
+    console.log = () => {};
+    try {
+      await init({ cwd: join(root, "src"), project: "app", prompt: async (q) => (questions.push(q), "") });
+    } finally {
+      console.log = log;
+      if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = prev;
+    }
+    expect(questions.find((q) => q.startsWith("データを置くフォルダ"))).toContain(`[${join(root, ".p3")}]`);
+    expect(existsSync(join(root, ".p3", "project.yaml"))).toBe(true);
+    expect(existsSync(join(root, "src", ".p3"))).toBe(false);
+    expect(registered()).toContain(`dir: ${join(root, ".p3")}`);
   });
 });
 
@@ -745,7 +852,7 @@ describe("個人設定のプロジェクト（データはリポジトリの外�
     // 表でも分かる
     expect(p3(app, ["whoami"]).out).toContain("決まり方      cwd（今いる場所）");
     expect(p3(nowhere, ["whoami"]).out).toContain("決まり方      only（登録が1つだけ。今いる場所では決まっていない）");
-    // 登録していないリポジトリの中の .p3/（以前の置き方。initialized は自分の個人設定にも登録するので、空の個人設定で見る）
+    // 登録していないリポジトリの中の .p3/（via: legacy。initialized は自分の個人設定にも登録するので、空の個人設定で見る）
     const { root } = await initialized();
     expect(via(root, [], tempDir("p3-config-")).via).toBe("legacy");
   });
@@ -920,7 +1027,7 @@ describe("登録が1つだけで決まったとき（今いる場所では決ま
     const wt = join(tempDir("p3-wt-"), "wt");
     git(app, "worktree", "add", "-q", wt, "-b", "topic");
     made(wt);
-    // 以前の置き方（リポジトリの中の .p3/）は、登録が無くても今いる場所で決まる
+    // 登録していないリポジトリの中の .p3/ は、登録が無くても今いる場所で決まる
     const { root } = await initialized();
     const r = p3(root, ["request", "new", "書ける", "--json"], {}, tempDir("p3-config-"));
     expect(r.code, r.err).toBe(0);
