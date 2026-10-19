@@ -31,7 +31,7 @@
 管理したいリポジトリの中で:
 
 ```bash
-pnpx @infodb/p3 init --agents      # データを置くフォルダを決めて個人設定に登録する。AI 向けの指示とスキル（Claude Code・Codex）も置く
+pnpx @infodb/p3 init --agents      # データのフォルダ（既定はリポジトリの .p3。外にも置ける）を決めて個人設定に登録する。AI 向けの指示とスキル（Claude Code・Codex）も置く
 pnpx @infodb/p3 chatgpt login      # Preflight に使う ChatGPT プランに接続する（ブラウザが開く）
 pnpx @infodb/p3 codex update       # Codex のイメージを作る（初回は数分）
 pnpx @infodb/p3 serve              # http://localhost:4310 を開き、要望を書いて Preflight → タスク化

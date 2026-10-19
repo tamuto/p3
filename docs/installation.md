@@ -70,36 +70,45 @@ docker version --format 'Client {{.Client.Version}} / Server {{.Server.Version}}
 
 ## 4. プロジェクトを作る（か参加する）
 
-管理したいリポジトリの中で `p3 init` を実行し、プロジェクト名と **データを置くフォルダ** を決める。データのフォルダの場所は自由で、
-リポジトリの外を勧める（例: `~/p3-data/myapp`。チームで共有するなら同期するフォルダ）。DevContainer のときは、ホストから見える
-（バインドマウントされた）場所にする。
+管理したいリポジトリの中で `p3 init` を実行し、プロジェクト名と **データを置くフォルダ** を決める。データのフォルダの既定は
+**リポジトリのルートの `.p3`**（git のメインの作業ツリーの直下。サブフォルダや要望の作業ツリーから実行してもそこ。git 管理外なら
+実行した場所の `.p3`）で、ふつうはこのまま Enter で決める。
+
+公開できない要望を含むときや、複数のリポジトリにまたがるプロジェクトをどのリポジトリとも別に管理したいときは、リポジトリの外の
+フォルダを指定する（例: `~/p3-data/myapp`。チームで共有するなら同期するフォルダ）。相対パスは実行した場所から、`~` はホームから。
+DevContainer で外に置くときは、ホストから見える（バインドマウントされた）場所にする。
 
 ```bash
 cd ~/src/myapp
 p3 init --agents
 #   プロジェクト名（切り替えに使う短い名前） [myapp]:
-#   データを置くフォルダ（リポジトリの外を勧めます）: ~/p3-data/myapp
+#   データを置くフォルダ（相対パスは今いる場所から。リポジトリの外も指定できます） [/home/me/src/myapp/.p3]:
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
 #   最初に読むドキュメント（カンマ区切り。Preflight が評価の前に読みます） [docs, README.md]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
 
-# AI やスクリプトからは引数で（--yes で質問しない）
+# AI やスクリプトからは引数で（--yes で質問しない。--dir を付けなければリポジトリのルートの .p3）
+p3 init --yes --agents --project myapp --description "社内向けの経費精算アプリ"
+
+# リポジトリの外に置くなら --dir で指定する
 p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
 ```
 
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
   最初に読む・作業先にできる）として登録される
-- 既にあるデータのフォルダ（ほかの人が作って共有したもの）を指したときは、作らずに **参加** だけする
+- 既にあるデータのフォルダ（ほかの人が作って共有したもの）を指したときは、作らずに **参加** だけする（データは書き換えない）。
+  リポジトリの `.p3` に入れて共有しているなら `p3 init` だけで、リポジトリの外のフォルダなら `--dir <そのフォルダ>` を付ける
+- 既定の `.p3` を git に入れるか（`.gitignore` に書くか）は自分で決める。p3 は `.gitignore` を書き換えず、データをコミットもしない
 - `--agents` を付けると、AI エージェント向けの使い方を `AGENTS.md`（無ければ `CLAUDE.md`）に追記し、同じスキルを
   `.claude/skills/p3/SKILL.md`（Claude Code）と `.agents/skills/p3/SKILL.md`（Codex）に置く。置いたファイルはリポジトリに入れて共有する。
-  登録済みのリポジトリでも `p3 init --agents --project <名前> --dir <データのフォルダ>` をもう一度実行すれば、登録はそのままで足りない方だけを置く
+  登録済みのリポジトリでも `p3 init --agents --project <名前> --dir <データのフォルダ>`（ルートの `.p3` なら `--dir` は省ける）をもう一度実行すれば、登録はそのままで足りない方だけを置く
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
 
 確かめる:
 
 ```bash
 p3 whoami
-# プロジェクト  myapp  /home/me/p3-data/myapp
+# プロジェクト  myapp  /home/me/src/myapp/.p3
 # 決まり方      cwd（今いる場所）
 # 今いる参照先  myapp  ブランチ main
 # 変更者        human:<git の user.name>
@@ -230,7 +239,7 @@ DevContainer で「対応あり」にならなければ 5. を見直す。評価
 | Preflight | 「Usage limit reached」 | ChatGPT の Manage usage（https://chatgpt.com/settings/usage） | 上限が戻るのを待つ |
 | Preflight・画面 | 個人設定を読めない（YAML の行と直すファイル） | `~/.config/infodb-p3/config.yaml` | 書き間違いを直す。serve はそのままで次の Preflight から効く |
 | CLI | プロジェクトが決まらない | `p3 whoami`、`p3 project` | `--project <名前>`、または `p3 project add <名前> <フォルダ>` |
-| CLI・serve | 「データのフォルダがありません」「データのフォルダに project.yaml がありません」 | `p3 project ls` の登録先、フォルダを移していないか、共有ドライブ（同期するフォルダ）がつながっているか | つながっていなければつないでやり直す。移したなら `p3 project rm <名前>` → `p3 project add <名前> <正しいフォルダ>`（rm はデータを消さない。そのあと `p3 repo path` で手元のリポジトリを登録し直す）。新しく作るなら管理したいリポジトリの中で `p3 init --project <名前> --dir <フォルダ>` |
+| CLI・serve | 「データのフォルダがありません」「データのフォルダに project.yaml がありません」 | `p3 project ls` の登録先、フォルダを移していないか、共有ドライブ（同期するフォルダ）がつながっているか | つながっていなければつないでやり直す。移したなら `p3 project rm <名前>` → `p3 project add <名前> <正しいフォルダ>`（rm はデータを消さない。そのあと `p3 repo path` で手元のリポジトリを登録し直す）。新しく作るなら管理したいリポジトリの中で `p3 init --project <名前>`（外に置くなら `--dir <フォルダ>`） |
 | 画面 | 開けない | serve のログ、ポートの転送 | 4310 を転送する。`serve.port` を変えたら転送先も変える |
 
 ## 設定の決まり

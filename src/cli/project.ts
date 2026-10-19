@@ -15,6 +15,7 @@ import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, upd
 import { Workspace as WorkspaceStore } from "../core/store/workspace.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../core/store/workspace.ts";
+import { DATA_DIR_NAME } from "../core/store/locate.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
 
 /** プロジェクトの初期設定・設定変更、変更者と「今の要望」の判定（CLI） */
@@ -176,7 +177,7 @@ export interface InitOptions {
   cwd: string;
   /** 個人設定に登録する名前（既定: リポジトリのフォルダ名） */
   project?: string;
-  /** データを置くフォルダ（必須。端末では聞く） */
+  /** データを置くフォルダ（既定はリポジトリのルートの .p3。端末では聞く）。相対パスは実行した場所から */
   dir?: string;
   name?: string;
   description?: string;
@@ -185,11 +186,15 @@ export interface InitOptions {
   yes?: boolean;
   /** このリポジトリの参照先の名前（既定はフォルダ名） */
   repoName?: string;
+  /** 対話の問い（既定は端末の readline。テストが答えを渡す）。渡すと対話として聞く */
+  prompt?: (question: string) => Promise<string>;
 }
 
 /**
  * p3 init。管理したいリポジトリの中で実行する。
- *   - データを置くフォルダ（場所は自由。リポジトリの外を勧める）に project.yaml と requests/ を作る
+ *   - データを置くフォルダに project.yaml と requests/ を作る。既定はリポジトリのルート（git のメインの作業ツリー。
+ *     git 管理外なら実行した場所）の .p3。サブフォルダや追加の作業ツリーから実行してもルートの .p3 にする。
+ *     公開できないデータや、リポジトリと別に管理したいときは --dir でリポジトリの外を指せる
  *   - 既に作られたフォルダ（他の人が作って共有したもの）を指したら、作らずに参加だけする
  *   - どちらの場合も個人設定に「プロジェクト名 → フォルダ・手元のリポジトリ」を登録する。以後はリポジトリの中なら指定が要らない
  * 端末から実行すると対話式で聞き、--yes か非対話（AI・スクリプト）なら引数と推測した既定値で作る。
@@ -198,21 +203,23 @@ export async function init(o: InitOptions): Promise<string> {
   const root = repoRoot(o.cwd);
   const user = await loadUserConfig();
 
-  const interactive = !o.yes && process.stdin.isTTY && process.stdout.isTTY;
-  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+  const interactive = !o.yes && (!!o.prompt || (process.stdin.isTTY && process.stdout.isTTY));
+  const rl = interactive && !o.prompt ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+  const question = o.prompt ?? (rl ? (q: string) => rl.question(q) : undefined);
   const ask = async (q: string, def: string) => {
-    if (!rl) return def;
-    const a = (await rl.question(`${q}${def ? ` [${def}]` : ""}: `)).trim();
+    if (!question) return def;
+    const a = (await question(`${q}${def ? ` [${def}]` : ""}: `)).trim();
     return a || def;
   };
 
   try {
-    if (rl) console.log(`p3 のプロジェクトを作ります（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
+    if (question) console.log(`p3 のプロジェクトを作ります（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
     const key = await ask("プロジェクト名（切り替えに使う短い名前）", o.project ?? slugifyName(basename(root)) ?? "project");
     if (!PROJECT_NAME.test(key)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${key}`);
-    const dirRaw = o.dir ?? (await ask("データを置くフォルダ（リポジトリの外を勧めます）", ""));
-    if (!dirRaw) throw new UsageError("データを置くフォルダを指定してください。例: p3 init --project myapp --dir ~/p3-data/myapp");
-    const dir = resolvePath(o.cwd, dirRaw);
+    // 未指定ならルートの .p3（既定値は絶対パスで見せる）。指定したパス（相対は実行した場所から）はそのまま使い、外にも置ける。
+    // 明示した空のパスは未指定と分けて断る
+    if (o.dir !== undefined && !o.dir.trim()) throw new UsageError("--dir が空です。既定（リポジトリのルートの .p3）にするなら --dir を付けずに実行してください");
+    const dir = resolvePath(o.cwd, o.dir ?? (await ask("データを置くフォルダ（相対パスは今いる場所から。リポジトリの外も指定できます）", join(root, DATA_DIR_NAME))));
 
     const registered = user.projects[key];
     if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
