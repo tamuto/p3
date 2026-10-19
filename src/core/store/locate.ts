@@ -64,7 +64,7 @@ export async function checkDataDir(dataDir: string, projectName?: string): Promi
       projectName
         ? `    登録の場所を直すとき: p3 project ls で確かめ、p3 project rm ${name} → p3 project add ${name} <正しいフォルダ>（rm はデータを消さない）`
         : "    --dir で指すときは、project.yaml のあるフォルダを指す",
-      `  新しく作るなら: 管理したいリポジトリの中で p3 init --project ${name} --dir <フォルダ>`,
+      `  新しく作るなら: 管理したいリポジトリの中で p3 init --project ${name} --dir <フォルダ>（ほかの人が作ったものに参加するなら p3 join）`,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -135,13 +135,13 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
   throw new ProjectNotResolvedError(
     entries.length
       ? `操作するプロジェクトが決まりません（今いる場所: ${o.cwd}）。\n${listing(o.user)}`
-      : "プロジェクトがまだありません。管理したいリポジトリの中で次を実行してください:\n  p3 init --project <名前>（データはリポジトリのルートの .p3。外に置くなら --dir <フォルダ>）",
+      : "プロジェクトがまだありません。管理したいリポジトリの中で次のどちらかを実行してください:\n  新しく作る: p3 init --project <名前>（データはリポジトリのルートの .p3。外に置くなら --dir <フォルダ>）\n  共有されたものに参加する: p3 join --project <名前>（ルートの .p3 に無ければ --dir <データのフォルダ>）",
   );
 }
 
 function listing(user: UserConfig): string {
   const entries = Object.entries(user.projects);
-  if (!entries.length) return "  （登録済みのプロジェクトはありません。p3 init で作ってください）";
+  if (!entries.length) return "  （登録済みのプロジェクトはありません。p3 init で作るか、p3 join で参加してください）";
   const w = Math.max(...entries.map(([n]) => n.length));
   return [
     "  登録済みのプロジェクト:",

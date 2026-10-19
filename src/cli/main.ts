@@ -12,7 +12,7 @@ import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
-import { config, currentRequest, init, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, joinProject, locateHere, projectCommand, repoCommand, resolveActor, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
 import { readsOnly } from "./readOnly.ts";
 import { parse, type CommandEnv } from "./args.ts";
@@ -45,6 +45,16 @@ async function main(argv: string[]): Promise<number> {
   }
   const cwd = process.cwd();
   const out = new Output(o.json ?? false);
+
+  if (cmd === "join") {
+    // 参加は個人設定に登録するだけ。AI 向けのファイルと、作るときだけの項目は受け付けない（黙って無視しない）
+    if (o.agents !== undefined) throw new UsageError("join は AI 向けのファイルを置きません（--agents は使えません）。置く・最新にするなら p3 agents claude|codex|both");
+    const createOnly = (["name", "description", "instructions"] as const).filter((k) => o[k] !== undefined);
+    if (createOnly.length) throw new UsageError(`join では ${createOnly.map((k) => `--${k}`).join("・")} は使えません（共有の定義は変えません。変えるなら p3 config set）`);
+    if (args.length) throw new UsageError(`join は位置引数を取りません: ${args.join(" ")}（p3 join [--project <名前>] [--dir <フォルダ>] [--repo-name <名前>]）`);
+    console.log(await joinProject({ cwd, project: o.project, dir: o.dir, repoName: o["repo-name"], yes: o.yes }));
+    return 0;
+  }
 
   if (cmd === "init") {
     console.log(

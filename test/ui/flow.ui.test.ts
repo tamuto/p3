@@ -63,7 +63,9 @@ describe.skipIf(!inject("chromium").available)("主な流れ（要望の登録�
         const drawer = page.locator("aside");
         await drawer.getByLabel("ステータス").selectOption({ label: "作業中" });
         await drawer.getByRole("button", { name: "保存" }).click();
-        await until.visible(drawer.getByText(/^rev 2 /));
+        // 保存が済む（未保存の変更が無くなり、作業中にした日時が出る）。rev の数は作業先の割り当てでも進むので見ない
+        await until.disabled(drawer.getByRole("button", { name: "保存" }));
+        await until.text(drawer.getByText("作業中にした", { exact: true }).locator(".."), /作業中にした\s*\d/);
         await drawer.getByRole("button", { name: "✕" }).click();
         await until.visible(pane(s, "作業中").locator("article").filter({ hasText: id }));
       });

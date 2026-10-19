@@ -26,6 +26,8 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     "人への質問をタスクにしない",
     "`work`", // 作業先のリポジトリとブランチ
     "--repo-output", // 複数のリポジトリの PR を最後のタスクに残す
+    "`p3 init`", // 未登録でも自分から作らない・参加しない（どちらかを人に確かめる）
+    "`p3 join`",
   ];
   it.each(shared)("どちらにも「%s」がある", (word) => {
     expect(skill).toContain(word);
