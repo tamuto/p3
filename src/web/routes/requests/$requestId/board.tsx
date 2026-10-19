@@ -201,7 +201,8 @@ function Card({
         </span>
         {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
       </div>
-      <p className="mt-1 leading-snug font-medium">{t.title}</p>
+      {/* 題はパスなど区切りの無い長い文字も多いので、どこでも折り返してカードに収める */}
+      <p className="mt-1 leading-snug font-medium wrap-anywhere">{t.title}</p>
       {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0 || replaced) && (
         <div className="mt-2 flex flex-wrap gap-1">
           {replaced && !done && (
