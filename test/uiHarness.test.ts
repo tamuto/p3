@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 import { describe, expect, it } from "vitest";
 import { missingExecutable, probeChromium } from "./ui/chromium.ts";
 import { childBaseEnv } from "./ui/env.ts";
-import { checkBuilt } from "./ui/globalSetup.ts";
+import { checkBuilt, FONTCONFIG, jaFontconfig } from "./ui/globalSetup.ts";
 import { tempDir } from "./helpers.ts";
 
 describe("UI テストの Chromium の判定", () => {
@@ -37,6 +37,19 @@ describe("UI テストの Chromium の判定", () => {
 
   it("画面のビルドが無ければ、Chromium の有無によらず失敗にする", () => {
     expect(() => checkBuilt(join(tempDir(), "index.html"))).toThrow(/画面のビルドがありません.*pnpm build/);
+  });
+});
+
+describe("UI テストのフォント", () => {
+  it("Noto Sans CJK JP があれば動画と同じ fontconfig を使い、無ければ（fc-list も無ければ）既定のフォントのまま", () => {
+    expect(jaFontconfig(() => "Noto Sans CJK JP\n")).toBe(FONTCONFIG);
+    expect(FONTCONFIG).toMatch(/scripts\/fonts-ja\.conf$/);
+    expect(jaFontconfig(() => "")).toBeNull();
+    expect(
+      jaFontconfig(() => {
+        throw new Error("spawn fc-list ENOENT");
+      }),
+    ).toBeNull();
   });
 });
 
