@@ -349,7 +349,8 @@ function RequestCell({ p, top, narrow }: { p: RequestProgress; top: number; narr
     >
       <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
       <Hint content={`${r.title}\n${r.id}`} className="min-w-0">
-        <span className={cx("block font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "truncate")}>{r.title}</span>
+        {/* 狭い幅は2行で切る（line-clamp は display: -webkit-box が要るので block を付けない）。全文は Hint で見る */}
+        <span className={cx("font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "block truncate")}>{r.title}</span>
       </Hint>
     </Link>
   );
