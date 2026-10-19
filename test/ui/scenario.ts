@@ -16,27 +16,20 @@ export interface Scenario {
   browser: Browser;
   context: BrowserContext;
   page: Page;
-  /** 手順。失敗したら、どのシナリオのどの手順か・画面の画像の場所・サーバのログの末尾を付けて投げ直す（画像は on の画面。既定は page） */
-  step: <T>(name: string, fn: () => Promise<T>, on?: Page) => Promise<T>;
-  /** 幅とテーマを変えた別の画面（同じサーバ。閉じるのは close でまとめて） */
-  open: (o: { width: number; height?: number; colorScheme?: "light" | "dark" }) => Promise<Page>;
+  /** 手順。失敗したら、どのシナリオのどの手順か・画面の画像の場所・サーバのログの末尾を付けて投げ直す */
+  step: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
   close: () => Promise<void>;
 }
 
-export async function openScenario(
-  name: string,
-  opts: { viewport?: { width: number; height: number }; prepare?: (env: UiEnv) => Promise<void> } = {},
-): Promise<Scenario> {
+export async function openScenario(name: string, opts: { viewport?: { width: number; height: number } } = {}): Promise<Scenario> {
   const env = await makeUiEnv();
   let serve: Serve | undefined;
   let browser: Browser | undefined;
   try {
-    // 画面の操作の対象ではない状態は、サーバを起こす前に CLI で用意する
-    await opts.prepare?.(env);
     serve = await startServe(env);
     // ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
     browser = await chromium.launch();
-    const context = await browser.newContext({ baseURL: serve.url, viewport: opts.viewport ?? { width: 1280, height: 900 }, colorScheme: "light", locale: "ja-JP" });
+    const context = await browser.newContext({ baseURL: serve.url, viewport: opts.viewport ?? { width: 1280, height: 900 }, locale: "ja-JP" });
     context.setDefaultTimeout(UI_TIMEOUT);
     context.setDefaultNavigationTimeout(UI_TIMEOUT);
     const page = await context.newPage();
@@ -48,18 +41,12 @@ export async function openScenario(
       browser: b,
       context,
       page,
-      async step(stepName, fn, on = page) {
+      async step(stepName, fn) {
         try {
           return await fn();
         } catch (e) {
-          throw new Error(await describeFailure(name, stepName, e, on, s), { cause: e });
+          throw new Error(await describeFailure(name, stepName, e, page, s), { cause: e });
         }
-      },
-      async open(o) {
-        const c = await b.newContext({ baseURL: s.url, viewport: { width: o.width, height: o.height ?? 800 }, colorScheme: o.colorScheme ?? "light", locale: "ja-JP" });
-        c.setDefaultTimeout(UI_TIMEOUT);
-        c.setDefaultNavigationTimeout(UI_TIMEOUT);
-        return c.newPage();
       },
       async close() {
         await b.close().catch(() => {});
