@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>terminal</title>
+<style>
+  html,body{margin:0;height:100%;background:#1e2230;}
+  .win{position:absolute;inset:28px 40px 120px 40px;background:#0f1320;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column}
+  .bar{height:34px;background:#262b3a;display:flex;align-items:center;padding:0 14px;gap:8px;color:#9aa3b8;font:13px sans-serif}
+  .dot{width:12px;height:12px;border-radius:50%}
+  #screen{flex:1;padding:16px 20px;color:#d8dee9;font:17px/1.55 "Noto Sans Mono CJK JP",monospace;white-space:pre-wrap;word-break:break-all;overflow:hidden}
+  .p{color:#8fbcbb}.c{color:#ffffff}.o{color:#c8cfdb}.cur{display:inline-block;width:9px;height:1.1em;background:#d8dee9;vertical-align:text-bottom;animation:b 1s steps(1) infinite}
+  @keyframes b{50%{opacity:0}}
+</style></head>
+<body>
+<div class="win"><div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span style="margin-left:12px">ターミナル</span></div><div id="screen"></div></div>
+<script>
+const screen = document.getElementById("screen");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let cwd = "~";
+const cursor = document.createElement("span"); cursor.className = "cur";
+function prompt() {
+  const s = document.createElement("span"); s.className = "p"; s.textContent = `me@laptop:${cwd}$ `;
+  screen.append(s); screen.append(cursor); trim();
+}
+function trim() { while (screen.scrollHeight > screen.clientHeight && screen.firstChild) screen.firstChild.remove(); }
+window.term = {
+  setCwd(c) { cwd = c; },
+  start() { screen.textContent = ""; prompt(); },
+  async cmd(text, speed = 32) {
+    const c = document.createElement("span"); c.className = "c"; screen.insertBefore(c, cursor);
+    for (const ch of text) { c.textContent += ch; trim(); await sleep(speed); }
+    await sleep(350);
+    cursor.remove(); screen.append("\n");
+  },
+  async out(text, lineDelay = 45) {
+    for (const line of text.replace(/\n+$/, "").split("\n")) {
+      const o = document.createElement("span"); o.className = "o"; o.textContent = line + "\n"; screen.append(o); trim();
+      await sleep(lineDelay);
+    }
+  },
+  prompt,
+};
+term.start();
+</script></body></html>
