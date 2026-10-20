@@ -79,12 +79,12 @@ export interface Serve {
 }
 
 /** p3 serve を起こし、HTTP で画面が返るまで待つ。ポートが取られていたら（選んでから起こすまでの間に）別のポートで試し直す */
-export async function startServe(e: UiEnv, opts: { attempts?: number; timeoutMs?: number } = {}): Promise<Serve> {
+export async function startServe(e: UiEnv, opts: { attempts?: number; timeoutMs?: number; args?: string[] } = {}): Promise<Serve> {
   const attempts = opts.attempts ?? 3;
   let last = "";
   for (let i = 0; i < attempts; i++) {
     const port = await freePort();
-    const child = spawn("node", [P3_BIN, "serve", "--host", "127.0.0.1", "--port", String(port)], { cwd: e.repo, env: e.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("node", [P3_BIN, "serve", ...(opts.args ?? []), "--host", "127.0.0.1", "--port", String(port)], { cwd: e.repo, env: e.env, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     child.stdout.on("data", (d: Buffer) => (out += d.toString()));
     child.stderr.on("data", (d: Buffer) => (out += d.toString()));

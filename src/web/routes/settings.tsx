@@ -7,6 +7,7 @@ import { ThemePanel } from "../components/ThemePanel.tsx";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
+import { useUnsaved } from "../lib/unsaved.ts";
 
 /** 設定画面のタブ（1画面に1つの分類だけを出す）。選んだタブは URL（?tab=）に持つ */
 export const SETTINGS_TABS = [
@@ -71,6 +72,7 @@ function SettingsPage() {
   const updateMilestone = (i: number, patch: Partial<Milestone>) =>
     set("milestones", draft.milestones.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const unsaved: Record<SettingsTab, boolean> = { personal: false, project: dirty, repos: reposDirty };
+  useUnsaved(dirty || reposDirty);
   return (
     // ブラウザの幅をそのまま使う（ほかの画面と同じ）。狭い画面では左右の余白を縮める
     <div className={cx("w-full space-y-6 px-4 pt-6 sm:px-6 lg:px-8 lg:pt-8", tab === "project" ? "pb-24" : "pb-10")}>

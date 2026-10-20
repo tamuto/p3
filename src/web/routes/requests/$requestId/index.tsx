@@ -9,6 +9,7 @@ import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
 import { useServerEvents } from "../../../lib/live.ts";
 import { useEngineStatus } from "../../../lib/engineStatus.ts";
+import { useUnsaved } from "../../../lib/unsaved.ts";
 import { optionalString } from "../../../lib/search.ts";
 import { AttachmentsPanel } from "../../../components/Attachments.tsx";
 import { isDirty, sameBody } from "../../../lib/draft.ts";
@@ -86,6 +87,7 @@ function RequestPanel({
   // 未保存のタイトル・本文がある間は、Preflight の開始とタスク化を止める（保存していない内容は評価にもタスクにも渡らない）
   const unsaved = unsavedFields({ title: isDirty(drafts.titleD), body: editingBody && isDirty(drafts.bodyD, sameBody) });
   const blocked = unsaved.length ? UNSAVED_BLOCKED : null;
+  useUnsaved(unsaved.length > 0);
   const [error, setError] = useState<string | null>(null);
   // 個人設定を直したら、取り直したとき（タブに戻った・「再読み込み」など）に反映する
   const engine = useEngineStatus(ctx.tick);
@@ -184,6 +186,7 @@ function RequestPanel({
   const running = run?.status === "running";
   // メモ欄の入力は要望のページにいる間ずっと持つ（run を替えたり実行を始めたりしても消えない）
   const [draft, setDraft] = useState("");
+  useUnsaved(!!draft.trim());
   // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
   const hasHistory = runs.length > 0 || !!run;
   const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: false, pending: 0 });

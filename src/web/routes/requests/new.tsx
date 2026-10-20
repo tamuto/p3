@@ -5,6 +5,7 @@ import { TagInput } from "../../components/TagInput.tsx";
 import { Button, Field, inputCls } from "../../components/ui.tsx";
 import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
+import { useUnsaved } from "../../lib/unsaved.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { checkPending, sendPending, setUnsentAttachments, type PendingAttach } from "../../lib/uiMaterials.ts";
 
@@ -33,6 +34,7 @@ function NewRequest() {
   const [error, setError] = useState<string | null>(null);
   const check = checkPending(files.map((f) => f.file));
   const blocked = !!check.total || check.items.some(Boolean);
+  useUnsaved(!!(title.trim() || body.trim() || areas.trim() || due || milestone || tags.length || tagText.trim() || files.length));
   const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
   async function create() {

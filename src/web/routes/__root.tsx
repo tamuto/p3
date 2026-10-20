@@ -2,6 +2,8 @@ import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-rout
 import { Logo } from "../components/Logo.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
+import { currentScope } from "../lib/scope.ts";
+import { ProjectSwitcher } from "../components/ProjectSwitcher.tsx";
 
 /**
  * 全画面の共通部分。ページは src/web/routes/ にファイルを置けば足りる（ルート一覧 routeTree.gen.ts は自動生成）。
@@ -75,6 +77,8 @@ function Layout() {
           </span>
         )}
       </header>
+      {/* プロジェクトを跨ぐ serve: 今のプロジェクトをどの画面でも見せ、ここで切り替える */}
+      {currentScope().mode === "all-projects" && <ProjectSwitcher />}
 
       {ctx.refreshing.error && (
         <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">

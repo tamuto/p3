@@ -12,6 +12,7 @@ import { Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
+import { useUnsaved } from "../lib/unsaved.ts";
 
 type Fields = Pick<Task, "title" | "status" | "body"> & { labels: string; areas: string; outputs: string; record: string };
 
@@ -43,6 +44,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const [msg, setMsg] = useState<string | null>(null);
   const latest = useRef(latestOnly());
   const dirty = !!draft && isDirty(draft, shallowEqual);
+  useUnsaved(dirty);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。

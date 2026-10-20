@@ -22,6 +22,7 @@ import {
 } from "../../lib/releaseNoteDraft.ts";
 import { Button, buttonCls, cx, inputCls } from "../ui.tsx";
 import { MaterialView, Warnings } from "./MaterialView.tsx";
+import { useUnsaved } from "../../lib/unsaved.ts";
 
 /**
  * 1つのマイルストーンのリリースノート。対象の要望（MaterialView）、要約の生成（左）、本文の編集と保存（右）。
@@ -295,6 +296,7 @@ function NoteEditor({
   onReload: () => void;
 }) {
   const dirty = isNoteDirty(draft);
+  useUnsaved(dirty);
   const [copied, setCopied] = useState<string | null>(null);
   const ext = draft.external;
   // 読めないファイルがあるときは保存しない（新規でも更新でも上書きしない。直してから読み直す）
