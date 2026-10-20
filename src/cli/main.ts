@@ -4,7 +4,7 @@ import { openProject } from "../core/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
-import { startServer } from "../server/server.ts";
+import { startServer, type RunningServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
 import { DataDirError, onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
 import { loadUserConfig, UserConfigError } from "../core/userConfig.ts";
@@ -36,6 +36,33 @@ import { GenerationRejected } from "../core/releaseNotes/generate.ts";
  * または要望の作業ツリー（ブランチ req/<要望ID>-...）から決まる。
  */
 
+/**
+ * SIGTERM（docker stop）・SIGINT（Ctrl-C）で止める。新しい要求を断り、実行中の Preflight・生成を取り消して終わるまで待ってから終わる。
+ * 2回目の信号ではすぐ終わる
+ */
+function serveUntilSignal(server: RunningServer): Promise<number> {
+  return new Promise<number>((done) => {
+    let stopping = false;
+    const stop = (signal: string) => {
+      if (stopping) return done(1);
+      stopping = true;
+      process.stderr.write(`p3: ${signal} を受けたので止めます（実行中の Preflight・生成は取り消して記録します）\n`);
+      void (async () => {
+        try {
+          const { pending } = await server.close();
+          if (pending) process.stderr.write(`p3: 待ちきれずに止めました（終わっていない実行 ${pending} 件）\n`);
+          done(pending ? 1 : 0);
+        } catch (e) {
+          process.stderr.write(`p3: 止める途中で失敗しました: ${(e as Error).message}\n`);
+          done(1);
+        }
+      })();
+    };
+    process.on("SIGTERM", () => stop("SIGTERM"));
+    process.on("SIGINT", () => stop("SIGINT"));
+  });
+}
+
 async function main(argv: string[]): Promise<number> {
   const { values: o, positionals } = parse(argv);
   const [cmd, ...args] = positionals;
@@ -48,6 +75,21 @@ async function main(argv: string[]): Promise<number> {
 
   // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
   if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
+  // --all-projects は serve だけ。1つのプロジェクトを決める指定とは一緒に使えない（どちらかに黙って決めない）
+  if (o["all-projects"]) {
+    if (cmd !== "serve") throw new UsageError("--all-projects は p3 serve でだけ使えます");
+    if (o.project !== undefined || o.dir !== undefined) {
+      throw new UsageError("--all-projects と --project / --dir は一緒に使えません（1つのプロジェクトだけを開くなら --all-projects を外す）");
+    }
+    // プロジェクトを決めずに起動する（個人設定が壊れていても、画面で理由を見せて直せるように起動する）
+    const user = await loadUserConfig().catch((e: Error) => {
+      process.stderr.write(`⚠ ${e.message}（待ち受けは既定の値で起動します）\n`);
+      return { settings: {} };
+    });
+    const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
+    const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
+    return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+  }
 
   // AI 向けの使い方を置く・最新にする。今いるリポジトリのルートに置くだけで、プロジェクトは決めない（データ・個人設定は変えない）
   if (cmd === "agents") {
@@ -141,8 +183,9 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source });
-    return await new Promise<number>(() => {}); // 終了まで動き続ける
+    return serveUntilSignal(
+      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
+    );
   }
 
   const ctx = await openProject(target.dataDir, { repos: target.repos, settings, projectName: target.name });

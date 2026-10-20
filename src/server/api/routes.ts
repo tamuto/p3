@@ -106,8 +106,13 @@ function download(c: Context, data: Buffer, format: AttachmentFormat, name: stri
   });
 }
 
-export function apiRoutes(ctx: P3Context) {
+/**
+ * notify: プロジェクトに属さない変更（ChatGPT の接続・テーマ）の知らせ方。省くとこのプロジェクトの画面へだけ流す
+ * （プロジェクトを跨ぐ serve では開いている全プロジェクトへ）
+ */
+export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chatgpt") => void } = {}) {
   const { ws, preflight } = ctx;
+  const notify = opts.notify ?? ((kind: "user" | "chatgpt") => ws.emit({ type: "changed", kind }));
   const app = new Hono();
 
   app.onError((err, c) => {
@@ -156,9 +161,9 @@ export function apiRoutes(ctx: P3Context) {
   app.post("/reload", async (c) => c.json(await ws.reloadAll()));
   /** Preflight のエンジンが使えるか（Codex なら Docker・認証・イメージを確かめる） */
   app.get("/engine", async (c) => c.json(await preflight.engineStatus()));
-  if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, ws, preflight));
+  if (ctx.chatgpt) app.route("/chatgpt", chatgptRoutes(ctx.chatgpt, { changed: () => notify("chatgpt"), engine: () => preflight.engineStatus() }));
   /** 個人設定のテーマ（このマシンのすべてのプロジェクトで共通。ほかの個人設定は扱わない） */
-  app.route("/user-theme", userThemeRoutes(() => ws.emit({ type: "changed", kind: "user" })));
+  app.route("/user-theme", userThemeRoutes(() => notify("user")));
   /** 最初の描画の前に読むスクリプト（index.html の先頭）。テーマだけを埋め込み、キャッシュさせない */
   app.route("/user-theme.js", userThemeScriptRoute());
 
@@ -347,28 +352,31 @@ export function apiRoutes(ctx: P3Context) {
   app.get("/resolve", (c) => c.json(resolve(ctx, c.req.query("q") ?? "", c.req.query("request"))));
 
   // --- events (SSE) ------------------------------------------------------
-  app.get("/events", (c) =>
-    streamSSE(c, async (stream) => {
-      const queue: ServerEvent[] = [];
-      let wake: (() => void) | undefined;
-      const off = ws.on((e) => {
-        queue.push(e);
-        wake?.();
-      });
-      stream.onAbort(() => {
-        off();
-        wake?.();
-      });
-      while (!stream.aborted) {
-        if (!queue.length) {
-          await Promise.race([new Promise<void>((r) => (wake = r)), stream.sleep(25000)]);
-          wake = undefined;
-          if (!queue.length) await stream.writeSSE({ event: "ping", data: "" });
-        }
-        while (queue.length) await stream.writeSSE({ data: JSON.stringify(queue.shift()) });
-      }
-    }),
-  );
+  app.get("/events", (c) => eventStream(c, (push) => ws.on(push)));
 
   return app;
+}
+
+/** 変更の知らせを SSE で流す（subscribe は知らせを受け取る関数を登録し、外す関数を返す）。25 秒ごとに ping */
+export function eventStream(c: Context, subscribe: (push: (e: ServerEvent) => void) => () => void) {
+  return streamSSE(c, async (stream) => {
+    const queue: ServerEvent[] = [];
+    let wake: (() => void) | undefined;
+    const off = subscribe((e) => {
+      queue.push(e);
+      wake?.();
+    });
+    stream.onAbort(() => {
+      off();
+      wake?.();
+    });
+    while (!stream.aborted) {
+      if (!queue.length) {
+        await Promise.race([new Promise<void>((r) => (wake = r)), stream.sleep(25000)]);
+        wake = undefined;
+        if (!queue.length) await stream.writeSSE({ event: "ping", data: "" });
+      }
+      while (queue.length) await stream.writeSSE({ data: JSON.stringify(queue.shift()) });
+    }
+  });
 }

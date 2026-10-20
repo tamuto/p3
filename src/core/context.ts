@@ -33,7 +33,7 @@ export interface P3Context {
  */
 export async function openProject(
   dataDir: string,
-  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string } = {},
+  opts: { repos?: Record<string, string>; settings?: MachineSettings | SettingsSource; projectName?: string; chatgpt?: ChatGptAccount } = {},
 ): Promise<P3Context> {
   // データのフォルダと project.yaml が無ければ、空のプロジェクトとして開かずに止める（何も作らない）
   await checkDataDir(dataDir, opts.projectName);
@@ -44,7 +44,8 @@ export async function openProject(
   await ws.load();
   // 既定は Codex（ChatGPT プランか旧来の auth.json。どちらも無ければ使えない理由と次にすることを出す）。
   // Mock は preflight.engine: mock（P3_PREFLIGHT_ENGINE=mock）か --engine mock で明示したときだけ（認証の失敗を Mock の成功に見せない）
-  const chatgpt = chatgptAccount();
+  // プロジェクトを跨ぐ serve では、サインインの待ち受けを全プロジェクトで1つにするため外から渡す
+  const chatgpt = opts.chatgpt ?? chatgptAccount();
   const codex = new CodexWorkspaceEngine({ load: async () => codexConfig(await source.get()), account: chatgpt });
   const engines: Partial<Record<PreflightEngine["name"], PreflightEngine>> = { codex, mock: new MockEngine() };
   const preflight = new PreflightService(ws, engines, {

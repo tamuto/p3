@@ -232,6 +232,18 @@ export class PreflightService {
     this.active.get(runId)?.abort.abort();
   }
 
+  /** 実行中の run の数 */
+  running(): number {
+    return this.active.size;
+  }
+
+  /** 実行中の run が全部終わるまで待つ（cancel: 先に全部を取り消す）。serve を止める・登録から外れたプロジェクトを閉じる前に */
+  async settle(opts: { cancel?: boolean } = {}): Promise<void> {
+    const jobs = [...this.active.values()];
+    if (opts.cancel) for (const j of jobs) j.abort.abort();
+    await Promise.allSettled(jobs.map((j) => j.done));
+  }
+
   private log(run: PreflightRun, e: Omit<PreflightLogEntry, "at">) {
     // トークンらしいもの（Codex のエラーが一部を見せるキーなど）は残さない
     const entry = { ...e, text: redact(e.text), at: nowIso() };

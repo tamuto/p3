@@ -438,6 +438,11 @@ p3 render 画面.html --width 1280            # 画面.png ができる（幅 32
 
 `p3 serve` で開く（既定 http://localhost:4310）。画面の状態は URL に載る。
 
+`p3 serve --all-projects` で開くと、今いる場所のプロジェクトではなく、個人設定に登録したプロジェクト（`p3 project ls`）を跨いで
+扱う。どのプロジェクトでも通常の serve と同じ操作ができる（閲覧専用ではない）。`--project` / `--dir` とは一緒に使えない。
+登録を足した・外したら、画面で一覧を読み直せば反映する（serve の起動し直しは要らない）。同じデータのフォルダを複数の名前で
+登録していると、どれも開かない（`p3 project rm <名前>` で1つにする）。決まりは [architecture](architecture.md#プロジェクトを跨ぐ-servep3-serve---all-projects)
+
 | URL | 画面 |
 | --- | --- |
 | `/` | 進捗。左に要望、右にスケジュール。`?show=` で 未完了（既定）/ `resolved`（確認待ち）/ `closed`（完了済・見送り）/ `all`。`?tags=` |
@@ -593,4 +598,4 @@ AI にも CLI を使わせる（認証を持たせずに済む）。`p3 init --a
 | `p3 new` / `p3 set` / `p3 move` / `p3 check` / `p3 archive` | タスクを足す / 直す / 状態を変える / 済みにする / アーカイブ |
 | `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`）/ メモ / 評価とタスク案 / タスク化 |
 | `p3 attach` / `p3 render` | 添付 / 画面イメージの描画 |
-| `p3 chatgpt` / `p3 codex update` / `p3 serve` | ChatGPT の接続 / Codex のイメージ / 画面 |
+| `p3 chatgpt` / `p3 codex update` / `p3 serve` | ChatGPT の接続 / Codex のイメージ / 画面（`--all-projects` で登録したプロジェクトを跨ぐ） |

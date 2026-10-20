@@ -1,24 +1,25 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ChatGptAccount } from "../../core/chatgpt.ts";
-import type { PreflightService } from "../../core/preflight/service.ts";
-import type { Workspace } from "../../core/store/workspace.ts";
+import type { EngineStatus } from "../../core/preflight/engine.ts";
 import { localOnly } from "./local.ts";
 
 /**
  * /api/chatgpt。サインインの待ち受けは serve のプロセスが行う（同時に1つ。ページを読み直しても待っている試行を返す）。
  * 返すのは状態だけで、トークンは返さない。
+ * changed: 接続が変わったことを画面へ知らせる（プロジェクトを跨ぐ serve では開いている全プロジェクトへ）。
+ * engine: Preflight のエンジンの状態（プロジェクトごと。プロジェクトを選んでいない入口では無い）
  */
-export function chatgptRoutes(account: ChatGptAccount, ws: Workspace, preflight: PreflightService) {
+export function chatgptRoutes(account: ChatGptAccount, opts: { changed: () => void; engine?: () => Promise<EngineStatus> }) {
   const app = new Hono();
-  const changed = () => ws.emit({ type: "changed", kind: "chatgpt" });
+  const changed = opts.changed;
   app.use("*", async (c, next) => {
     const why = localOnly(c, c.req.method !== "GET");
     if (why) return c.json({ error: why }, 403);
     await next();
   });
 
-  app.get("/", async (c) => c.json({ ...(await account.status()), engine: await preflight.engineStatus() }));
+  app.get("/", async (c) => c.json({ ...(await account.status()), engine: opts.engine ? await opts.engine() : null }));
 
   app.post("/login", async (c) => {
     const attempt = await account.startLogin();

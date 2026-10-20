@@ -682,7 +682,7 @@ export interface ProjectConfig {
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
 export type ServerEvent =
-  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "projects" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
   | { type: "changed"; kind: "release-note"; milestone: string }
   /** リリースノートの要約の生成の状態が変わった */

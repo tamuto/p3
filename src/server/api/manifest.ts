@@ -16,6 +16,15 @@ export const AI_MANIFEST = {
   },
   relationTypes: RELATION_TYPES, // タスクの関係は depends_on と supersedes だけ（Preflight のタスク化が張る。手で張る API は無い）
   endpoints: [
+    { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects}" },
+    {
+      method: "GET",
+      path: "/api/projects",
+      desc:
+        "（all-projects だけ）個人設定を読み直した一覧 {projects: [{name, generation（登録世代）, state: ok|error, error?, open}], invalid: [{name, reason}], configError?}。" +
+        "ここに無い API は /api/projects/:project/... の下に置く（通常の serve の /api/... と同じ）。変える操作には x-p3-project-generation が要る（無ければ 428、違えば 409 code: changed）。" +
+        "プロジェクトを書かないデータの API は 404 code: project_required。/api/chatgpt（engine は null）・/api/user-theme・/api/events（一覧・テーマ・接続の変更）はプロジェクトを選ばずに使える",
+    },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
     {
       method: "POST",
