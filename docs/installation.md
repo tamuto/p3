@@ -23,6 +23,8 @@ Docker と ChatGPT の接続が要るのは Preflight（Codex）・リリース�
 | 7 | Codex のイメージを作る | `p3 codex update` が「Codex を更新しました: codex-cli …」 |
 | 8 | 画面を開いて、試しに Preflight を動かす | 評価とタスク案が出る |
 
+P3 を Docker のコンテナで動かす（プロジェクトを跨ぐ serve を既定にする）ときは、後の「[Docker で動かす](#docker-で動かすプロジェクトを跨ぐ-serve)」。
+
 ## 1. 必要なもの
 
 | もの | 何に使う | 確かめ方 |
@@ -292,6 +294,75 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 
 `p3 user-config` で全部の値と出どころを見て、`p3 user-config set キー=値` で変える（`キー=` で消す）。コメントとほかの項目は残る。
 環境変数は serve を起動したときのものが使われる。
+
+## Docker で動かす（プロジェクトを跨ぐ serve）
+
+P3 をイメージにして、コンテナで動かすこともできる。イメージの既定は **プロジェクトを跨ぐ serve**（`p3 serve --all-projects
+--host 0.0.0.0`）で、個人設定に登録したプロジェクトを画面で選んで扱う（[使い方ガイド](how-to-use.md#画面)）。閲覧専用ではなく、
+要望・タスクの作成と編集・添付・Preflight もいつもどおり使える。npm には公開していないので、リポジトリから作る。
+
+```bash
+docker build -t infodb-p3 .        # リポジトリのルートで（Node 24 で画面をビルドし、実行は Node 22）
+```
+
+**マウントと個人設定**: プロジェクトのデータのフォルダと参照先（リポジトリ）は、ホストのフォルダを **同じパスで** マウントする
+（Codex・描画のコンテナはホストのデーモンが作るので、パスが同じならパスの対応 `codex.pathMap` は要らない）。データは書く、
+参照先は Preflight が読むだけ。個人設定・ChatGPT の接続は `/config`（`XDG_CONFIG_HOME`）に置き、残るようにマウントする。
+ホストの `~/.config/infodb-p3` をそのまま置くだけでは、登録のパスがコンテナの中と合わないことがあるので、コンテナ用に分けて
+コンテナの中で登録する。
+
+```bash
+mkdir -p ~/.config/infodb-p3-docker
+docker run -d --name p3 --restart unless-stopped \
+  --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:4310:4310 \
+  -v ~/.config/infodb-p3-docker:/config \
+  -v /home/me/work:/home/me/work \
+  infodb-p3
+
+# プロジェクトをコンテナの中で登録する（既にあるデータに参加する。新しく作るなら p3 init）
+docker exec -w /home/me/work/myapp p3 p3 join --project myapp --yes
+docker exec p3 p3 project ls
+```
+
+- `--user` はホストの自分の UID / GID にする（マウントしたファイルを書けるように。コンテナの既定は利用者 `node`（1000））。
+  マウントしたリポジトリは持ち主が違っても読めるよう、イメージの git は `safe.directory` を `*` にしている
+- 待ち受けは `127.0.0.1` に公開する。ブラウザで http://localhost:4310 を開き、一覧からプロジェクトを選ぶ。登録を足したら
+  画面の「一覧を読み直す」（コンテナの起動し直しは要らない）
+- **通常の serve に戻す**: コマンドを明示する（例: `docker run ... infodb-p3 serve --project myapp --host 0.0.0.0`）。
+  明示しない限り、コンテナの中かどうかで自動では切り替えない
+- **止める**: `docker stop p3`（SIGTERM。実行中の Preflight・生成を取り消して記録してから止まる。10 秒まで待つ）
+
+**ブラウザから変えられない操作**: コンテナに公開したポートからの接続は「このマシン」からではないので、ローカルだけの操作
+（ChatGPT の接続・テーマ・参照先のこのマシンのパス）は画面からは断られる。コンテナの中の CLI で行う:
+
+```bash
+docker exec -it p3 p3 chatgpt login --paste      # 表示された URL をホストのブラウザで開き、「接続できません」の URL を貼る
+docker exec p3 p3 user-config set ui.theme=dark
+docker exec p3 p3 --project myapp repo path main /home/me/work/myapp
+```
+
+要望・タスクの作成と編集、Preflight の実行など、ほかの操作は画面からできる。
+
+**Preflight（Codex）と画面イメージの描画**: コンテナの中に Docker のデーモンは無い。ホストのデーモンのソケットを渡すと使える:
+
+```bash
+docker run -d --name p3 ... \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --group-add "$(stat -c %g /var/run/docker.sock)" \
+  ...
+docker exec p3 p3 codex update      # Codex のイメージを作る（ホストのデーモンに作る）
+```
+
+- ソケットを渡すと、コンテナの中から **ホストの Docker を何でも操作できる**（ホストの管理者と同じ強さ）。信頼できるマシンでだけ渡す
+- Codex・描画のコンテナはホストのデーモンが作り、データのフォルダと参照先を **ホストのパスで** マウントする。上のように同じパスで
+  マウントしていれば対応は要らない。違うパスでマウントしたときは、コンテナの中のパスとホストのパスの対応を
+  `docker exec p3 p3 user-config set codex.pathMap+=<コンテナの中のパス>=<ホストのパス>` で全部のプロジェクトの分を足す（5.）
+- ChatGPT の接続は `/config` に残るので、コンテナを作り直しても接続し直さなくてよい
+- ソケットを渡していない・繋がらないときも、要望・タスクの作成と編集・プロジェクトの選択は使える。Preflight は
+  使えない理由と直し方を出して止まる（Mock には落とさない）。その間は Preflight を通さずにタスクを作ってよい
+  （[使い方ガイド](how-to-use.md#preflight-を通さずにタスクを作る)）
+- P3 を作り直してイメージの中身（入れる道具）が変わったら `docker exec p3 p3 codex update`
 
 ## 補足: 旧来の認証と Mock
 
