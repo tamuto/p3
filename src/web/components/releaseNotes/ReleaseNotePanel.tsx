@@ -91,7 +91,8 @@ export function ReleaseNotePanel({ milestone }: { milestone: string }) {
     try {
       setGen(await api.generateReleaseNote(milestone));
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      // 始められなくても（Codex を使えない・材料が上限を超えるなど）、本文は手で書いて保存できる
+      setMsg({ ok: false, text: `${(e as Error).message}。${MANUAL_NOTE}` });
     }
   }
 
@@ -194,6 +195,7 @@ function GenerationView({
       </h3>
       <p className="text-sm text-slate-500 dark:text-slate-400">
         収録する要望のタスクの変更の記録から Codex が要約します。保存はされず、編集欄にも勝手には入りません。
+        生成せずに、本文を手で書いて保存することもできます（Docker や ChatGPT の接続は要りません）。
       </p>
       {!hasSources && !gen && <p className="rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-900">要約の材料（変更の記録のある完了したタスク）がありません。本文を手で書いて保存してください。</p>}
 
@@ -208,6 +210,14 @@ function GenerationView({
           {gen.status === "failed" && (
             <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
               生成できませんでした（{FAILURE_LABEL[gen.failure ?? "error"]}）: {gen.error}
+            </p>
+          )}
+          {gen.status === "failed" && (
+            <p className="flex flex-wrap items-center gap-x-2 text-sm text-slate-600 dark:text-slate-400">
+              {MANUAL_NOTE}
+              <button type="button" className="underline hover:text-indigo-600" onClick={() => document.getElementById(BODY_ID)?.focus()}>
+                本文を手で書く
+              </button>
             </p>
           )}
           {gen.status === "cancelled" && <p className="text-sm text-slate-500">取り消しました。</p>}
@@ -253,6 +263,10 @@ function GenerationView({
     </section>
   );
 }
+
+/** 生成できないときの、手で書く道（保存は生成によらない） */
+const MANUAL_NOTE = "生成しなくても、本文を手で書いて保存できます（Docker や ChatGPT の接続は要りません）";
+const BODY_ID = "rn-body";
 
 const FAILURE_LABEL = { unavailable: "Codex を使えません", usage_limit: "使用量の上限", timeout: "時間切れ", invalid_output: "結果の形が違います", error: "エラー" } as const;
 
@@ -329,6 +343,7 @@ function NoteEditor({
       <label className="block space-y-1">
         <span className="sr-only">本文</span>
         <textarea
+          id={BODY_ID}
           rows={14}
           value={draft.value}
           onChange={(e) => onEdit(e.target.value)}

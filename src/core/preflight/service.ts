@@ -31,6 +31,7 @@ import { extractXlsx, XlsxError } from "./xlsx.ts";
 import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
 import { compareInput, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
 import { changedLabel } from "../../shared/preflightInput.ts";
+import { PREFLIGHT_CANCELLED } from "../../shared/directTask.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -38,6 +39,9 @@ const failing = (name: PreflightEngine["name"], message: string): PreflightEngin
   status: async () => ({ name, ok: false, detail: message }),
   run: async () => Promise.reject(new Error(message)),
 });
+
+/** 同じ要望の Preflight が実行中（エンジンを使えないのとは別） */
+export class PreflightBusyError extends Error {}
 
 /** タスク案の題が、編集を始めたあとに外で変わった（409 code: rev_conflict。current に今の案） */
 export class DraftConflictError extends Error {
@@ -130,7 +134,7 @@ export class PreflightService {
     const input = normalizeInput(current);
     const request: Request = { ...current, ...input };
     if ([...this.active.values()].some((a) => a.run.requestId === requestId)) {
-      throw new Error(`${requestId} の preflight は実行中です`);
+      throw new PreflightBusyError(`${requestId} の preflight は実行中です`);
     }
     // 既定のエンジンは始めるたびに個人設定から決める。読めなければ、この run を設定のエラーとして失敗にする
     // （古い設定や Mock に落とさない。serve とほかの操作は続ける）
@@ -292,7 +296,8 @@ export class PreflightService {
     } catch (e) {
       run.status = "failed";
       run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
-      run.error = redact((e as Error).message);
+      // 取消はエンジンによらず同じ言い方で残す（失敗とは分けて扱う。shared/directTask.ts）
+      run.error = signal.aborted ? PREFLIGHT_CANCELLED : redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
       run.finishedAt = nowIso();

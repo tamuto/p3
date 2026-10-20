@@ -21,6 +21,7 @@ import { useRequestDrafts } from "../../../lib/requestDrafts.ts";
 import { latestOnly, STALE } from "../../../lib/latest.ts";
 import { createPulsePoller, latestNotice, shownRunChanged } from "../../../lib/preflightWatch.ts";
 import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx";
+import { DirectTaskLink } from "../../../components/request/DirectTaskLink.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -271,6 +272,8 @@ function RequestPanel({
             ))}
           </select>
         )}
+        {/* 使えないと分かったときだけ（状態を取れなかったときは、使えるとも使えないとも言わない） */}
+        {engine && !engine.ok && !engine.unknown && <DirectTaskLink requestId={request.id} />}
         {pulseError && (
           <p role="status" className="flex w-full flex-wrap items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
             最新の Preflight を確かめられませんでした（{pulseError}）。表示と入力はそのままです

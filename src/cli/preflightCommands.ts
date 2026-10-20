@@ -10,7 +10,9 @@ import { UsageError } from "./project.ts";
 import { StaleInputError, staleMessage } from "../core/preflight/input.ts";
 import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 import { readBody, type CommandEnv } from "./args.ts";
-import { deps, indent } from "./output.ts";
+import { deps, directTaskHint, indent } from "./output.ts";
+import { PreflightBusyError } from "../core/preflight/service.ts";
+import { preflightFailed } from "../shared/directTask.ts";
 
 /** Preflight のコマンド（preflight / attach / notes / drafts / accept）。扱わないコマンドは undefined */
 
@@ -29,16 +31,22 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       const off = ctx.ws.on((e) => {
         if (e.type === "preflight-log" && !out.json) process.stderr.write(`${e.entry.at.slice(11, 19)} ${e.entry.text}\n`);
       });
+      const hint = () => directTaskHint(rid, { project: o.project, dir: o.dir });
       const started = await ctx.preflight.start(rid, { engine, actor }).catch((e: Error) => {
         off();
         // メモは残っているので、書き直さずに p3 preflight だけで再実行できる
-        throw note ? new Error(`${e.message}（メモ ${note.id} は保存済みです。p3 preflight ${rid} で再実行できます）`) : e;
+        const err = note ? new Error(`${e.message}（メモ ${note.id} は保存済みです。p3 preflight ${rid} で再実行できます）`) : e;
+        // 始められなかったら直接作る道を添える（実行中・要望が無いときは別の理由なので添えない。終了コードは変えない）
+        if (!(e instanceof PreflightBusyError) && !(e instanceof NotFoundError)) err.message += `\n${hint()}`;
+        throw err;
       });
       if (!out.json) process.stderr.write(`preflight ${started.id} (${started.engine})\n`);
       const run = await ctx.preflight.wait(rid, started.id);
       off();
       if (!run) throw new Error("preflight の結果が読めません");
       out.result(run, () => formatRun(ctx, rid, run));
+      // 失敗したら直接作る道を stderr に出す（--json の stdout は変えない。取消は失敗と扱わない）
+      if (preflightFailed(run)) process.stderr.write(`${hint()}\n`);
       return run.status === "completed" ? 0 : 1;
     }
 

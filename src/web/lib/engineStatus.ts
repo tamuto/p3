@@ -6,6 +6,7 @@ import { latestOnly, STALE } from "./latest.ts";
 export const unknownEngine = (message: string): EngineStatus => ({
   name: "codex",
   ok: false,
+  unknown: true,
   detail: `Preflight のエンジンの状態を確かめられません（${message}）。「再読み込み」でもう一度確かめます`,
 });
 

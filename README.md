@@ -26,6 +26,8 @@
 | Docker（CLI とデーモン） | Preflight の Codex をコンテナの中で動かす |
 | ChatGPT のアカウント（プラン） | Preflight の Codex をその人のアカウントで動かす |
 
+Docker と ChatGPT が無くても、要望・タスクの管理は使える（Preflight を通さずにタスクを作る。[使い方ガイド](docs/how-to-use.md#preflight-を通さずにタスクを作る)）。
+
 ## 最短の手順
 
 管理したいリポジトリの中で:

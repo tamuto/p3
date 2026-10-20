@@ -60,6 +60,20 @@ describe("REST API", () => {
     expect(listed.notes.map((n: any) => n.pending)).toEqual([false, false, true]);
   });
 
+  it("Preflight を通さずに画面から直接作るタスク（題・本文・未着手・作業先なし）は、要望の状態を変えず、Preflight の記録も作らない", async () => {
+    const { call } = await setup();
+    const rid = (await call("POST", "/requests", { title: "下書きの要望", body: "" })).body.id;
+    const made = await call("POST", `/requests/${rid}/tasks`, { title: "直接作る", body: "- 完了条件\n", status: "todo", repo: null });
+    expect(made.status).toBe(201);
+    expect(made.body).toMatchObject({ id: "T001", title: "直接作る", body: "- 完了条件\n", status: "todo", relations: [] });
+    expect(made.body.repo ?? null).toBeNull();
+    expect(made.body.reopened).toBeUndefined();
+    const shown = (await call("GET", `/requests/${rid}`)).body;
+    expect(shown.request.status).toBe("draft");
+    expect(shown.request.lastPreflight).toBeUndefined();
+    expect(shown.runs).toEqual([]);
+  });
+
   it("古い rev での更新は 409 と最新状態を返す", async () => {
     const { call, rid } = await setup();
     await call("POST", `/requests/${rid}/tasks`, { title: "A" });

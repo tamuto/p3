@@ -5,6 +5,8 @@ import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote,
 import { readBody, type CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
 import { UsageError } from "./project.ts";
+import { shellArg } from "./output.ts";
+import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 
 /**
  * p3 release-notes ...   マイルストーンごとのリリースノート（規則と保存は core/releaseNotes）
@@ -56,7 +58,12 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
 
     case "generate": {
       if (o.engine !== undefined && o.engine !== "codex" && o.engine !== "mock") throw new UsageError("--engine は codex か mock");
-      const g = await startGeneration(ctx, need(), actor, o.engine);
+      const id = need();
+      const g = await startGeneration(ctx, id, actor, o.engine).catch((e: Error) => {
+        // 始められなければ手で書く道を添える（実行中は別の理由なので添えない。終了コードは変えない）
+        if (e instanceof GenerationRejected && e.code !== "running") e.message += `\n${manualSaveHint(id)}`;
+        throw e;
+      });
       const gen = ctx.releaseGenerator;
       // 進み具合は stderr（stdout は本文の案か JSON だけにする）
       let shown = 0;
@@ -71,6 +78,8 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
       if (done.status !== "completed") {
         if (out.json) out.result(done, () => "");
         else process.stderr.write(`${failureLine(done)}\n`);
+        // 失敗したら手で書く道を stderr に出す（--json の stdout は変えない。取消は失敗と扱わない）
+        if (done.status === "failed") process.stderr.write(`${manualSaveHint(done.milestone)}\n`);
         return 1;
       }
       if (!out.json) {
@@ -121,6 +130,17 @@ function materialLines(m: ReleaseMaterial): string[] {
 function flushLog(g: ReleaseGeneration, from: number): number {
   for (const e of g.log.slice(from)) process.stderr.write(`[${e.kind}] ${e.text}\n`);
   return g.log.length;
+}
+
+/** 要約を生成できないときの、本文を手で書いて保存する道（Codex・Docker・ChatGPT は要らない） */
+function manualSaveHint(mid: string): string {
+  const m = shellArg(mid);
+  return [
+    "生成せずに、本文を手で書いて保存できます（Docker や ChatGPT の接続は要りません）:",
+    `  p3 release-notes show ${m}                       # 材料（収録する要望と変更の記録）を確かめる`,
+    `  p3 release-notes save ${m} --file <本文.md>       # 新しく保存する`,
+    `  既にノートがあるときは、show で読んだ版を付けて更新します: p3 release-notes save ${m} --file <本文.md> --version <版>`,
+  ].join("\n");
 }
 
 function failureLine(g: ReleaseGeneration): string {
