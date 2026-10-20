@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
+import { NewTaskForm } from "../../../components/request/NewTaskForm.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { useAppData } from "../../../lib/appData.tsx";
-import { Badge, cx, Empty, Id } from "../../../components/ui.tsx";
+import { Badge, Button, cx, Empty, Id } from "../../../components/ui.tsx";
 import { api, failureOf } from "../../../lib/api.ts";
 import { markText, warningText } from "../../../lib/supersede.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
@@ -21,6 +22,7 @@ import { useRequestData } from "../../../lib/requestData.tsx";
  *
  * 未着手から下りて作業中、上がって完了。完了に人が「済み」を付けると消えるので、画面に残るのは要対応のものだけ。
  * 済みのタスクは「対応済み」のタブで一覧する。
+ * 「タスクを追加」で、Preflight を通さずにタスクを直接作れる（タスクが無くても。components/request/NewTaskForm.tsx）。
  */
 export const Route = createFileRoute("/requests/$requestId/board")({
   component: BoardPage,
@@ -31,6 +33,10 @@ function BoardPage() {
   const { request, tasks, reload, superseded } = useRequestData();
   const [dragId, setDragId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 直接作ったタスクの知らせ */
+  const [notice, setNotice] = useState<string | null>(null);
+  const addDialog = useRef<HTMLDialogElement>(null);
+  const addOpener = useRef<HTMLButtonElement | null>(null);
   const doneIds = new Set(tasks.filter((t) => t.status === "done").map((t) => t.id));
   const checked = tasks.filter((t) => t.status === "done" && t.checkedAt).length;
 
@@ -51,13 +57,28 @@ function BoardPage() {
     if (t && t.status !== status) void patch(t, { status });
   };
 
-  if (!tasks.length) {
-    return (
-      <div className="mx-auto max-w-xl p-10">
-        <Empty>タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、CLI の `p3 new` で追加してください。</Empty>
-      </div>
-    );
-  }
+  const openAdd = (e: { currentTarget: HTMLButtonElement }) => {
+    addOpener.current = e.currentTarget;
+    setNotice(null);
+    addDialog.current?.showModal();
+  };
+  const addForm = (
+    <NewTaskForm
+      dialog={addDialog}
+      request={request}
+      project={ctx.info.project}
+      onCreated={(t, reopened) => {
+        setNotice(`${t.id} を未着手に作成しました${reopened ? "（要望は進行中に戻りました）" : ""}`);
+        reload();
+        ctx.reload();
+      }}
+      onFailed={() => {
+        reload();
+        ctx.reload();
+      }}
+      onClose={() => addOpener.current?.focus()}
+    />
+  );
 
   const pane = (s: TaskStatus, aside?: ReactNode) => {
     // 完了は、人が済みにしたものを出さない（対応済みのタブで見る）
@@ -93,26 +114,45 @@ function BoardPage() {
   return (
     <div className="flex h-full flex-col">
       {error && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{error}</div>}
-      {/* 広い画面は 未着手・完了 を横に並べ、その下に作業中（V 字）。狭い画面は縦に積んでページごとスクロールする */}
-      <div className="grid gap-4 p-5 md:min-h-0 md:flex-1 md:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="grid gap-4 md:min-h-0 md:grid-cols-2">
-          {pane("todo")}
-          {pane(
-            "done",
-            checked > 0 ? (
-              <Link
-                to="/requests/$requestId/done"
-                params={{ requestId: request.id }}
-                className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
-                title="済みにしたタスクの一覧"
-              >
-                済み {checked} 件 →
-              </Link>
-            ) : null,
-          )}
-        </div>
-        {pane("doing")}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-4">
+        <Button onClick={openAdd} title="Preflight を通さずに、この要望へタスクを直接足す">
+          ＋ タスクを追加
+        </Button>
+        {notice && (
+          <span role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+            {notice}
+          </span>
+        )}
       </div>
+      {addForm}
+      {/* 広い画面は 未着手・完了 を横に並べ、その下に作業中（V 字）。狭い画面は縦に積んでページごとスクロールする */}
+      {!tasks.length ? (
+        <div className="mx-auto w-full max-w-xl p-5 md:p-10">
+          <Empty>
+            タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、「タスクを追加」で直接作ってください（CLI では `p3 new`）。
+          </Empty>
+        </div>
+      ) : (
+        <div className="grid gap-4 p-5 md:min-h-0 md:flex-1 md:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="grid gap-4 md:min-h-0 md:grid-cols-2">
+            {pane("todo")}
+            {pane(
+              "done",
+              checked > 0 ? (
+                <Link
+                  to="/requests/$requestId/done"
+                  params={{ requestId: request.id }}
+                  className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
+                  title="済みにしたタスクの一覧"
+                >
+                  済み {checked} 件 →
+                </Link>
+              ) : null,
+            )}
+          </div>
+          {pane("doing")}
+        </div>
+      )}
     </div>
   );
 }
