@@ -124,7 +124,8 @@ const run = (name, extra = [], cmd = []) => {
 try {
   if (!flag("no-build")) {
     await step(`docker build（${image}）`, () => {
-      execFileSync("docker", ["build", "-q", "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
+      const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+      execFileSync("docker", ["build", "-q", "--build-arg", `P3_VERSION=${version}`, "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
       return docker("image", "inspect", "--format", "{{.Id}}", image).slice(0, 19);
     });
   }
@@ -135,7 +136,11 @@ try {
     check(JSON.stringify(entry) === '["p3"]', `ENTRYPOINT が違います: ${JSON.stringify(entry)}`);
     check(JSON.stringify(cmd) === '["serve","--all-projects","--host","0.0.0.0"]', `CMD が違います: ${JSON.stringify(cmd)}`);
     const tools = docker("run", "--rm", "--entrypoint", "sh", image, "-c", "node -v && docker --version && git --version");
-    return tools.split("\n").join(" / ");
+    // 登録の無い UID でも Docker の CLI の作業用の設定を書ける（buildx が使う）
+    const other = docker("run", "--rm", "--user", "12345:12345", "--entrypoint", "sh", image, "-c", "mkdir -p \"$DOCKER_CONFIG\" && test -w \"$DOCKER_CONFIG\" && echo ok");
+    check(other === "ok", `登録の無い UID で DOCKER_CONFIG に書けません: ${other}`);
+    const version = docker("image", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.version"}}', image);
+    return `${tools.split("\n").join(" / ")} / 版 ${version}`;
   });
 
   const ids = { rid: "" };

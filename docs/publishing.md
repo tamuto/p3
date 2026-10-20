@@ -1,7 +1,7 @@
 # 公開の手順（@infodb/p3）
 
 P3 を npm に `@infodb/p3` として公開するときのチェックリスト。npm への公開とタグ付けは人が行う。
-CI は使わず、手元で確かめてから公開する。
+CI は使わず、手元で確かめてから公開する。Docker のイメージ（Docker Hub の `tamuto/p3`）も同じ版で出す（6.）。
 
 ## 1. 外部のパッケージ
 
@@ -54,6 +54,31 @@ npm publish               # prepack で画面をビルドする。publishConfig.
 
 公開した後に、別の環境で `pnpx @infodb/p3 --help` が動くことを確かめる（その版も公開から1日は pnpm の既定では入らない。
 `npx @infodb/p3` か、`pnpm dlx --config.minimum-release-age=0 @infodb/p3` で確かめる）。
+
+## 6. Docker Hub（tamuto/p3）
+
+イメージの中の p3 は、そのときのチェックアウトから `pnpm pack` と同じ中身で作る（npm から取らない）。npm に公開した版と同じ
+コミット（版のタグ `v<版>`）から作り、タグも同じ版にする。
+
+- [ ] npm の公開（5.）と同じコミットにいる（`git describe --tags` が `v<版>`、作業ツリーに変更が無い）
+- [ ] スモークが全段 ok: `node scripts/verify-docker.mjs --image tamuto/p3:<版>`（DevContainer の中では `--work`・`--network-of auto`・
+  `P3_CODEX_PATH_MAP`。[development.md](development.md#docker-のイメージ)）
+- [ ] 登録の無い UID でも Codex のイメージを作れる: `docker run --rm --user 1234:1234 --group-add <docker.sock の GID>
+  -v /var/run/docker.sock:/var/run/docker.sock -v <書けるフォルダ>:/config tamuto/p3:<版> codex update`
+- [ ] 本物の Codex（ChatGPT の接続・ソケット）で、コンテナから Preflight が終わる（接続できる環境で手で確かめる）
+- [ ] amd64 と arm64 の両方を作る（Mac の Apple シリコンなど）。arm64 を作れない環境では、QEMU（binfmt）を入れたマシンか
+  arm64 のマシンで作る
+
+```bash
+V=$(node -p "require('./package.json').version")
+docker login                                                   # tamuto に push できるアカウント
+docker buildx build --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V \
+  -t tamuto/p3:$V -t tamuto/p3:latest --push .
+docker buildx imagetools inspect tamuto/p3:$V                  # 両方の platform があるか
+```
+
+公開した後に、別の環境で `docker run --rm tamuto/p3:<版> --help` と、[導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)
+の手順で起動して一覧が出ることを確かめる。Docker Hub の説明（Overview）は導入ガイドの「Docker で動かす」へのリンクにする。
 
 ## 履歴の確認（2026-10-11、0.1.0 の準備のとき）
 

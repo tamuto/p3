@@ -27,8 +27,22 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain("pnpm install --prod --frozen-lockfile");
   });
 
+  it("Docker Hub の tamuto/p3 として、版と出どころのラベル・ヘルスチェックを持つ", () => {
+    expect(dockerfile).toContain("ARG P3_VERSION=dev");
+    expect(dockerfile).toContain('org.opencontainers.image.version="${P3_VERSION}"');
+    expect(dockerfile).toContain('org.opencontainers.image.source="https://github.com/tamuto/p3"');
+    expect(dockerfile).toContain('org.opencontainers.image.licenses="MIT"');
+    expect(dockerfile).toMatch(/HEALTHCHECK [^\n]*\\\n[^\n]*\/api\/mode/);
+    // 公開の手順は版を渡して両方の platform を作る
+    const publishing = read("docs/publishing.md");
+    expect(publishing).toContain("--platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V");
+    expect(publishing).toContain("-t tamuto/p3:$V -t tamuto/p3:latest");
+  });
+
   it("個人設定は /config に置き、イメージの中では利用者 node で動かす。Docker の CLI と buildx・git を入れ、デーモンは入れない", () => {
     expect(directive("ENV")).toContain("XDG_CONFIG_HOME=/config");
+    // 登録の無い UID（--user）でも buildx が書けるところ
+    expect(directive("ENV")).toContain("DOCKER_CONFIG=/tmp/.docker");
     expect(directive("VOLUME")).toEqual(['["/config"]']);
     expect(directive("USER")).toEqual(["node"]);
     expect(dockerfile).toContain("/usr/local/bin/docker /usr/local/bin/docker");

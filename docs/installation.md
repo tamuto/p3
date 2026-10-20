@@ -299,11 +299,17 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 
 P3 をイメージにして、コンテナで動かすこともできる。イメージの既定は **プロジェクトを跨ぐ serve**（`p3 serve --all-projects
 --host 0.0.0.0`）で、個人設定に登録したプロジェクトを画面で選んで扱う（[使い方ガイド](how-to-use.md#画面)）。閲覧専用ではなく、
-要望・タスクの作成と編集・添付・Preflight もいつもどおり使える。npm には公開していないので、リポジトリから作る。
+要望・タスクの作成と編集・添付・Preflight もいつもどおり使える。
+
+イメージは Docker Hub の **`tamuto/p3`**。中に p3 本体（npm の `@infodb/p3` と同じ版・同じ中身）と、Node 22・git・Docker の CLI が
+入っている（Codex は入れない。Preflight のたびにホストの Docker で Codex のイメージを使う）。版のタグ（`tamuto/p3:0.3.0` など）と
+`latest` がある。決まった版で使うなら版のタグを指す。
 
 ```bash
-docker build -t infodb-p3 .        # リポジトリのルートで（Node 24 で画面をビルドし、実行は Node 22）
+docker pull tamuto/p3:0.3.0
 ```
+
+リポジトリから作るときは `docker build -t tamuto/p3:dev .`（[開発ガイド](development.md#docker-のイメージ)）。
 
 **マウントと個人設定**: プロジェクトのデータのフォルダと参照先（リポジトリ）は、ホストのフォルダを **同じパスで** マウントする
 （Codex・描画のコンテナはホストのデーモンが作るので、パスが同じならパスの対応 `codex.pathMap` は要らない）。データは書く、
@@ -318,7 +324,7 @@ docker run -d --name p3 --restart unless-stopped \
   -p 127.0.0.1:4310:4310 \
   -v ~/.config/infodb-p3-docker:/config \
   -v /home/me/work:/home/me/work \
-  infodb-p3
+  tamuto/p3:0.3.0
 
 # プロジェクトをコンテナの中で登録する（既にあるデータに参加する。新しく作るなら p3 init）
 docker exec -w /home/me/work/myapp p3 p3 join --project myapp --yes
@@ -326,12 +332,17 @@ docker exec p3 p3 project ls
 ```
 
 - `--user` はホストの自分の UID / GID にする（マウントしたファイルを書けるように。コンテナの既定は利用者 `node`（1000））。
+  イメージに無い UID でもよい（Docker の CLI の作業用の設定は `/tmp/.docker` に置く）。`/config` はその UID が書ける
+  フォルダをマウントする（名前付きボリュームは持ち主が `node` になるので、UID が 1000 のときだけ）
   マウントしたリポジトリは持ち主が違っても読めるよう、イメージの git は `safe.directory` を `*` にしている
 - 待ち受けは `127.0.0.1` に公開する。ブラウザで http://localhost:4310 を開き、一覧からプロジェクトを選ぶ。登録を足したら
   画面の「一覧を読み直す」（コンテナの起動し直しは要らない）
-- **通常の serve に戻す**: コマンドを明示する（例: `docker run ... infodb-p3 serve --project myapp --host 0.0.0.0`）。
+- **通常の serve に戻す**: コマンドを明示する（例: `docker run ... tamuto/p3:0.3.0 serve --project myapp --host 0.0.0.0`）。
   明示しない限り、コンテナの中かどうかで自動では切り替えない
 - **止める**: `docker stop p3`（SIGTERM。実行中の Preflight・生成を取り消して記録してから止まる。10 秒まで待つ）
+- **新しい版にする**: `docker pull tamuto/p3:<版>` して、同じマウントで作り直す（個人設定と接続は `/config`、データはホストに残る）。
+  中の P3 が変わると Codex のイメージの中身も変わることがあるので、`docker exec p3 p3 codex update`
+- 状態はヘルスチェック（`/api/mode` に答えるか）で `docker ps` に出る
 
 **ブラウザから変えられない操作**: コンテナに公開したポートからの接続は「このマシン」からではないので、ローカルだけの操作
 （ChatGPT の接続・テーマ・参照先のこのマシンのパス）は画面からは断られる。コンテナの中の CLI で行う:

@@ -213,13 +213,13 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 
 ## Docker のイメージ
 
-`Dockerfile`（ビルドは Node 24 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
+`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 24 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
 入れる。実行は Node 22・git・Docker の CLI と buildx。既定は `serve --all-projects --host 0.0.0.0`）と `.dockerignore`
 （git・依存・ビルドの出力・データ・個人設定・認証・テストを入れない）。約束は `test/docker.test.ts` が確かめる。
-レジストリへの公開と CI はしない。使い方は [導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)。
+公開（人が行う）は [publishing.md](publishing.md#6-docker-hubtamutop3) の手順で、CI は使わない。使い方は [導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)。
 
 ```bash
-docker build -t infodb-p3 .
+docker build -t tamuto/p3:dev .
 node scripts/verify-docker.mjs                      # ビルドして、使い捨ての2つのプロジェクトで動かす（スモーク）
 # DevContainer の中では、Docker のホストから見えるフォルダと、そのホストのパスを渡す。公開したポートはホストにしか開かないので、
 # このコンテナのネットワークに入れる
