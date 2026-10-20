@@ -39,12 +39,10 @@ describe("Dockerfile", () => {
     expect(publishing).toContain("-t tamuto/p3:$V -t tamuto/p3:latest");
   });
 
-  it("個人設定は /config に置き、イメージの中では利用者 node で動かす。Docker の CLI と buildx・git を入れ、デーモンは入れない", () => {
-    expect(directive("ENV")).toContain("XDG_CONFIG_HOME=/config");
-    // 登録の無い UID（--user）でも buildx が書けるところ
-    expect(directive("ENV")).toContain("DOCKER_CONFIG=/tmp/.docker");
-    expect(directive("VOLUME")).toEqual(['["/config"]']);
-    expect(directive("USER")).toEqual(["node"]);
+  it("root で動かし、個人設定の場所を変えない（開発コンテナと同じマウントで共有できる）。Docker の CLI と buildx・git を入れ、デーモンは入れない", () => {
+    expect(directive("USER")).toEqual([]);
+    expect(lines.join("\n")).not.toMatch(/XDG_CONFIG_HOME|DOCKER_CONFIG|^VOLUME/m);
+    expect(directive("WORKDIR").at(-1)).toBe("/root");
     expect(dockerfile).toContain("/usr/local/bin/docker /usr/local/bin/docker");
     expect(dockerfile).toContain("cli-plugins/docker-buildx");
     expect(dockerfile).not.toMatch(/dockerd|docker\.io|docker-ce\b/);

@@ -1,11 +1,12 @@
 # infodb p3 を Docker で動かすイメージ（Docker Hub の tamuto/p3）。中に p3 本体（npm の @infodb/p3 と同じ中身）を入れ、
 # 既定はプロジェクトを跨ぐ serve（p3 serve --all-projects --host 0.0.0.0）。
 #
-#   docker run -d --name p3 --user "$(id -u):$(id -g)" -p 127.0.0.1:4310:4310 \
-#     -v ~/.config/infodb-p3-docker:/config -v /home/me/work:/home/me/work tamuto/p3
+#   docker run -d --name p3 -p 127.0.0.1:4310:4310 -v ~/.config/infodb-p3:/root/.config/infodb-p3 \
+#     -v /home/me/work:/home/me/work -v /var/run/docker.sock:/var/run/docker.sock tamuto/p3
 #
 # 通常の serve（1つのプロジェクト）にするなら、コマンドを明示する（例: ... tamuto/p3 serve --project myapp --host 0.0.0.0）。
-# 個人設定・ChatGPT の接続は /config（XDG_CONFIG_HOME）に置く。プロジェクトのデータと参照先はホストのフォルダをマウントする。
+# root で動かす。個人設定・ChatGPT の接続は root の既定の場所（/root/.config/infodb-p3）のまま変えないので、開発コンテナ（root）と
+# 同じマウントを付けたサイドカーにすれば、個人設定をそのまま共有できる。プロジェクトのデータと参照先はホストのフォルダをマウントする。
 # Preflight（Codex）と画面イメージの描画は、ホストの Docker（ソケット）を使う。コンテナの中にデーモンは立てない。
 # 手順と注意は docs/installation.md の「Docker で動かす」。作り方と公開は docs/publishing.md の「Docker Hub」。
 
@@ -44,18 +45,10 @@ RUN apt-get update \
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 COPY --from=build /opt/p3 /opt/p3
-RUN ln -s /opt/p3/bin/p3.mjs /usr/local/bin/p3 \
-    && mkdir -p /config \
-    && chown node:node /config
+RUN ln -s /opt/p3/bin/p3.mjs /usr/local/bin/p3
 
-# 個人設定（config.yaml）と ChatGPT の接続（chatgpt.json）の置き場所。ボリュームにして残す
-ENV XDG_CONFIG_HOME=/config
-# Docker の CLI（buildx）の作業用の設定。--user で登録の無い UID にすると HOME が / になって書けないので、誰でも書ける場所にする
-# （レジストリの認証は使わない。Codex・描画のイメージは公開のものから作る）
-ENV DOCKER_CONFIG=/tmp/.docker
-VOLUME ["/config"]
-USER node
-WORKDIR /home/node
+# root で動かす（USER を置かない）。個人設定は /root/.config/infodb-p3（XDG_CONFIG_HOME を変えない）。残すならマウントする
+WORKDIR /root
 EXPOSE 4310
 # 待ち受けているか（P3_PORT で変えたときもそのポート）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

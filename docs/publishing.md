@@ -63,8 +63,7 @@ npm publish               # prepack で画面をビルドする。publishConfig.
 - [ ] npm の公開（5.）と同じコミットにいる（`git describe --tags` が `v<版>`、作業ツリーに変更が無い）
 - [ ] スモークが全段 ok: `node scripts/verify-docker.mjs --image tamuto/p3:<版>`（DevContainer の中では `--work`・`--network-of auto`・
   `P3_CODEX_PATH_MAP`。[development.md](development.md#docker-のイメージ)）
-- [ ] 登録の無い UID でも Codex のイメージを作れる: `docker run --rm --user 1234:1234 --group-add <docker.sock の GID>
-  -v /var/run/docker.sock:/var/run/docker.sock -v <書けるフォルダ>:/config tamuto/p3:<版> codex update`
+- [ ] ソケットを渡したコンテナ（root）で Codex のイメージを作れる: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock tamuto/p3:<版> codex update`
 - [ ] 本物の Codex（ChatGPT の接続・ソケット）で、コンテナから Preflight が終わる（接続できる環境で手で確かめる）
 - [ ] amd64 と arm64 の両方を作る（Mac の Apple シリコンなど）。arm64 を作れない環境では、QEMU（binfmt）を入れたマシンか
   arm64 のマシンで作る

@@ -10,7 +10,7 @@
 //      2つ同時に動かして片方を取り消す・データのフォルダの欠落と復旧・再起動のあとも残る・SIGTERM（docker stop）で止まる
 //   4. コマンドを明示すると通常の serve（1つのプロジェクト）になる
 //
-// コンテナはこのマシンの利用者（--user <uid>:<gid>）で動かし、--work をコンテナの中の同じパスにマウントする。
+// コンテナは root で動かし（イメージの既定）、--work をコンテナの中の同じパスにマウントする。
 // DevContainer の中では、--work に Docker のホストから見えるフォルダを渡し、環境変数 P3_CODEX_PATH_MAP（このマシンのパス=ホストのパス）
 // でマウントの元を決める。公開したポートが Docker のホストにしか開かない（DevContainer など）ときは、--network-of で
 // このマシンのコンテナのネットワークに入れる（auto はこのコンテナを探す。ポートは公開せず P3_PORT で待ち受ける）。本物の Codex（ソケット・pathMap・ChatGPT の接続）はここでは確かめない（docs/development.md）。
@@ -104,7 +104,6 @@ const waitReady = async (path = "/mode") => {
   }
   throw new Error(`30 秒で起動しませんでした:\n${docker("logs", "--tail", "30", containers.at(-1))}`);
 };
-const user = `${process.getuid()}:${process.getgid()}`;
 /** --network-of auto: このマシンが動いているコンテナ（mountinfo の /docker/containers/<id>） */
 const networkOf = (() => {
   const v = option("network-of");
@@ -118,7 +117,7 @@ const run = (name, extra = [], cmd = []) => {
   const net = networkOf ? ["--network", `container:${networkOf}`, "-e", `P3_PORT=${port}`] : ["-p", `127.0.0.1:${port}:4310`];
   // 明示したコマンドでも同じポートで待つ
   const cmdPort = networkOf && cmd.length ? [...cmd, "--port", String(port)] : cmd;
-  docker("run", "-d", "--name", name, "--user", user, ...net, "-v", `${hostPath(work)}:${work}`, "-e", `XDG_CONFIG_HOME=${config}`, ...extra, image, ...cmdPort);
+  docker("run", "-d", "--name", name, ...net, "-v", `${hostPath(work)}:${work}`, "-e", `XDG_CONFIG_HOME=${config}`, ...extra, image, ...cmdPort);
 };
 
 try {
@@ -136,9 +135,9 @@ try {
     check(JSON.stringify(entry) === '["p3"]', `ENTRYPOINT が違います: ${JSON.stringify(entry)}`);
     check(JSON.stringify(cmd) === '["serve","--all-projects","--host","0.0.0.0"]', `CMD が違います: ${JSON.stringify(cmd)}`);
     const tools = docker("run", "--rm", "--entrypoint", "sh", image, "-c", "node -v && docker --version && git --version");
-    // 登録の無い UID でも Docker の CLI の作業用の設定を書ける（buildx が使う）
-    const other = docker("run", "--rm", "--user", "12345:12345", "--entrypoint", "sh", image, "-c", "mkdir -p \"$DOCKER_CONFIG\" && test -w \"$DOCKER_CONFIG\" && echo ok");
-    check(other === "ok", `登録の無い UID で DOCKER_CONFIG に書けません: ${other}`);
+    // root で動き、個人設定は root の既定の場所（開発コンテナと同じ）
+    const who = docker("run", "--rm", "--entrypoint", "sh", image, "-c", 'id -u && echo "${XDG_CONFIG_HOME:-$HOME/.config}"');
+    check(who === "0\n/root/.config", `root で動いていない・個人設定の場所が違います: ${who}`);
     const version = docker("image", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.version"}}', image);
     return `${tools.split("\n").join(" / ")} / 版 ${version}`;
   });
