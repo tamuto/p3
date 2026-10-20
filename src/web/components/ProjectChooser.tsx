@@ -61,18 +61,27 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
         {listing.projects.length ? (
-          <ul className="divide-y divide-slate-200 rounded-lg ring-1 ring-slate-200 dark:divide-slate-800 dark:ring-slate-800">
+          <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:divide-slate-800 dark:ring-slate-800">
             {listing.projects.map((p) => (
-              <li key={p.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3">
+              <li key={p.name}>
                 {p.state === "ok" ? (
-                  <a href={`${projectPath(p.name)}/`} className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">
-                    {p.name}
+                  // 行全体（余白を含む）を1つのリンクにする。名前の文字だけを狙わなくてよい
+                  <a
+                    href={`${projectPath(p.name)}/`}
+                    className="flex items-center gap-3 p-4 font-medium text-indigo-700 transition hover:bg-indigo-50 focus-visible:bg-indigo-50 focus-visible:outline-none dark:text-indigo-300 dark:hover:bg-indigo-950 dark:focus-visible:bg-indigo-950"
+                  >
+                    <span className="min-w-0 flex-1 break-words">{p.name}</span>
+                    <span aria-hidden className="text-slate-400">
+                      →
+                    </span>
                   </a>
                 ) : (
-                  <span className="font-medium">{p.name}</span>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4">
+                    <span className="font-medium">{p.name}</span>
+                    <Badge tone="rose">開けません</Badge>
+                    {p.error && <p className="w-full text-sm break-words text-rose-700 dark:text-rose-300">{p.error}</p>}
+                  </div>
                 )}
-                {p.state === "error" && <Badge tone="rose">開けません</Badge>}
-                {p.error && <p className="w-full text-sm break-words text-rose-700 dark:text-rose-300">{p.error}</p>}
               </li>
             ))}
           </ul>

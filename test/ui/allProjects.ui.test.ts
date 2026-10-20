@@ -45,8 +45,12 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
       expect(new URL(page.url()).pathname).toBe("/");
     });
 
-    await step("uitest を選び、要望を作る（どの画面でも今のプロジェクトが見える）", async () => {
-      await page.getByRole("link", { name: "uitest" }).click();
+    await step("uitest を選び、要望を作る（行のどこを押しても開ける。どの画面でも今のプロジェクトが見える）", async () => {
+      // 名前の文字ではなく、行の右端の余白を押す
+      const row = page.getByRole("link", { name: "uitest" });
+      const box = (await row.boundingBox())!;
+      expect(box.width).toBeGreaterThan(300);
+      await row.click({ position: { x: box.width - 40, y: box.height / 2 } });
       await until.url(page, /\/projects\/uitest\/$/);
       await until.value(switcher, "uitest");
       await page.getByRole("link", { name: /新しい要望/ }).first().click();
