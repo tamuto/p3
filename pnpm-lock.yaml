@@ -173,8 +173,8 @@ importers:
         specifier: ^0.1.1
         version: 0.1.1
       '@infodb/codex-workspace':
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.2.1
+        version: 0.2.1
       hono:
         specifier: ^4.13.13
         version: 4.13.13
@@ -484,8 +484,8 @@ packages:
     resolution: {integrity: sha512-vXyi72QzFIbMzRXWrW7njwPgkS6ycCltTEozIzkEi5CvlktYAkDse16sobOksMjsYLIvVL6kOdJrshlVBn/1ow==}
     engines: {node: '>=22'}
 
-  '@infodb/codex-workspace@0.2.0':
-    resolution: {integrity: sha512-BmIOTSG084A/5kdieqMYvC8QNL9Dy0Wo+bSpXws86PPJaJsWwWT0unrYdiQkPmm9ozolVeluMeHOYa87RmBFpw==}
+  '@infodb/codex-workspace@0.2.1':
+    resolution: {integrity: sha512-UhGw9ALmUsJUW9vI5kAfeZGbW//VWpYYtNKC9ekFTO6AZV1SdDmR5wHOVyHqL2j86PpzCIZbZ9XsMPEyqqSKvw==}
     engines: {node: '>=22'}
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -2286,7 +2286,7 @@ snapshots:
 
   '@infodb/chatgpt-plan@0.1.1': {}
 
-  '@infodb/codex-workspace@0.2.0': {}
+  '@infodb/codex-workspace@0.2.1': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

@@ -2,3 +2,4 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - '@infodb/chatgpt-plan@0.1.1'
+  - '@infodb/codex-workspace@0.2.1'

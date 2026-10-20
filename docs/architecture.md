@@ -481,6 +481,8 @@ package.json では公開版の版の範囲（`^0.2.0` など）で指定し、�
 - `UsageLimitError` は使用量の上限（ChatGPT プランの `subscription_sharing_usage_limit_exceeded` を含む）
 - `ensureImage({ maxAgeMs })` はイメージが無いか `maxAgeMs` より古ければ作り直し、中の Codex の版を返す。作り直すたびに
   `CODEX_REFRESH`（その時刻）が変わるので、Codex を入れる段はキャッシュを使わず、その時点の最新が入る
+  - イメージの中身（Dockerfile）は `@infodb/codex-workspace` が同梱し、Python 版と同じ名前のイメージを共有する。
+    中身が変わる版が出たら P3 も上げる（古い版のままだと、1日ごとの作り直しで共有のイメージを古い中身に戻す）
   - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `P3_CODEX_ENSURE_IMAGE=0` で止める）
   - 強制更新（`p3 codex update`）: `maxAgeMs` を -∞ にして、作った日時によらず作り直す。プロジェクト・認証を決める前に動き、
     個人設定の自動更新の停止（`codex.ensureImage: false`）とも関係しない。前に `docker version` でデーモンを確かめ、
