@@ -32,6 +32,15 @@ export const apiBase = () => {
 /** 画面の URL の基点（ルーターの basepath） */
 export const pageBase = (s: ProjectScope = currentScope()) => (s.mode === "single" ? "/" : projectPath(s.project));
 
+/**
+ * プロジェクトを跨ぐ serve の一覧を、登録が1つでも出す URL（ヘッダーの「プロジェクトの一覧…」・選び直しの案内から）。
+ * 入口（/）は登録が1つで開けるなら一覧を飛ばす
+ */
+export const CHOOSER_URL = "/?list";
+
+/** URL が一覧を出すよう求めている（?list） */
+export const listRequested = (search: string) => new URLSearchParams(search).has("list");
+
 /** プロジェクトを跨ぐ serve で、そのプロジェクトの画面の URL */
 export const projectPath = (name: string) => `/projects/${encodeURIComponent(name)}`;
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { App } from "./App.tsx";
 import { ProjectChooser, type ProjectListing } from "./components/ProjectChooser.tsx";
-import { fixScope, projectFromPath, projectPath } from "./lib/scope.ts";
+import { fixScope, listRequested, projectFromPath, projectPath } from "./lib/scope.ts";
 
 type BootState =
   | { kind: "loading" }
@@ -20,8 +20,8 @@ async function getJson<T>(url: string): Promise<T> {
 /**
  * ページを開いたときに、この画面の対象を決める（lib/scope.ts）。
  *   通常の serve: そのまま画面を出す
- *   プロジェクトを跨ぐ serve: URL の /projects/<名前> を一覧で確かめ、開けたら画面を出す。選んでいない・登録に無い・
- *   開けないときは一覧（選ぶだけ。1件でも黙って決めない）
+ *   プロジェクトを跨ぐ serve: URL の /projects/<名前> を一覧で確かめ、開けたら画面を出す。入口（/）で登録が1つだけなら
+ *   そのプロジェクトへ移る。ほかは一覧（選ぶだけ）。登録に無い・開けないときは一覧に理由を出す
  */
 async function boot(): Promise<BootState> {
   const { mode } = await getJson<{ mode: string }>("/api/mode");
@@ -31,7 +31,15 @@ async function boot(): Promise<BootState> {
   }
   const listing = await getJson<ProjectListing>("/api/projects");
   const requested = projectFromPath(location.pathname);
-  if (!requested) return { kind: "chooser", listing };
+  if (!requested) {
+    // 登録が1つで開けるなら一覧を飛ばす（知らせることがあるとき・一覧を求められたときは出す）。履歴に一覧を残さない
+    const only = listing.projects.length === 1 ? listing.projects[0] : undefined;
+    if (only?.state === "ok" && !listing.invalid.length && !listing.configError && !listRequested(location.search)) {
+      location.replace(`${projectPath(only.name)}/`);
+      return { kind: "loading" };
+    }
+    return { kind: "chooser", listing };
+  }
   const p = listing.projects.find((x) => x.name === requested);
   if (!p) return { kind: "chooser", listing, requested, problem: `プロジェクト「${requested}」は個人設定に登録されていません。` };
   if (p.state === "error") return { kind: "chooser", listing, requested, problem: p.error };

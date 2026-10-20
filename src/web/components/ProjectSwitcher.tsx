@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { PROJECT_CHANGED_EVENT } from "../lib/api.ts";
-import { currentScope, projectPath } from "../lib/scope.ts";
+import { CHOOSER_URL, currentScope, projectPath } from "../lib/scope.ts";
 import { hasUnsaved, savesInFlight, savesSettled } from "../lib/unsaved.ts";
 import { fetchProjects, type ProjectListing } from "./ProjectChooser.tsx";
 import { Button, buttonCls } from "./ui.tsx";
 
-/** 一覧へ（プロジェクトを選ぶ画面） */
-const CHOOSER = "/";
+/** 一覧へ（プロジェクトを選ぶ画面。登録が1つでも一覧を出す） */
+const CHOOSER = CHOOSER_URL;
 
 /**
  * プロジェクトを跨ぐ serve の、今のプロジェクトの表示と切り替え（ヘッダーの下の帯。どの画面でも出す）。
@@ -19,6 +19,8 @@ export function ProjectSwitcher() {
   const current = scope.mode === "all-projects" ? scope.project : "";
   const [listing, setListing] = useState<ProjectListing | null>(null);
   const [target, setTarget] = useState<string | null>(null);
+  // 確かめている間の切り替え先。描き直す前に押されても取りこぼさないよう、押したときは ref から読む
+  const targetRef = useRef<string | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [changed, setChanged] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -43,6 +45,7 @@ export function ProjectSwitcher() {
   const choose = (to: string) => {
     if (to === current) return;
     if (hasUnsaved()) {
+      targetRef.current = to;
       setTarget(to);
       dialog.current?.showModal();
       return;
@@ -92,7 +95,10 @@ export function ProjectSwitcher() {
         ref={dialog}
         aria-labelledby="switch-title"
         onClose={() => {
+          // close は閉じたあと遅れて届く。そのあいだに選び直して開き直していたら、今の確かめを消さない
+          if (dialog.current?.open) return;
           setTarget(null);
+          targetRef.current = null;
           if (select.current) select.current.value = current;
           select.current?.focus();
         }}
@@ -113,7 +119,7 @@ export function ProjectSwitcher() {
             <Button
               variant="danger"
               onClick={() => {
-                const to = target;
+                const to = targetRef.current;
                 dialog.current?.close();
                 if (to) void go(to);
               }}

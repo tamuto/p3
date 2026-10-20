@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { projectPath } from "../lib/scope.ts";
 import { Logo } from "./Logo.tsx";
 import { Badge, Button, Empty } from "./ui.tsx";
@@ -18,8 +18,8 @@ export async function fetchProjects(): Promise<ProjectListing> {
 }
 
 /**
- * プロジェクトを跨ぐ serve の入口（/）と、開けなかったとき。個人設定に登録したプロジェクトを選ぶだけで、1件でも自動では開かない。
- * 開けないプロジェクトは名前と理由を出し、ほかは選べる。登録を直したら「一覧を読み直す」
+ * プロジェクトを跨ぐ serve の入口（/。登録が1つで開けるなら Boot がそのプロジェクトへ移る）と、開けなかったとき。
+ * 開けないプロジェクトは名前と理由を出し、ほかは選べる。一覧に戻ったとき・このタブに戻ったときと「一覧を読み直す」で読み直す
  */
 export function ProjectChooser({ initial, requested, problem }: { initial: ProjectListing; requested?: string; problem?: string }) {
   const [listing, setListing] = useState(initial);
@@ -36,6 +36,17 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
       setBusy(false);
     }
   };
+  // 一覧に戻ったら読み直す: 戻るでページが保存から戻ったとき・このタブに戻ったとき（開いたときは Boot が読んだばかり）
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => e.persisted && void reload();
+    const onVisible = () => document.visibilityState === "visible" && void reload();
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">

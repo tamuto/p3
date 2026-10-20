@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { RequestProgress } from "../../shared/types.ts";
 import { api, type ProjectInfo } from "./api.ts";
 import { latestOnly, STALE } from "./latest.ts";
-import { currentScope } from "./scope.ts";
+import { CHOOSER_URL, currentScope } from "./scope.ts";
 import { useServerEvents } from "./live.ts";
 import { createRefresher, onReturn, refetchOnEvent, type RefreshState } from "./refresh.ts";
 
@@ -75,7 +75,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           もう一度読み込む
         </button>
         {currentScope().mode === "all-projects" && (
-          <a href="/" className="ml-4 underline">
+          <a href={CHOOSER_URL} className="ml-4 underline">
             プロジェクトの一覧へ
           </a>
         )}
