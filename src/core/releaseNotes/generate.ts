@@ -117,6 +117,18 @@ export class ReleaseGenerator {
     return true;
   }
 
+  /** 実行中の生成の数 */
+  running(): number {
+    return [...this.jobs.values()].filter((j) => j.status === "running").length;
+  }
+
+  /** 実行中の生成が全部終わるまで待つ（cancel: 先に全部を取り消す） */
+  async settle(opts: { cancel?: boolean } = {}): Promise<void> {
+    const ids = [...this.jobs.values()].filter((j) => j.status === "running").map((j) => j.id);
+    if (opts.cancel) for (const id of ids) this.cancel(id);
+    await Promise.allSettled(ids.flatMap((id) => this.done.get(id) ?? []));
+  }
+
   private emit(j: ReleaseGeneration) {
     this.ws.emit({ type: "release-generation", id: j.id, milestone: j.milestone, status: j.status });
   }

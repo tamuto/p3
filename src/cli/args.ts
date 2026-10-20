@@ -14,6 +14,7 @@ import { Output } from "./output.ts";
 const OPTIONS = {
   dir: { type: "string" },
   project: { type: "string" },
+  "all-projects": { type: "boolean" },
   req: { type: "string" },
   request: { type: "string" },
   json: { type: "boolean" },

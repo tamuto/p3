@@ -3,6 +3,7 @@ import type { ProjectConfig, Request, Task } from "../../../shared/types.ts";
 import { DIRECT_TASK_NOTE } from "../../../shared/directTask.ts";
 import { defaultRepo, NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { api } from "../../lib/api.ts";
+import { useUnsaved } from "../../lib/unsaved.ts";
 import { Button, Field, inputCls } from "../ui.tsx";
 
 /** タスクを足しても状態が変わらず、作業を始めるなら手で進行中にする要望 */
@@ -37,6 +38,7 @@ export function NewTaskForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  useUnsaved(!!(title.trim() || body.trim()));
 
   // 開くたびに空にする（取消・作成のあとに前の入力を残さない。失敗したときは閉じないので入力は残る）
   useEffect(() => {

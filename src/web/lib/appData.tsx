@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { RequestProgress } from "../../shared/types.ts";
 import { api, type ProjectInfo } from "./api.ts";
 import { latestOnly, STALE } from "./latest.ts";
+import { CHOOSER_URL, currentScope } from "./scope.ts";
 import { useServerEvents } from "./live.ts";
 import { createRefresher, onReturn, refetchOnEvent, type RefreshState } from "./refresh.ts";
 
@@ -28,6 +29,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<ProjectInfo>();
   const [requests, setRequests] = useState<RequestProgress[]>([]);
   const [tick, setTick] = useState(0);
+  /** 最初の取得に失敗した（読み込み中のままにしない） */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const latest = useRef(latestOnly());
 
   /** 取り直す。古い取得の応答は使わない。失敗は投げる（refresh が知らせる） */
@@ -36,9 +39,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (r === STALE) return;
     setInfo(r[0]);
     setRequests(r[1]);
+    setLoadError(null);
     setTick((n) => n + 1);
   }, []);
-  const reload = useCallback(() => void fetchAll().catch(() => undefined), [fetchAll]);
+  const reload = useCallback(() => void fetchAll().catch((e: Error) => setLoadError(e.message)), [fetchAll]);
 
   const [refreshing, setRefreshing] = useState<RefreshState>({ running: false, error: null, lastAt: null });
   const refresher = useMemo(() => createRefresher({ reloadServer: api.reloadAll, fetchAll, onState: setRefreshing }), [fetchAll]);
@@ -61,7 +65,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   });
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  if (!info) return <div className="p-8 text-slate-500">Loading…</div>;
+  if (!info)
+    return loadError ? (
+      <div className="space-y-2 p-8">
+        <p role="alert" className="text-rose-600">
+          読み込めませんでした: {loadError}
+        </p>
+        <button type="button" className="underline" onClick={reload}>
+          もう一度読み込む
+        </button>
+        {currentScope().mode === "all-projects" && (
+          <a href={CHOOSER_URL} className="ml-4 underline">
+            プロジェクトの一覧へ
+          </a>
+        )}
+      </div>
+    ) : (
+      <div className="p-8 text-slate-500">Loading…</div>
+    );
   return <Ctx.Provider value={{ info, requests, reload, refresh, refreshing, tick }}>{children}</Ctx.Provider>;
 }
 

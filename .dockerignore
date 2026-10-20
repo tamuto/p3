@@ -1,0 +1,25 @@
+# イメージに入れないもの: git・依存・ビルドの出力（イメージの中で作り直す）・データ（実・デモ）・個人設定・認証・
+# 開発用のもの。トークンや個人のパスをレイヤーに残さない
+.git
+.github
+.serena
+.claude
+.vscode
+.devcontainer
+.worktrees
+node_modules
+dist
+*.tgz
+.p3
+.p3-demo
+.p3-video
+.env
+.env.*
+**/auth.json
+**/chatgpt.json
+**/config.yaml
+*.log
+coverage
+test
+AGENTS.md
+CLAUDE.md

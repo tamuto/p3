@@ -108,6 +108,31 @@ export async function loadUserSettings(path = userConfigPath()): Promise<Pick<Us
   return { settings };
 }
 
+/** 一覧に入れられなかった登録（名前の形・dir が無いなど）。normalizeUserConfig は黙って外すので、プロジェクトを跨ぐ serve の一覧で知らせる */
+export interface InvalidProjectEntry {
+  name: string;
+  reason: string;
+}
+
+/**
+ * プロジェクトを跨ぐ serve のために、個人設定の projects を診断つきで読む。読めない・壊れた YAML は UserConfigError
+ * （登録0件とは区別する）。projects の形が違う・名前や dir が不正な登録は invalid に理由を付けて返し、ほかの登録は使えるようにする
+ */
+export async function inspectUserProjects(path = userConfigPath()): Promise<{ projects: Record<string, UserProject>; invalid: InvalidProjectEntry[] }> {
+  const d = asRecord(parse(await readText(path), path).toJS());
+  const invalid: InvalidProjectEntry[] = [];
+  if (d.projects !== undefined && d.projects !== null && (typeof d.projects !== "object" || Array.isArray(d.projects))) {
+    throw new UserConfigError(`個人設定の projects の形が違います: ${path}（「名前: { dir: フォルダ }」の対応で書いてください）`);
+  }
+  for (const [name, v] of Object.entries(asRecord(d.projects))) {
+    const p = typeof v === "string" ? { dir: v } : v;
+    if (!PROJECT_NAME.test(name)) invalid.push({ name, reason: "名前に使えない文字があります（英数字で始まり、英数字と . _ -）" });
+    else if (!p || typeof p !== "object" || Array.isArray(p)) invalid.push({ name, reason: "登録の形が違います（dir: <データのフォルダ>）" });
+    else if (typeof (p as Record<string, unknown>).dir !== "string" || !(p as Record<string, unknown>).dir) invalid.push({ name, reason: "dir（データのフォルダ）がありません" });
+  }
+  return { projects: normalizeUserConfig(d).projects, invalid };
+}
+
 const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /**

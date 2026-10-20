@@ -8,15 +8,16 @@ import {
   type UiMaterial,
   type UiMaterialKind,
 } from "../../shared/types.ts";
+import { apiBase } from "./scope.ts";
 
 /** 画像の URL（要望 / run / 資料 ID。パスは使わない） */
 export const materialUrl = (rid: string, runId: string, id: string) =>
-  `/api/requests/${encodeURIComponent(rid)}/preflight/${encodeURIComponent(runId)}/ui/${encodeURIComponent(id)}`;
+  `${apiBase()}/requests/${encodeURIComponent(rid)}/preflight/${encodeURIComponent(runId)}/ui/${encodeURIComponent(id)}`;
 /** 要望の添付の原本 */
-export const attachmentUrl = (rid: string, id: string) => `/api/requests/${encodeURIComponent(rid)}/attachments/${encodeURIComponent(id)}`;
+export const attachmentUrl = (rid: string, id: string) => `${apiBase()}/requests/${encodeURIComponent(rid)}/attachments/${encodeURIComponent(id)}`;
 /** run に固定した添付の原本と、xlsx から取り出した内容 */
 export const fixedAttachmentUrl = (rid: string, runId: string, id: string, extract = false) =>
-  `/api/requests/${encodeURIComponent(rid)}/preflight/${encodeURIComponent(runId)}/attachments/${encodeURIComponent(id)}${extract ? "/extract" : ""}`;
+  `${apiBase()}/requests/${encodeURIComponent(rid)}/preflight/${encodeURIComponent(runId)}/attachments/${encodeURIComponent(id)}${extract ? "/extract" : ""}`;
 
 /** タスク案の場所（画面資料の「対象」から移る） */
 export const draftAnchor = (key: string) => `draft-${key}`;

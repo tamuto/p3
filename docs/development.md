@@ -211,6 +211,27 @@ pnpm verify:pack --docker           # npm pack → 実行時の依存だけで�
 P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
 
+## Docker のイメージ
+
+`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 24 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
+入れる。実行は Node 22・git・Docker の CLI と buildx。既定は `serve --all-projects --host 0.0.0.0`）と `.dockerignore`
+（git・依存・ビルドの出力・データ・個人設定・認証・テストを入れない）。約束は `test/docker.test.ts` が確かめる。
+公開（人が行う）は [publishing.md](publishing.md#6-docker-hubtamutop3) の手順で、CI は使わない。使い方は [導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)。
+
+```bash
+docker build -t tamuto/p3:dev .
+node scripts/verify-docker.mjs                      # ビルドして、使い捨ての2つのプロジェクトで動かす（スモーク）
+# DevContainer の中では、Docker のホストから見えるフォルダと、そのホストのパスを渡す。公開したポートはホストにしか開かないので、
+# このコンテナのネットワークに入れる
+P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs --work /workspaces/tmp --network-of auto
+```
+
+スモークで確かめること: 起動の約束（ENTRYPOINT・既定の CMD・入れた道具）・2つのプロジェクトの一覧・登録世代つきの作成と手元の
+ファイル・同じ ID の分離・添付・ソケットが無いときのエンジンの状態・Mock の Preflight の同時実行と片方の取消・再起動のあとに残る
+こと・データのフォルダの欠落と復旧・`docker stop`（SIGTERM）で実行中の Preflight を取り消して止まること・コマンドの明示で通常の
+serve になること。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
+確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
+
 ## 使い方の動画
 
 一般公開する使い方の動画（日本語の字幕、約3分）は `pnpm video` で録り直す（`scripts/video/record.mjs`）。機能や画面を

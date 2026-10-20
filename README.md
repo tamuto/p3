@@ -40,6 +40,8 @@ pnpx @infodb/p3 codex update       # Codex のイメージを作る（初回は�
 pnpx @infodb/p3 serve              # http://localhost:4310 を開き、要望を書いて Preflight → タスク化
 ```
 
+Docker のコンテナで動かすこともできる（Docker Hub の `tamuto/p3`。既定は、個人設定に登録したプロジェクトを跨いで扱う serve。[導入ガイド: Docker で動かす](docs/installation.md#docker-で動かすプロジェクトを跨ぐ-serve)）。
+
 DevContainer の中で動かすとき（Docker はホストのもの）は、この前にパスの対応が要る。Docker の確認から順に
 [導入ガイド](docs/installation.md) に沿って進めるのが確実。
 

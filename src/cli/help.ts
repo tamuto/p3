@@ -40,6 +40,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                    p3 release-notes export v0.2 > RELEASE.md
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
+                               --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）

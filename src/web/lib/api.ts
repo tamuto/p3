@@ -1,4 +1,6 @@
 import type { RepoRef } from "../../shared/repos.ts";
+import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
+import { trackSave } from "./unsaved.ts";
 import type {
   MaterializeResult,
   PreflightNote,
@@ -56,12 +58,25 @@ export function failureOf(e: unknown): ApiFailure {
   return (e.body as { code?: string } | null)?.code === "stale_input" ? "stale_input" : "rev_conflict";
 }
 
+/** 登録が変わった（プロジェクトを跨ぐ serve で、外した・付け直した・データのフォルダを変えた）。画面は選び直しを案内する */
+export const PROJECT_CHANGED_EVENT = "p3:project-changed";
+
+async function send(path: string, init: RequestInit): Promise<Response> {
+  const method = init.method ?? "GET";
+  const req = fetch(`${apiBase()}${path}`, { ...init, headers: { "x-p3-actor": "human:web", ...scopeHeaders(), ...(init.headers as Record<string, string>) } });
+  // 変える操作は数える（プロジェクトを切り替える前に、結果が決まるまで待つ）
+  const res = method === "GET" || method === "HEAD" ? await req : await trackSave(req);
+  if (res.status === 409 || res.status === 404 || res.status === 428) {
+    const code = ((await res.clone().json().catch(() => ({}))) as { code?: string }).code;
+    if (code === "changed" || (code === "unknown" && currentScope().mode === "all-projects") || code === "generation_required") {
+      window.dispatchEvent(new CustomEvent(PROJECT_CHANGED_EVENT));
+    }
+  }
+  return res;
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body ? { "content-type": "application/json", "x-p3-actor": "human:web" } : { "x-p3-actor": "human:web" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await send(path, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
   return data as T;
@@ -125,7 +140,8 @@ export interface ChatGptState {
   registered: boolean;
   pending?: { url: string; redirectUri: string; startedAt: string; expiresAt: string };
   lastError?: string;
-  engine: EngineStatus;
+  /** Preflight のエンジンの状態（プロジェクトを跨ぐ serve で、プロジェクトを選んでいない入口では null） */
+  engine: EngineStatus | null;
 }
 
 /** 参照先（設定画面）。local と reason は、このマシンのローカルの画面にだけ返る */
@@ -199,7 +215,7 @@ export const api = {
     form.append("file", input.file);
     if (input.description?.trim()) form.append("description", input.description.trim());
     if (input.source?.trim()) form.append("source", input.source.trim());
-    const res = await fetch(`/api/requests/${rid}/attachments`, { method: "POST", body: form, headers: { "x-p3-actor": "human:web" } });
+    const res = await send(`/requests/${rid}/attachments`, { method: "POST", body: form });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
     return data as Attachment;
@@ -213,7 +229,7 @@ export const api = {
   saveReleaseNote: (mid: string, b: { body: string; version?: string; basedOn?: string }) =>
     call<{ note: ReleaseNote; warnings: ReleaseWarning[] }>("PUT", `/release-notes/${encodeURIComponent(mid)}`, b),
   /** 保存した本文のダウンロード（URL） */
-  releaseNoteExportUrl: (mid: string) => `/api/release-notes/${encodeURIComponent(mid)}/export`,
+  releaseNoteExportUrl: (mid: string) => `${apiBase()}/release-notes/${encodeURIComponent(mid)}/export`,
   generateReleaseNote: (mid: string) => call<ReleaseGeneration>("POST", `/release-notes/${encodeURIComponent(mid)}/generate`, {}),
   releaseGenerations: (mid: string) => call<ReleaseGeneration[]>("GET", `/release-notes/${encodeURIComponent(mid)}/generations`),
   releaseGeneration: (id: string) => call<ReleaseGeneration>("GET", `/release-generations/${id}`),

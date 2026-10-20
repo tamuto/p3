@@ -25,7 +25,7 @@ export interface Scenario {
 
 export async function openScenario(
   name: string,
-  opts: { viewport?: { width: number; height: number }; prepare?: (env: UiEnv) => Promise<void> } = {},
+  opts: { viewport?: { width: number; height: number }; prepare?: (env: UiEnv) => Promise<void>; serveArgs?: string[] } = {},
 ): Promise<Scenario> {
   const env = await makeUiEnv();
   let serve: Serve | undefined;
@@ -33,7 +33,7 @@ export async function openScenario(
   try {
     // 画面の操作の対象ではない状態は、サーバを起こす前に CLI で用意する
     await opts.prepare?.(env);
-    serve = await startServe(env);
+    serve = await startServe(env, { args: opts.serveArgs });
     // ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）。日本語のフォントがあれば Noto Sans CJK JP で描く
     const fontconfig = inject("fontconfig");
     browser = await chromium.launch(fontconfig ? { env: { ...process.env, FONTCONFIG_FILE: fontconfig } } : {});

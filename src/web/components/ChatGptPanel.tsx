@@ -133,12 +133,12 @@ export function ChatGptPanel({ tick }: { tick: number }) {
 
         {s?.lastError && !s.pending && <p className="text-rose-600">直前のサインイン: {s.lastError}</p>}
         {error && <p className="text-rose-600">{error}</p>}
-        {s && (
+        {s?.engine && (
           <p className="text-sm text-slate-500">
             Preflight: {s.engine.ok ? "●" : "✕"} {s.engine.detail}
           </p>
         )}
-        {s && !s.engine.ok && (
+        {s?.engine && !s.engine.ok && (
           <p className="text-sm text-slate-500">
             Preflight を使えない間も、要望を開いてタスクボードの「＋ タスクを追加」で、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
           </p>

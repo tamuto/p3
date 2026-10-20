@@ -194,6 +194,41 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   参照先の名前に置き換える。個人設定のエラーは `hideConfigPath` で「個人設定（config.yaml）」にする。想定外の変更は
   `<参照先>:<パス>`）。画面のエンジンの状態（共有しない）には個人設定の場所を出してよい
 
+### プロジェクトを跨ぐ serve（`p3 serve --all-projects`）
+
+通常の serve は1つのプロジェクト（今いる場所・`--project`・`--dir` で決めたもの）だけを開く。`--all-projects` を付けると、個人設定に
+登録したプロジェクトを跨いで扱う（`--project` / `--dir` とは一緒に使えず、serve 以外には付けられない。通常の serve の決め方は変えない）。
+閲覧専用にはせず、通常の serve と同じ操作（作成・編集・添付・設定・Preflight・タスク化・リリースノート）をプロジェクトごとにできる。
+
+- 対象は個人設定に登録した名前だけ（`core/projectRegistry.ts` の `ProjectRegistry`）。任意のパスは開かず、名前は登録名の形
+  （`PROJECT_NAME`）で確かめる。API はプロジェクトごとに `/api/projects/<名前>/...` で、中身は通常の serve の `/api/...` と同じ
+  （`server/api/projectsRoutes.ts` が名前を外して `apiRoutes(ctx)` へ渡す。接続元の情報はそのままなので、ローカルだけの操作の
+  確かめ方も同じ）。プロジェクトを書かないデータの API は 404（`project_required`）、無い API は画面ではなく 404 の JSON
+- 一覧は `GET /api/projects` のたびに個人設定を読み直す（`inspectUserProjects`）。読めない・壊れた個人設定は登録0件と分けて
+  `configError` に出し、それまでの一覧と開いている文脈を残す。形の違う登録は `invalid` に理由を付け、ほかは使える。登録0件でも起動する
+- 文脈（Workspace・PreflightService・ReleaseGenerator・変更通知）はプロジェクトごとに、使うときに開く。同時に開こうとしたら1回に
+  まとめ、失敗は覚えずに次でやり直す（フォルダを戻せば使える）。1つが開けなくてもほかは使える。`process.chdir` や「今の
+  プロジェクト」は持たないので、タブごとに別のプロジェクトを同時に操作できる
+- 同じデータのフォルダ（実体のパス）を複数の名前で登録していたら、どれも開かない（Preflight・生成を二重に動かさないため。
+  どれを残すかは人が決める）
+- 登録世代（`generation`）: 一覧を読み直したときに、登録が無くなっていた・データのフォルダが変わっていた・重なりを解いたら変わる
+  （読み直すまでの間に外して同じフォルダで付け直したものは同じ登録として扱う。書き込む先は同じなので取り違えは起きない）。
+  変える操作には `x-p3-project-generation` が要り、違えば 409（`changed`）で何も書かない（古い画面の保存を新しい登録先へ流さない。
+  自動で送り直さない）。参照先のパスだけの変更は世代を変えずに今の文脈へ反映し、次の Preflight から使う
+- 登録から外れた文脈には新しい要求を渡さない。始めていた Preflight・生成は元のプロジェクトで終わるまで待ってから閉じる（取り消さない）
+- ChatGPT の接続（サインインの待ち受け）は全プロジェクトで1つ（`openProject` の `chatgpt`）。接続・テーマの変更は開いている
+  全プロジェクトの画面へ知らせる。プロジェクトを選ばない入口（`/api/chatgpt`・`/api/user-theme`・`/api/events`）もある。
+  エンジンの状態はプロジェクトごと
+- 画面（`web/Boot.tsx`・`web/lib/scope.ts`）: ページを開いたときに `/api/mode` と URL（`/projects/<名前>`）からこの画面の対象を
+  一度だけ決め（`fixScope`）、API の基点（`/api/projects/<名前>`）・登録世代のヘッダー・ルーターの basepath に使う。ページの間は
+  変えない。切り替えはページごと移る（`components/ProjectSwitcher.tsx`）ので、前のプロジェクトの取得・SSE・タイマー・キャッシュ・
+  遅い応答は新しいプロジェクトに混ざらない（文脈を差し替える仕組みを持たない）。保存していない入力は各画面が `useUnsaved` で、
+  送っている保存は `api.ts` が数え（`lib/unsaved.ts`）、切り替えの前に確かめる・待つ。API が登録の変化（`changed` など）で断ったら
+  知らせを出し、選び直しを案内する。対象が決まらない・開けないときは一覧（`components/ProjectChooser.tsx`）で理由を出す。入口（`/`）は登録が1つで開けるなら
+  一覧を飛ばす（`location.replace`。`/?list` なら飛ばさない）。一覧は戻ったとき（`pageshow` の保存から）・タブに戻ったときに読み直す
+- 止める（SIGTERM・SIGINT。通常の serve も同じ）: 新しい接続を断り、開いている接続（SSE）を閉じ、実行中の Preflight・生成を取り消して
+  （記録は「中止しました」）終わるまで待つ（10 秒まで）。監視を外す。2回目の信号ではすぐ終わる
+
 ### 画面
 
 - 画面のテーマ（`ui.theme`）の反映: index.html の先頭（CSS より前）で `/api/user-theme.js` を同期で読み、
@@ -318,6 +353,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
+| プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
