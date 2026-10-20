@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useRef, useState, type ReactNode } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { NewTaskForm } from "../../../components/request/NewTaskForm.tsx";
@@ -23,8 +23,10 @@ import { useRequestData } from "../../../lib/requestData.tsx";
  * 未着手から下りて作業中、上がって完了。完了に人が「済み」を付けると消えるので、画面に残るのは要対応のものだけ。
  * 済みのタスクは「対応済み」のタブで一覧する。
  * 「タスクを追加」で、Preflight を通さずにタスクを直接作れる（タスクが無くても。components/request/NewTaskForm.tsx）。
+ * ?add=1 で開くと、そのフォームを開く（Preflight を使えない・失敗したときの案内から来る）。
  */
 export const Route = createFileRoute("/requests/$requestId/board")({
+  validateSearch: (s: Record<string, unknown>): { add?: boolean } => ({ add: s.add === true || s.add === 1 || s.add === "1" || s.add === "true" ? true : undefined }),
   component: BoardPage,
 });
 
@@ -37,6 +39,17 @@ function BoardPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const addDialog = useRef<HTMLDialogElement>(null);
   const addOpener = useRef<HTMLButtonElement | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const { add } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  // ?add=1 で来たらフォームを開き、URL からは外す（戻る・再読み込みで開き直さない）。閉じたら「タスクを追加」へフォーカスを戻す
+  useEffect(() => {
+    if (!add) return;
+    addOpener.current = addButton.current;
+    setNotice(null);
+    addDialog.current?.showModal();
+    void navigate({ search: (prev) => ({ ...prev, add: undefined }), replace: true });
+  }, [add, navigate]);
   const doneIds = new Set(tasks.filter((t) => t.status === "done").map((t) => t.id));
   const checked = tasks.filter((t) => t.status === "done" && t.checkedAt).length;
 
@@ -115,7 +128,7 @@ function BoardPage() {
     <div className="flex h-full flex-col">
       {error && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{error}</div>}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-4">
-        <Button onClick={openAdd} title="Preflight を通さずに、この要望へタスクを直接足す">
+        <Button ref={addButton} onClick={openAdd} title="Preflight を通さずに、この要望へタスクを直接足す">
           ＋ タスクを追加
         </Button>
         {notice && (

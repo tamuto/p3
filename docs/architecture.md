@@ -318,6 +318,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
+| Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
 `requestCommands.ts`・`preflightCommands.ts`）に分ける。大きい画面は、ルートのファイルを組み立てだけにして部品を

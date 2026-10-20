@@ -12,6 +12,7 @@ import { CodexWorkspaceEngine, codexConfig, withMounts } from "../src/core/prefl
 import { resolveMachineSettings } from "../src/core/machineSettings.ts";
 import { supersededMarks } from "../src/core/supersede.ts";
 import { parseAssessment } from "../src/core/preflight/service.ts";
+import { PREFLIGHT_CANCELLED, preflightFailed } from "../src/shared/directTask.ts";
 import type { Renderer } from "../src/core/preflight/uiRender.ts";
 import { RenderError } from "../src/core/preflight/render.ts";
 import { wireframePng } from "../src/core/preflight/wireframe.ts";
@@ -97,6 +98,17 @@ describe("PreflightService（mock エンジン）", () => {
     // D1 を採用しなかったので、D2 → D1 の依存は張られない
     expect(tasks[0].relations).toEqual([]);
     expect(ctx.ws.requests.get(req.id)?.workstreams?.main.branch).toBe(`req/${req.id}`);
+  });
+
+  it("取り消した run は、エンジンによらず「中止しました」で残し、失敗とは扱わない（直接作る道を案内しない）", async () => {
+    const { ctx, req } = await withRequest();
+    const started = await ctx.preflight.start(req.id, { engine: "mock" });
+    ctx.preflight.cancel(started.id);
+    const run = (await ctx.preflight.wait(req.id, started.id))!;
+    expect(run).toMatchObject({ status: "failed", error: PREFLIGHT_CANCELLED });
+    expect(preflightFailed(run)).toBe(false);
+    expect(preflightFailed({ status: "failed", error: "docker コマンドがありません" })).toBe(true);
+    expect(preflightFailed({ status: "running" })).toBe(false);
   });
 
   it("タスク化済みの要望で再評価しても、要望のステータスは変えない（進行中のまま）", async () => {
@@ -351,6 +363,7 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const run = (await ctx.preflight.wait(req.id, id))!;
     expect(run.status).toBe("failed");
     expect(run.error).toContain("使用量上限");
+    expect(preflightFailed(run)).toBe(true);
     expect(sent().some((m) => m.method === "turn/start")).toBe(false);
     expect(ctx.ws.requests.get(req.id)?.status).toBe("draft");
   });

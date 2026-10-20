@@ -5,6 +5,7 @@ import { resolve, titleOf } from "../core/ops.ts";
 import { type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskWork } from "../core/workTargets.ts";
+import { DIRECT_TASK_NOTE, LATER_PREFLIGHT_NOTE } from "../shared/directTask.ts";
 
 /** CLI の出力（人向けの表と --json）と、表示の部品 */
 
@@ -65,6 +66,23 @@ export const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
 export function reopenedNote(rid: string | undefined): string | undefined {
   if (rid) process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
   return rid;
+}
+
+/** シェルにそのまま貼れる引数（記号や空白を含むものは単引用符で囲む） */
+export const shellArg = (s: string) => (/^[\w./:=@%+-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
+
+/**
+ * Preflight を始められなかった・失敗したときの、直接タスクを作る道の案内（人向け。stderr か、エラーの文に付けて出す）。
+ * --project / --dir を付けて呼ばれたら、同じ対象で動くようにそのまま付ける
+ */
+export function directTaskHint(rid: string, scope: { project?: string; dir?: string } = {}): string {
+  const target = [scope.project && `--project ${shellArg(scope.project)}`, scope.dir && `--dir ${shellArg(scope.dir)}`].filter(Boolean).join(" ");
+  return [
+    "Preflight を通さずに、この要望へタスクを直接作ることもできます（Docker や ChatGPT の接続は要りません）:",
+    `  p3 new "タスクの題" --req ${shellArg(rid)}${target ? ` ${target}` : ""} --body "作業内容と完了条件"`,
+    `  ${DIRECT_TASK_NOTE}`,
+    `  ${LATER_PREFLIGHT_NOTE}（p3 preflight ${shellArg(rid)}）`,
+  ].join("\n");
 }
 
 /** 警告は stderr に出す（--json の stdout を汚さない。JSON では warnings フィールドで返す） */

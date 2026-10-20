@@ -112,6 +112,8 @@ export interface EngineStatus {
   /** Codex の認証（chatgpt / legacy / none） */
   auth?: "chatgpt" | "legacy" | "none";
   account?: string;
+  /** 画面が状態を取れなかった（通信の失敗）。使えるとも使えないとも言えない */
+  unknown?: boolean;
 }
 
 /** ChatGPT プランの接続（トークンは含まない） */

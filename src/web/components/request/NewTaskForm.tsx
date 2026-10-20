@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import type { ProjectConfig, Request, Task } from "../../../shared/types.ts";
+import { DIRECT_TASK_NOTE } from "../../../shared/directTask.ts";
 import { defaultRepo, NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { api } from "../../lib/api.ts";
 import { Button, Field, inputCls } from "../ui.tsx";
-
-/** 直接作るタスクに付かないもの（画面と文書で同じ言い方にする） */
-export const DIRECT_TASK_NOTE =
-  "Preflight の評価・細分化・根拠の調査・画面イメージは付きません。必要な調査と完了条件を自分で整理して作成してください。";
 
 /** タスクを足しても状態が変わらず、作業を始めるなら手で進行中にする要望 */
 const BEFORE_ACTIVE: Request["status"][] = ["draft", "preflight", "reviewed"];

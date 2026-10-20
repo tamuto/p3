@@ -19,7 +19,7 @@ export const buttonCls = (variant: Variant = "secondary", className?: string) =>
     className,
   );
 
-export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; ref?: Ref<HTMLButtonElement> }) {
   return <button {...p} className={buttonCls(variant, className)} />;
 }
 

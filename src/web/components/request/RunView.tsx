@@ -10,6 +10,8 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { staleNotice } from "../../lib/requestEdit.ts";
 import { NOTE_INPUT_ID, focusNoteInput } from "./Notes.tsx";
 import { Drafts } from "./Drafts.tsx";
+import { DirectTaskLink } from "./DirectTaskLink.tsx";
+import { preflightFailed } from "../../../shared/directTask.ts";
 
 /** 表示中の Preflight の run（工程・文脈・ログ・評価・画面資料・メモ・調べた範囲・影響・タスク案） */
 
@@ -96,7 +98,13 @@ export function RunView({
 
       <LogView log={run.log} running={run.status === "running"} />
 
-      {run.status === "failed" && <p className="rounded-md bg-rose-50 p-4 text-rose-700 dark:bg-rose-950 dark:text-rose-300">失敗: {run.error}</p>}
+      {run.status === "failed" && (
+        <div className="space-y-2 rounded-md bg-rose-50 p-4 dark:bg-rose-950">
+          <p className="text-rose-700 dark:text-rose-300">失敗: {run.error}</p>
+          {/* 取り消しただけなら案内しない */}
+          {preflightFailed(run) && <DirectTaskLink requestId={request.id} />}
+        </div>
+      )}
 
       {a && (
           <Section title="評価">

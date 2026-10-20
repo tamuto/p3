@@ -138,6 +138,11 @@ export function ChatGptPanel({ tick }: { tick: number }) {
             Preflight: {s.engine.ok ? "●" : "✕"} {s.engine.detail}
           </p>
         )}
+        {s && !s.engine.ok && (
+          <p className="text-sm text-slate-500">
+            Preflight を使えない間も、要望を開いてタスクボードの「＋ タスクを追加」で、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
+          </p>
+        )}
       </div>
     </Section>
   );
