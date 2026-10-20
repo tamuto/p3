@@ -102,6 +102,9 @@ describe("p3 release-notes", () => {
     const gen = p3(root, ["release-notes", "generate", "v2", "--engine", "mock"]);
     expect(gen.code).toBe(1);
     expect(gen.err).toContain("要約の材料");
+    // 始められないときは、手で書いて保存する道を添える
+    expect(gen.err).toContain("生成せずに、本文を手で書いて保存できます");
+    expect(gen.err).toContain("p3 release-notes save v2 --file <本文.md>");
     expect(gen.out).toBe("");
     expect(p3(root, ["release-notes", "show", "v2", "--json"]).json().material.warnings.map((w: any) => w.code)).toEqual(["no_candidates"]);
     expect(p3(root, ["release-notes", "save", "v2", "--body", "手で書いた"]).code).toBe(0);
@@ -126,10 +129,22 @@ describe("p3 release-notes", () => {
     expect(fail.code).toBe(1);
     expect(fail.err).toContain("生成できませんでした（unavailable）");
     expect(fail.err).toContain("ChatGPT にサインインしてください");
+    // 生成できなくても手で書いて保存できる（既にあるノートは show で読んだ版を付けて更新する）
+    expect(fail.err).toContain("p3 release-notes save v1 --file <本文.md>");
+    expect(fail.err).toContain("--version <版>");
     expect(fail.out).toBe("");
     const failJson = p3(root, ["release-notes", "generate", "v1", "--json"]);
     expect(failJson.code).toBe(1);
     expect(failJson.json()).toMatchObject({ status: "failed", failure: "unavailable" });
+    expect(failJson.err).toContain("p3 release-notes save v1 --file <本文.md>");
+    expect(readFileSync(file, "utf8")).toBe(before);
+    // 案内どおりに、版を付けて手で書いた本文に更新できる
+    const version = p3(root, ["release-notes", "show", "v1", "--json"]).json().note.version as string;
+    const manual = join(root, "manual.md");
+    writeFileSync(manual, "## 最初のリリース\n\n- 手で書いた\n");
+    expect(p3(root, ["release-notes", "save", "v1", "--file", manual, "--version", version]).code).toBe(0);
+    expect(p3(root, ["release-notes", "export", "v1"]).out).toBe("## 最初のリリース\n\n- 手で書いた\n");
+    const saved = readFileSync(file, "utf8");
 
     // 取り消し（Mock は少し待つので、その間に SIGINT）
     const child = spawn(process.execPath, [BIN, "release-notes", "generate", "v1", "--engine", "mock"], { cwd: root, env: env() });
@@ -144,7 +159,9 @@ describe("p3 release-notes", () => {
     const code = await new Promise<number | null>((r) => child.on("close", r));
     expect(code).toBe(1);
     expect(err).toContain("取り消しました");
+    // 取消は失敗と扱わない（手で書く道は出さない）
+    expect(err).not.toContain("手で書いて保存できます");
     expect(out).toBe("");
-    expect(readFileSync(file, "utf8")).toBe(before);
+    expect(readFileSync(file, "utf8")).toBe(saved);
   });
 });

@@ -6,8 +6,8 @@ infodb p3（以下 P3）を入れて、最初の Preflight を動かせる状態
 P3 の Preflight は、Codex を **Docker のコンテナの中で** 動かす。導入でつまずくのはほとんどが Docker とパスの対応なので、
 この文書はそこを詳しく書く。
 
-Docker と ChatGPT の接続が要るのは Preflight（Codex）と画面イメージの描画だけで、要望・タスク・変更の記録・マイルストーンの
-管理は無くても動く。Docker を用意できない・Preflight が止まる間も、Preflight を通さずにタスクを作って進められる
+Docker と ChatGPT の接続が要るのは Preflight（Codex）・リリースノートの要約の生成・画面イメージの描画だけで、要望・タスク・
+変更の記録・マイルストーンの管理と、リリースノートを手で書いて保存することは無くても動く。Docker を用意できない・Preflight が止まる間も、Preflight を通さずにタスクを作って進められる
 （[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。
 
 ## 全体の流れ

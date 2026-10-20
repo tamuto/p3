@@ -377,6 +377,20 @@ p3 release-notes export v0.2 > RELEASE.md     # 公開する本文だけ（出�
 - **生成**: Preflight と同じ Codex の接続（ChatGPT プラン）で頼む。渡すのはマイルストーンのタイトルと、要望・タスクの ID・タイトル・
   変更の記録だけ。結果の出典（要望・タスク）は P3 が確かめ、内部のパスらしいものは警告する。Ctrl-C で取り消せる。
   `--engine mock` は要約しない試し用（記録の1行目を並べる）
+- **生成せずに手で書く**: 本文の保存は生成によらず、Docker も ChatGPT の接続も要らない。生成できない（Codex を使えない・
+  使用量の上限・材料が無いなど）ときも、この手順で進める。画面では生成の欄の案内と、失敗したときの「本文を手で書く」から
+  本文の欄へ進む（失敗・再生成しても入力は消えない）
+
+  ```bash
+  p3 release-notes show v0.2                    # 材料（収録する要望と変更の記録）を確かめる
+  # 変更の記録を読んで、本文（Markdown）を notes.md に書く
+  p3 release-notes save v0.2 --file notes.md    # 新しく保存する
+  p3 release-notes show v0.2 --json             # 既にあるノートを更新するなら、版（note.version）を読む
+  p3 release-notes save v0.2 --file notes.md --version <版>
+  p3 release-notes export v0.2 > RELEASE.md
+  ```
+
+  `p3 release-notes generate` が始められない・失敗したときも、このコマンドを stderr に出す（取り消しただけなら出さない）
 - **古い材料**: 生成や保存のあとで要望・タスクが変わると「材料が変わった」と知らせる（本文は自動では直さない）。
   必要なら生成し直して、確かめてから保存する
 - **競合**: 保存したノートを直すときは、読んだときの版（`--version`）が要る。画面・エディタなど別のところで先に変わっていれば
