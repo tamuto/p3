@@ -118,6 +118,9 @@ export const until = {
   async enabled(l: Locator) {
     await expect.poll(() => l.isEnabled(), opts).toBe(true);
   },
+  async disabled(l: Locator) {
+    await expect.poll(() => l.isDisabled(), opts).toBe(true);
+  },
   async url(page: Page, re: RegExp) {
     await expect.poll(() => page.url(), opts).toMatch(re);
   },

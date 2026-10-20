@@ -62,7 +62,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   決まらなければ登録済みの一覧と選び方を出す（`src/core/store/locate.ts`）
 - プロジェクトを開く共通の入口（`core/context.ts` の `openProject`。CLI も `serve` の `startServer` もここを通る）で、
   データのフォルダと `project.yaml` があるかを確かめる（`locate.ts` の `checkDataDir`）。無ければ空のプロジェクトとして続けず
-  `DataDirError`（終了コード 1）。何も作らない。無い（ENOENT）と読めない（権限・入出力）は分けて伝える。`init`（作成・参加）と
+  `DataDirError`（終了コード 1）。何も作らない。無い（ENOENT）と読めない（権限・入出力）は分けて伝える。`init`（作成）・`join`（参加）と
   `project` は開かないので妨げない。起動した後の切断は、画面の「再読み込み」の `ReloadError`（状態は変えない）が受け持つ
 - 登録が1つだけで決まった（`via: only`）ときは、今いる場所と関係なく当たるので読むだけにする。CLI の入口（`cli/main.ts`）で、
   プロジェクトを開く前に、読むだけの操作（`cli/readOnly.ts` の `readsOnly`。載っていない操作は変える操作として扱う）以外を止める。
@@ -573,14 +573,17 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
    ファイル内容のハッシュによる楽観ロックに変えれば、`rev` をファイルに書かずに済む。要望単位で人が排他するので優先度は低い（今後）
 3. **git を使わないメンバー。** 閲覧だけなら、静的な HTML に書き出して共有する（`p3 export`、今後）
 
-## AI エージェントへの指示（`p3 init --agents` で AGENTS.md / CLAUDE.md に追記する内容）
+## AI エージェントへの指示（`p3 init --agents` / `p3 agents` で AGENTS.md / CLAUDE.md に足す節）
 
-手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。プロジェクトの `.claude/skills/p3/SKILL.md`（Claude Code）と
-`.agents/skills/p3/SKILL.md`（Codex）に同じものを写す。置き場所の一覧は `src/cli/project.ts` の `SKILL_TARGETS`。
-個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
-（`src/cli/project.ts` の `AGENTS_SNIPPET`。`test/agents.test.ts` が確かめる）。
-`p3 init --agents` は既にあるスキル・追記を上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。
-変えたときは、置いたプロジェクトで手で更新する（`init --agents` が違いを知らせる）。
+手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
+`codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `src/cli/project.ts` の `AGENT_TARGETS`、
+選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
+（`src/cli/project.ts` の `agentsSnippet`。節のスキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`。
+`test/agents.test.ts` が確かめる）。置き先を覚えておく共有の設定は持たない（参加の `join` は置かず、置く・最新にするのは人が明示する
+`p3 agents` だけなので、消した先が戻らない）。
+既にあるスキル・節は上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。変えたときは、置いたプロジェクトで
+`p3 agents <先>` で違いを確かめ、`--force` で選んだ先のスキルと p3 の節だけを同梱の版にする（節の前後の文は残す。節が複数・
+見出しになっていなければ変えずに手で整理してもらう）。
 
 ```markdown
 ## タスク管理（infodb p3）
@@ -590,6 +593,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 変更するときは環境変数 `P3_ACTOR=ai:<エージェント名>` を付ける
 - 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami --json` で確かめる
 - `whoami` の `via`（プロジェクトの決まり方）が `cwd` でなければ（`dir` / `project` / `legacy` / `only`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した `--project` / `--dir` で避けない。人が指定・確認した後はその対象のまま続ける）
+- プロジェクトが無い・未登録のときは `p3 init` / `p3 join` を自分から実行せず、新しく作る（`init`）のか共有されたものに参加する（`join`）のかを人に確かめる
 - 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
   Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
 - 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む

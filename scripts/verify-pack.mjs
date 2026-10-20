@@ -6,7 +6,7 @@
 //   1. npm pack（prepack で画面をビルドする）。--tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      init --agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      init --agents / init --agents codex と p3 agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -123,6 +123,22 @@ try {
       const placed = join(repo, dir, "skills", "p3", "SKILL.md");
       check(existsSync(placed) && readFileSync(placed, "utf8") === original, `スキルが ${dir}/skills/p3/SKILL.md に置かれていません（配布物の原本と違います）`);
     }
+  });
+
+  await step("p3 init --agents codex（選んだ先だけ）と p3 agents（後から足す・最新にする）", () => {
+    const original = readFileSync(join(prefix, "node_modules", "@infodb", "p3", "skills", "p3", "SKILL.md"), "utf8");
+    const other = join(work, "repo-codex");
+    mkdirSync(other, { recursive: true });
+    sh("git", ["init", "-q", "-b", "main"], { cwd: other });
+    p3(["init", "--yes", "--agents", "codex", "--project", "codex-only", "--dir", join(work, "data-codex")], { cwd: other });
+    check(existsSync(join(other, ".agents", "skills", "p3", "SKILL.md")), "--agents codex で .agents/skills/p3/SKILL.md が置かれていません");
+    check(!existsSync(join(other, ".claude")), "--agents codex なのに .claude まで置かれています");
+    p3(["agents", "claude"], { cwd: other });
+    const claude = join(other, ".claude", "skills", "p3", "SKILL.md");
+    check(existsSync(claude) && readFileSync(claude, "utf8") === original, "p3 agents claude で .claude/skills/p3/SKILL.md が置かれていません");
+    writeFileSync(claude, "# 古い版\n");
+    p3(["agents", "claude", "--force"], { cwd: other });
+    check(readFileSync(claude, "utf8") === original, "p3 agents claude --force で最新になっていません");
   });
 
   await step("p3 whoami", () => {

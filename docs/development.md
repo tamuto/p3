@@ -50,8 +50,8 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 - テストは一時ディレクトリに git リポジトリと `.p3/` を作って動かす（`test/helpers.ts`）
 - Codex の経路は、JSON-RPC を話す偽の app-server（`test/fixtures/fake-codex.mjs`）に差し替えて確かめる。本物の Codex が実際に
   どこまで読むか、読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない
-- `init --agents` で置いたスキルを本物の Codex が見つけて読むかは、偽の app-server では確かめられない。置き場所
-  （`SKILL_TARGETS`）や Codex の版を変えたときは、手で確かめる（結果はタスクの変更の記録に残す）:
+- `init --agents` / `p3 agents` で置いたスキルを本物の Codex が見つけて読むかは、偽の app-server では確かめられない。置き場所
+  （`AGENT_TARGETS`）や Codex の版を変えたときは、手で確かめる（結果はタスクの変更の記録に残す）:
 
   ```bash
   # 一時フォルダに git リポジトリを作り、個人設定も分けて置く（p3 を使わない別のリポジトリ other/ も作っておく）
@@ -177,7 +177,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     routeTree.gen.ts ルート一覧（自動生成）
     components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
 bin/p3.mjs           CLI の起動口（tsx でソースをそのまま動かす）
-skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents で各プロジェクトの .claude/skills と .agents/skills に写す）
+skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents / p3 agents で各プロジェクトの .claude/skills・.agents/skills の選んだ先に写す）
 scripts/             デモデータ・配布物の確認・使い方の動画（video/）
 docs/                導入・使い方・開発・設計・公開の文書
 test/                ユニットテスト
@@ -246,4 +246,4 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 
 同じ説明を複数の文書に書かない（片方からリンクする）。確認作業の記録（どの幅・どのブラウザで確かめたか）は文書に書かず、
 PR とタスクの変更の記録に残す。CLI のヘルプ（`src/cli/help.ts`）・API の説明（`src/server/api/manifest.ts`）は入口が変わったとき、
-AI の手順が変わったときは `skills/p3/SKILL.md` と `src/cli/project.ts` の `AGENTS_SNIPPET` の両方を直す。
+AI の手順が変わったときは `skills/p3/SKILL.md` と `src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）の両方を直す。

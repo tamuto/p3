@@ -30,7 +30,7 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
 - 成果物の `--output` には push したコミットの URL（`git remote get-url origin` のリポジトリの `/commit/<sha>`）か PR の URL
 - 依存の `@infodb/codex-workspace`・`@infodb/chatgpt-plan`（llmcs）は公開版を使う。手元の llmcs で試すときの一時的な手順と、
   公開から1日を待たずに入れる例外の決まりは `docs/architecture.md`（llmcs の部品の依存）
-- `skills/p3/SKILL.md` と `src/cli/project.ts` の `AGENTS_SNIPPET` は内容をそろえる（役割・終わり方を変えたら両方を直す。
+- `skills/p3/SKILL.md` と `src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）は内容をそろえる（役割・終わり方を変えたら両方を直す。
   `test/agents.test.ts` が確かめる）
 - 機能を足す・変えるときに直す場所: 規則は `docs/architecture.md` の「規則の置き場所」の1か所（CLI と API の両方に書かない）。
   ドキュメントは、導入を docs/installation.md、使い方を docs/how-to-use.md、開発を docs/development.md、設計と規則を docs/architecture.md に書き、README は入口だけにする（分担は docs/development.md の「文書を直すとき」）。同じ説明を複数に書かない。CLI のヘルプ

@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { appendFile, copyFile, mkdir } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+import YAML from "yaml";
 import { REQUEST_ID } from "../shared/refs.ts";
 import type { ProjectConfig } from "../shared/types.ts";
 import type { P3Context } from "../core/context.ts";
@@ -12,7 +13,7 @@ import { resolveRequestId } from "../core/ops.ts";
 import { writeProjectFile, writeRepoEntry } from "../core/store/projectFile.ts";
 import { repoNameProblem } from "../shared/repos.ts";
 import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../core/repoAdmin.ts";
-import { Workspace as WorkspaceStore } from "../core/store/workspace.ts";
+import { normalizeProject } from "../core/store/normalize.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../core/store/workspace.ts";
 import { DATA_DIR_NAME } from "../core/store/locate.ts";
@@ -109,18 +110,34 @@ const DOC_ENTRIES = ["README.md", "index.md"];
 
 const AGENTS_MARK = "タスク管理（infodb p3）";
 
+/** AI 向けの使い方を置く先（リポジトリのルートからの相対パス。どれも同じ原本 skills/p3/SKILL.md を写す） */
+export const AGENT_TARGETS = {
+  claude: { path: ".claude/skills/p3/SKILL.md", agent: "Claude Code" },
+  codex: { path: ".agents/skills/p3/SKILL.md", agent: "Codex" },
+} as const;
+export type AgentKind = keyof typeof AGENT_TARGETS;
+/** --agents / p3 agents の選び方（値なしの --agents は both） */
+export const AGENT_CHOICES = { claude: ["claude"], codex: ["codex"], both: ["claude", "codex"] } as const satisfies Record<string, readonly AgentKind[]>;
+export type AgentChoice = keyof typeof AGENT_CHOICES;
+export const isAgentChoice = (v: unknown): v is AgentChoice => typeof v === "string" && Object.hasOwn(AGENT_CHOICES, v);
+const KINDS = Object.keys(AGENT_TARGETS) as AgentKind[];
+
 /**
- * p3 init --agents で AGENTS.md / CLAUDE.md に追記する指示。手順の詳しい版は同梱のスキル（skills/p3/SKILL.md）で、
- * 役割と終わり方はそちらとそろえる（test/agents.test.ts が確かめる）
+ * AGENTS.md / CLAUDE.md に書く指示（節）。スキルの参照は、置いた先（と既にある先）だけを書く。手順の詳しい版は同梱のスキル
+ * （skills/p3/SKILL.md）で、役割と終わり方はそちらとそろえる（test/agents.test.ts が確かめる）
  */
-export const AGENTS_SNIPPET = `
+export function agentsSnippet(kinds: readonly AgentKind[]): string {
+  const list = KINDS.filter((k) => kinds.includes(k));
+  const skills = list.map((k) => `\`${AGENT_TARGETS[k].path}\`（${AGENT_TARGETS[k].agent}）`).join("・") + (list.length > 1 ? "。中身は同じ" : "");
+  return `
 ## ${AGENTS_MARK}
 
 - 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順はスキル \`.claude/skills/p3/SKILL.md\`（Claude Code）・\`.agents/skills/p3/SKILL.md\`（Codex）。中身は同じ
+  詳しい手順はスキル ${skills}
 - 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
 - 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる
 - \`whoami\` の \`via\`（プロジェクトの決まり方）が \`cwd\` でなければ（\`dir\` / \`project\` / \`legacy\` / \`only\`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した \`--project\` / \`--dir\` で避けない。人が指定・確認した後はその対象のまま続ける）
+- プロジェクトが無い・未登録のときは \`p3 init\` / \`p3 join\` を自分から実行せず、新しく作る（\`init\`）のか共有されたものに参加する（\`join\`）のかを人に確かめる
 - 新しい作業を頼まれたら \`p3 request new "<タイトル>" --body "..."\` で要望を登録し、ID を伝えて終える。
   Preflight（\`preflight\`）とタスク化（\`accept\`）は人が行う（AI は実行しない。結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
 - 着手する前に \`p3 show T003 --brief --json\` で本文・依存とその状態（\`dependencies\`）・置き換えの注意（\`warnings\`）を読む
@@ -130,44 +147,101 @@ export const AGENTS_SNIPPET = `
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
 `;
+}
+
+/** 両方に置いたときの節（docs/architecture.md に載せる例。test/agents.test.ts が同じことを確かめる） */
+export const AGENTS_SNIPPET = agentsSnippet(KINDS);
 
 /**
- * 同梱のスキルの原本と、プロジェクトに置く場所（リポジトリのルートからの相対パス。同じ原本を写す）。
- * 置くのはプロジェクトの中だけ（個人のスキルの場所に置くと、p3 を使わないプロジェクトでも読まれる）
+ * 同梱のスキルの原本。置くのはプロジェクトの中だけ（個人のスキルの場所に置くと、p3 を使わないプロジェクトでも読まれる）
  */
 export const SKILL_SOURCE = fileURLToPath(new URL("../../skills/p3/SKILL.md", import.meta.url));
-export const SKILL_TARGETS = [
-  { path: ".claude/skills/p3/SKILL.md", agent: "Claude Code" },
-  { path: ".agents/skills/p3/SKILL.md", agent: "Codex" },
-] as const;
+
+/** 2つの文の最初に違う行（1 から） */
+function firstDiffLine(a: string, b: string): number {
+  const x = a.split("\n");
+  const y = b.split("\n");
+  let i = 0;
+  while (i < x.length && i < y.length && x[i] === y[i]) i++;
+  return i + 1;
+}
+
+/** 指示の節（見出し「タスク管理（infodb p3）」からその見出しと同じか上の段の次の見出しの前まで。コードの囲みの中は見出しに数えない） */
+function findSections(text: string): { start: number; end: number; level: number }[] {
+  const lines = text.split("\n");
+  const heads: { line: number; level: number; mark: boolean }[] = [];
+  let fence = false;
+  lines.forEach((l, i) => {
+    if (/^\s*(```|~~~)/.test(l)) fence = !fence;
+    const m = fence ? null : /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l);
+    if (m) heads.push({ line: i, level: m[1].length, mark: m[2] === AGENTS_MARK });
+  });
+  return heads
+    .filter((h) => h.mark)
+    .map((h) => ({ start: h.line, level: h.level, end: heads.find((n) => n.line > h.line && n.level <= h.level)?.line ?? lines.length }));
+}
 
 /**
- * --agents: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）に指示を追記し、スキルを置く。
- * 指示は見出しがあれば足さない。スキルは置く場所ごとに、無ければ置き、同じ内容なら何もせず、違えば上書きしない
- * （手で直したものを消さない。片方が違っても、もう片方は置く）。
+ * AI 向けの使い方を置く（init --agents と p3 agents）。kinds の先だけを扱い、ほかの先は作らず・変えず・消さない。
+ *   - スキル: 無ければ置く・同じなら何もしない・違えば上書きせず違う行と最新にする方法を出す（force なら同梱の版にする）
+ *   - 指示: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）の節。スキルの参照は kinds と既にある先。
+ *     節が無ければ足す・同じなら何もしない・違えば変えずに知らせる（force なら節だけを置き換え、前後の文は残す）。
+ *     節が複数・見出しの形が分からないときは force でも変えず、手で整理するよう知らせる
  */
-async function placeAgents(root: string, cwd: string): Promise<string[]> {
+export async function placeAgents(root: string, cwd: string, choice: AgentChoice, force = false): Promise<string[]> {
+  const kinds: readonly AgentKind[] = AGENT_CHOICES[choice];
   const lines: string[] = [];
-  const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
-  const target = join(root, agentsFile ?? "AGENTS.md");
-  if (existsSync(target) && readFileSync(target, "utf8").includes(AGENTS_MARK)) {
-    lines.push(`  AI 向けの使い方は ${relative(cwd, target) || target} に書いてあります（追記しません）`);
-  } else {
-    await appendFile(target, AGENTS_SNIPPET);
-    lines.push(`  AI 向けの使い方を ${relative(cwd, target) || target} に追記しました`);
-  }
+  const update = `p3 agents ${choice} --force`;
   const source = readFileSync(SKILL_SOURCE, "utf8");
-  for (const t of SKILL_TARGETS) {
+  for (const k of kinds) {
+    const t = AGENT_TARGETS[k];
     const skill = join(root, t.path);
-    const shown = relative(cwd, skill);
+    const shown = relative(cwd, skill) || skill;
     if (!existsSync(skill)) {
       await mkdir(dirname(skill), { recursive: true });
       await copyFile(SKILL_SOURCE, skill);
-      lines.push(`  AI 向けのスキル（${t.agent}）を ${shown} に置きました`);
-    } else if (readFileSync(skill, "utf8") === source) {
-      lines.push(`  AI 向けのスキル（${t.agent}）${shown} は最新です`);
+      lines.push(`  作成  AI 向けのスキル（${t.agent}）を ${shown} に置きました`);
+      continue;
+    }
+    const now = readFileSync(skill, "utf8");
+    if (now === source) lines.push(`  同一  AI 向けのスキル（${t.agent}）${shown} は最新です`);
+    else if (force) {
+      await copyFile(SKILL_SOURCE, skill);
+      lines.push(`  更新  AI 向けのスキル（${t.agent}）${shown} を同梱の版にしました`);
     } else {
-      lines.push(`  ※ ${shown}（${t.agent}）は既にあり、同梱の版と違うので上書きしません。手で見比べて更新してください: ${SKILL_SOURCE}`);
+      lines.push(`  保護  ※ ${shown}（${t.agent}）は既にあり、同梱の版と違うので上書きしません（${firstDiffLine(now, source)} 行目から違います）。最新にするなら ${update}（原本: ${SKILL_SOURCE}）`);
+    }
+  }
+
+  // 指示の節のスキルの参照: 置いた先と、既にある先（後から片方を足したとき、もう片方も指す。無い先は書かない）
+  const refs = KINDS.filter((k) => kinds.includes(k) || existsSync(join(root, AGENT_TARGETS[k].path)));
+  const snippet = agentsSnippet(refs);
+  const file = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f))) ?? "AGENTS.md";
+  const target = join(root, file);
+  const shown = relative(cwd, target) || target;
+  const text = existsSync(target) ? readFileSync(target, "utf8") : "";
+  const sections = findSections(text);
+  if (!sections.length && !text.includes(AGENTS_MARK)) {
+    await appendFile(target, text ? snippet : snippet.replace(/^\n/, ""));
+    lines.push(`  作成  AI 向けの使い方を ${shown} に${text ? "追記しました" : "書きました"}`);
+  } else if (sections.length !== 1) {
+    lines.push(
+      `  保護  ※ ${shown} の「${AGENTS_MARK}」の節が${sections.length ? `${sections.length} つあります` : "見出しとして見つかりません"}。どこまでが p3 の節か決められないので変えません。手で1つの節（見出し「## ${AGENTS_MARK}」）に整理してから、もう一度実行してください`,
+    );
+  } else {
+    const all = text.split("\n");
+    const { start, end, level } = sections[0];
+    // 見出しの段は今のもの（### などで書かれていればそのまま）
+    const body = snippet.replace(/^\n/, "").replace(/^## /, `${"#".repeat(level)} `);
+    const current = all.slice(start, end).join("\n");
+    if (current.trim() === body.trim()) lines.push(`  同一  AI 向けの使い方（${shown} の節）は最新です`);
+    else if (force) {
+      const before = all.slice(0, start).join("\n");
+      const after = all.slice(end).join("\n");
+      await writeFile(target, `${before}${before ? "\n" : ""}${body.trimEnd()}\n${after ? `\n${after.replace(/^\n+/, "")}` : ""}`);
+      lines.push(`  更新  AI 向けの使い方（${shown} の「${AGENTS_MARK}」の節）を置き換えました（前後の文はそのまま）`);
+    } else {
+      lines.push(`  保護  ※ ${shown} の「${AGENTS_MARK}」の節は同梱の版と違うので変えません。最新にするなら ${update}（節だけを置き換えます）`);
     }
   }
   return lines;
@@ -182,7 +256,8 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
-  agents?: boolean;
+  /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
+  agents?: AgentChoice;
   yes?: boolean;
   /** このリポジトリの参照先の名前（既定はフォルダ名） */
   repoName?: string;
@@ -190,19 +265,8 @@ export interface InitOptions {
   prompt?: (question: string) => Promise<string>;
 }
 
-/**
- * p3 init。管理したいリポジトリの中で実行する。
- *   - データを置くフォルダに project.yaml と requests/ を作る。既定はリポジトリのルート（git のメインの作業ツリー。
- *     git 管理外なら実行した場所）の .p3。サブフォルダや追加の作業ツリーから実行してもルートの .p3 にする。
- *     公開できないデータや、リポジトリと別に管理したいときは --dir でリポジトリの外を指せる
- *   - 既に作られたフォルダ（他の人が作って共有したもの）を指したら、作らずに参加だけする
- *   - どちらの場合も個人設定に「プロジェクト名 → フォルダ・手元のリポジトリ」を登録する。以後はリポジトリの中なら指定が要らない
- * 端末から実行すると対話式で聞き、--yes か非対話（AI・スクリプト）なら引数と推測した既定値で作る。
- */
-export async function init(o: InitOptions): Promise<string> {
-  const root = repoRoot(o.cwd);
-  const user = await loadUserConfig();
-
+/** 対話の問い（--yes・非対話なら既定値のまま）。使い終えたら close */
+function prompter(o: { yes?: boolean; prompt?: (q: string) => Promise<string> }) {
   const interactive = !o.yes && (!!o.prompt || (process.stdin.isTTY && process.stdout.isTTY));
   const rl = interactive && !o.prompt ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
   const question = o.prompt ?? (rl ? (q: string) => rl.question(q) : undefined);
@@ -211,58 +275,54 @@ export async function init(o: InitOptions): Promise<string> {
     const a = (await question(`${q}${def ? ` [${def}]` : ""}: `)).trim();
     return a || def;
   };
+  return { interactive: !!question, ask, close: () => rl?.close() };
+}
+
+/** プロジェクト名とデータのフォルダ（init・join で同じ決め方。未指定はルートの .p3、指定は相対なら実行した場所から・~・絶対） */
+async function projectAndDir(o: { cwd: string; project?: string; dir?: string }, root: string, ask: (q: string, def: string) => Promise<string>, dirQuestion: string) {
+  const key = await ask("プロジェクト名（切り替えに使う短い名前）", o.project ?? slugifyName(basename(root)) ?? "project");
+  if (!PROJECT_NAME.test(key)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${key}`);
+  // 明示した空のパスは未指定と分けて断る
+  if (o.dir !== undefined && !o.dir.trim()) throw new UsageError("--dir が空です。既定（リポジトリのルートの .p3）にするなら --dir を付けずに実行してください");
+  const dir = resolvePath(o.cwd, o.dir ?? (await ask(dirQuestion, join(root, DATA_DIR_NAME))));
+  return { key, dir };
+}
+
+/** --dir の案内（既定の場所なら付けない） */
+const dirHint = (dir: string, root: string) => (dir === join(root, DATA_DIR_NAME) ? "" : ` --dir ${dir}`);
+
+/**
+ * p3 init。管理したいリポジトリの中で実行し、新しくプロジェクトを作る（作るだけ。既にあるプロジェクトへの参加は p3 join）。
+ *   - データを置くフォルダに project.yaml と requests/ を作る。既定はリポジトリのルート（git のメインの作業ツリー。
+ *     git 管理外なら実行した場所）の .p3。サブフォルダや追加の作業ツリーから実行してもルートの .p3 にする。
+ *     公開できないデータや、リポジトリと別に管理したいときは --dir でリポジトリの外を指せる
+ *   - そのフォルダに既に project.yaml があれば、何も書かずに断って p3 join を案内する（--agents を付けても置かない）
+ *   - 個人設定に「プロジェクト名 → フォルダ・手元のリポジトリ」を登録する。以後はリポジトリの中なら指定が要らない
+ * 端末から実行すると対話式で聞き、--yes か非対話（AI・スクリプト）なら引数と推測した既定値で作る。
+ */
+export async function init(o: InitOptions): Promise<string> {
+  const root = repoRoot(o.cwd);
+  const user = await loadUserConfig();
+  const { interactive, ask, close } = prompter(o);
 
   try {
-    if (question) console.log(`p3 のプロジェクトを作ります（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
-    const key = await ask("プロジェクト名（切り替えに使う短い名前）", o.project ?? slugifyName(basename(root)) ?? "project");
-    if (!PROJECT_NAME.test(key)) throw new UsageError(`プロジェクト名は英数字と . _ - で: ${key}`);
-    // 未指定ならルートの .p3（既定値は絶対パスで見せる）。指定したパス（相対は実行した場所から）はそのまま使い、外にも置ける。
-    // 明示した空のパスは未指定と分けて断る
-    if (o.dir !== undefined && !o.dir.trim()) throw new UsageError("--dir が空です。既定（リポジトリのルートの .p3）にするなら --dir を付けずに実行してください");
-    const dir = resolvePath(o.cwd, o.dir ?? (await ask("データを置くフォルダ（相対パスは今いる場所から。リポジトリの外も指定できます）", join(root, DATA_DIR_NAME))));
+    if (interactive) console.log(`p3 のプロジェクトを作ります（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
+    const { key, dir } = await projectAndDir(o, root, ask, "データを置くフォルダ（相対パスは今いる場所から。リポジトリの外も指定できます）");
 
+    // 既にあるプロジェクト: 作らず、何も書かない（参加は join、AI 向けの使い方は agents）
+    if (existsSync(join(dir, "project.yaml"))) {
+      throw new UsageError(
+        [
+          `${dir} には既にプロジェクトがあります（init は新しく作るだけです。何も変えていません）`,
+          `  参加するなら: p3 join --project ${key}${dirHint(dir, root)}`,
+          ...(o.agents ? ["  AI 向けの使い方を置く・最新にするなら: p3 agents claude|codex|both"] : []),
+        ].join("\n"),
+      );
+    }
     const registered = user.projects[key];
     if (registered && registered.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${registered.dir}`);
-    // このリポジトリを参照先として登録する名前（新しく作るときは本体として共有の定義も書く。参加するときは同じ名前の参照先か、
-    // 参照先が1つならそれ。決まらなければ登録せず p3 repo path を案内する）
-    const joining = existsSync(join(dir, "project.yaml"));
-    const shared = joining ? (await (async () => { const ws = new WorkspaceStore(dir); await ws.load(); return ws.project.repos; })()) : [];
-    const derived = o.repoName ?? slugifyName(basename(root)) ?? "app";
-    const refName = joining ? (shared.find((r) => r.name === derived) ?? (shared.length === 1 ? shared[0] : undefined))?.name : derived;
-    if (!joining && repoNameProblem(refName!)) throw new UsageError(`参照先の名前: ${repoNameProblem(refName!)}（--repo-name で指定してください）`);
-    // 最新の個人設定の上で、このプロジェクトの登録だけを書く（聞いている間にほかで変わっていても消さない）
-    const register = () =>
-      updateUserConfig((doc, now) => {
-        const prev = now.projects[key];
-        if (prev && prev.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${prev.dir}`);
-        setProjectNode(doc, key, { dir, repos: refName ? { ...prev?.repos, [refName]: root } : (prev?.repos ?? {}) });
-      });
-
-    const agentsFile = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f)));
-    const askAgents = async () =>
-      o.agents ??
-      (rl ? /^y/i.test(await ask(`${agentsFile ?? "AGENTS.md"} と .claude/skills/・.agents/skills/ に AI 向けの p3 の使い方を置きますか (y/n)`, agentsFile ? "y" : "n")) : false);
-
-    // 既に作られたフォルダなら参加だけ
-    if (joining) {
-      // 登録済みのリポジトリでも --agents なら、登録とデータはそのままで AI 向けの使い方だけを置く（あとから置き場所が増えたとき）
-      const already = !!registered && (!refName || registered.repos[refName] === root);
-      if (already && !o.agents) throw new UsageError(`${key}（${dir}）は登録済みです（設定の変更は p3 config。AI 向けの使い方を置くなら --agents）`);
-      if (already) return [`登録済みです: ${key} → ${dir}`, ...(await placeAgents(root, o.cwd))].join("\n");
-      const addAgents = await askAgents();
-      await register();
-      return [
-        `参加しました: ${key} → ${dir}`,
-        refName
-          ? `  参照先 ${refName}  ${root}`
-          : `  このリポジトリを参照先として登録していません。p3 repo ls で名前を確かめ、p3 repo path <名前> ${root} で登録してください`,
-        ...(addAgents ? await placeAgents(root, o.cwd) : []),
-        "",
-        "次に: p3 request ls  /  p3 serve",
-      ]
-        .filter((l, i) => l || i > 1)
-        .join("\n");
-    }
+    const refName = o.repoName ?? slugifyName(basename(root)) ?? "app";
+    if (repoNameProblem(refName)) throw new UsageError(`参照先の名前: ${repoNameProblem(refName)}（--repo-name で指定してください）`);
 
     // 既定値: git とリポジトリの中身から推測する
     const docsFound = DOC_CANDIDATES.filter((d) => existsSync(join(root, d)));
@@ -276,23 +336,31 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
-    const addAgents = await askAgents();
+    // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
+    let agents = o.agents;
+    if (agents === undefined && interactive) {
+      const a = await ask("AI 向けの p3 の使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（置かない / claude / codex / both）", "置かない");
+      if (!["置かない", "none", "n", "no"].includes(a)) {
+        if (!isAgentChoice(a)) throw new UsageError(`置く先は 置かない / claude / codex / both のどれか: ${a}`);
+        agents = a;
+      }
+    }
 
     const cfg: ProjectConfig = {
       name,
       description,
       // このリポジトリを本体の参照先にする（このマシンのパスは個人設定に持ち、共有するデータには書かない）
-      repos: [{ name: refName!, role: "本体", readFirst: true, writable: true, map }],
+      repos: [{ name: refName, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
       preflight: { instructions },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
-    await writeRepoEntry(join(dir, "project.yaml"), refName!, cfg.repos[0]);
-    await register();
+    await writeRepoEntry(join(dir, "project.yaml"), refName, cfg.repos[0]);
+    await register(key, dir, refName, root);
 
-    const agentLines = addAgents ? await placeAgents(root, o.cwd) : [];
+    const agentLines = agents ? await placeAgents(root, o.cwd, agents) : [];
     return [
       `作りました: ${key} → ${dir}`,
       `  参照先        ${refName}（本体） → ${root}`,
@@ -307,7 +375,103 @@ export async function init(o: InitOptions): Promise<string> {
       .join("\n")
       .trimEnd();
   } finally {
-    rl?.close();
+    close();
+  }
+}
+
+/** 最新の個人設定の上で、このプロジェクトの登録だけを書く（聞いている間にほかで変わっていても、ほかの登録・項目は消さない） */
+function register(key: string, dir: string, refName: string | undefined, root: string) {
+  return updateUserConfig((doc, now) => {
+    const prev = now.projects[key];
+    if (prev && prev.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${prev.dir}`);
+    setProjectNode(doc, key, { dir, repos: refName ? { ...prev?.repos, [refName]: root } : (prev?.repos ?? {}) });
+  });
+}
+
+/** 参加する前に、データのフォルダが読める p3 のプロジェクトかを確かめ、共有の定義（読むだけ）を返す */
+async function readSharedProject(dir: string): Promise<ProjectConfig> {
+  const create = "新しく作るなら p3 init";
+  const st = await stat(dir).catch((e: NodeJS.ErrnoException) => e);
+  if (st instanceof Error) {
+    throw new UsageError(
+      st.code === "ENOENT"
+        ? `データのフォルダがありません: ${dir}（パスと、共有のフォルダがつながっているかを確かめてください。${create}）`
+        : `データのフォルダを読めません: ${dir}（${st.code ?? st.message}）`,
+    );
+  }
+  if (!st.isDirectory()) throw new UsageError(`データのフォルダがフォルダではありません: ${dir}`);
+  const file = join(dir, "project.yaml");
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    throw new UsageError(
+      code === "ENOENT"
+        ? `${dir} は p3 のプロジェクトではありません（project.yaml がありません）。指したフォルダと中身を確かめてください（参加では作りません。${create}）`
+        : `project.yaml を読めません: ${file}（${code ?? (e as Error).message}）`,
+    );
+  }
+  let data: unknown;
+  try {
+    data = YAML.parse(text);
+  } catch (e) {
+    throw new UsageError(`project.yaml を読めません（YAML として壊れています）: ${file}: ${(e as Error).message.split("\n")[0]}`);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new UsageError(`project.yaml の中身が p3 の設定ではありません: ${file}`);
+  return normalizeProject(data as Record<string, unknown>);
+}
+
+export interface JoinOptions {
+  cwd: string;
+  project?: string;
+  dir?: string;
+  repoName?: string;
+  yes?: boolean;
+  prompt?: (question: string) => Promise<string>;
+}
+
+/**
+ * p3 join。既にあるプロジェクト（ほかの人が作って共有したデータのフォルダ）に参加する。個人設定に
+ * 「プロジェクト名 → フォルダ・このリポジトリのこのマシンのパス」を登録するだけで、共有の定義・データ・
+ * AI 向けのファイル（スキル・AGENTS.md / CLAUDE.md）は書かない。データのフォルダの既定と指定の仕方は init と同じ。
+ *   - このリポジトリを登録する参照先: --repo-name（共有の定義にある名前）→ フォルダ名と同じ名前 → 参照先が1つならそれ。
+ *     決まらなければ登録せず p3 repo path を案内する
+ *   - 同じ名前で別のフォルダは断る。同じ名前・同じフォルダ・同じパスなら何もしない（成功）
+ */
+export async function joinProject(o: JoinOptions): Promise<string> {
+  const root = repoRoot(o.cwd);
+  const { interactive, ask, close } = prompter(o);
+  try {
+    if (interactive) console.log(`p3 のプロジェクトに参加します（リポジトリ: ${root}）\n（Enter で [ ] 内の既定値）\n`);
+    const { key, dir } = await projectAndDir(o, root, ask, "参加するデータのフォルダ（相対パスは今いる場所から）");
+    const shared = (await readSharedProject(dir)).repos;
+    let refName: string | undefined;
+    if (o.repoName !== undefined) {
+      if (!shared.some((r) => r.name === o.repoName)) {
+        throw new UsageError(`参照先「${o.repoName}」は共有の定義にありません（あるもの: ${shared.map((r) => r.name).join(", ") || "なし"}）`);
+      }
+      refName = o.repoName;
+    } else {
+      const derived = slugifyName(basename(root));
+      refName = (shared.find((r) => r.name === derived) ?? (shared.length === 1 ? shared[0] : undefined))?.name;
+    }
+    const user = await loadUserConfig();
+    const prev = user.projects[key];
+    if (prev && prev.dir !== dir) throw new UsageError(`プロジェクト名「${key}」は別のフォルダで登録済みです: ${prev.dir}`);
+    if (prev && (!refName || prev.repos[refName] === root)) return `登録済みです: ${key} → ${dir}（変えていません）`;
+    await register(key, dir, refName, root);
+    return [
+      `参加しました: ${key} → ${dir}`,
+      refName
+        ? `  参照先 ${refName}  ${root}`
+        : `  このリポジトリを参照先として登録していません。p3 repo ls で名前を確かめ、p3 repo path <名前> ${root} で登録してください`,
+      `  個人設定 ${userConfigPath()} に登録しました（データ・リポジトリのファイルは変えていません）`,
+      "",
+      "次に: p3 request ls  /  p3 serve",
+    ].join("\n");
+  } finally {
+    close();
   }
 }
 
@@ -327,7 +491,7 @@ export async function projectCommand(
       data: rows,
       text: rows.length
         ? rows.map((r) => `${r.current ? "*" : " "} ${r.name.padEnd(w)}  ${r.dir}${Object.keys(r.repos).length ? `  （参照先 ${Object.keys(r.repos).join(", ")}）` : ""}`).join("\n")
-        : "登録済みのプロジェクトはありません。管理したいリポジトリの中で p3 init --project <名前> --dir <フォルダ>",
+        : "登録済みのプロジェクトはありません。管理したいリポジトリの中で p3 init --project <名前>（新しく作る）か p3 join --project <名前>（参加する）",
     };
   }
   if (sub === "add") {

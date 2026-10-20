@@ -28,7 +28,7 @@ node scripts/verify-pack.mjs --docker     # npm pack → 実行時の依存だ�
 ```
 
 - [ ] 全段が `ok`。確かめる段: Node の版と engines / tarball の中身 / `npm install`（開発用の依存が入らない）/
-  別のリポジトリで `init --agents`・`whoami`・要望の作成・Mock の Preflight・メモを足した再評価・`serve`（画面・資産・API）/
+  別のリポジトリで `init --agents`・`init --agents codex` と `p3 agents`（後から足す・`--force`）・`whoami`・要望の作成・Mock の Preflight・メモを足した再評価・`serve`（画面・資産・API）/
   `codex update`（`--docker`。未登録・未認証のまま本物の Docker でイメージを作り直し、版を読む）
 - [ ] 下限の Node でも通す: `PATH=$(dirname $(npx -y node@22.0.0 -e "console.log(process.execPath)")):$PATH node scripts/verify-pack.mjs`
 - [ ] Docker が無い環境で確かめたときは、`codex update` の段が「実行していない」と出る。その場合は Docker のある環境で

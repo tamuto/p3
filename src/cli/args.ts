@@ -46,7 +46,9 @@ const OPTIONS = {
   repo: { type: "string" },
   description: { type: "string" },
   instructions: { type: "string" },
-  agents: { type: "boolean" },
+  // 値なしの --agents は both（joinValues が --agents=both にする）
+  agents: { type: "string" },
+  force: { type: "boolean" },
   "note-only": { type: "boolean" },
   "archive-superseded": { type: "boolean" },
   paste: { type: "boolean" },
@@ -73,7 +75,11 @@ function joinValues(argv: string[]): string[] {
   for (let i = 0; i < argv.length; i++) {
     const name = /^--([a-z]+)$/.exec(argv[i])?.[1];
     const opt = name ? (OPTIONS as Record<string, { type: string }>)[name] : undefined;
-    if (opt?.type === "string" && i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+    if (name === "agents") {
+      // 値は省ける（both）。次がオプション（- で始まる）か無ければ値なし。値は確かめる側（init）で断る
+      const next = argv[i + 1];
+      out.push(next !== undefined && !next.startsWith("-") ? `--agents=${argv[++i]}` : "--agents=both");
+    } else if (opt?.type === "string" && i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
       out.push(`${argv[i]}=${argv[++i]}`);
     } else {
       out.push(argv[i]);
