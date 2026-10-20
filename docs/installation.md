@@ -220,6 +220,8 @@ p3 codex update
 - 初回は数分かかる（ネットワークから Codex を入れる）。プロジェクトの登録やサインインは要らない
 - しなくても、最初の Preflight の前に自動で作る。その後も、作ってから1日より古ければ Preflight の前に作り直す
   （止めるなら `p3 user-config set codex.ensureImage=false`）
+- 作り直すかどうかは作った日時だけで決まる。P3 を上げてイメージの中身（入れる道具）が変わったときは、`p3 codex update` で
+  今すぐ作り直す（しなくても1日以内に作り直される）
 - 画面イメージの描画のイメージ（`infodb-p3-render`）は、最初に画面イメージを描くときに作る（`p3 render update` で今すぐ）
 
 ## 8. 画面を開いて、試しに Preflight を動かす
