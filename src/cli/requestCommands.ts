@@ -8,6 +8,7 @@ import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest } from "./showView.ts";
 import { UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
+import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { parse, splitPair, list, date, readBody, readAttachFiles } from "./args.ts";
 import { Output, formatEntity, deps } from "./output.ts";
 
@@ -160,10 +161,11 @@ export async function milestoneCommand(ctx: P3Context, out: Output, args: string
     return out.result({ removed: id }, () => `外しました: ${id}`);
   }
   if (sub && sub !== "ls" && sub !== "list") throw new UsageError("p3 milestone [ls | add <id> | set <id> | rm <id>]");
+  const shown = sortMilestones(ms);
   return out.result(
-    ms,
+    shown,
     () =>
-      table(ms.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`])) ||
+      table(shown.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`])) ||
       "マイルストーンはありません（p3 milestone add v0.1 --title 最初のリリース --due 2026-11-30）",
   );
 }

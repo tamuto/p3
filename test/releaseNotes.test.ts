@@ -265,6 +265,24 @@ describe("マイルストーンの削除の保護と、消えたマイルスト�
     expect(codes(d.material.warnings)).toContain("unknown_milestone:v1");
     expect(await exportReleaseNote(ctx, "v1")).toBe("残る本文\n");
   });
+
+  it("一覧は登録したマイルストーンを ID のバージョンの降順に、その後ろに登録に無いノートを同じ降順に並べる（登録の順は変えない）", async () => {
+    const { ctx, add } = await setup();
+    await add("検索", "done", [{ status: "done", record: "r" }]);
+    await saveReleaseNote(ctx, "v1", { body: "1" });
+    await saveReleaseNote(ctx, "v2", { body: "2" });
+    // 桁の違う ID を登録の順で並べ、v1・v2 は登録から外す（ノートは残る）
+    await ctx.ws.saveProject({ milestones: [{ id: "0.9", title: "九" }, { id: "0.10", title: "十" }] });
+    const o = await releaseOverview(ctx);
+    expect(o.milestones.map((m) => [m.milestone, m.known, m.note.state])).toEqual([
+      ["0.10", true, "none"],
+      ["0.9", true, "none"],
+      ["v2", false, "ok"],
+      ["v1", false, "ok"],
+    ]);
+    expect(codes(o.warnings)).toEqual(["unknown_milestone:v2", "unknown_milestone:v1"]);
+    expect(ctx.ws.project.milestones.map((m) => m.id)).toEqual(["0.9", "0.10"]);
+  });
 });
 
 describe("監視と再読み込み", () => {

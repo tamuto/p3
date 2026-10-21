@@ -12,6 +12,7 @@ import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { CLOSED_STATUSES, filterRequests, parseShow, parseTagsSearch, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
+import { sortMilestones } from "../../shared/milestoneOrder.ts";
 import {
   addDays,
   bucketStart,
@@ -76,10 +77,11 @@ function ProgressPage() {
   const navigate = Route.useNavigate();
   const openTask = useCallback((ref: string) => void navigate({ search: (prev) => ({ ...prev, task: ref }) }), [navigate]);
   const closeTask = () => void navigate({ search: (prev) => ({ ...prev, task: undefined }) });
-  const { milestones } = ctx.info.project;
+  // マイルストーンは ID のバージョンの降順（新しいものが上）
+  const milestones = useMemo(() => sortMilestones(ctx.info.project.milestones), [ctx.info.project.milestones]);
   const today = localToday();
 
-  // マイルストーンの順 → 期限の順。既定（未完了）では対応済・完了済・見送りを隠す
+  // マイルストーンの順（未所属は最後）→ 期限の順。既定（未完了）では対応済・完了済・見送りを隠す
   const rows = useMemo(() => {
     const order = (p: RequestProgress) => {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
