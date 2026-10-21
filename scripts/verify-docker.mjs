@@ -124,7 +124,8 @@ try {
   if (!flag("no-build")) {
     await step(`docker build（${image}）`, () => {
       const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
-      execFileSync("docker", ["build", "-q", "--build-arg", `P3_VERSION=${version}`, "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
+      // --pull: 手元の古いベースではなく、今の node:<メジャー>-bookworm-slim を取って作る
+      execFileSync("docker", ["build", "-q", "--pull", "--build-arg", `P3_VERSION=${version}`, "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
       return docker("image", "inspect", "--format", "{{.Id}}", image).slice(0, 19);
     });
   }

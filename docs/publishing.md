@@ -58,7 +58,9 @@ npm publish               # prepack で画面をビルドする。publishConfig.
 ## 6. Docker Hub（tamuto/p3）
 
 イメージの中の p3 は、そのときのチェックアウトから `pnpm pack` と同じ中身で作る（npm から取らない）。npm に公開した版と同じ
-コミット（版のタグ `v<版>`）から作り、タグも同じ版にする。
+コミット（版のタグ `v<版>`）から作り、タグも同じ版にする。ベースの Node はメジャー版だけを指定しているので、`--pull` を付けて
+その時点の最新（同じメジャーのセキュリティリリースなど）を取って作る。Node の更新だけを取り込むときも、同じコミットから作り直して
+push する（公開済みのイメージ・起動中のコンテナは自動では変わらない）。
 
 - [ ] npm の公開（5.）と同じコミットにいる（`git describe --tags` が `v<版>`、作業ツリーに変更が無い）
 - [ ] スモークが全段 ok: `node scripts/verify-docker.mjs --image tamuto/p3:<版>`（DevContainer の中では `--work`・`--network-of auto`・
@@ -71,7 +73,7 @@ npm publish               # prepack で画面をビルドする。publishConfig.
 ```bash
 V=$(node -p "require('./package.json').version")
 docker login                                                   # tamuto に push できるアカウント
-docker buildx build --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V \
+docker buildx build --pull --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V \
   -t tamuto/p3:$V -t tamuto/p3:latest --push .
 docker buildx imagetools inspect tamuto/p3:$V                  # 両方の platform があるか
 ```

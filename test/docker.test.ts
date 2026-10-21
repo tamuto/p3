@@ -16,12 +16,16 @@ describe("Dockerfile", () => {
     expect(directive("EXPOSE")).toEqual(["4310"]);
   });
 
-  it("ベースのイメージは版を固定し、実行は engines を満たす Node、ビルドは packageManager と同じ pnpm", () => {
+  it("Node はメジャー版に追従し（同じメジャーの更新は作り直すと入る）、ほかのベースは版を固定する。実行は engines を満たす Node、ビルドは packageManager と同じ pnpm", () => {
     const froms = directive("FROM");
-    for (const f of froms) expect(f, f).toMatch(/^[\w./-]+:\d+\.\d+\.\d+[\w.-]*( AS \w[\w-]*)?$/);
+    const nodes = froms.filter((f) => f.startsWith("node:"));
+    // ビルドは Node 24、実行は Node 22。どちらも bookworm-slim で、マイナー・パッチは書かない（書くとセキュリティリリースが入らない）
+    expect(nodes).toEqual(["node:24-bookworm-slim AS build", "node:22-bookworm-slim"]);
+    for (const f of froms.filter((x) => !x.startsWith("node:"))) expect(f, f).toMatch(/^[\w./-]+:\d+\.\d+\.\d+[\w.-]*( AS \w[\w-]*)?$/);
+    expect(froms.find((f) => f.startsWith("docker:"))).toMatch(/^docker:\d+\.\d+\.\d+-cli AS docker-cli$/);
     const runtime = froms.at(-1)!;
     const min = Number(/>=\s*(\d+)/.exec(pkg.engines.node)?.[1]);
-    expect(Number(/^node:(\d+)\./.exec(runtime)?.[1])).toBeGreaterThanOrEqual(min);
+    expect(Number(/^node:(\d+)-/.exec(runtime)?.[1])).toBeGreaterThanOrEqual(min);
     expect(dockerfile).toContain(`npm install -g ${pkg.packageManager}`);
     expect(dockerfile).toContain("pnpm install --frozen-lockfile");
     expect(dockerfile).toContain("pnpm install --prod --frozen-lockfile");
@@ -35,7 +39,7 @@ describe("Dockerfile", () => {
     expect(dockerfile).toMatch(/HEALTHCHECK [^\n]*\\\n[^\n]*\/api\/mode/);
     // 公開の手順は版を渡して両方の platform を作る
     const publishing = read("docs/publishing.md");
-    expect(publishing).toContain("--platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V");
+    expect(publishing).toContain("docker buildx build --pull --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V");
     expect(publishing).toContain("-t tamuto/p3:$V -t tamuto/p3:latest");
   });
 
