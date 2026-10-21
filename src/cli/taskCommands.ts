@@ -16,7 +16,7 @@ import { requestCommand } from "./requestCommands.ts";
 
 const RECORD_REQUIRED =
   "AI が完了にするときは --record で変更の記録を残してください（何を変えたか・なぜ・入れた決まり・やめたもの。Markdown。- で標準入力）\n" +
-  "  例: p3 move T003 done --output <URL> --record - < record.md";
+  "  例: p3 move T003 done --output <成果物（変えたファイルや説明。URL は後から足せます）> --record - < record.md";
 
 export async function taskCommand(cmd: string, env: CommandEnv): Promise<number | undefined> {
   const { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd } = env;

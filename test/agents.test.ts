@@ -28,6 +28,9 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     "--repo-output", // 複数のリポジトリの PR を最後のタスクに残す
     "`p3 init`", // 未登録でも自分から作らない・参加しない（どちらかを人に確かめる）
     "`p3 join`",
+    "コミットする前に", // 完了・対応済を保存してからコミットする（記録を実装と同じコミットに入れられる）
+    "requests/<要望ID>/", // 同じコミットに入れるのは、その要望のフォルダだけ
+    "git add -f", // 外・無視・worktree のデータを無理に入れない
   ];
   it.each(shared)("どちらにも「%s」がある", (word) => {
     expect(skill).toContain(word);
@@ -53,6 +56,14 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
       expect(text).not.toMatch(/--project [a-z]/);
       expect(text).not.toMatch(/github\.com\/[\w-]+\//);
       expect(text).not.toMatch(/link:\.\./);
+    }
+  });
+
+  it("完了は push の後ではなく、テストを通してコミットする前に保存する（URL は後から足す）。前の手順を残さない", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet, devSkill]) {
+      expect(text).not.toMatch(/push したら、完了|コミット・push したら|--output <コミットか PR の URL> --record|--output <PR の URL など> --record/);
+      expect(text).toMatch(/--output <URL>|--output` で足す/);
     }
   });
 
