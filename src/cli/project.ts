@@ -142,8 +142,10 @@ export function agentsSnippet(kinds: readonly AgentKind[]): string {
   Preflight（\`preflight\`）とタスク化（\`accept\`）は人が行う（AI は実行しない。結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
 - 着手する前に \`p3 show T003 --brief --json\` で本文・依存とその状態（\`dependencies\`）・置き換えの注意（\`warnings\`）を読む
 - 着手する前に、\`--brief --json\` の \`work\`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
-- 着手するときは \`p3 move T003 doing\`、終えたら \`p3 move T003 done --output <PR の URL など> --record -\`（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で）。複数のリポジトリにまたがるときは最後のタスクに \`--repo-output <参照先>=<PR の URL>\` で全部の PR を残す
-- 要望のタスクを全部終えたら \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
+- 着手するときは \`p3 move T003 doing\`。テストを通したら、コミットする前に \`p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -\` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）
+- 要望のタスクを全部終えたら、コミットする前に \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
+- データのフォルダがこの作業ツリーの中で git 管理されているなら、要望のフォルダ（\`requests/<要望ID>/\`）の変更も実装と同じコミットに入れる（ほかの要望・関係ない変更は入れない。外・無視・worktree のときは入らないので、移動や \`git add -f\` はしない）。push に失敗したら完了の記録は残し、公開できていないことを伝える
+- コミットや PR の URL は後から \`p3 move T003 done --output <URL>\` で足す（完了・記録はそのまま。データをコミットしているなら追記もコミットして push）。複数のリポジトリにまたがるときは最後のタスクに \`--repo-output <参照先>=<PR の URL>\` で全部の PR を残す
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
 - 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
 `;

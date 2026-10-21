@@ -27,7 +27,10 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
 
 - タスクを完了にする前に `pnpm -s check`（型検査・lint・テスト・画面のビルド・UI テスト）を通す。CI は足さない。lint の規則と
   例外の書き方は `docs/development.md` の「lint」（指摘を無効化のコメントで一律に黙らせない）
-- 成果物の `--output` には push したコミットの URL（`git remote get-url origin` のリポジトリの `/commit/<sha>`）か PR の URL
+- 完了の順番は同梱のスキルどおり（テストを通したら、コミットする前に今ある成果物と記録で完了にし、最後なら対応済にしてからコミット）。
+  データのフォルダがこの作業ツリーの中で git 管理されているかは `p3 whoami` と `git check-ignore` で確かめ、そうなら要望のフォルダも
+  同じコミットに入れる。push したら、コミットの URL（`git remote get-url origin` のリポジトリの `/commit/<sha>`）か PR の URL を
+  `move ... done --output` で足す
 - 依存の `@infodb/codex-workspace`・`@infodb/chatgpt-plan`（llmcs）は公開版を使う。手元の llmcs で試すときの一時的な手順と、
   公開から1日を待たずに入れる例外の決まりは `docs/architecture.md`（llmcs の部品の依存）
 - `skills/p3/SKILL.md` と `src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）は内容をそろえる（役割・終わり方を変えたら両方を直す。
