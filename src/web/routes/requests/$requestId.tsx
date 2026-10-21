@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { RequestIdCopy } from "../../components/RequestIdCopy.tsx";
 import { TaskDrawer } from "../../components/TaskDrawer.tsx";
 import { Empty } from "../../components/ui.tsx";
 import { useAppCtx } from "../../lib/appCtx.ts";
@@ -6,7 +7,8 @@ import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
 
 /**
- * 要望の枠: 見出し（タイトルとタスクの完了数。状態・ID は概要・Preflight の管理情報に出す）・タブ（概要と Preflight / タスクボード / 対応済み）・タスク詳細（?task=T003）。
+ * 要望の枠: 見出し（要望 ID とコピー・タイトル・タスクの完了数。状態は概要・Preflight の管理情報に出す）・タブ（概要と Preflight / タスクボード / 対応済み）・タスク詳細（?task=T003）。
+ * 見出しとタブは本文のスクロールの外に置く（本文を下へ送っても ID をコピーできる）。
  * 要望は作業の単位で、ここから下はすべてこの要望の中だけを扱う。
  */
 export const Route = createFileRoute("/requests/$requestId")({
@@ -47,8 +49,9 @@ function RequestFrame() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 bg-white px-6 pt-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-6 pt-4 dark:border-slate-800 dark:bg-slate-900">
+        <RequestIdCopy id={request.id} />
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="min-w-0 text-xl font-bold break-words">{request.title}</h1>
           {tasks.length > 0 && (
             <span className="text-sm whitespace-nowrap text-slate-500">
