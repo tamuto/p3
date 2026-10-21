@@ -3,7 +3,7 @@ import { copyNotice, copyText, type ClipboardLike, type CopyState } from "../lib
 import { buttonCls, cx } from "./ui.tsx";
 
 /**
- * 要望 ID の表示とコピー（概要・Preflight のタイトルの上）。
+ * 要望 ID の表示とコピー（要望の枠の見出しのタイトルの上。どのタブでも同じ1組）。
  *   - ID は選択できる（クリックで全体を選べる）。コピーできないときは選んでコピーしてもらう
  *   - ボタンは枠つきで、コピーのアイコンと文字を出す（成功したらアイコンをチェックにする）
  *   - 結果は role="status" で支援技術にも伝える。成功は書き込みが終わってから出し、しばらくして消す
@@ -37,7 +37,7 @@ export function RequestIdCopy({ id, clipboard }: { id: string; clipboard?: Clipb
         {notice?.ok ? <CheckIcon /> : <CopyIcon />}
         コピー
       </button>
-      <span role="status" className={cx("text-sm", notice?.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+      <span role="status" className={cx("min-w-0 text-sm break-words", notice?.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
         {notice?.text ?? ""}
       </span>
     </div>

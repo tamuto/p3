@@ -252,9 +252,10 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   済み・関係の操作のように入力欄以外を自分で変えたときは、入力欄の項目が変わっていなければ自分の上げた rev に合わせる。
   要望の取り直し（`web/lib/requestLoad.ts`）: 404 は表示中なら gone（前の内容と入力を残して保存を止める）、初めからなら
   「見つかりません」。ほかの失敗は前の内容のまま知らせる。要望を移ると作り直す（`RequestDataProvider` の key）
-- 要望の画面の見出し（`routes/requests/$requestId.tsx` の RequestFrame）はタイトルとタスクの完了数だけ。ステータス・ID・
-  ブランチの印は外した（ステータスは概要・Preflight の管理情報で選ぶ。ブランチはデータに残り、CLI で見る）。要望 ID は
-  概要・Preflight の管理情報（RequestMeta）のタイトルの上にだけ出す（`components/RequestIdCopy.tsx`）。コピーは
+- 要望の画面の見出し（`routes/requests/$requestId.tsx` の RequestFrame）は要望 ID とコピー・タイトル・タスクの完了数だけ。
+  ステータス・ブランチの印は外した（ステータスは概要・Preflight の管理情報で選ぶ。ブランチはデータに残り、CLI で見る）。見出しと
+  タブは本文のスクロールの外に置き、要望 ID はタイトルの上に、どのタブでも1組だけ出す（`components/RequestIdCopy.tsx`。概要の
+  管理情報（RequestMeta）には出さない。本文を下へ送ってもコピーできる）。コピーは
   `web/lib/copy.ts` の `copyText`（ボタンは枠つきでコピーのアイコンと文字。成功したらアイコンをチェックにする）: Clipboard API が無ければ unavailable、拒まれたら denied（例外は外へ出さない）、書き込みが
   終わってから copied。知らせは role="status" で、どの ID の結果かを持ち、別の要望の結果は出さない。ボタンは mousedown で
   フォーカスを奪わないので、入力中のタイトルを保存させない。ID は select-all で、コピーできないときは手で選ぶ

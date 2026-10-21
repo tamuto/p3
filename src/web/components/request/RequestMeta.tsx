@@ -6,7 +6,6 @@ import { Button, buttonCls, Field, inputCls } from "../ui.tsx";
 import { api, failureOf } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { type RequestData } from "../../lib/requestData.tsx";
-import { RequestIdCopy } from "../RequestIdCopy.tsx";
 import { TagInput } from "../TagInput.tsx";
 import { requestWorkstreams } from "../../../shared/workTarget.ts";
 import { sameTags } from "../../../shared/tags.ts";
@@ -14,9 +13,8 @@ import { discardDraft, draftOf, editDraft } from "../../lib/draft.ts";
 import { ExternalChange } from "./ExternalChange.tsx";
 import { type RequestDrafts } from "../../lib/requestDrafts.ts";
 
-/** 要望の管理情報（ID・タイトル・ステータス・期限・マイルストーン・タグ・ブランチ） */
-
-/** 要望の管理情報（ID・タイトル・ステータス・期限・マイルストーン・タグ）。変えるとすぐ保存する。期限〜タグは Preflight には渡さない */
+/** 要望の管理情報（タイトル・ステータス・期限・マイルストーン・タグ・ブランチ）。変えるとすぐ保存する。期限〜タグは Preflight には渡さない。
+ * 要望 ID とコピーは、どのタブでも見えるよう要望の枠の見出しに出す（routes/requests/$requestId.tsx） */
 export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestData; drafts: RequestDrafts }) {
   const { request } = data;
   // タイトル・タグの入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で）。本文と一緒に親が持つ
@@ -68,7 +66,6 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <RequestIdCopy id={request.id} />
         <Field label="タイトル">
           <input
             className={`${inputCls} text-lg font-semibold`}
