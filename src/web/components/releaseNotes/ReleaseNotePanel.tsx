@@ -33,7 +33,7 @@ import { useUnsaved } from "../../lib/unsaved.ts";
  *   - 保存は編集を始めたときの版で行う（外で変わっていれば競合。最新の版に差し替えない）
  *   - 保存しても要望・マイルストーンの状態は変えない（要望の一括完了は別の操作。実行しても本文の入力は残す）
  */
-export function ReleaseNotePanel({ milestone }: { milestone: string }) {
+export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: string; onDirtyChange?: (dirty: boolean) => void }) {
   const { tick, reload } = useAppData();
   const [detail, setDetail] = useState<ReleaseNoteDetail>();
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,6 +44,10 @@ export function ReleaseNotePanel({ milestone }: { milestone: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string; warnings?: ReleaseWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const latest = useRef(latestOnly());
+  // 保存していない入力があるか（ページのタブの印）。別のマイルストーンに移ったら消す
+  const dirty = !!draft && isNoteDirty(draft);
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const load = useCallback(async () => {
     try {

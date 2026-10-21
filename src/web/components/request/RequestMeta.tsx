@@ -103,8 +103,8 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
           </select>
         </Field>
         {ctx.info.project.milestones.length === 0 && (
-          <Link to="/settings" search={{ tab: "project" }} className={buttonCls("ghost", "mt-7 text-sm underline")}>
-            マイルストーンを設定で作る
+          <Link to="/release-notes" search={{ tab: "milestones" }} className={buttonCls("ghost", "mt-7 text-sm underline")}>
+            マイルストーンを作る
           </Link>
         )}
       </div>

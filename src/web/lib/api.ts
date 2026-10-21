@@ -44,6 +44,12 @@ export class ApiError extends Error {
   }
 }
 
+/** 保存の失敗の文言。入力の検証の誤り（issues）は「項目: 理由」を並べ、ほかは API のメッセージ */
+export function saveErrorText(e: unknown): string {
+  const issues = e instanceof ApiError ? (e.body as { issues?: { message: string; path: (string | number)[] }[] } | null)?.issues : undefined;
+  return issues ? issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" / ") : (e as Error).message;
+}
+
 /**
  * API の失敗の種類。画面はこれで文言と次の操作を決める（status や code を個別に見ない）。
  *   rev_conflict: 編集を始めた後に他で更新された（読み直してやり直す。入力は残す）

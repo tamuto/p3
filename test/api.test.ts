@@ -115,6 +115,10 @@ describe("REST API", () => {
     expect((await call("PATCH", `/requests/${rid}/tasks/${t.id}`, { status: "doing" })).body.status).toBe("doing");
     const ok = await call("PUT", "/project", { name: "新しい名前" });
     expect(ok.body).toMatchObject({ name: "新しい名前" });
+    // 送った項目だけを変える（設定の基本とマイルストーンのタブは、互いの項目を送らない）
+    await call("PUT", "/project", { milestones: [{ id: "v1", title: "最初" }] });
+    expect((await call("PUT", "/project", { name: "もう一度", description: "説明" })).body).toMatchObject({ name: "もう一度", milestones: [{ id: "v1", title: "最初" }] });
+    expect((await call("PUT", "/project", { milestones: [{ id: "v1", title: "最初", done: true }] })).body).toMatchObject({ name: "もう一度", description: "説明" });
   });
 
   it("マイルストーン: 重複と使用中の削除を拒み、要望には定義済みのものだけ付けられる", async () => {
