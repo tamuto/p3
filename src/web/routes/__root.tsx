@@ -2,8 +2,7 @@ import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-rout
 import { Logo } from "../components/Logo.tsx";
 import { buttonCls, cx, Empty } from "../components/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
-import { currentScope } from "../lib/scope.ts";
-import { ProjectSwitcher } from "../components/ProjectSwitcher.tsx";
+import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
 
 /**
  * 全画面の共通部分。ページは src/web/routes/ にファイルを置けば足りる（ルート一覧 routeTree.gen.ts は自動生成）。
@@ -41,17 +40,30 @@ function Layout() {
   const ctx = useAppCtx();
   const pathname = useLocation({ select: (l) => l.pathname });
   const errors = Object.keys(ctx.info.errors);
+  // プロジェクトを跨ぐ serve では、ロゴの横のプロジェクト名を切り替えの欄にする（通常の serve では null）
+  const switcher = useProjectSwitcher();
+  const allProjects = switcher.picker !== null;
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-        {/* 狭い画面ではプロジェクト名を出さず（ロゴの title にある）、見出しが画面の幅に収まるようにする */}
-        <Link to="/" className="flex min-w-0 items-center gap-3" title={`infodb p3 · ${ctx.info.project.name}`}>
-          <Logo />
-          <span className="hidden truncate font-medium sm:inline">{ctx.info.project.name}</span>
-        </Link>
-        {/* 狭い画面では、ナビゲーションを横にスクロールさせて画面の幅に収める（ページ全体は横にはみ出さない） */}
-        <nav className="flex min-w-0 shrink gap-1 overflow-x-auto">
+      <header
+        className={cx(
+          "flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900",
+          allProjects && "flex-wrap gap-y-2",
+        )}
+      >
+        {/* 狭い画面ではプロジェクト名を出さず（ロゴの title にある）、見出しが画面の幅に収まるようにする。
+            プロジェクトを跨ぐ serve では、名前の代わりに切り替えの欄をロゴの横（リンクの外）に置き、狭い画面でも隠さない */}
+        <div className="flex min-w-0 items-center gap-3">
+          <Link to="/" className="flex min-w-0 items-center gap-3" title={`infodb p3 · ${ctx.info.project.name}`}>
+            <Logo />
+            {!allProjects && <span className="hidden truncate font-medium sm:inline">{ctx.info.project.name}</span>}
+          </Link>
+          {switcher.picker}
+        </div>
+        {/* 狭い画面では、ナビゲーションを横にスクロールさせて画面の幅に収める（ページ全体は横にはみ出さない）。
+            プロジェクトを跨ぐ serve の狭い画面では、切り替えの欄の幅を空けるため次の行に回す */}
+        <nav className={cx("flex min-w-0 shrink gap-1 overflow-x-auto", allProjects && "order-last basis-full sm:order-none sm:basis-auto")}>
           {NAV.map((n) => (
             <Link
               key={n.to}
@@ -77,8 +89,7 @@ function Layout() {
           </span>
         )}
       </header>
-      {/* プロジェクトを跨ぐ serve: 今のプロジェクトをどの画面でも見せ、ここで切り替える */}
-      {currentScope().mode === "all-projects" && <ProjectSwitcher />}
+      {switcher.notices}
 
       {ctx.refreshing.error && (
         <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">

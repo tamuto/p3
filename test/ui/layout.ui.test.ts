@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { box, escapes, inViewport, pageOverflow, reachable, reachByScroll } from "./layout.ts";
+import { box, escapes, inViewport, isDark, luminance, pageOverflow, reachable, reachByScroll } from "./layout.ts";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
@@ -76,6 +76,9 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
         const schedule = page.getByTestId("schedule");
         await until.count(schedule.getByRole("link", { name: /経費精算の申請と承認/ }), 2);
         none(await pageOverflow(page), at("進捗のページ"));
+        // 通常の serve では切り替えの欄を出さず、ロゴの横はプロジェクト名（狭い画面では出さない。ロゴの title にある）
+        expect(await page.getByLabel("プロジェクト", { exact: true }).count(), at("切り替えの欄")).toBe(0);
+        expect(await page.getByRole("banner").getByText("uitest", { exact: true }).isVisible(), at("ヘッダーのプロジェクト名")).toBe(width >= 640);
         // 日本語のフォントがあれば、寸法は Noto Sans CJK JP で測っている（中国語の字形のフォントではない）
         if (inject("fontconfig")) expect(await platformFonts(page, "h1"), at("見出しのフォント")).toContain("Noto Sans CJK JP");
         none(
@@ -240,14 +243,6 @@ async function platformFonts(page: Page, selector: string): Promise<string[]> {
   const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
   await cdp.detach();
   return fonts.map((f) => f.familyName);
-}
-
-const isDark = (page: Page) => page.evaluate(() => document.documentElement.classList.contains("dark"));
-
-/** rgb(a) の明るさ（0〜1） */
-function luminance(css: string): number {
-  const [r, g, b] = (css.match(/\d+(\.\d+)?/g) ?? ["255", "255", "255"]).slice(0, 3).map(Number);
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
 /** コードの行末（目印 END-OF-CODE）まで、コードの枠の中を横に送って見えるか */

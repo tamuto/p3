@@ -128,4 +128,13 @@ export async function reachable(l: Locator, what: string): Promise<string[]> {
   }
 }
 
+/** 暗いテーマで描いているか（html の dark） */
+export const isDark = (page: Page) => page.evaluate(() => document.documentElement.classList.contains("dark"));
+
+/** rgb(a) の明るさ（0〜1） */
+export function luminance(css: string): number {
+  const [r, g, b] = (css.match(/\d+(\.\d+)?/g) ?? ["255", "255", "255"]).slice(0, 3).map(Number);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
 export { fmt as fmtBox };
