@@ -98,6 +98,37 @@ describe("p3 release-notes", () => {
     expect(p3(root, ["release-notes", "show", "v1", "--json"]).json()).toMatchObject({ materialChanged: false, note: { updatedBy: "human:tester" } });
   });
 
+  it("要望の一括完了: show で判定と hash を見て、complete-requests で対応済を完了済にする（タスクの済みは変えない）", () => {
+    const { root, a, b } = setup();
+    // 未完了（b）がある: できない。hash が合っていても何も変えずに非ゼロ
+    const d1 = p3(root, ["release-notes", "show", "v1", "--json"]).json();
+    expect(d1.completion).toMatchObject({ ready: false, targets: [{ id: a }] });
+    expect(p3(root, ["release-notes", "show", "v1"]).out).toContain("要望の一括完了: できません");
+    expect(p3(root, ["release-notes", "complete-requests", "v1"]).err).toContain("--based-on");
+    const blocked = p3(root, ["release-notes", "complete-requests", "v1", "--based-on", d1.completion.basedOn]);
+    expect(blocked.code).toBe(1);
+    expect(blocked.err).toContain("完了済にできません");
+    // b を見送り: 判定が変わったので古い hash では 3（読み直してやり直す）
+    expect(p3(root, ["request", "set", b, "status=rejected"]).code).toBe(0);
+    expect(p3(root, ["release-notes", "complete-requests", "v1", "--based-on", d1.completion.basedOn]).code).toBe(3);
+    const show = p3(root, ["release-notes", "show", "v1"]).out;
+    expect(show).toContain("要望の一括完了: 対応済 1 件を完了済にできます");
+    const d2 = p3(root, ["release-notes", "show", "v1", "--json"]).json();
+    expect(show).toContain(`--based-on ${d2.completion.basedOn}`);
+    const tasks = readFileSync(join(root, ".p3", "requests", a, "tasks", "T001.md"), "utf8");
+    const ok = p3(root, ["release-notes", "complete-requests", "v1", "--based-on", d2.completion.basedOn, "--json"]);
+    expect(ok.code, ok.err).toBe(0);
+    expect(ok.json()).toMatchObject({ completed: [{ id: a }], notRun: [] });
+    expect(p3(root, ["request", "show", a, "--json"]).json().item).toMatchObject({ status: "done", updatedBy: "human:tester" });
+    expect(p3(root, ["request", "show", b, "--json"]).json().item.status).toBe("rejected");
+    expect(readFileSync(join(root, ".p3", "requests", a, "tasks", "T001.md"), "utf8")).toBe(tasks);
+    // 対象0件: 何も変えずに 0
+    const d3 = p3(root, ["release-notes", "show", "v1", "--json"]).json();
+    const none = p3(root, ["release-notes", "complete-requests", "v1", "--based-on", d3.completion.basedOn]);
+    expect(none.code).toBe(0);
+    expect(none.out).toContain("完了済にする要望はありません");
+  });
+
   it("候補・材料が無いマイルストーンは生成を断り、手で書いて保存できる。未知の ID は 2、使えない ID は 1", () => {
     const { root } = setup();
     const gen = p3(root, ["release-notes", "generate", "v2", "--engine", "mock"]);

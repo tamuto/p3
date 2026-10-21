@@ -1,12 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
-import type { ReleaseGeneration, ReleaseMaterial, ReleaseWarning } from "../shared/types.ts";
+import type { ReleaseGeneration, ReleaseMaterial, ReleaseWarning, RequestCompletionPlan } from "../shared/types.ts";
 import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote, startGeneration } from "../core/releaseNotes/service.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
 import { UsageError } from "./project.ts";
 import { shellArg } from "./output.ts";
 import { GenerationRejected } from "../core/releaseNotes/generate.ts";
+import { completeMilestoneRequests, CompletionRejected } from "../core/releaseNotes/completeRequests.ts";
 
 /**
  * p3 release-notes ...   マイルストーンごとのリリースノート（規則と保存は core/releaseNotes）
@@ -16,6 +17,7 @@ import { GenerationRejected } from "../core/releaseNotes/generate.ts";
  *   generate <id>      機能の要約を生成して案を出す（保存しない。進み具合は stderr）
  *   save <id>          本文を保存する（--body 本文|- か --file。更新は --version 必須）
  *   export <id>        保存した本文だけを stdout に出す
+ *   complete-requests <id> --based-on <hash>   対応済の要望を一括で完了済にする（判定と hash は show。頼めない・途中で止まったら非ゼロ）
  */
 export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
   const { ctx, out, args, o, actor } = env;
@@ -44,7 +46,7 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
       const d = await releaseNoteDetail(ctx, need());
       return out.result(d, () => {
         const lines = [`${d.material.milestone.id}  ${d.material.milestone.title}${d.material.milestone.done ? "（リリース済み）" : ""}`, ""];
-        lines.push(...materialLines(d.material), "");
+        lines.push(...materialLines(d.material), "", ...completionLines(d.completion), "");
         if (d.noteError) lines.push(`ノート: 読めません（${d.noteError}）`, "  直すまで新しく保存できません。frontmatter を直すか、本文を退避してファイルを消してください");
         else if (!d.note) lines.push("ノート: まだありません（p3 release-notes generate → save）");
         else {
@@ -104,8 +106,30 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
       return 0;
     }
 
+    case "complete-requests": {
+      const id = need();
+      const basedOn = o["based-on"];
+      if (!basedOn) throw new UsageError(`判定を確かめた材料の hash を --based-on で指定してください（p3 release-notes show ${shellArg(id)} --json の completion.basedOn）`);
+      try {
+        const r = await completeMilestoneRequests(ctx, id, basedOn, actor);
+        out.result(r, () =>
+          [
+            r.completed.length ? `完了済にしました（${r.completed.length} 件）:` : r.failed ? "完了済にした要望はありません" : "完了済にする要望はありません（変えていません）",
+            ...r.completed.map((t) => `  ${t.id}  ${t.title}`),
+            ...(r.failed ? [`止まりました: ${r.failed.id}（${r.failed.reason}）`, ...(r.notRun.length ? [`まだ変えていません: ${r.notRun.join(", ")}`] : []), `やり直すには show で読み直してから、表示された --based-on で実行してください`] : []),
+          ].join("\n"),
+        );
+        return r.failed ? (r.failed.code === "error" ? 1 : 3) : 0;
+      } catch (e) {
+        if (!(e instanceof CompletionRejected)) throw e;
+        if (out.json) out.result({ error: e.message, code: e.code, plan: e.plan }, () => "");
+        else process.stderr.write(`${[e.message, ...completionLines(e.plan)].join("\n")}\n`);
+        return e.code === "material_changed" ? 3 : 1;
+      }
+    }
+
     default:
-      throw new UsageError("p3 release-notes [ls | show <id> | generate <id> | save <id> | export <id>]");
+      throw new UsageError("p3 release-notes [ls | show <id> | generate <id> | save <id> | export <id> | complete-requests <id> --based-on <hash>]");
   }
 }
 
@@ -124,6 +148,21 @@ function materialLines(m: ReleaseMaterial): string[] {
     `対象の要望 ${m.requests.length} 件（収録 ${m.requests.filter((r) => r.included).length}）  材料 ${m.hash.slice(0, 12)}`,
     ...(rows.length ? [table(rows)] : ["  （このマイルストーンの要望はありません）"]),
     ...warnLines([...m.warnings, ...m.requests.flatMap((r) => r.warnings)]),
+  ];
+}
+
+/** 要望を一括で完了済にできるか（show と、頼めなかったとき） */
+function completionLines(p: RequestCompletionPlan): string[] {
+  const head = !p.ready
+    ? "要望の一括完了: できません（見送り以外の全要望が、全タスク完了の対応済か完了済になってから）"
+    : p.targets.length
+      ? `要望の一括完了: 対応済 ${p.targets.length} 件を完了済にできます（タスクの済みは変えません）`
+      : "要望の一括完了: 完了済にする要望はありません";
+  return [
+    head,
+    ...p.blockers.map((b) => `  ✕ ${b.target}: ${b.reason}`),
+    ...p.targets.map((t) => `  → ${t.id}  ${t.title}`),
+    ...(p.ready && p.targets.length ? [`  実行: p3 release-notes complete-requests ${shellArg(p.milestone)} --based-on ${p.basedOn}`] : []),
   ];
 }
 

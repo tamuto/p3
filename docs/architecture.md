@@ -119,6 +119,14 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
   ディスクの今のファイルと照らし、違えば競合で何も書かない。rev のような番号ではなく中身で照らすので、番号を増やさない
   直接編集も見つかる。マイルストーンの ID は project.yaml と同じ形（英数字と `. _ -`、`.` と `..` は不可）で、保存先の外を
   指すものは断る。キャッシュを持たず問い合わせのたびに読むので、再読み込みは要らない。監視は `changed`/`release-note` を出す
+- **要望の一括完了**（`releaseNotes/completeRequests.ts`）: 判定は材料と同じ収録の条件で、見送りを除く全要望が収録でき、
+  マイルストーンが project.yaml にあり、所属の分からない読めない要望が無いときだけできる。変えるのは対応済 → 完了済だけ
+  （完了済・見送り・アーカイブ・タスク・ノート・マイルストーンは書かない。記録・ノート・済みは条件にしない）。詳細の
+  `completion` に判定（対象・既に完了済・見送り・できない理由・`basedOn`）を出し、CLI・API・画面はそれを見せて `basedOn` を添えて
+  頼むだけ（画面で条件を作り直さない）。実行はディスクから読み直した材料で判定し直し、hash が違う・できないなら何も書かない。
+  複数のファイルをまとめて書く仕組みは無いので1件ずつ書き、直前にタスクを読み直して確かめ、要望は判定したときの rev で書く
+  （`updateRequest`。変更の通知もそこから）。途中で止まったら戻さず（外の変更を上書きしない）、完了済にしたもの・失敗・未実行を
+  返す。rev を増やさない直接編集や、確かめた直後の別のプロセスの書き込みまでは防げない（保存層の限界）
 - **マイルストーンとの関係**: ノート（読めないファイルも含む）のあるマイルストーンは消せない（`requestOps.ts` の
   `checkMilestoneRemoval`。CLI の `milestone rm` と画面の設定の保存で同じ）。保存は要望・マイルストーンの状態を変えない
 - **直接編集の限界と直し方**: ロックを使わない外部のエディタとの完全な排他は保証しない（保存の直前に照らすので、
@@ -352,7 +360,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
 | リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
-| リリースノート（材料の規則・保存・出力・要約の生成） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`） |
+| リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |

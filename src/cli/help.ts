@@ -36,6 +36,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   release-notes save <id>       本文を保存する  --body 本文|- / --file 本文.md  --based-on <材料の hash>（生成の案を元にしたとき）
                                既にあるノートの更新は --version <版>（show で見る。違えば競合で終了コード 3）
   release-notes export <id>     保存した本文だけを stdout に出す（出典・frontmatter は出さない）
+  release-notes complete-requests <id> --based-on <hash>
+                               対応済の要望を一括で完了済にする（見送り以外の全要望が全タスク完了のときだけ。タスクの済みは変えない）。
+                               できるか・対象・hash は show で見る。材料が変わっていれば何も変えずに終了コード 3、途中で止まったら非ゼロ
                                例: p3 release-notes generate v0.2 > draft.md → 直す → p3 release-notes save v0.2 --file draft.md
                                    p3 release-notes export v0.2 > RELEASE.md
   whoami                       操作するプロジェクト・変更者・今の要望

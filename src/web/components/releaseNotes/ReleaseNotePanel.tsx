@@ -22,18 +22,19 @@ import {
 } from "../../lib/releaseNoteDraft.ts";
 import { Button, buttonCls, cx, inputCls } from "../ui.tsx";
 import { MaterialView, Warnings } from "./MaterialView.tsx";
+import { CompleteRequests } from "./CompleteRequests.tsx";
 import { useUnsaved } from "../../lib/unsaved.ts";
 
 /**
- * 1つのマイルストーンのリリースノート。対象の要望（MaterialView）、要約の生成（左）、本文の編集と保存（右）。
+ * 1つのマイルストーンのリリースノート。対象の要望（MaterialView）と要望の一括完了（CompleteRequests）、要約の生成（左）、本文の編集と保存（右）。
  *
  *   - 生成の結果は編集欄に勝手に入れない（「編集欄へ反映」で入れ、未保存の入力があれば確かめる）
  *   - 編集中に外で保存・削除・読めなくなったら、入力を残して知らせ、見比べ・コピー・読み直しを選べる（lib/releaseNoteDraft.ts）
  *   - 保存は編集を始めたときの版で行う（外で変わっていれば競合。最新の版に差し替えない）
- *   - 保存しても要望・マイルストーンの状態は変えない
+ *   - 保存しても要望・マイルストーンの状態は変えない（要望の一括完了は別の操作。実行しても本文の入力は残す）
  */
 export function ReleaseNotePanel({ milestone }: { milestone: string }) {
-  const { tick } = useAppData();
+  const { tick, reload } = useAppData();
   const [detail, setDetail] = useState<ReleaseNoteDetail>();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<NoteDraft>();
@@ -146,7 +147,18 @@ export function ReleaseNotePanel({ milestone }: { milestone: string }) {
         {loadError && <p className="text-sm text-rose-600">取り直せませんでした（表示は前の内容のまま）: {loadError}</p>}
       </header>
 
-      <MaterialView material={detail.material} />
+      <div className="space-y-3">
+        <MaterialView material={detail.material} />
+        <CompleteRequests
+          plan={detail.completion}
+          title={m.title}
+          onChanged={() => {
+            // 要望の一覧・進捗と、この画面の材料・判定を取り直す（本文の入力は syncNote で残る）
+            reload();
+            void load();
+          }}
+        />
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <GenerationView gen={gen} currentHash={detail.material.hash} hasSources={hasSources} onGenerate={() => void generate()} onTake={takeGenerated} />

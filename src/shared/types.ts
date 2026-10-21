@@ -586,6 +586,36 @@ export interface ReleaseMaterial {
   extractedAt: string;
 }
 
+/**
+ * マイルストーンの要望を一括で完了済にできるか（core/releaseNotes/completeRequests.ts が判定する。画面・CLI は見せるだけ）。
+ * 見送りを除く全要望が収録の条件（対応済か完了済・タスクが1件以上で全部完了・読めないタスクなし）を満たすときだけできる。
+ * 変えるのは対応済（resolved）だけで、完了済・見送り・タスク（済みを含む）・ノートは変えない
+ */
+export interface RequestCompletionPlan {
+  milestone: string;
+  /** 判定に使った材料の hash（実行するときにそのまま渡す） */
+  basedOn: string;
+  /** 実行できる（blockers が無い）。対象が0件でもできる（何も変えない） */
+  ready: boolean;
+  /** 完了済にする要望（対応済のもの） */
+  targets: { id: string; title: string }[];
+  /** 既に完了済（変えない） */
+  alreadyDone: string[];
+  /** 見送り（判定から除き、変えない） */
+  skipped: string[];
+  /** できない理由（target は要望 ID かマイルストーン・ファイル） */
+  blockers: { target: string; reason: string }[];
+}
+
+/** 一括で完了済にした結果。途中で止まったら、完了済にしたもの・失敗した1件・まだ変えていないものを分けて返す */
+export interface RequestCompletionResult {
+  milestone: string;
+  completed: { id: string; title: string }[];
+  failed?: { id: string; reason: string; code: "conflict" | "changed" | "error" };
+  notRun: string[];
+  alreadyDone: string[];
+}
+
 /** 保存したリリースノート。本文（公開する Markdown）と、内部の出典（frontmatter）を分けて持つ */
 export interface ReleaseNote {
   milestone: string;
