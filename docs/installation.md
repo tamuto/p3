@@ -309,7 +309,9 @@ P3 をイメージにして、コンテナで動かすこともできる。イ�
 docker pull tamuto/p3:0.4.0
 ```
 
-リポジトリから作るときは `docker build -t tamuto/p3:dev .`（[開発ガイド](development.md#docker-のイメージ)）。
+リポジトリから作るときは `docker build --pull -t tamuto/p3:dev .`（`--pull` で今の Node のベースを取る。[開発ガイド](development.md#docker-のイメージ)）。
+イメージの Node は同じメジャーの中で更新を追う（作り直した版に入る）。起動中のコンテナは自動では変わらないので、新しいイメージを
+pull して起動し直す。
 
 コンテナは **root** で動く。個人設定と ChatGPT の接続は root の既定の場所（`/root/.config/infodb-p3`）のままで、イメージでは
 変えない。データのフォルダと参照先（リポジトリ）はホストのフォルダをマウントする（データは書く、参照先は Preflight が読むだけ）。

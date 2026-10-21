@@ -9,9 +9,13 @@
 # 同じマウントを付けたサイドカーにすれば、個人設定をそのまま共有できる。プロジェクトのデータと参照先はホストのフォルダをマウントする。
 # Preflight（Codex）と画面イメージの描画は、ホストの Docker（ソケット）を使う。コンテナの中にデーモンは立てない。
 # 手順と注意は docs/installation.md の「Docker で動かす」。作り方と公開は docs/publishing.md の「Docker Hub」。
+#
+# Node はメジャー版（と Debian の系統）だけを指定し、同じメジャーの中の更新（セキュリティリリースなど）は作り直すと入るようにする。
+# 手元にある古いベースを使わないよう、作るときは --pull を付ける（docs/development.md の「Docker のイメージ」）。
+# Docker の CLI と pnpm は版を固定する（中身の変わり方をこちらで決める）
 
 # --- ビルド: 画面をビルドし、npm で配るのと同じ中身（package.json の files）を作る -----------------------------
-FROM node:24.11.1-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /src
 # package.json の packageManager と同じ版の pnpm（Node に付いた corepack はこの版の配布の形を扱えないので npm で入れる）
 RUN npm install -g pnpm@12.10.1
@@ -27,7 +31,7 @@ RUN cp pnpm-lock.yaml pnpm-workspace.yaml /opt/p3/ && cd /opt/p3 && pnpm install
 FROM docker:27.5.1-cli AS docker-cli
 
 # --- 実行 ------------------------------------------------------------------------------------------------------
-FROM node:22.21.1-bookworm-slim
+FROM node:22-bookworm-slim
 # 版は package.json の version を渡す（docs/publishing.md）
 ARG P3_VERSION=dev
 LABEL org.opencontainers.image.title="infodb p3" \
