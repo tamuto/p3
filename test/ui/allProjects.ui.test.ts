@@ -1,27 +1,37 @@
 // プロジェクトを跨ぐ serve（p3 serve --all-projects）の画面: 一覧から選ぶ・切り替える・URL を直接開く・処理中に切り替える・
-// 保存していない入力の確かめ・登録が変わったときの保存の拒否・開けないプロジェクト・狭い幅。Preflight は Mock（Docker は使わない）。
+// 保存していない入力の確かめ・保存待ち・登録が変わったときの保存の拒否・開けないプロジェクト・ヘッダーの切り替えの欄（長い登録名・
+// 1280 と 375・明暗）。Preflight は Mock（Docker は使わない）。
 import { execFileSync } from "node:child_process";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { inViewport, pageOverflow } from "./layout.ts";
+import { inViewport, isDark, luminance, pageOverflow } from "./layout.ts";
 import { openScenario, until, type Scenario } from "./scenario.ts";
+import type { Page } from "playwright-core";
 import type { UiEnv } from "./env.ts";
 
 const P3_BIN = fileURLToPath(new URL("../../bin/p3.mjs", import.meta.url));
 const second = { repo: "", dataDir: "" };
+/** 長い登録名（ヘッダーの切り替えの欄の幅を確かめる） */
+const LONG_NAME = "expense-receipts-upload-and-approval-history-for-month-end-closing";
 
-/** 2つ目のプロジェクト（second）を別のリポジトリに作る。1つ目は uitest（makeUiEnv） */
-async function prepare(env: UiEnv) {
-  second.repo = join(env.root, "second");
-  second.dataDir = join(second.repo, ".p3");
-  await mkdir(second.repo, { recursive: true });
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: second.repo, env: env.env });
+/** 別のリポジトリにプロジェクトを作る。1つ目は uitest（makeUiEnv） */
+async function makeProject(env: UiEnv, name: string, description: string) {
+  const repo = join(env.root, name);
+  await mkdir(repo, { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: env.env });
   git("init", "-q", "-b", "main");
   git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "init");
-  await writeFile(join(second.repo, "README.md"), "# 2つ目\n");
-  execFileSync("node", [P3_BIN, "init", "--yes", "--project", "second", "--description", "2つ目のプロジェクト"], { cwd: second.repo, env: env.env });
+  await writeFile(join(repo, "README.md"), `# ${description}\n`);
+  execFileSync("node", [P3_BIN, "init", "--yes", "--project", name, "--description", description], { cwd: repo, env: env.env });
+  return repo;
+}
+
+async function prepare(env: UiEnv) {
+  second.repo = await makeProject(env, "second", "2つ目のプロジェクト");
+  second.dataDir = join(second.repo, ".p3");
+  await makeProject(env, LONG_NAME, "長い登録名のプロジェクト");
 }
 
 describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serve の画面", () => {
@@ -117,6 +127,39 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
     });
   });
 
+  it("送っている保存があれば、保存待ちを（登録が変わった警告とは別に）出して選ぶ欄を止め、終わってから切り替える", async () => {
+    const { page, step } = s;
+    const switcher = page.getByLabel("プロジェクト", { exact: true });
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await step("uitest で要望の作成を送り、サーバへの書き込みを止めておく", async () => {
+      await page.route("**/api/projects/uitest/requests", async (route) => {
+        if (route.request().method() === "POST") await held;
+        await route.continue();
+      });
+      await page.goto("/projects/uitest/requests/new");
+      await page.getByLabel("タイトル").fill("保存待ちの要望");
+      await page.getByRole("button", { name: "作成", exact: true }).click();
+    });
+    await step("切り替えると、保存待ちの知らせが出て、選ぶ欄は押せない。警告は出ない", async () => {
+      await switcher.selectOption("second");
+      const dialog = page.getByRole("dialog", { name: "保存していない入力があります" });
+      // 作成の画面は送るまで入力が残っているので、確かめが出たら破棄して進む（送った保存は待つ）
+      if (await dialog.isVisible()) await dialog.getByRole("button", { name: "入力を破棄して切り替える" }).click();
+      await until.visible(page.getByRole("status").filter({ hasText: "保存の完了を待っています" }));
+      expect(await switcher.isDisabled()).toBe(true);
+      expect(await page.getByRole("alert").filter({ hasText: "登録が変わりました" }).count()).toBe(0);
+      expect(new URL(page.url()).pathname).toMatch(/^\/projects\/uitest\//);
+    });
+    await step("保存が終わると切り替わる（作成は uitest に残る）", async () => {
+      release();
+      await until.url(page, /\/projects\/second\/$/);
+      await page.unroute("**/api/projects/uitest/requests");
+      const titles = JSON.parse(execFileSync("node", [P3_BIN, "progress", "--project", "uitest", "--json"], { cwd: s.env.repo, env: s.env.env, encoding: "utf8" })) as { request: { title: string } }[];
+      expect(titles.map((r) => r.request.title)).toContain("保存待ちの要望");
+    });
+  });
+
   it("開いている間にデータのフォルダが変わったら保存を断り、選び直しを案内する。登録に無いプロジェクトは一覧で理由を出す", async () => {
     const { page, step } = s;
     await step("second を開いてから、CLI でデータのフォルダを移して登録し直す", async () => {
@@ -146,18 +189,61 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
     });
   });
 
-  it("スマホの幅（375）でも、今のプロジェクトと切り替えが画面に収まる", async () => {
-    const page = await s.open({ width: 375, height: 700 });
-    await s.step(
-      "375 の幅で開く",
-      async () => {
-        await page.goto("/projects/uitest/");
-        const switcher = page.getByLabel("プロジェクト", { exact: true });
-        await until.value(switcher, "uitest");
-        expect(await inViewport(page, switcher, "プロジェクトの切り替え")).toEqual([]);
-        expect(await pageOverflow(page)).toEqual([]);
-      },
-      page,
-    );
-  });
+  for (const width of [1280, 375]) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      const theme = colorScheme === "dark" ? "暗い" : "明るい";
+      it(`切り替えの欄はヘッダーのロゴの横にあり、長い登録名でも幅 ${width}・${theme}テーマで収まる`, async () => {
+        const page = await s.open({ width, height: 700, colorScheme });
+        const at = (what: string) => `幅 ${width}・${theme}・${what}`;
+        for (const [what, path] of [
+          ["進捗", "/"],
+          ["新しい要望", "/requests/new"],
+          ["設定", "/settings"],
+        ] as const) {
+          await s.step(
+            at(what),
+            async () => {
+              await page.goto(`/projects/${LONG_NAME}${path}`);
+              const header = page.getByRole("banner");
+              const switcher = header.getByLabel("プロジェクト", { exact: true });
+              await until.value(switcher, LONG_NAME);
+              // 選ぶ欄はヘッダーの中に1つだけ。名前を別に出す帯・文字は無い
+              expect(await page.getByLabel("プロジェクト", { exact: true }).count(), at("選ぶ欄の数")).toBe(1);
+              const headerText = await header.evaluate((h) => {
+                const c = h.cloneNode(true) as HTMLElement;
+                c.querySelectorAll("select").forEach((e) => e.remove());
+                return c.textContent ?? "";
+              });
+              expect(headerText, at("ヘッダーの名前の文字（選ぶ欄の外）")).not.toContain(LONG_NAME);
+              await adjacentToLogo(page, switcher, at("ロゴとの並び"));
+              expect(await isDark(page), at("テーマ")).toBe(colorScheme === "dark");
+              expect(luminance(await switcher.evaluate((el) => getComputedStyle(el).backgroundColor)) < 0.3, at("選ぶ欄の背景")).toBe(colorScheme === "dark");
+              expect(await pageOverflow(page), at("ページの横のはみ出し")).toEqual([]);
+              for (const [name, l] of [
+                ["切り替えの欄", switcher],
+                ["再読み込み", header.getByRole("button", { name: /再読み込み|読み込み中/ })],
+                ["新しい要望", header.getByRole("link", { name: /新しい要望/ })],
+                ["ナビゲーション", header.locator("nav")],
+              ] as const) {
+                expect(await inViewport(page, l, name), at(name)).toEqual([]);
+              }
+            },
+            page,
+          );
+        }
+      });
+    }
+  }
 });
+
+/** 選ぶ欄がロゴのすぐ右（同じ行）にあること */
+async function adjacentToLogo(page: Page, switcher: ReturnType<Page["locator"]>, where: string) {
+  const logo = (await page.getByRole("banner").getByRole("img", { name: "infodb p3" }).boundingBox())!;
+  const sel = (await switcher.boundingBox())!;
+  const gap = sel.x - (logo.x + logo.width);
+  expect(gap, `${where}: ロゴの右端から選ぶ欄までの間 ${gap}`).toBeGreaterThanOrEqual(0);
+  expect(gap, `${where}: ロゴの右端から選ぶ欄までの間 ${gap}`).toBeLessThan(32);
+  const overlap = Math.min(logo.y + logo.height, sel.y + sel.height) - Math.max(logo.y, sel.y);
+  expect(overlap, `${where}: ロゴと選ぶ欄が同じ行にない`).toBeGreaterThan(0);
+}
+
