@@ -28,7 +28,11 @@ export function completionPlanOf(material: ReleaseMaterial): RequestCompletionPl
   for (const w of material.warnings.filter((x) => x.code === "broken_request")) plan.blockers.push({ target: w.target, reason: w.message });
   for (const r of material.requests) {
     if (r.status === "rejected") plan.skipped.push(r.id);
-    else if (!r.included) plan.blockers.push({ target: r.id, reason: `${r.title}: ${r.warnings[0]?.message ?? r.reason ?? "収録できません"}` });
+    else if (!r.included) {
+      const open = r.tasks.filter((t) => t.status !== "done").map((t) => `${t.id}(${t.status})`);
+      const detail = r.reason === "完了していないタスクがある" && open.length ? `: ${open.join(", ")}` : "";
+      plan.blockers.push({ target: r.id, reason: `${r.title}（${r.id}）: ${r.reason ?? "収録できません"}${detail}` });
+    }
     else if (r.status === "resolved") plan.targets.push({ id: r.id, title: r.title });
     else plan.alreadyDone.push(r.id);
   }

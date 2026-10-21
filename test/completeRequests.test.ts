@@ -90,9 +90,9 @@ describe("マイルストーンの要望を一括で完了済にする", () => {
 
   it("見送り以外に収録できない要望があればできず、何も書かない", async () => {
     const cases: [string, (s: Awaited<ReturnType<typeof setup>>) => Promise<string | void>, RegExp][] = [
-      ["進行中（タスクは全部完了）", (s) => s.add("進行中", "active", [{ status: "done", record: "x" }]), /未完了（active）|終わっていません/],
-      ["対応済だが未完了のタスク", (s) => s.add("食い違い", "resolved", [{ status: "done", record: "x" }, { status: "doing" }]), /完了していないタスク/],
-      ["タスクが無い", (s) => s.add("空", "resolved", []), /タスクがありません/],
+      ["進行中（タスクは全部完了）", (s) => s.add("進行中", "active", [{ status: "done", record: "x" }]), /進行中（.*）: 未完了（active）/],
+      ["対応済だが未完了のタスク", (s) => s.add("食い違い", "resolved", [{ status: "done", record: "x" }, { status: "doing" }]), /完了していないタスクがある: T002\(doing\)/],
+      ["タスクが無い", (s) => s.add("空", "resolved", []), /タスクが無い/],
       [
         "読めないタスク",
         async (s) => {
@@ -100,7 +100,7 @@ describe("マイルストーンの要望を一括で完了済にする", () => {
           await writeFile(join(s.dataDir, "requests", id, "tasks", "T001.md"), "---\nid: [壊れ\n---\n");
           await s.ctx.ws.reloadAll();
         },
-        /読めないタスク/,
+        /読めないタスクがある/,
       ],
       [
         "読めない要望（所属が分からない）",
