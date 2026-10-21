@@ -1,5 +1,6 @@
 // マイルストーンの並び: 新しい要望と要望の管理情報の選ぶ欄・リリースノートの一覧・設定の一覧を ID のバージョンの降順で出す。
-// 選んだ ID は保ち、表示だけでは project.yaml を書き換えない。設定は編集の間は行を動かさず、保存した後に降順に並べ直す。
+// 選んだ ID は保ち、表示だけでは project.yaml を書き換えない。リリースノートの「マイルストーン」タブは編集の間は行を動かさず、
+// 保存した後に降順に並べ直す。
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator } from "playwright-core";
@@ -82,13 +83,14 @@ describe.skipIf(!inject("chromium").available)("マイルストーンの並び�
     expect(projectYaml()).toBe(yaml);
   });
 
-  it("設定は降順で出し、編集の間は行を動かさず正しい行を変える・消す。保存すると降順に並べ直す（保存の順は登録の順のまま）", async () => {
+  it("マイルストーンのタブは降順で出し、編集の間は行を動かさず正しい行を変える・消す。保存すると降順に並べ直す（保存の順は登録の順のまま）", async () => {
     const { page, step } = s;
-    const idInputs = page.getByPlaceholder("v0.2", { exact: true });
+    const panel = page.getByRole("tabpanel", { name: "マイルストーン" });
+    const idInputs = panel.getByPlaceholder("v0.2", { exact: true });
     const shownIds = () => idInputs.evaluateAll((is) => is.map((i) => (i as HTMLInputElement).value));
     const row = (k: number) => idInputs.nth(k).locator("xpath=..");
     await step("開いたときは降順", async () => {
-      await page.goto("/settings?tab=project");
+      await page.goto("/release-notes?tab=milestones");
       await until.count(idInputs, 4);
       expect(await shownIds()).toEqual(["v0.10", "v0.9", "v0.2", "v0.1"]);
       expect(projectYaml()).toBe(yaml);
@@ -106,7 +108,7 @@ describe.skipIf(!inject("chromium").available)("マイルストーンの並び�
     await step("v0.1 の行を消し、行を足す（足した行は最後）", async () => {
       await row(3).getByRole("button", { name: "削除" }).click();
       expect(await shownIds()).toEqual(["v0.10", "v0.9", "v0.11"]);
-      await page.getByRole("button", { name: "＋ マイルストーンを追加" }).click();
+      await panel.getByRole("button", { name: "＋ マイルストーンを追加" }).click();
       expect(await shownIds()).toEqual(["v0.10", "v0.9", "v0.11", ""]);
       await idInputs.nth(3).fill("v1.0");
       await row(3).getByPlaceholder("名前").fill("一・〇");
@@ -115,8 +117,8 @@ describe.skipIf(!inject("chromium").available)("マイルストーンの並び�
       expect(projectYaml()).toBe(yaml);
     });
     await step("保存すると降順に並べ直す。保存した中身は正しい行のもの", async () => {
-      await page.getByRole("button", { name: "保存", exact: true }).click();
-      await until.visible(page.getByText("保存しました"));
+      await panel.getByRole("button", { name: "保存", exact: true }).click();
+      await until.visible(panel.getByText("保存しました"));
       await expect.poll(shownIds).toEqual(["v1.0", "v0.11", "v0.10", "v0.9"]);
       const ms = JSON.parse(await s.env.p3(["milestone", "--json"])) as { id: string; title: string }[];
       expect(ms.map((m) => [m.id, m.title])).toEqual([

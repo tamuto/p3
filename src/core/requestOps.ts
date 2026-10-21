@@ -36,7 +36,7 @@ function changed(ctx: P3Context, kind: "task" | "request", request: string, ref?
 /** 要望のマイルストーンは project.yaml にあるものだけ */
 export function checkMilestone(ctx: P3Context, id: string | null | undefined) {
   if (id && !ctx.ws.project.milestones.some((m) => m.id === id)) {
-    throw new OpRuleError(`マイルストーンがありません: ${id}（p3 milestone add ${id} か、画面の設定で追加してください）`);
+    throw new OpRuleError(`マイルストーンがありません: ${id}（p3 milestone add ${id} か、画面のリリースノートの「マイルストーン」タブで追加してください）`);
   }
 }
 
