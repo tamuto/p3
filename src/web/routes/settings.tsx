@@ -8,6 +8,7 @@ import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
 import { api, ApiError } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { useUnsaved } from "../lib/unsaved.ts";
+import { compareMilestoneIds } from "../../shared/milestoneOrder.ts";
 
 /** 設定画面のタブ（1画面に1つの分類だけを出す）。選んだタブは URL（?tab=）に持つ */
 export const SETTINGS_TABS = [
@@ -39,12 +40,18 @@ function SettingsPage() {
   /** 編集を始めたときの設定（編集中に外で変わったかを見る） */
   const [base, setBase] = useState<ProjectConfig>(ctx.info.project);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /**
+   * マイルストーンを出す順（draft.milestones の添字）。取り込んだときに ID のバージョンの降順にし、編集の間は変えない（ID を
+   * 書き換えても行が動かない。足した行は最後）。保存する順（project.yaml）は draft.milestones のままで、表示のために並べ替えない
+   */
+  const [order, setOrder] = useState<number[]>(() => milestoneOrder(ctx.info.project.milestones));
 
   // 外部（CLI・エディタ）で変わったら、編集中でなければ取り込む。編集中は入力を残して知らせる
   useEffect(() => {
     if (dirty) return;
     setDraft(ctx.info.project);
     setBase(ctx.info.project);
+    setOrder(milestoneOrder(ctx.info.project.milestones));
   }, [ctx.info.project, dirty]);
   const changedElsewhere = dirty && JSON.stringify(ctx.info.project) !== JSON.stringify(base);
 
@@ -71,6 +78,14 @@ function SettingsPage() {
   const inMilestone = (id: string) => ctx.requests.filter((p) => p.request.milestone === id).length;
   const updateMilestone = (i: number, patch: Partial<Milestone>) =>
     set("milestones", draft.milestones.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const removeMilestone = (i: number) => {
+    set("milestones", draft.milestones.filter((_, j) => j !== i));
+    setOrder(order.filter((j) => j !== i).map((j) => (j > i ? j - 1 : j)));
+  };
+  const addMilestone = () => {
+    set("milestones", [...draft.milestones, { id: "", title: "" }]);
+    setOrder([...order, draft.milestones.length]);
+  };
   const unsaved: Record<SettingsTab, boolean> = { personal: false, project: dirty, repos: reposDirty };
   useUnsaved(dirty || reposDirty);
   return (
@@ -109,22 +124,25 @@ function SettingsPage() {
         <Section title="マイルストーン（リリース）">
           <p className="text-slate-500">複数の要望をまとめてリリースする単位です。要望の概要でマイルストーンを選ぶと、進捗画面でまとめて表示されます。</p>
           <div className="space-y-2">
-            {draft.milestones.map((m, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input className={`${inputCls} !w-32 font-mono`} value={m.id} placeholder="v0.2" onChange={(e) => updateMilestone(i, { id: e.target.value })} />
-                <input className={inputCls} value={m.title} placeholder="名前" onChange={(e) => updateMilestone(i, { title: e.target.value })} />
-                <input type="date" className={`${inputCls} !w-44 shrink-0`} value={m.due ?? ""} onChange={(e) => updateMilestone(i, { due: e.target.value || undefined })} />
-                <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                  <input type="checkbox" checked={!!m.done} onChange={(e) => updateMilestone(i, { done: e.target.checked || undefined })} />
-                  リリース済み
-                </label>
-                <span className="w-16 shrink-0 text-right text-sm text-slate-400">要望 {inMilestone(m.id)}</span>
-                <Button variant="ghost" disabled={inMilestone(m.id) > 0} onClick={() => set("milestones", draft.milestones.filter((_, j) => j !== i))}>
-                  削除
-                </Button>
-              </div>
-            ))}
-            <Button onClick={() => set("milestones", [...draft.milestones, { id: "", title: "" }])}>＋ マイルストーンを追加</Button>
+            {order.map((i) => {
+              const m = draft.milestones[i];
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <input className={`${inputCls} !w-32 font-mono`} value={m.id} placeholder="v0.2" onChange={(e) => updateMilestone(i, { id: e.target.value })} />
+                  <input className={inputCls} value={m.title} placeholder="名前" onChange={(e) => updateMilestone(i, { title: e.target.value })} />
+                  <input type="date" className={`${inputCls} !w-44 shrink-0`} value={m.due ?? ""} onChange={(e) => updateMilestone(i, { due: e.target.value || undefined })} />
+                  <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+                    <input type="checkbox" checked={!!m.done} onChange={(e) => updateMilestone(i, { done: e.target.checked || undefined })} />
+                    リリース済み
+                  </label>
+                  <span className="w-16 shrink-0 text-right text-sm text-slate-400">要望 {inMilestone(m.id)}</span>
+                  <Button variant="ghost" disabled={inMilestone(m.id) > 0} onClick={() => removeMilestone(i)}>
+                    削除
+                  </Button>
+                </div>
+              );
+            })}
+            <Button onClick={addMilestone}>＋ マイルストーンを追加</Button>
           </div>
         </Section>
 
@@ -154,7 +172,7 @@ function SettingsPage() {
             <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
               保存
             </Button>
-            <Button variant="ghost" disabled={!dirty} onClick={() => (setDraft(ctx.info.project), setDirty(false), setMsg(null))}>
+            <Button variant="ghost" disabled={!dirty} onClick={() => (setDraft(ctx.info.project), setOrder(milestoneOrder(ctx.info.project.milestones)), setDirty(false), setMsg(null))}>
               元に戻す
             </Button>
             {msg && <span className={cx(msg.ok ? "text-emerald-600" : "text-rose-600")}>{msg.text}</span>}
@@ -232,4 +250,9 @@ function TabPanel({ id, tab, children }: { id: SettingsTab; tab: SettingsTab; ch
       {children}
     </div>
   );
+}
+
+/** マイルストーンの添字を ID のバージョンの降順に（shared/milestoneOrder.ts） */
+function milestoneOrder(ms: readonly Milestone[]): number[] {
+  return ms.map((_, i) => i).sort((a, b) => compareMilestoneIds(ms[a].id, ms[b].id));
 }

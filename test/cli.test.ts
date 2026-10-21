@@ -1126,6 +1126,29 @@ describe("p3 milestone と要望の管理項目", () => {
     expect(p3(root, ["milestone", "set", "v0.2", "--done"]).code).toBe(0);
     expect(p3(root, ["milestone", "--json"]).json()).toEqual([{ id: "v0.2", title: "要望単位の運用", due: "2026-11-30", done: true }]);
   });
+
+  it("一覧・進捗・概要はマイルストーンを ID のバージョンの降順に出す（project.yaml の順は変えない）", async () => {
+    const { root, rid } = await initialized();
+    for (const id of ["v0.9", "v0.10", "v0.2"]) expect(p3(root, ["milestone", "add", id, "--title", `題 ${id}`]).code).toBe(0);
+    const yaml = readFileSync(join(root, ".p3", "project.yaml"), "utf8");
+    expect(p3(root, ["milestone", "--json"]).json().map((m: any) => m.id)).toEqual(["v0.10", "v0.9", "v0.2"]);
+    const ls = p3(root, ["milestone"]).out;
+    expect(ls.indexOf("v0.10")).toBeLessThan(ls.indexOf("v0.9"));
+    expect(ls.indexOf("v0.9")).toBeLessThan(ls.indexOf("v0.2"));
+    expect(p3(root, ["config"]).out).toContain("milestones     v0.10, v0.9, v0.2");
+    // 進捗のまとまりも同じ順。マイルストーンなしは最後
+    expect(p3(root, ["request", "set", rid, "milestone=v0.2"]).code).toBe(0);
+    const b = p3(root, ["request", "new", "十", "--milestone", "v0.10", "--json"]).json();
+    p3(root, ["request", "new", "なし", "--json"]);
+    const text = p3(root, ["progress"]).out;
+    const pos = ["（v0.10", "（v0.2", "マイルストーンなし"].map((h) => text.indexOf(h));
+    expect(pos.every((x) => x >= 0), text).toBe(true);
+    expect([...pos].sort((x, y) => x - y)).toEqual(pos);
+    expect(b.milestone).toBe("v0.10");
+    // 表示だけでは project.yaml を書き換えない（登録の順のまま）
+    expect(readFileSync(join(root, ".p3", "project.yaml"), "utf8")).toBe(yaml);
+    expect(yaml.indexOf("v0.9")).toBeLessThan(yaml.indexOf("v0.10"));
+  });
 });
 
 describe("p3 config", () => {

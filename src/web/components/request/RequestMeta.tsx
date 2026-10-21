@@ -9,6 +9,7 @@ import { type RequestData } from "../../lib/requestData.tsx";
 import { TagInput } from "../TagInput.tsx";
 import { requestWorkstreams } from "../../../shared/workTarget.ts";
 import { sameTags } from "../../../shared/tags.ts";
+import { sortMilestones } from "../../../shared/milestoneOrder.ts";
 import { discardDraft, draftOf, editDraft } from "../../lib/draft.ts";
 import { ExternalChange } from "./ExternalChange.tsx";
 import { type RequestDrafts } from "../../lib/requestDrafts.ts";
@@ -93,7 +94,7 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
         <Field label="マイルストーン">
           <select className={`${inputCls} !w-56`} value={request.milestone ?? ""} onChange={(e) => void save({ milestone: e.target.value || null })}>
             <option value="">（なし）</option>
-            {ctx.info.project.milestones.map((m) => (
+            {sortMilestones(ctx.info.project.milestones).map((m) => (
               <option key={m.id} value={m.id}>
                 {m.title}
                 {m.due ? `（${m.due}）` : ""}

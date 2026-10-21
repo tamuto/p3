@@ -42,8 +42,9 @@ describe("p3 release-notes", () => {
     const { root, a, b, file } = setup();
     const ls = p3(root, ["release-notes", "--json"]).json();
     expect(ls.milestones.map((m: any) => [m.milestone, m.requests, m.note.state])).toEqual([
-      ["v1", 2, "none"],
+      // 登録の順（v1, v2）ではなく、ID のバージョンの降順
       ["v2", 0, "none"],
+      ["v1", 2, "none"],
     ]);
 
     const show = p3(root, ["release-notes", "show", "v1", "--json"]).json();

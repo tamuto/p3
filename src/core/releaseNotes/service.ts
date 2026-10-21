@@ -3,6 +3,7 @@ import type { P3Context } from "../context.ts";
 import { extractMaterial } from "./material.ts";
 import type { SummaryEngine } from "./generate.ts";
 import { checkMilestoneId, ReleaseNoteError } from "./store.ts";
+import { compareMilestoneIds, sortMilestones } from "../../shared/milestoneOrder.ts";
 
 /**
  * リリースノートの操作（CLI と API はここを呼ぶ）。材料の規則は material.ts、保存の形は store.ts。
@@ -11,7 +12,7 @@ import { checkMilestoneId, ReleaseNoteError } from "./store.ts";
  * 保存では、そのときディスクにある材料を出典として固定する（本文の元にした材料が古ければ material_changed で知らせる）。
  */
 
-/** マイルストーンごとのノートの有無。並びは project.yaml の順、その後ろに project.yaml に無いノート（ID の順） */
+/** マイルストーンごとのノートの有無。並びは登録したマイルストーンを ID のバージョンの降順（shared/milestoneOrder.ts）、その後ろに project.yaml に無いノート（同じ降順） */
 export async function releaseOverview(ctx: P3Context): Promise<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }> {
   const { ws } = ctx;
   const count = (mid: string) => ws.requests.list().filter((r) => r.milestone === mid).length;
@@ -26,8 +27,8 @@ export async function releaseOverview(ctx: P3Context): Promise<{ milestones: Rel
       return { state: "invalid", error: (e as Error).message };
     }
   };
-  const known = ws.project.milestones;
-  const orphans = ids.filter((id) => !known.some((m) => m.id === id));
+  const known = sortMilestones(ws.project.milestones);
+  const orphans = ids.filter((id) => !known.some((m) => m.id === id)).sort(compareMilestoneIds);
   const milestones: ReleaseNoteSummary[] = [
     ...(await Promise.all(known.map(async (m) => ({ milestone: m.id, title: m.title, due: m.due, done: m.done, known: true, requests: count(m.id), note: await noteState(m.id) })))),
     ...(await Promise.all(orphans.map(async (id) => ({ milestone: id, title: id, known: false, requests: count(id), note: await noteState(id) })))),

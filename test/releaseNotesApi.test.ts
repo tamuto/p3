@@ -56,8 +56,9 @@ describe("リリースノートの API", () => {
     const { call, a, b, events, ctx } = await setup();
     const list = (await call("GET", "/release-notes")).body;
     expect(list.milestones.map((m: any) => [m.milestone, m.requests, m.note.state])).toEqual([
-      ["v1", 2, "none"],
+      // 登録の順（v1, v2）ではなく、ID のバージョンの降順
       ["v2", 0, "none"],
+      ["v1", 2, "none"],
     ]);
     const d = (await call("GET", "/release-notes/v1")).body;
     expect(d).toMatchObject({ note: null, noteError: null, materialChanged: false });

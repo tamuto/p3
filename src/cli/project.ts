@@ -17,6 +17,7 @@ import { normalizeProject } from "../core/store/normalize.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { Workspace } from "../core/store/workspace.ts";
 import { DATA_DIR_NAME } from "../core/store/locate.ts";
+import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
 
 /** プロジェクトの初期設定・設定変更、変更者と「今の要望」の判定（CLI） */
@@ -556,7 +557,7 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `name           ${p.name}`,
     `description    ${p.description || "（なし）"}`,
     `repos          ${p.repos.map((r) => r.name).join(", ") || "（なし）"}  (p3 repo ls)`,
-    `milestones     ${p.milestones.map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
+    `milestones     ${sortMilestones(p.milestones).map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
     "",

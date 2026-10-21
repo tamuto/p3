@@ -7,6 +7,7 @@ import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
+import { sortMilestones } from "../../../shared/milestoneOrder.ts";
 import { checkPending, sendPending, setUnsentAttachments, type PendingAttach } from "../../lib/uiMaterials.ts";
 
 export const Route = createFileRoute("/requests/new")({
@@ -77,7 +78,7 @@ function NewRequest() {
         <Field label="マイルストーン（任意）">
           <select className={`${inputCls} !w-56`} value={milestone} onChange={(e) => setMilestone(e.target.value)}>
             <option value="">（なし）</option>
-            {ctx.info.project.milestones.map((m) => (
+            {sortMilestones(ctx.info.project.milestones).map((m) => (
               <option key={m.id} value={m.id}>
                 {m.title}
                 {m.due ? `（${m.due}）` : ""}

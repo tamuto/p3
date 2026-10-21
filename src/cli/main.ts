@@ -22,6 +22,7 @@ import { taskCommand } from "./taskCommands.ts";
 import { preflightCommand } from "./preflightCommands.ts";
 import { releaseNotesCommand } from "./releaseNotesCommands.ts";
 import { ReleaseNoteError } from "../core/releaseNotes/store.ts";
+import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 
 /**
@@ -249,7 +250,7 @@ async function main(argv: string[]): Promise<number> {
       const today = localToday();
       return out.result(ps, () => {
         const groups = [
-          ...ctx.ws.project.milestones.map((m) => ({ m, ps: ps.filter((p) => p.request.milestone === m.id) })),
+          ...sortMilestones(ctx.ws.project.milestones).map((m) => ({ m, ps: ps.filter((p) => p.request.milestone === m.id) })),
           { m: undefined, ps: ps.filter((p) => !p.request.milestone) },
         ];
         return (
