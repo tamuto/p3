@@ -98,7 +98,14 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/release-notes/:mid",
-      desc: "保存したノート {note（本文・出典・版 version）, noteError（読めない理由）, material（対象の要望・収録の可否・警告・材料の hash）, materialChanged（保存のあとで材料が変わった）}",
+      desc: "保存したノート {note（本文・出典・版 version）, noteError（読めない理由）, material（対象の要望・収録の可否・警告・材料の hash）, materialChanged（保存のあとで材料が変わった）, completion（要望を一括で完了済にできるか {ready, targets, alreadyDone, skipped, blockers, basedOn}）}",
+    },
+    {
+      method: "POST",
+      path: "/api/release-notes/:mid/complete-requests",
+      desc:
+        "対応済の要望を一括で完了済にする {basedOn: completion.basedOn}。見送り以外の全要望が全タスク完了のときだけ。タスク（済み）・ノート・マイルストーンは変えない。" +
+        "材料が変わった・できないときは何も書かずに 409 code: material_changed / blocked {plan}。途中で止まったら 409 code: partial {result: completed, failed, notRun}",
     },
     {
       method: "PUT",

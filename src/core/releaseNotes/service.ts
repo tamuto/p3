@@ -1,9 +1,10 @@
-import type { ReleaseGeneration, ReleaseMaterial, ReleaseNote, ReleaseNoteSummary, ReleaseWarning } from "../../shared/types.ts";
+import type { ReleaseGeneration, ReleaseMaterial, ReleaseNote, ReleaseNoteSummary, ReleaseWarning, RequestCompletionPlan } from "../../shared/types.ts";
 import type { P3Context } from "../context.ts";
 import { extractMaterial } from "./material.ts";
 import type { SummaryEngine } from "./generate.ts";
 import { checkMilestoneId, ReleaseNoteError } from "./store.ts";
 import { compareMilestoneIds, sortMilestones } from "../../shared/milestoneOrder.ts";
+import { completionPlanOf } from "./completeRequests.ts";
 
 /**
  * リリースノートの操作（CLI と API はここを呼ぶ）。材料の規則は material.ts、保存の形は store.ts。
@@ -59,6 +60,8 @@ export interface ReleaseNoteDetail {
   material: ReleaseMaterial;
   /** 保存のあとで材料が変わった（ノートが無ければ false） */
   materialChanged: boolean;
+  /** 要望を一括で完了済にできるか（この材料で判定。実行は completion.basedOn を添えて頼む） */
+  completion: RequestCompletionPlan;
 }
 
 export async function releaseNoteDetail(ctx: P3Context, mid: string): Promise<ReleaseNoteDetail> {
@@ -70,7 +73,7 @@ export async function releaseNoteDetail(ctx: P3Context, mid: string): Promise<Re
   } catch (e) {
     if (!(e instanceof ReleaseNoteError && e.code === "not_found")) noteError = (e as Error).message;
   }
-  return { note, noteError, material, materialChanged: !!note && note.materialHash !== material.hash };
+  return { note, noteError, material, materialChanged: !!note && note.materialHash !== material.hash, completion: completionPlanOf(material) };
 }
 
 export interface SaveInput {

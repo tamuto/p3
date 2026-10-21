@@ -21,6 +21,8 @@ import type {
   ReleaseNote,
   ReleaseNoteSummary,
   ReleaseWarning,
+  RequestCompletionPlan,
+  RequestCompletionResult,
 } from "../../shared/types.ts";
 
 /** API の run（評価対象と今の要望が同じか inputMatch を添える。run.json には無い） */
@@ -161,6 +163,8 @@ export interface ReleaseNoteDetail {
   noteError: string | null;
   material: ReleaseMaterial;
   materialChanged: boolean;
+  /** 要望を一括で完了済にできるか（サーバの判定） */
+  completion: RequestCompletionPlan;
 }
 
 /** 保存の競合（409）の応答の今のノート（読めなければ・無ければ null） */
@@ -225,6 +229,9 @@ export const api = {
   /** マイルストーンのリリースノート */
   releaseNotes: () => call<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }>("GET", "/release-notes"),
   releaseNote: (mid: string) => call<ReleaseNoteDetail>("GET", `/release-notes/${encodeURIComponent(mid)}`),
+  /** マイルストーンの対応済の要望を一括で完了済にする（basedOn は表示したときの completion.basedOn）。途中で止まったら 409 partial */
+  completeReleaseRequests: (mid: string, basedOn: string) =>
+    call<RequestCompletionResult>("POST", `/release-notes/${encodeURIComponent(mid)}/complete-requests`, { basedOn }),
   /** version: 読んだときの版（更新のときは必須。無ければ新規）。basedOn: 元にした材料の hash */
   saveReleaseNote: (mid: string, b: { body: string; version?: string; basedOn?: string }) =>
     call<{ note: ReleaseNote; warnings: ReleaseWarning[] }>("PUT", `/release-notes/${encodeURIComponent(mid)}`, b),

@@ -4,6 +4,7 @@ import type { P3Context } from "../../core/context.ts";
 import { GenerationRejected } from "../../core/releaseNotes/generate.ts";
 import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote, startGeneration } from "../../core/releaseNotes/service.ts";
 import { ReleaseNoteError } from "../../core/releaseNotes/store.ts";
+import { completeMilestoneRequests, CompletionRejected } from "../../core/releaseNotes/completeRequests.ts";
 
 /**
  * リリースノート（画面のため）。規則と保存は core/releaseNotes（CLI の p3 release-notes と同じ）。
@@ -12,6 +13,9 @@ import { ReleaseNoteError } from "../../core/releaseNotes/store.ts";
  *   GET  /release-notes/:mid                保存したノートと材料（対象の要望・警告・出典）
  *   PUT  /release-notes/:mid                保存（version 無しは新規、ありは更新。違えば 409 rev_conflict）
  *   GET  /release-notes/:mid/export         保存した本文（Markdown のダウンロード）
+ *   POST /release-notes/:mid/complete-requests  対応済の要望を一括で完了済にする（basedOn 必須。判定は詳細の completion）。
+ *                                           頼めなければ何も書かずに 409（material_changed / blocked と今の判定 plan）。
+ *                                           途中で止まったら 409 partial と結果（完了済にしたもの・失敗・未実行）
  *   POST /release-notes/:mid/generate       要約の生成を始める（202。保存しない）
  *   GET  /release-notes/:mid/generations    このマイルストーンの生成（新しい順）
  *   GET  /release-generations/:id           生成1件 / POST .../cancel 取り消す
@@ -41,6 +45,7 @@ export function releaseNoteRoutes(ctx: P3Context) {
       const current = await ctx.ws.releaseNotes.read(mid).catch(() => null);
       return c.json({ error: err.message, code: "rev_conflict", reason: err.code, current }, 409);
     }
+    if (err instanceof CompletionRejected) return c.json({ error: err.message, code: err.code, plan: err.plan }, 409);
     if (err instanceof GenerationRejected) return c.json({ error: err.message, code: err.code }, err.code === "running" ? 409 : 400);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     console.error(err);
@@ -62,6 +67,12 @@ export function releaseNoteRoutes(ctx: P3Context) {
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
     });
+  });
+  app.post("/release-notes/:mid/complete-requests", async (c) => {
+    const { basedOn } = z.object({ basedOn: z.string().min(1) }).parse(await c.req.json().catch(() => ({})));
+    const r = await completeMilestoneRequests(ctx, c.req.param("mid"), basedOn, actorOf(c));
+    if (r.failed) return c.json({ error: `${r.failed.id} で止まりました: ${r.failed.reason}`, code: "partial", result: r }, 409);
+    return c.json(r);
   });
   app.post("/release-notes/:mid/generate", async (c) => {
     const { engine } = z.object({ engine: z.enum(["codex", "mock"]).optional() }).parse(await c.req.json().catch(() => ({})));
