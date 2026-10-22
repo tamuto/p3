@@ -60,6 +60,9 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     id,
     title: str(d.title) ?? id,
     status: REQUEST_STATUSES.includes(status) ? status : "draft",
+    // 形の違う親もそのまま読む（直そうとせず、親子の問題として知らせる）
+    ...(str(d.parent) ? { parent: str(d.parent) } : {}),
+    ...(str(d.splitFrom) ? { splitFrom: str(d.splitFrom) } : {}),
     areas: strs(d.areas),
     due: date(d.due),
     milestone: str(d.milestone),
@@ -75,7 +78,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
+  "id", "title", "status", "parent", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 

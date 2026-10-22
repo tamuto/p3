@@ -41,9 +41,15 @@ export function MaterialView({ material }: { material: ReleaseMaterial }) {
                     {r.title}
                   </Link>
                   <span className="font-mono text-sm text-slate-500">{r.id}</span>
-                  <span className={cx("text-sm", r.tasks.some((t) => !t.hasRecord) ? "text-amber-700 dark:text-amber-300" : "text-slate-500")}>
-                    記録 {r.tasks.filter((t) => t.hasRecord).length}/{r.tasks.length}
-                  </span>
+                  {r.structural ? (
+                    // 自分のタスクが無く子だけを持つ親: 収録の判定には入るが、変更の記録は子の要望から入る
+                    <Badge title="自分のタスクが無く子だけを持つ要望。収録の判定には入りますが、変更の記録は各子の要望から入ります">構造の要望（子 {r.children?.length ?? 0} 件）</Badge>
+                  ) : (
+                    <span className={cx("text-sm", r.tasks.some((t) => !t.hasRecord) ? "text-amber-700 dark:text-amber-300" : "text-slate-500")}>
+                      記録 {r.tasks.filter((t) => t.hasRecord).length}/{r.tasks.length}
+                      {r.children?.length ? `・子 ${r.children.length} 件` : ""}
+                    </span>
+                  )}
                   {r.included && recs.length > 0 && (
                     <button
                       type="button"

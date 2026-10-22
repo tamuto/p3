@@ -10,6 +10,9 @@ import {
   type Relation,
   type Request,
   type MaterializeResult,
+  type AdoptionResult,
+  type PreflightInput,
+  type ProposedChild,
   type Task,
   type Evidence,
   type FixedAttachment,
@@ -17,10 +20,13 @@ import {
   type PreflightPulse,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { nowIso, writeFileAtomic } from "../store/fsutil.ts";
+import { newRequestId, nowIso, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { supersedeCandidates } from "../supersede.ts";
+import { hierarchyNow, reopenAncestors } from "../requestStatus.ts";
+import { archivedRequestIds, inheritFrom, withHierarchyLock } from "../hierarchy.ts";
+import { childBody, childrenVersion, draftProblems, parseSplit, splitMarker } from "./split.ts";
 import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
@@ -29,7 +35,7 @@ import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTarget
 import { hideConfigPath } from "../userConfig.ts";
 import { extractXlsx, XlsxError } from "./xlsx.ts";
 import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiMaterialError } from "./uiMaterials.ts";
-import { compareInput, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
+import { compareFamily, compareInput, inputHash, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
 import { changedLabel } from "../../shared/preflightInput.ts";
 import { PREFLIGHT_CANCELLED } from "../../shared/directTask.ts";
 
@@ -47,6 +53,21 @@ export class PreflightBusyError extends Error {}
 export class DraftConflictError extends Error {
   constructor(readonly current: ProposedTask) {
     super(`${current.key} の題が他で変わりました（今の題: ${current.title}）`);
+  }
+}
+
+/** 子の案の題が他で変わった（画面の編集。409 rev_conflict） */
+export class ChildConflictError extends Error {
+  constructor(readonly current: ProposedChild) {
+    super(`${current.key} の題が他で変わりました（今の題: ${current.title}）`);
+  }
+}
+
+/** 確認したときから子の案が変わった（採用は何も書いていない。409 drafts_changed） */
+export class ChildDraftsChangedError extends Error {
+  readonly code = "drafts_changed";
+  constructor(runId: string) {
+    super(`${runId} の子の案が確認したあとで変わりました。何も作っていません。読み直して確かめてから、もう一度採用してください`);
   }
 }
 
@@ -131,8 +152,16 @@ export class PreflightService {
     // 評価対象はディスクから読み直して固定する（監視していない外部の編集も取り込む）。この後に変わっても、この run は固定した内容で評価する
     await this.ws.requests.reload(requestId);
     const current = this.ws.requests.require(requestId);
-    const input = normalizeInput(current);
-    const request: Request = { ...current, ...input };
+    const text = normalizeInput(current);
+    const request: Request = { ...current, ...text };
+    // 親子の評価対象も固定する: 子なら親の目的、親なら今の子（分割の採用・子のタスク化の直前に比べる。input.ts の compareFamily）
+    const parent = current.parent ? this.ws.requests.get(current.parent) : undefined;
+    const kids = hierarchyNow(this.ws).children(requestId);
+    const input: PreflightInput = {
+      ...text,
+      ...(parent ? { parent: { id: parent.id, hash: inputHash(parent) } } : {}),
+      children: kids.map((c) => ({ id: c.id, hash: inputHash(c) })),
+    };
     if ([...this.active.values()].some((a) => a.run.requestId === requestId)) {
       throw new PreflightBusyError(`${requestId} の preflight は実行中です`);
     }
@@ -217,7 +246,11 @@ export class PreflightService {
 
     const abort = new AbortController();
     const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
-    const done = this.execute(engine, run, request, runDir, carried, abort.signal, after, refs);
+    const family = {
+      ...(parent ? { parent: { id: parent.id, title: parent.title, body: parent.body } } : {}),
+      ...(kids.length ? { children: kids.map((c) => ({ id: c.id, title: c.title, status: c.status })) } : {}),
+    };
+    const done = this.execute(engine, run, request, runDir, carried, abort.signal, after, refs, family);
     this.active.set(id, { run, abort, done });
     return run;
   }
@@ -275,6 +308,7 @@ export class PreflightService {
     signal: AbortSignal,
     after: (ok: boolean) => Request["status"],
     refs: ResolvedRef[],
+    family: Pick<PreflightJob, "parent" | "children">,
   ) {
     try {
       await this.extractAttachments(run, runDir);
@@ -288,6 +322,7 @@ export class PreflightService {
           runDir,
           carryover,
           attachments: run.attachments ?? [],
+          ...family,
         },
         (e) => this.log(run, e),
         signal,
@@ -298,8 +333,16 @@ export class PreflightService {
 
       run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
       run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
+      // 子の案（分割の run）: 確かめて、問題があれば残す（採用しない）
+      const children = await this.ws.preflight.loadChildren(run.requestId, run.id);
+      if (children) {
+        run.children = children;
+        const problems = draftProblems(run, this.ws.tasksOf(run.requestId).list().map((t) => t.id));
+        if (problems.length) run.draftProblems = problems;
+        for (const p of problems) this.log(run, { kind: "error", text: `子の案の問題: ${p}` });
+      }
       // 画面資料: 確かめて取り込む。不正なものは除いて理由を残す（評価は消さない）。必要な画面イメージが足りなければ go を clarify に
-      run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, run.drafts.map((d) => d.key)));
+      run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, [...run.drafts, ...(run.children ?? [])].map((d) => d.key)));
       for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
       if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
       run.ui = withCurrent(run.ui, run);
@@ -454,9 +497,15 @@ export class PreflightService {
    * 既定はメモリ上の要望（serve は変更を監視して取り込む）
    */
   async inputMatch(requestId: string, run: PreflightRun, opts: { fresh?: boolean } = {}): Promise<InputMatch> {
-    if (opts.fresh) await this.ws.requests.reload(requestId);
+    // 親子も比べるので、読み直すときは要望の一覧ごと
+    if (opts.fresh) await this.ws.requests.load();
     const request = this.ws.requests.require(requestId);
-    return compareInput(await runInput(run, this.ws.preflight.runDir(requestId, run.id)), request);
+    const base = compareInput(await runInput(run, this.ws.preflight.runDir(requestId, run.id)), request);
+    if (base.status === "unknown") return base;
+    const parent = request.parent ? this.ws.requests.get(request.parent) : undefined;
+    const family = compareFamily(run.input, run.id, request, parent, hierarchyNow(this.ws).children(requestId));
+    const changed = [...(base.changed ?? []), ...family];
+    return changed.length ? { status: "changed", changed } : { status: "same" };
   }
 
   /** run に今の要望との比較（inputMatch）を添える（画面・CLI・API の表示用。run.json には書かない） */
@@ -468,12 +517,130 @@ export class PreflightService {
   async previewMaterialize(requestId: string, runId: string) {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run) throw new NotFoundError(runId);
+    const inputMatch = await this.inputMatch(requestId, run, { fresh: true });
+    if (run.children) {
+      // 分割の run: 採用する子の案・その版・問題・途中経過（親は残す・子だけ作る・子の Preflight はまだ）
+      const included = run.children.filter((c) => c.include);
+      return {
+        mode: "children" as const,
+        include: included.map((c) => c.key),
+        candidates: [],
+        materialized: [],
+        inputMatch,
+        version: childrenVersion(run.children),
+        problems: draftProblems(run, this.ws.tasksOf(requestId).list().map((t) => t.id)),
+        adoption: run.adoption ?? null,
+      };
+    }
     return {
+      mode: "tasks" as const,
       include: run.drafts.filter((d) => d.include).map((d) => d.key),
       candidates: supersedeCandidates(this.ws, run),
       materialized: run.materialized ?? [],
-      inputMatch: await this.inputMatch(requestId, run, { fresh: true }),
+      inputMatch,
     };
+  }
+
+  /** 子の案を直す（題・本文・採否。案のファイルを読み直してから書く）。採用を始めた案は変えない */
+  async updateChild(requestId: string, runId: string, key: string, patch: Partial<Pick<ProposedChild, "title" | "description" | "include">>, opts: { expectedTitle?: string } = {}) {
+    const run = await this.ws.preflight.get(requestId, runId);
+    const child = run?.children?.find((c) => c.key === key);
+    if (!run || !child) throw new NotFoundError(`${runId}/${key}`);
+    if (run.adoption) throw new Error(`${runId} は子の採用を始めています（案は変えられません）`);
+    if (opts.expectedTitle !== undefined && child.title !== opts.expectedTitle) throw new ChildConflictError(child);
+    const next = { ...child, ...patch, key };
+    await this.ws.preflight.saveChild(requestId, runId, next);
+    return next;
+  }
+
+  /**
+   * 子の案の採用: 選んだ子の案ごとに、親の下に下書きの子の要望を作る（子のタスク化・Preflight は始めない。親のタスク・履歴は変えない）。
+   *   - 親ごとに関係のロック（hierarchy.ts）の中で行い、直前に要望をディスクから読み直す。評価対象（題・本文）・始めたときの子の集合が
+   *     違えば StaleInputError（別の run から採用した・子を足した・外した）、version（確認のときの案の版）が違えば ChildDraftsChangedError。
+   *     どちらも何も書かない
+   *   - 書く前に子の ID を予約して run.json の adoption に残し、子は splitFrom（<run>/<案>）を付けて決めた ID で作る。途中で落ちても、
+   *     同じ採用をもう一度頼めば予約した ID を使い、splitFrom が一致する子は作り直さずに続ける。予約した ID に別のもの（splitFrom が
+   *     違う・読めない）があれば上書きせず、その案を競合として止める
+   *   - 結果は作った・失敗・未実行。全部を取り消すために作った子を消さない
+   */
+  async adopt(requestId: string, runId: string, actor = "preflight", opts: { version?: string } = {}): Promise<AdoptionResult> {
+    return withHierarchyLock(this.ws, async () => {
+      const run = await this.ws.preflight.get(requestId, runId);
+      if (!run || run.status !== "completed") throw new Error("完了した preflight のみ採用できます");
+      if (!run.children) throw new Error(`${runId} は子の案の run ではありません（タスク案は p3 accept でタスク化します）`);
+      if (run.adoption?.done) throw new Error(`既に採用済みです: ${Object.values(run.adoption.reserved).join(", ")}`);
+      const problems = draftProblems(run, this.ws.tasksOf(requestId).list().map((t) => t.id));
+      if (problems.length) throw new Error(`子の案に問題があるので採用しません（直すか再評価してください）: ${problems.join(" / ")}`);
+      const match = await this.inputMatch(requestId, run, { fresh: true });
+      if (match.status !== "same") throw new StaleInputError(requestId, runId, match);
+      const resuming = !!run.adoption;
+      if (!resuming && opts.version !== undefined && opts.version !== childrenVersion(run.children)) throw new ChildDraftsChangedError(runId);
+      const keys = run.adoption?.keys ?? run.children.filter((c) => c.include).map((c) => c.key);
+      if (!keys.length) throw new Error("採用した子の案がありません");
+
+      // ID の予約（書く前に run.json に残す）
+      const state = run.adoption ?? { reserved: {}, created: [], keys, done: false };
+      const taken = new Set([...this.ws.requests.list().map((r) => r.id), ...this.ws.requests.errors.keys(), ...(await archivedRequestIds(this.ws)), ...Object.values(state.reserved)]);
+      for (const k of keys) {
+        if (state.reserved[k]) continue;
+        let id = newRequestId();
+        while (taken.has(id)) id = newRequestId();
+        taken.add(id);
+        state.reserved[k] = id;
+      }
+      run.adoption = state;
+      await this.ws.preflight.save(run);
+
+      const parent = this.ws.requests.require(requestId);
+      const result: AdoptionResult = { created: [], failed: [], pending: [] };
+      for (const [i, key] of keys.entries()) {
+        const id = state.reserved[key];
+        const marker = splitMarker(runId, key);
+        try {
+          if (!state.created.includes(key)) {
+            const c = run.children.find((x) => x.key === key);
+            if (!c) throw new Error(`子の案 ${key} がありません`);
+            const there = await this.ws.requests.peek(id);
+            if ("item" in there) {
+              // 作った直後に落ちた: 同じ採用で作ったものなら使う（上書きしない）
+              if (there.item.splitFrom !== marker || there.item.parent !== requestId) {
+                result.failed.push({ key, error: `予約した ${id} に別の要望があります（上書きしません）`, code: "conflict" });
+                result.pending = keys.slice(i + 1);
+                break;
+              }
+              await this.ws.requests.reload(id);
+            } else if ("error" in there) {
+              result.failed.push({ key, error: `予約した ${id} のファイルが読めません（上書きしません）: ${there.error}`, code: "conflict" });
+              result.pending = keys.slice(i + 1);
+              break;
+            } else {
+              const input = inheritFrom(parent, { title: c.title, body: childBody(parent, c, runId, state.reserved), status: "draft", areas: [], splitFrom: marker });
+              const made = await this.ws.requests.createAt(id, input, actor);
+              if (!made) throw new Error(`${id} を作れませんでした（既にあります）`);
+            }
+            state.created.push(key);
+            await this.ws.preflight.save(run);
+            this.ws.emit({ type: "changed", kind: "request", request: id });
+          }
+          result.created.push({ key, id });
+        } catch (e) {
+          result.failed.push({ key, error: (e as Error).message, code: "error" });
+          result.pending = keys.slice(i + 1);
+          break;
+        }
+      }
+      if (!result.failed.length) {
+        // 親は開始前なら進行中にする（親のタスク・本文は変えない）
+        if (["draft", "preflight", "reviewed"].includes(parent.status)) await this.ws.requests.update(requestId, { status: "active" }, { actor });
+        state.done = true;
+        await this.ws.preflight.save(run);
+        const up = await reopenAncestors(this.ws, requestId, actor);
+        for (const a of up.reopened) this.ws.emit({ type: "changed", kind: "request", request: a });
+        if (up.reopened.length) result.reopenedAncestors = up.reopened;
+      }
+      this.ws.emit({ type: "changed", kind: "request", request: requestId });
+      return result;
+    });
   }
 
   /**
@@ -498,6 +665,7 @@ export class PreflightService {
   ): Promise<MaterializeResult> {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
+    if (run.children) throw new Error(`${runId} は子の要望の案の run です（タスクではなく子を作ります。p3 accept で採用します）`);
     const resuming = run.materialization && !run.materialization.done;
     if (!resuming && run.materialized?.length) throw new Error(`既にタスク化済みです: ${run.materialized.join(", ")}`);
     const match = await this.inputMatch(requestId, run, { fresh: true });
@@ -607,7 +775,16 @@ export class PreflightService {
 
     this.ws.emit({ type: "changed", kind: "task", request: requestId });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
-    return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
+    // 子の要望をタスク化した: 対応済の祖先を進行中に戻す（完了済の祖先は警告）
+    const up = await reopenAncestors(this.ws, requestId, actor);
+    for (const a of up.reopened) this.ws.emit({ type: "changed", kind: "request", request: a });
+    return {
+      tasks: created,
+      archived: state.archived,
+      kept: candidates.filter((c) => !state.archive.includes(c.id)),
+      ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}),
+      ...(up.warnings.length ? { warnings: up.warnings } : {}),
+    };
   }
 }
 
@@ -703,5 +880,6 @@ export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): Pr
     questions: strs(a.questions),
     areas: strs(a.areas),
     ...(Array.isArray(a.evidence) ? { evidence: parseEvidence(a.evidence, refs) } : {}),
+    ...(parseSplit(a.split) ? { split: parseSplit(a.split) } : {}),
   };
 }

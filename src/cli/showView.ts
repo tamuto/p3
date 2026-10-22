@@ -5,6 +5,7 @@ import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskWork } from "../core/workTargets.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
+import type { hierarchyView } from "../core/hierarchy.ts";
 
 /**
  * show の短い出力（--brief）と、通常の出力と共通の項目。
@@ -13,7 +14,7 @@ import { requestWorkstreams } from "../shared/workTarget.ts";
  *   タスク: id・ref・request・title・status・body・rev・outputs・repoOutputs・依存（relations の depends_on）
  *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・superseded・warnings
  *   要望:   id・title・status・body・rev・workstreams + branches（作業先ごとのブランチ）+
- *          タスクの一覧（id・ref・title・status・repo）・issue
+ *          タスクの一覧（id・ref・title・status・repo）・issue + 親子（parent・ancestors・children・hierarchyIssues）
  * 省くもの: 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・関係しそう（暗黙の近さ）・影響範囲。
  * JSON の項目名と階層は通常の --json と同じで、項目を省くだけ（短い出力だけの別名は作らない）。
  */
@@ -74,10 +75,11 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
 }
 
 export function briefRequest(ctx: P3Context, r: Request, issue: string | undefined) {
-  const item: Pick<Request, "id" | "title" | "status" | "body" | "rev" | "workstreams"> = {
+  const item: Pick<Request, "id" | "title" | "status" | "parent" | "body" | "rev" | "workstreams"> = {
     id: r.id,
     title: r.title,
     status: r.status,
+    ...(r.parent ? { parent: r.parent } : {}),
     body: r.body,
     rev: r.rev,
     ...(r.workstreams ? { workstreams: r.workstreams } : {}),
@@ -90,16 +92,29 @@ export function briefRequest(ctx: P3Context, r: Request, issue: string | undefin
   return { item, branches, tasks, ...(issue ? { issue } : {}) };
 }
 
-export function formatBriefRequest(view: ReturnType<typeof briefRequest>): string {
+/** 親子の行（祖先と直下の子。無ければ何も出さない） */
+export function formatFamily(f: Awaited<ReturnType<typeof hierarchyView>>): string[] {
+  return [
+    ...(f.ancestors.length ? [`  親      ${f.ancestors.map((a) => `${a.id} ${a.title}`).join(" > ")}`] : []),
+    ...(f.children.length
+      ? ["", `子の要望 (${f.children.length}):`, table(f.children.map((c) => [`  ${c.id}`, c.status, `${c.tasks.done}/${c.tasks.total}`, c.title]))]
+      : []),
+  ];
+}
+
+export function formatBriefRequest(view: ReturnType<typeof briefRequest> & Partial<Awaited<ReturnType<typeof hierarchyView>>>): string {
   const { item, branches, tasks, issue } = view;
+  const family = view.ancestors && view.children && view.hierarchyIssues ? (view as Awaited<ReturnType<typeof hierarchyView>>) : undefined;
   const names = Object.keys(branches);
   // ブランチは作業先ごと
   const branchLine = "";
   return [
     issue ? `※ ${issue}` : "",
+    ...(family?.hierarchyIssues.map((i) => `※ ${i.message}`) ?? []),
     `${item.id}  ${item.title}`,
     `  status  ${item.status}  rev ${item.rev}${branchLine}`,
     ...(branchLine ? [] : names.map((n) => `  branch  ${n}: ${branches[n].branch}`)),
+    ...(family ? formatFamily(family) : []),
     item.body.trim() ? `\n${item.body.trim()}` : "",
     "",
     `タスク (${tasks.length}):`,

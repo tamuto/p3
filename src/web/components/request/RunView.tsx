@@ -10,6 +10,7 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { staleNotice } from "../../lib/requestEdit.ts";
 import { NOTE_INPUT_ID, focusNoteInput } from "./Notes.tsx";
 import { Drafts } from "./Drafts.tsx";
+import { ChildDrafts } from "./ChildDrafts.tsx";
 import { DirectTaskLink } from "./DirectTaskLink.tsx";
 import { preflightFailed } from "../../../shared/directTask.ts";
 
@@ -43,7 +44,7 @@ export function RunView({
   const a = run.assessment;
   const steps = preflightSteps(run);
   // 実行中の run は始めたときの内容で評価している（比べるのは終わってから見せる）
-  const stale = run.status === "running" ? null : staleNotice(run.inputMatch, { done: isMaterialized(run) });
+  const stale = run.status === "running" ? null : staleNotice(run.inputMatch, { done: isMaterialized(run) || !!run.adoption?.done });
 
   return (
     <div className="space-y-8">
@@ -165,7 +166,12 @@ export function RunView({
 
       {a && (
         <>
-          <Drafts ctx={ctx} request={request} run={run} onChanged={onChanged} blocked={blocked} />
+          {/* 分割の run は子の要望の案（タスク案は無い） */}
+          {run.children ? (
+            <ChildDrafts ctx={ctx} request={request} run={run} onChanged={onChanged} blocked={blocked} />
+          ) : (
+            <Drafts ctx={ctx} request={request} run={run} onChanged={onChanged} blocked={blocked} />
+          )}
         </>
       )}
     </div>

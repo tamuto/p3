@@ -139,6 +139,10 @@ export interface Request {
   id: string;
   title: string;
   status: RequestStatus;
+  /** 親の要望 ID（子の要望のとき。1つだけ。子の一覧は保存せず逆引きする。shared/hierarchy.ts） */
+  parent?: string;
+  /** 分割で作った子の採用元（"<run>/<子の案のキー>"。採用のやり直しで同じ子を見分ける） */
+  splitFrom?: string;
   areas: string[];
   /** 期限（YYYY-MM-DD） */
   due?: string;
@@ -157,6 +161,8 @@ export interface Request {
   body: string;
 }
 
+import type { HierarchyIssue } from "./hierarchy.ts";
+
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
 export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt">;
@@ -168,8 +174,17 @@ export interface RequestProgress {
   counts: Record<TaskStatus, number>;
   total: number;
   done: number;
-  /** 最後に変更された日時（要望かタスク） */
+  /** 最後に変更された日時（要望かタスク。子のある要望は配下も見る） */
   updatedAt: string;
+  /** 直下の子の要望の ID（作成日時の古い順） */
+  children: string[];
+  /**
+   * 配下の集計（自分と子孫のタスク。見送りの子とその下も含めて数え、状態は rejected に出す）。counts・total・done は自分の値と別。
+   * 全体の合計は各要望の自分の値（total・done）を足す（配下を足すと二重に数える）
+   */
+  subtree: { counts: Record<TaskStatus, number>; total: number; done: number; requests: Record<RequestStatus, number> };
+  /** 親子の問題（自分・祖先・子孫） */
+  hierarchyIssues: HierarchyIssue[];
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +192,32 @@ export interface RequestProgress {
 // ---------------------------------------------------------------------------
 
 export type Verdict = "go" | "clarify" | "no_go";
+
+/**
+ * 子の要望の案（分割の run の children/C1.md）。採用すると、親の下に下書きの子の要望を作る（子の Preflight は人が別に始める）。
+ * 1つの run はタスク案か子の案のどちらかだけを持つ
+ */
+export interface ProposedChild {
+  /** run 内のキー (C1, C2, ...) */
+  key: string;
+  title: string;
+  /** 目的・範囲・範囲外・完了条件・分割の理由・他の子との前提と契約・出典（Markdown） */
+  description: string;
+  /** 想定するタスクの数（概算。無ければ不明） */
+  estimatedTasks?: number;
+  /** 前提にする他の子の案（C キー。タスクの関係ではなく、子の本文に書く） */
+  requires: string[];
+  /** 親の既存のタスクと重なりうるもの（T001。レビューで見せる） */
+  overlaps: string[];
+  include: boolean;
+}
+
+/** 分割するか・しないかの判断（想定タスク数が SPLIT_HINT_TASKS 以上か、境界の候補があるとき必ず書く） */
+export interface SplitDecision {
+  decision: "split" | "keep";
+  estimatedTasks?: number;
+  reasons: string[];
+}
 
 export interface ProposedTask {
   /** run 内のキー (D1, D2, ...)。タスク化すると要望の連番（T00x）が振られる */
@@ -204,6 +245,8 @@ export interface PreflightAssessment {
   areas: string[];
   /** 判断の根拠（調べた箇所と、推測の明示）。無ければ記録なし（以前の結果） */
   evidence?: Evidence[];
+  /** 分割するか・しないか（無ければ記録なし） */
+  split?: SplitDecision;
 }
 
 /**
@@ -324,6 +367,15 @@ export interface PreflightRun {
   assessment?: PreflightAssessment;
   /** drafts/ 配下のファイルから読み込まれる */
   drafts: ProposedTask[];
+  /** children/ 配下のファイルから読み込まれる子の要望の案（分割の run。無ければタスク案の run） */
+  children?: ProposedChild[];
+  /** 案の読み込みで見つけた問題（タスク案と子の案の混在・キーの重なり・必須の項目の欠け・無い案やタスクへの参照）。あれば採用しない */
+  draftProblems?: string[];
+  /**
+   * 子の案の採用の途中経過。書く前に子の ID を予約して残し、途中で落ちても同じ ID で続ける。
+   *   reserved: 案 → 予約した子の要望 ID、created: 作った子（案のキー）、keys: 採用に選んだ案、done: 終わった
+   */
+  adoption?: { reserved: Record<string, string>; created: string[]; keys: string[]; done: boolean };
   error?: string;
   threadId?: string;
   /** タスク化済みなら作成されたタスク ID */
@@ -366,7 +418,17 @@ export interface PreflightRun {
 export interface PreflightInput {
   title: string;
   body: string;
+  /**
+   * 親子の評価対象（始めたときの値。無ければ以前の run で、比べない）。hash は題と本文から作る（core/preflight/input.ts の inputHash）。
+   *   parent: 親の目的（子の要望の Preflight。親の題・本文が変われば子のタスク化を断る）/
+   *   children: 始めたときの子の要望（分割の採用の直前に、別の run から採用した・足した・外した・直したことを見つける）
+   */
+  parent?: { id: string; hash: string };
+  children?: { id: string; hash: string }[];
 }
+
+/** 比べる項目（タイトル・本文・親の目的・子の要望） */
+export type InputField = "title" | "body" | "parent" | "children";
 
 /**
  * run の評価対象と今の要望が同じか。
@@ -376,7 +438,7 @@ export interface PreflightInput {
 export interface InputMatch {
   status: "same" | "changed" | "unknown";
   /** changed のとき、変わった項目 */
-  changed?: ("title" | "body")[];
+  changed?: InputField[];
   /** unknown の理由 */
   reason?: string;
 }
@@ -407,6 +469,17 @@ export interface MaterializeResult {
   archived: string[];
   /** 置き換えられるが残したタスク */
   kept: SupersedeCandidate[];
+  /** 対応済から進行中に戻した祖先（子の要望をタスク化した） */
+  reopenedAncestors?: string[];
+}
+
+/** 子の案の採用の結果。created: 作った子 / failed: 作れなかった案（その後は pending）/ pending: まだ作っていない案 */
+export interface AdoptionResult {
+  created: { key: string; id: string }[];
+  failed: { key: string; error: string; code: "conflict" | "error" }[];
+  pending: string[];
+  /** 対応済から進行中に戻した祖先 */
+  reopenedAncestors?: string[];
 }
 
 /**
@@ -523,6 +596,7 @@ export type ReleaseWarningCode =
   | "not_finished"
   | "no_tasks"
   | "open_tasks"
+  | "open_children"
   | "broken_task"
   | "missing_record"
   | "no_material"
@@ -568,6 +642,10 @@ export interface ReleaseRequestItem {
   /** タスク（アーカイブしたものは含まない）。record はここでは持たない（sources にある） */
   tasks: { id: string; title: string; status: TaskStatus; hasRecord: boolean }[];
   warnings: ReleaseWarning[];
+  /** 子の要望（直下。マイルストーンの外のものも含む） */
+  children?: string[];
+  /** 構造の要望（自分のタスクが無く、子だけを持つ）。収録の判定には入るが、材料（sources）は無い */
+  structural?: boolean;
 }
 
 /**

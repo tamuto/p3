@@ -4,6 +4,7 @@ import { openProject } from "../core/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
+import { HierarchyError } from "../core/hierarchy.ts";
 import { startServer, type RunningServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
 import { DataDirError, onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
@@ -270,7 +271,8 @@ async function main(argv: string[]): Promise<number> {
                   ? `${p.request.due}${daysUntil(p.request.due, today) < 0 && !["done", "rejected"].includes(p.request.status) ? " 超過" : ""}`
                   : "",
                 p.request.tags.map((t) => `#${t}`).join(" "),
-                p.request.title,
+                // 子のある要望は配下の集計（自分の値とは別）、子は親を添える
+                `${p.request.title}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
               ]);
               return `${head}\n${table(rows)}`;
             })
@@ -325,6 +327,11 @@ main(process.argv.slice(2)).then(
     if (e instanceof GenerationRejected) {
       process.stderr.write(`${e.message}\n`);
       process.exit(1);
+    }
+    // 要望の親子: ロックを取れない → 3（そのままやり直せる）、規則に合わない → 1
+    if (e instanceof HierarchyError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(e.code === "hierarchy_busy" ? 3 : 1);
     }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);

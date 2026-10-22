@@ -99,8 +99,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
         actor,
       );
       const t = r.task;
-      const reopened = reopenedNote(r.reopened);
-      return out.result(reopened ? { ...t, reopened } : t, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
+      warn(r.warnings);
+      const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
+      return out.result({ ...t, ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.warnings.length ? { warnings: r.warnings } : {}) }, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
     }
 
     case "set": {
@@ -118,8 +119,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const r = await updateTask(ctx, ref.split("/")[0], tid, patch, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
-      const reopened = reopenedNote(r.reopened);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
+      const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}) }, () =>
         [`更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
     }
@@ -141,8 +142,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const r = await updateTask(ctx, cur.request, tid, patch, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
-      const reopened = reopenedNote(r.reopened);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) }, () =>
+      const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}) }, () =>
         `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
     }

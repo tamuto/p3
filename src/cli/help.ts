@@ -55,15 +55,16 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 要望
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
                                --attach ファイル（PNG / JPEG / xlsx。繰り返し可。作る前に全部確かめ、だめなら要望を作らない）
-  request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか）
-  request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧）
-  request set [<要望>] キー=値   title status due milestone tags areas（status: ${REQUEST_STATUSES.join(" ")}）
+                               --parent <要望>  子の要望にする（省いた期限・マイルストーン・タグは親から写す）
+  request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか。--parent <要望> で直下の子）
+  request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧・親子）
+  request set [<要望>] キー=値   title status due milestone tags areas parent（status: ${REQUEST_STATUSES.join(" ")}。parent= で親を外す）
                                --body 本文|-  本文を書き換える（- は標準入力。どの状態でも書き換えられる。--rev で楽観ロック）
                                例: p3 request show <要望> --brief --json で rev を見て
                                    p3 request set <要望> --body - --rev 3 < body.md
                                評価のあとでタイトル・本文を変えると、その評価からはタスク化できない（もう一度 preflight）
                                --tag 値 ...  タグをこの値の並びに置き換える（カンマで分けない。tags=a,b はカンマで分ける）
-  request archive <要望>
+  request archive <要望>        子のある要望・親のある要望はできない（先に親を外す）
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --repo <参照先>|none（作業先）  --all（全要望）
@@ -92,6 +93,8 @@ Preflight
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
                                評価のあとでタイトル・本文が変わった run からはしない（code: stale_input。再評価する）
                                置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
+                               分割の run（子の要望の案 C1, C2 ...）は、選んだ案から下書きの子の要望を作る（親は残す。子の Preflight はまだ）。
+                               途中で失敗したら同じ accept で続ける（作った子は作り直さない）
 
 共通オプション
   --project 名前 操作するプロジェクト（既定: 今いるリポジトリに登録したもの → 登録が1つならそれ。

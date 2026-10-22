@@ -39,17 +39,22 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests", desc: "要望の一覧と進捗" },
-    { method: "POST", path: "/api/requests", desc: "要望の作成" },
-    { method: "GET", path: "/api/requests/:rid", desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（parent で直下の子だけ）" },
+    { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
+    {
+      method: "GET",
+      path: "/api/requests/:rid",
+      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）",
+    },
     {
       method: "PATCH",
       path: "/api/requests/:rid",
       desc:
         "要望の更新（rev で楽観ロック。競合は 409 code: rev_conflict）。タイトル・本文はどの状態でも変えられる（評価のあとで変えるとその評価からはタスク化できない）。" +
-        "status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める",
+        "status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める。" +
+        "parent で親を付け替える（null で外す）。無い・自分・子孫・アーカイブ済みの親は 409 code: hierarchy_invalid（reason）、ほかの操作と重なれば 409 code: hierarchy_busy（やり直してよい）",
     },
-    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す）" },
+    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },
     { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
@@ -86,13 +91,23 @@ export const AI_MANIFEST = {
         "タスク案を直す {title?, description?, include?, repo?, expectedTitle?}。expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
         "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
     },
-    { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）" },
+    {
+      method: "PATCH",
+      path: "/api/requests/:rid/preflight/:run/children/:key",
+      desc: "子の要望の案（分割の run）を直す {title?, description?, include?, expectedTitle?}（expectedTitle はタスク案と同じ。採用を始めた run は変えない）",
+    },
+    {
+      method: "GET",
+      path: "/api/requests/:rid/preflight/:run/materialize",
+      desc: "タスク化の確認（mode: tasks。採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）。分割の run は mode: children で、採用する子の案・version（案の版）・problems・adoption（途中経過）",
+    },
     {
       method: "POST",
       path: "/api/requests/:rid/preflight/:run/materialize",
       desc:
         "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}。" +
-        "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict",
+        "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict。" +
+        "分割の run は子の要望を作る {version?}: 結果は {created, failed, pending}（失敗があれば 207。同じ要求でやり直せる）。親の題・本文・子の集合が変わった run は stale_input（inputMatch.changed に children）、確認のあとで案が変わったら 409 code: drafts_changed",
     },
     { method: "GET", path: "/api/release-notes", desc: "マイルストーンごとのリリースノートの有無（ok / invalid / none）・要望の数。project.yaml に無いノートは known: false と警告" },
     {

@@ -9,7 +9,8 @@ import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { ReloadError } from "../../core/store/workspace.ts";
-import { resolvedIssue } from "../../core/requestStatus.ts";
+import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
+import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
@@ -19,7 +20,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
-import { DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
+import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -55,6 +56,8 @@ const requestInput = z.object({
   due: date.nullish(),
   milestone: z.string().nullish(),
   tags: z.array(z.string()).optional(),
+  /** 親の要望 ID（子の要望にする。PATCH の null は親を外す） */
+  parent: z.string().nullish(),
 });
 const requestPatch = requestInput
   .partial()
@@ -118,12 +121,15 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     // 409 は code で分ける: rev_conflict（読み直してやり直す）/ stale_input（評価のあとで要望が変わった。再評価する）
-    if (err instanceof DraftConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
+    if (err instanceof DraftConflictError || err instanceof ChildConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
+    if (err instanceof ChildDraftsChangedError) return c.json({ error: err.message, code: err.code }, 409);
     if (err instanceof StaleInputError) return c.json({ error: err.message, code: err.code, inputMatch: err.match }, 409);
     if (err instanceof ConflictError) {
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
       return c.json({ error: err.message, code: "rev_conflict", current }, 409);
     }
+    // 要望の親子（code: hierarchy_invalid・hierarchy_busy・has_children・has_parent。何も書いていない）
+    if (err instanceof HierarchyError) return c.json({ error: err.message, code: err.code, ...err.detail }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
@@ -171,7 +177,12 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.route("/", releaseNoteRoutes(ctx));
 
   // --- requests -------------------------------------------------------------
-  app.get("/requests", (c) => c.json(progress(ctx)));
+  app.get("/requests", (c) => {
+    // ?parent=<ID>: 直下の子だけ
+    const parent = c.req.query("parent");
+    const all = progress(ctx);
+    return c.json(parent === undefined ? all : all.filter((p) => p.request.parent === parent));
+  });
   app.post("/requests", async (c) => {
     const b = unnull(requestInput.parse(await c.req.json()));
     return c.json(await createRequest(ctx, b, actorOf(c)), 201);
@@ -184,6 +195,9 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
       issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
+      // 親子（parent・ancestors・children・hierarchyIssues）と、対応済にできるか（blocker・見送りで対象外の子 excluded）
+      ...(await hierarchyView(ws, id)),
+      completion: completionCheckOf(ws, hierarchyNow(ws), id),
       // 置き換えられたタスクの印（T001 → 置き換えた側）
       superseded: Object.fromEntries(
         [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
@@ -205,8 +219,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const { repo, ...b } = unnull(raw);
     // 作業先は null（作業先なし）を残す。書かなければ既定（requestOps.createTask）
     const input = { ...b, ...("repo" in raw ? { repo: raw.repo ?? null } : {}) } as Partial<Task> & { title: string };
-    const { task, reopened } = await createTask(ctx, rid(c), input, actorOf(c));
-    return c.json(reopened ? { ...task, reopened } : task, 201);
+    const { task, reopened, reopenedAncestors, warnings } = await createTask(ctx, rid(c), input, actorOf(c));
+    return c.json({ ...task, ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(warnings.length ? { warnings } : {}) }, 201);
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
@@ -216,8 +230,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
     const next = { ...(unnull(patch) as Partial<Task>), ...("repo" in patch ? { repo: patch.repo ?? null } : {}), ...(checked !== undefined ? { checked } : {}) };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
-    const { task, warnings, reopened } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) });
+    const { task, warnings, reopened, reopenedAncestors } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     await archiveTask(ctx, rid(c), tid(c));
@@ -335,11 +349,25 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
   });
+  /** 子の要望の案（分割の run）を直す。expectedTitle は上と同じ */
+  app.patch("/requests/:rid/preflight/:run/children/:key", async (c) => {
+    const { expectedTitle, ...patch } = z
+      .object({ title: z.string(), description: z.string(), include: z.boolean(), expectedTitle: z.string() })
+      .partial()
+      .parse(await c.req.json());
+    return c.json(await preflight.updateChild(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
+  });
   app.get("/requests/:rid/preflight/:run/materialize", async (c) => c.json(await preflight.previewMaterialize(rid(c), c.req.param("run"))));
   app.post("/requests/:rid/preflight/:run/materialize", async (c) => {
     const body = z
-      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional() })
+      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional(), version: z.string().optional() })
       .parse(await c.req.json().catch(() => ({})));
+    const run = await preflight.get(rid(c), c.req.param("run"));
+    // 分割の run は子の要望を作る（version: 確認したときの子の案の版。違えば 409 drafts_changed）
+    if (run?.children) {
+      const r = await preflight.adopt(rid(c), c.req.param("run"), actorOf(c), { version: body.version });
+      return c.json(r, r.failed.length ? 207 : 201);
+    }
     return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c), { archive: body.archive }), 201);
   });
 

@@ -993,7 +993,7 @@ describe("show --brief（作業に要る項目だけ）", () => {
     writeFileSync(reqFile, readFileSync(reqFile, "utf8").replace(/^status: \w+$/m, "status: resolved"));
     const full = p3(root, ["request", "show", rid, "--json"]).json();
     const b = p3(root, ["request", "show", rid, "--brief", "--json"]).json();
-    expect(Object.keys(b)).toEqual(["item", "branches", "tasks", "issue"]);
+    expect(Object.keys(b)).toEqual(["item", "branches", "tasks", "issue", "parent", "ancestors", "children", "hierarchyIssues"]);
     expect(Object.keys(b.item)).toEqual(["id", "title", "status", "body", "rev", "workstreams"]); // タスクを足したときに作業先のブランチを割り当てている
     for (const k of Object.keys(b.item)) expect(b.item[k]).toEqual(full.item[k]);
     expect(b.tasks).toEqual(full.tasks.map((t: any) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: "app" })));
@@ -1786,5 +1786,48 @@ describe("p3 attach", () => {
     expect(p3(root, ["attach", "get", a.id, "--out", "out.png", "--req", rid]).code).toBe(1);
     expect(p3(root, ["attach", "rm", a.id, "--req", rid]).code).toBe(0);
     expect(p3(root, ["attach", "--req", rid]).out).toContain("添付はありません");
+  });
+});
+
+describe("p3 request の親子", () => {
+  it("--parent で子を作り、ls --parent・show --brief --json で親子を読み、parent= で外す。規則に合わなければ 1", async () => {
+    const { root, rid } = await initialized();
+    const child = p3(root, ["request", "new", "送信基盤", "--parent", rid.slice(-5), "--json"]); // 短い書き方でもよい
+    expect(child.code, child.err).toBe(0);
+    const cid = child.json().id as string;
+    expect(child.json().parent).toBe(rid);
+    expect(p3(root, ["request", "ls", "--parent", rid, "--json"]).json().map((r: { id: string }) => r.id)).toEqual([cid]);
+    const brief = p3(root, ["request", "show", rid, "--brief", "--json"]).json();
+    expect(brief.children).toEqual([{ id: cid, title: "送信基盤", status: "draft", tasks: { total: 0, done: 0 } }]);
+    expect(p3(root, ["request", "show", cid, "--brief", "--json"]).json()).toMatchObject({ parent: rid, ancestors: [{ id: rid }], item: { parent: rid } });
+    expect(p3(root, ["request", "show", rid]).out).toContain("子の要望 (1)");
+    // 循環・アーカイブ（子がある）は同じ規則で断る
+    const cycle = p3(root, ["request", "set", rid, `parent=${cid}`]);
+    expect(cycle.code).toBe(1);
+    expect(cycle.err).toContain("循環");
+    const arch = p3(root, ["request", "archive", rid]);
+    expect(arch.code).toBe(1);
+    expect(arch.err).toContain(cid);
+    const freed = p3(root, ["request", "set", cid, "parent=", "--json"]);
+    expect(freed.code, freed.err).toBe(0);
+    expect(freed.json().parent).toBeUndefined();
+  });
+});
+
+describe("p3 accept（子の要望の案）", () => {
+  it("分割の run は drafts で子の案と分割の判断を見せ、accept で子の要望を作る（--skip で外す）", async () => {
+    const { root } = await initialized();
+    const big = p3(root, ["request", "new", "大きい要望", "--body", Array.from({ length: 9 }, (_, i) => `- 項目${i + 1}`).join("\n"), "--json"]).json();
+    const pf = p3(root, ["preflight", big.id, "--engine", "mock", "--json"]);
+    expect(pf.code, pf.err).toBe(0);
+    const shown = p3(root, ["drafts", big.id]);
+    expect(shown.out).toContain("分割: 子の要望に分ける（想定 8 件）"); // Mock は箇条書きを 8 件まで読む
+    expect(shown.out).toContain("子の要望の案 (3/3 件を採用)");
+    const r = p3(root, ["accept", big.id, "--skip", "C3", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    const made = r.json();
+    expect(made.created.map((c: { key: string }) => c.key)).toEqual(["C1", "C2"]);
+    expect(p3(root, ["request", "ls", "--parent", big.id, "--json"]).json()).toHaveLength(2);
+    expect(p3(root, ["accept", big.id]).code).toBe(1); // 済んだ採用はやり直さない
   });
 });

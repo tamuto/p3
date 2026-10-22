@@ -211,6 +211,19 @@ export class MarkdownCollection<T extends Entity> {
   }
 
   /**
+   * 決めた ID で作る（予約した ID で作り直せるように）。既にファイルがあれば書かずに undefined（排他作成）
+   */
+  async createAt(id: string, input: Partial<Omit<T, "id" | "rev" | "createdAt" | "updatedAt">>, actor?: string): Promise<T | undefined> {
+    const now = nowIso();
+    const item = this.opts.normalize({}, "", id);
+    Object.assign(item, input, { id, rev: 1, createdAt: now, updatedAt: now, updatedBy: actor });
+    Object.assign(item, this.opts.beforeWrite?.(undefined, item) ?? item);
+    if (!(await createExclusive(this.layout.path(id), this.serialize(item)))) return undefined;
+    this.put(id, item);
+    return item;
+  }
+
+  /**
    * 部分更新。expectedRev を渡すと楽観ロック（AI が古い状態を元に上書きするのを防ぐ）。
    */
   async update(id: string, patch: Partial<T>, opts: { expectedRev?: number; actor?: string } = {}): Promise<T> {

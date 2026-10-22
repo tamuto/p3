@@ -1,6 +1,6 @@
 import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { PreflightRun, ProposedTask, RunPulse } from "../../shared/types.ts";
+import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 import { writeFileAtomic } from "./fsutil.ts";
 
@@ -8,6 +8,7 @@ import { writeFileAtomic } from "./fsutil.ts";
  * requests/<要望ID>/preflight/<RUN-ID>/
  *   run.json          評価結果・ログ・文脈（機械向け）
  *   drafts/D1.md ...  細分化されたタスク案（1案 = 1ファイル。人や AI が直接編集できる）
+ *   children/C1.md ... 子の要望の案（分割の run。タスク案とは一緒に置かない）
  */
 export class PreflightStore {
   /** requestsDir: .p3/requests */
@@ -18,7 +19,7 @@ export class PreflightStore {
   }
 
   async save(run: PreflightRun): Promise<void> {
-    const { drafts, ...meta } = run;
+    const { drafts, children, ...meta } = run;
     await writeFileAtomic(join(this.runDir(run.requestId, run.id), "run.json"), JSON.stringify(meta, null, 2) + "\n");
   }
 
@@ -57,10 +58,38 @@ export class PreflightStore {
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
   }
 
+  async saveChild(requestId: string, runId: string, c: ProposedChild): Promise<void> {
+    const { description, ...meta } = c;
+    await writeFileAtomic(join(this.runDir(requestId, runId), "children", `${c.key}.md`), stringifyFrontmatter({ ...meta, include: c.include }, description));
+  }
+
+  /** 子の案（children/ が無ければ undefined: タスク案の run） */
+  async loadChildren(requestId: string, runId: string): Promise<ProposedChild[] | undefined> {
+    const dir = join(this.runDir(requestId, runId), "children");
+    const files = await readdir(dir).catch(() => undefined);
+    if (!files) return undefined;
+    const children: ProposedChild[] = [];
+    for (const f of files.filter((f) => f.endsWith(".md"))) {
+      const { data, body } = parseFrontmatter(await readFile(join(dir, f), "utf8"));
+      const n = Number(data.estimatedTasks);
+      children.push({
+        key: String(data.key ?? f.replace(/\.md$/, "")),
+        title: String(data.title ?? ""),
+        description: body.trim(),
+        ...(data.estimatedTasks !== undefined && Number.isFinite(n) ? { estimatedTasks: Math.max(0, Math.round(n)) } : {}),
+        requires: Array.isArray(data.requires) ? data.requires.map(String) : [],
+        overlaps: Array.isArray(data.overlaps) ? data.overlaps.map(String) : [],
+        include: data.include !== false,
+      });
+    }
+    return children.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+  }
+
   async get(requestId: string, runId: string): Promise<PreflightRun | undefined> {
     try {
       const meta = JSON.parse(await readFile(join(this.runDir(requestId, runId), "run.json"), "utf8"));
-      return { ...meta, drafts: await this.loadDrafts(requestId, runId) };
+      const children = await this.loadChildren(requestId, runId);
+      return { ...meta, drafts: await this.loadDrafts(requestId, runId), ...(children ? { children } : {}) };
     } catch {
       return undefined;
     }
