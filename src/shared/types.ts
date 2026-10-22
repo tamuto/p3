@@ -161,6 +161,8 @@ export interface Request {
   body: string;
 }
 
+import type { HierarchyIssue } from "./hierarchy.ts";
+
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
 export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt">;
@@ -172,8 +174,17 @@ export interface RequestProgress {
   counts: Record<TaskStatus, number>;
   total: number;
   done: number;
-  /** 最後に変更された日時（要望かタスク） */
+  /** 最後に変更された日時（要望かタスク。子のある要望は配下も見る） */
   updatedAt: string;
+  /** 直下の子の要望の ID（作成日時の古い順） */
+  children: string[];
+  /**
+   * 配下の集計（自分と子孫のタスク。見送りの子とその下も含めて数え、状態は rejected に出す）。counts・total・done は自分の値と別。
+   * 全体の合計は各要望の自分の値（total・done）を足す（配下を足すと二重に数える）
+   */
+  subtree: { counts: Record<TaskStatus, number>; total: number; done: number; requests: Record<RequestStatus, number> };
+  /** 親子の問題（自分・祖先・子孫） */
+  hierarchyIssues: HierarchyIssue[];
 }
 
 // ---------------------------------------------------------------------------
@@ -527,6 +538,7 @@ export type ReleaseWarningCode =
   | "not_finished"
   | "no_tasks"
   | "open_tasks"
+  | "open_children"
   | "broken_task"
   | "missing_record"
   | "no_material"
@@ -572,6 +584,10 @@ export interface ReleaseRequestItem {
   /** タスク（アーカイブしたものは含まない）。record はここでは持たない（sources にある） */
   tasks: { id: string; title: string; status: TaskStatus; hasRecord: boolean }[];
   warnings: ReleaseWarning[];
+  /** 子の要望（直下。マイルストーンの外のものも含む） */
+  children?: string[];
+  /** 構造の要望（自分のタスクが無く、子だけを持つ）。収録の判定には入るが、材料（sources）は無い */
+  structural?: boolean;
 }
 
 /**

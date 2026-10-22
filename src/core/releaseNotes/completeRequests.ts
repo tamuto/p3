@@ -1,7 +1,7 @@
 import type { ReleaseMaterial, RequestCompletionPlan, RequestCompletionResult } from "../../shared/types.ts";
 import type { P3Context } from "../context.ts";
 import { updateRequest } from "../requestOps.ts";
-import { resolveBlocker } from "../requestStatus.ts";
+import { hierarchyNow, resolveBlocker } from "../requestStatus.ts";
 import { ConflictError } from "../store/collection.ts";
 import { Workspace } from "../store/workspace.ts";
 import { materialOf } from "./material.ts";
@@ -16,6 +16,7 @@ import { checkMilestoneId, ReleaseNoteError } from "./store.ts";
  *     マイルストーン、ノートは変えない。変更の記録が無い・ノートを保存していない・済みが無いことは条件にしない
  *   - 実行はディスクから読み直した材料で判定し直し、表示したときの hash と違えば何も書かない（material_changed）。できなければ
  *     何も書かない（blocked）
+ *   - 子のある要望は配下が終わっているときだけ（material.ts）。子から親の順に書く
  *   - 複数のファイルをまとめて書く仕組みは無いので、1件ずつ書く。書く直前に、タスクを読み直して確かめ、要望は判定したときの rev で
  *     書く（違えば競合）。途中で失敗したら止め、完了済にしたもの・失敗した1件・まだ変えていないものを返す（戻さない。外の変更を
  *     上書きしないため）。やり直しは、取り直した判定でもう一度頼む（完了済にしたものは対象から外れ、書き直さない）
@@ -66,7 +67,11 @@ export async function completeMilestoneRequests(ctx: P3Context, mid: string, bas
     throw new CompletionRejected("blocked", `完了済にできません（何も変えていません）: ${plan.blockers.map((b) => b.reason).join(" / ")}`, plan);
   }
   const result: RequestCompletionResult = { milestone: mid, completed: [], notRun: [], alreadyDone: plan.alreadyDone };
-  for (const [i, t] of plan.targets.entries()) {
+  // 子から親の順（深いものから）。親を完了済にする判定が、先に完了済にした子を見る
+  const h = hierarchyNow(snap);
+  const depth = (id: string) => h.ancestors(id).length;
+  const targets = [...plan.targets].sort((a, b) => depth(b.id) - depth(a.id));
+  for (const [i, t] of targets.entries()) {
     try {
       // タスクの変更は要望の rev に出ないので、書く直前に読み直して確かめる。要望（所属・状態）は判定したときの rev で確かめる
       const why = await resolveBlocker(ctx.ws, t.id);
@@ -83,7 +88,7 @@ export async function completeMilestoneRequests(ctx: P3Context, mid: string, bas
           ? { id: t.id, reason: `判定したあとで要望が変わりました（${(e as Error).message}）`, code: "conflict" }
           : { id: t.id, reason: (e as Error).message, code: "error" };
     }
-    result.notRun = plan.targets.slice(i + 1).map((x) => x.id);
+    result.notRun = targets.slice(i + 1).map((x) => x.id);
     break;
   }
   return result;

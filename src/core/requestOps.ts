@@ -2,7 +2,7 @@ import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withNewChild, withParentChange } from "./hierarchy.ts";
-import { checkStatusChange, reopenIfNeeded } from "./requestStatus.ts";
+import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
 import { startWarnings, type Warning } from "./supersede.ts";
 import { checkRepoTarget, ensureWorkstreams } from "./workTargets.ts";
 
@@ -23,12 +23,19 @@ export interface WriteOpts {
   actor?: string;
 }
 
-/** タスクを変えた結果。reopened: 対応済から進行中に戻した要望 */
+/**
+ * タスクを変えた結果。reopened: 対応済から進行中に戻した要望 / reopenedAncestors: 同じく戻した祖先（近い順）/
+ * warnings: 置き換えられたタスクへの着手（superseded）・完了済の祖先の下に未完了ができた（ancestor_done）
+ */
 export interface TaskResult {
   task: Task;
-  warnings: Warning[];
+  warnings: (Warning | AncestorWarning)[];
   reopened?: string;
+  reopenedAncestors?: string[];
 }
+
+/** 要望を作った・変えた結果に添える、祖先を戻した結果（無ければ何も足さない） */
+export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[] };
 
 function changed(ctx: P3Context, kind: "task" | "request", request: string, ref?: string) {
   ctx.ws.emit({ type: "changed", kind, request, ref });
@@ -60,13 +67,27 @@ export async function checkMilestoneRemoval(ctx: P3Context, next: string[]): Pro
   }
 }
 
-/** タスクを変えた後: ブランチの割り当てと、対応済の要望に未完了のタスクができたら進行中に戻す */
-async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: string | null | undefined, actor?: string): Promise<string | undefined> {
+/** 要望を変えた後: 配下に未完了ができたら対応済の祖先を進行中に戻し（変更通知も）、完了済の祖先は警告にする */
+async function afterRequestWrite(ctx: P3Context, rid: string, actor?: string) {
+  const up = await reopenAncestors(ctx.ws, rid, actor);
+  for (const a of up.reopened) changed(ctx, "request", a);
+  return up;
+}
+
+const withAncestors = (r: Request, up: Awaited<ReturnType<typeof afterRequestWrite>>): RequestResult => ({
+  ...r,
+  ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}),
+  ...(up.warnings.length ? { warnings: up.warnings } : {}),
+});
+
+/** タスクを変えた後: ブランチの割り当てと、対応済の要望（と祖先）に未完了のタスクができたら進行中に戻す */
+async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: string | null | undefined, actor?: string) {
   if (repo) await ensureWorkstreams(ctx.ws, rid, [repo], actor);
   const reopened = (await reopenIfNeeded(ctx.ws, rid, actor)) ? rid : undefined;
   changed(ctx, "task", rid, task.ref);
   if (reopened) changed(ctx, "request", rid);
-  return reopened;
+  const up = await afterRequestWrite(ctx, rid, actor);
+  return { reopened, ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}), ancestorWarnings: up.warnings };
 }
 
 /**
@@ -79,7 +100,8 @@ export async function createTask(ctx: P3Context, rid: string, input: Partial<Tas
   checkRepoTarget(ctx.ws, repo);
   for (const o of input.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
   const task = await ctx.ws.tasksOf(rid).create({ ...input, repo, status: input.status ?? "todo" }, actor);
-  return { task, warnings: [], reopened: await afterTaskWrite(ctx, rid, task, repo, actor) };
+  const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
+  return { task, warnings: ancestorWarnings, ...after };
 }
 
 /**
@@ -108,7 +130,8 @@ export async function updateTask(
   }
   const warnings = startWarnings(ctx.ws, cur.ref, cur.status, next.status);
   const task = await col.update(tid, next, opts);
-  return { task, warnings, reopened: await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor) };
+  const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
+  return { task, warnings: [...warnings, ...ancestorWarnings], ...after };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */
@@ -121,7 +144,7 @@ export async function archiveTask(ctx: P3Context, rid: string, tid: string): Pro
  * 要望を作る（下書き）。parent を付けると子の要望にする（親を確かめ、指定していない期限・マイルストーン・タグを親から写す。
  * hierarchy.ts）。子のブランチは子のタスク化で割り当てる（親の workstreams は写さない）
  */
-export async function createRequest(ctx: P3Context, input: Partial<Request> & { title: string }, actor?: string): Promise<Request> {
+export async function createRequest(ctx: P3Context, input: Partial<Request> & { title: string }, actor?: string): Promise<RequestResult> {
   const create = async (inp: Partial<Request> & { title: string }) => {
     checkMilestone(ctx, inp.milestone);
     return ctx.ws.requests.create({ body: "", areas: [], tags: [], ...inp, status: "draft" }, actor);
@@ -130,26 +153,29 @@ export async function createRequest(ctx: P3Context, input: Partial<Request> & { 
   const r = parent ? await withNewChild(ctx.ws, parent, rest, (inp) => create({ ...inp, title: input.title })) : await create(rest);
   changed(ctx, "request", r.id);
   if (r.parent) changed(ctx, "request", r.parent);
-  return r;
+  // 対応済の親に未完了の子を足した
+  return r.parent ? withAncestors(r, await afterRequestWrite(ctx, r.id, actor)) : r;
 }
 
 /**
  * 要望を変える。対応済にするのは全タスクが完了のときだけ（requestStatus.ts）。
  * parent を含むなら親の付け替え（undefined で外す）を関係のロックの中で確かめてから書く（hierarchy.ts）
  */
-export async function updateRequest(ctx: P3Context, rid: string, patch: Partial<Request>, opts: WriteOpts = {}): Promise<Request> {
+export async function updateRequest(ctx: P3Context, rid: string, patch: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
+  // 状態か親が変わったら、未完了になった配下の分だけ祖先を戻す
+  const after = async (r: Request) => (patch.status !== undefined || "parent" in patch ? withAncestors(r, await afterRequestWrite(ctx, r.id, opts.actor)) : r);
   if (!("parent" in patch)) {
     const r = await ctx.ws.requests.update(rid, patch, opts);
     changed(ctx, "request", r.id);
-    return r;
+    return after(r);
   }
   const { result: r, previous } = await withParentChange(ctx.ws, rid, patch.parent, () => ctx.ws.requests.update(rid, patch, opts));
   changed(ctx, "request", r.id);
   // 前と今の親の子の一覧も変わる
   for (const p of new Set([previous, r.parent])) if (p && p !== r.id) changed(ctx, "request", p);
-  return r;
+  return after(r);
 }
 
 /** 要望をアーカイブする（フォルダごと .archive/ へ）。子のある要望・親のある要望は断る（hierarchy.ts） */

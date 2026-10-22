@@ -271,7 +271,8 @@ async function main(argv: string[]): Promise<number> {
                   ? `${p.request.due}${daysUntil(p.request.due, today) < 0 && !["done", "rejected"].includes(p.request.status) ? " 超過" : ""}`
                   : "",
                 p.request.tags.map((t) => `#${t}`).join(" "),
-                p.request.title,
+                // 子のある要望は配下の集計（自分の値とは別）、子は親を添える
+                `${p.request.title}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
               ]);
               return `${head}\n${table(rows)}`;
             })

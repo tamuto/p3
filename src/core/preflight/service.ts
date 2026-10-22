@@ -21,6 +21,7 @@ import { nowIso, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { supersedeCandidates } from "../supersede.ts";
+import { reopenAncestors } from "../requestStatus.ts";
 import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
@@ -607,7 +608,16 @@ export class PreflightService {
 
     this.ws.emit({ type: "changed", kind: "task", request: requestId });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
-    return { tasks: created, archived: state.archived, kept: candidates.filter((c) => !state.archive.includes(c.id)) };
+    // 子の要望をタスク化した: 対応済の祖先を進行中に戻す（完了済の祖先は警告）
+    const up = await reopenAncestors(this.ws, requestId, actor);
+    for (const a of up.reopened) this.ws.emit({ type: "changed", kind: "request", request: a });
+    return {
+      tasks: created,
+      archived: state.archived,
+      kept: candidates.filter((c) => !state.archive.includes(c.id)),
+      ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}),
+      ...(up.warnings.length ? { warnings: up.warnings } : {}),
+    };
   }
 }
 

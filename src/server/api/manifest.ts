@@ -44,7 +44,7 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/requests/:rid",
-      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）",
+      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）",
     },
     {
       method: "PATCH",
@@ -54,7 +54,7 @@ export const AI_MANIFEST = {
         "status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める。" +
         "parent で親を付け替える（null で外す）。無い・自分・子孫・アーカイブ済みの親は 409 code: hierarchy_invalid（reason）、ほかの操作と重なれば 409 code: hierarchy_busy（やり直してよい）",
     },
-    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す）" },
+    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },
     { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },

@@ -12,7 +12,7 @@ import { UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { parse, splitPair, list, date, readBody, readAttachFiles } from "./args.ts";
-import { Output, formatEntity, deps } from "./output.ts";
+import { Output, formatEntity, deps, reopenedNote, warn } from "./output.ts";
 
 /** 要望（p3 request ...）とマイルストーン（p3 milestone ...）のコマンド。変更は server/requestOps.ts を通す */
 
@@ -42,6 +42,8 @@ export async function requestCommand(
         { title, body: readBody(o.body), areas: o.area ?? [], tags: tagsFrom(o.tag ?? []), due: o.due && date(o.due), milestone: o.milestone, ...(o.parent ? { parent: parentArg(o.parent) } : {}) },
         actor,
       );
+      warn(r.warnings ?? []);
+      reopenedNote(undefined, r.reopenedAncestors);
       const head = `作成: ${r.id}  ${r.title}${r.parent ? `（${r.parent} の子）` : ""}\n  ${relative(process.cwd(), ctx.ws.requests.path(r.id))}`;
       if (!files.length) return out.result(r, () => head);
       // 確かめ済みなので通常は失敗しない。失敗しても要望は残し、付け直す方法を出す
@@ -131,6 +133,8 @@ export async function requestCommand(
       }
       if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
       const next = await updateRequest(ctx, rid, patch, { expectedRev, actor });
+      warn(next.warnings ?? []);
+      reopenedNote(undefined, next.reopenedAncestors);
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
     case "archive": {

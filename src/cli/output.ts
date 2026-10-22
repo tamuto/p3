@@ -63,8 +63,9 @@ export const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
 };
 
 /** タスクを変えた後、対応済の要望を進行中に戻していたら知らせる（requestOps が戻す）。戻した要望の ID を返す */
-export function reopenedNote(rid: string | undefined): string | undefined {
+export function reopenedNote(rid: string | undefined, ancestors: string[] = []): string | undefined {
   if (rid) process.stderr.write(`要望 ${rid} を対応済から進行中に戻しました（未完了のタスクがあるため）\n`);
+  if (ancestors.length) process.stderr.write(`祖先の要望 ${ancestors.join(", ")} を対応済から進行中に戻しました（配下に未完了があるため）\n`);
   return rid;
 }
 
@@ -86,7 +87,7 @@ export function directTaskHint(rid: string, scope: { project?: string; dir?: str
 }
 
 /** 警告は stderr に出す（--json の stdout を汚さない。JSON では warnings フィールドで返す） */
-export const warn = (warnings: Warning[]) => {
+export const warn = (warnings: Pick<Warning, "message">[]) => {
   for (const w of warnings) process.stderr.write(`警告: ${w.message}\n`);
 };
 

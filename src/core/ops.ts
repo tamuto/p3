@@ -1,6 +1,7 @@
 import { normalizeTaskId } from "../shared/refs.ts";
-import { type RequestProgress, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
+import { REQUEST_STATUSES, type RequestProgress, type RequestStatus, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
+import { hierarchyNow } from "./requestStatus.ts";
 
 /**
  * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。
@@ -91,20 +92,41 @@ export function titleOf({ ws }: P3Context, ref: string): string {
  * 並び: 最終更新（要望自身と、アーカイブしていないタスクの updatedAt の最大）の新しい順。同じ日時なら要望 ID の順。
  */
 export function progress(ctx: P3Context): RequestProgress[] {
+  const h = hierarchyNow(ctx.ws);
+  const zero = () => Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
   return ctx.ws.requests
     .list()
     .map((request) => {
       const tasks = ctx.ws.tasksOf(request.id).list();
-      const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+      const counts = zero();
       for (const t of tasks) counts[t.status]++;
       const done = tasks.filter((t) => t.status === "done");
+      // 配下: 自分と子孫（循環しても1回ずつ）
+      const below = h.descendants(request.id);
+      const sub = { counts: zero(), total: 0, done: 0, requests: Object.fromEntries(REQUEST_STATUSES.map((s) => [s, 0])) as Record<RequestStatus, number> };
+      const stamps = [request.updatedAt, ...tasks.map((t) => t.updatedAt)];
+      for (const r of [request, ...below]) {
+        if (r !== request) {
+          sub.requests[r.status]++;
+          stamps.push(r.updatedAt);
+        }
+        for (const t of ctx.ws.tasksOf(r.id).list()) {
+          sub.counts[t.status]++;
+          sub.total++;
+          if (t.status === "done") sub.done++;
+          if (r !== request) stamps.push(t.updatedAt);
+        }
+      }
       return {
         request,
         tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt })),
         counts,
         total: tasks.length,
         done: done.length,
-        updatedAt: [request.updatedAt, ...tasks.map((t) => t.updatedAt)].sort().at(-1)!,
+        updatedAt: stamps.sort().at(-1)!,
+        children: h.children(request.id).map((c) => c.id),
+        subtree: sub,
+        hierarchyIssues: h.issuesAround(request.id),
       };
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || byId(a.request.id, b.request.id));

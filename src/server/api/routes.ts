@@ -9,7 +9,7 @@ import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { ReloadError } from "../../core/store/workspace.ts";
-import { resolvedIssue } from "../../core/requestStatus.ts";
+import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
 import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
@@ -194,8 +194,9 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
       issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
-      // 親子（parent・ancestors・children・hierarchyIssues）
+      // 親子（parent・ancestors・children・hierarchyIssues）と、対応済にできるか（blocker・見送りで対象外の子 excluded）
       ...(await hierarchyView(ws, id)),
+      completion: completionCheckOf(ws, hierarchyNow(ws), id),
       // 置き換えられたタスクの印（T001 → 置き換えた側）
       superseded: Object.fromEntries(
         [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
@@ -217,8 +218,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const { repo, ...b } = unnull(raw);
     // 作業先は null（作業先なし）を残す。書かなければ既定（requestOps.createTask）
     const input = { ...b, ...("repo" in raw ? { repo: raw.repo ?? null } : {}) } as Partial<Task> & { title: string };
-    const { task, reopened } = await createTask(ctx, rid(c), input, actorOf(c));
-    return c.json(reopened ? { ...task, reopened } : task, 201);
+    const { task, reopened, reopenedAncestors, warnings } = await createTask(ctx, rid(c), input, actorOf(c));
+    return c.json({ ...task, ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(warnings.length ? { warnings } : {}) }, 201);
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
@@ -228,8 +229,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
     const next = { ...(unnull(patch) as Partial<Task>), ...("repo" in patch ? { repo: patch.repo ?? null } : {}), ...(checked !== undefined ? { checked } : {}) };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
-    const { task, warnings, reopened } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}) });
+    const { task, warnings, reopened, reopenedAncestors } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     await archiveTask(ctx, rid(c), tid(c));
