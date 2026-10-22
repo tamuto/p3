@@ -91,13 +91,23 @@ export const AI_MANIFEST = {
         "タスク案を直す {title?, description?, include?, repo?, expectedTitle?}。expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
         "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
     },
-    { method: "GET", path: "/api/requests/:rid/preflight/:run/materialize", desc: "タスク化の確認（採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）" },
+    {
+      method: "PATCH",
+      path: "/api/requests/:rid/preflight/:run/children/:key",
+      desc: "子の要望の案（分割の run）を直す {title?, description?, include?, expectedTitle?}（expectedTitle はタスク案と同じ。採用を始めた run は変えない）",
+    },
+    {
+      method: "GET",
+      path: "/api/requests/:rid/preflight/:run/materialize",
+      desc: "タスク化の確認（mode: tasks。採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）。分割の run は mode: children で、採用する子の案・version（案の版）・problems・adoption（途中経過）",
+    },
     {
       method: "POST",
       path: "/api/requests/:rid/preflight/:run/materialize",
       desc:
         "採用したタスク案をタスク化 {archive?: [{id, rev}]}（選んだ候補だけアーカイブ）。結果は {tasks, archived, kept}。" +
-        "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict",
+        "評価のあとで要望のタイトル・本文が変わった（か確かめられない）run は 409 code: stale_input {inputMatch} で何も書かない（再評価する）。候補の rev の競合は 409 code: rev_conflict。" +
+        "分割の run は子の要望を作る {version?}: 結果は {created, failed, pending}（失敗があれば 207。同じ要求でやり直せる）。親の題・本文・子の集合が変わった run は stale_input（inputMatch.changed に children）、確認のあとで案が変わったら 409 code: drafts_changed",
     },
     { method: "GET", path: "/api/release-notes", desc: "マイルストーンごとのリリースノートの有無（ok / invalid / none）・要望の数。project.yaml に無いノートは known: false と警告" },
     {

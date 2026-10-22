@@ -1813,3 +1813,21 @@ describe("p3 request の親子", () => {
     expect(freed.json().parent).toBeUndefined();
   });
 });
+
+describe("p3 accept（子の要望の案）", () => {
+  it("分割の run は drafts で子の案と分割の判断を見せ、accept で子の要望を作る（--skip で外す）", async () => {
+    const { root } = await initialized();
+    const big = p3(root, ["request", "new", "大きい要望", "--body", Array.from({ length: 9 }, (_, i) => `- 項目${i + 1}`).join("\n"), "--json"]).json();
+    const pf = p3(root, ["preflight", big.id, "--engine", "mock", "--json"]);
+    expect(pf.code, pf.err).toBe(0);
+    const shown = p3(root, ["drafts", big.id]);
+    expect(shown.out).toContain("分割: 子の要望に分ける（想定 8 件）"); // Mock は箇条書きを 8 件まで読む
+    expect(shown.out).toContain("子の要望の案 (3/3 件を採用)");
+    const r = p3(root, ["accept", big.id, "--skip", "C3", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    const made = r.json();
+    expect(made.created.map((c: { key: string }) => c.key)).toEqual(["C1", "C2"]);
+    expect(p3(root, ["request", "ls", "--parent", big.id, "--json"]).json()).toHaveLength(2);
+    expect(p3(root, ["accept", big.id]).code).toBe(1); // 済んだ採用はやり直さない
+  });
+});

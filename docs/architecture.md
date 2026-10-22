@@ -42,7 +42,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 ## 大きい要望の分割（親と子の要望）
 
 > 要望 261022-8s1k5 の設計。親子の保存・検証・CLI/API（[使い方](how-to-use.md#親と子の要望)）、親子の完了の判定・進捗と
-> リリースノートは実装済み。Preflight の子の案と画面は、この要望の残りのタスクで実装する（それまではここに書いた形はまだ無い）。
+> リリースノート、Preflight の子の案は実装済み。画面は、この要望の残りのタスクで実装する（それまではここに書いた形はまだ無い）。
 
 大きい要望を1回の Preflight でタスクにすると、フロントエンド・バックエンド・基盤のように別々に評価・レビュー・リリースしたい
 作業が1つのブランチと1つのタスクボードにまとまってしまう。そこで要望は **子の要望** を持てるようにし、子ごとに Preflight・
@@ -190,9 +190,13 @@ include: true
   親の目的を `input.parent` に固定し、子のタスク化の直前に親の題・本文が変わっていれば同じく断る
 - **やり直せること**: 親ごとの採用は関係のロックの中で行う。書く前に子の ID を予約して `run.json` の `adoption`
   （`{ reserved: { C1: "<ID>" }, created: [...], done }`）に残し、子は `splitFrom` を付けて作る。途中で落ちても、もう一度同じ採用を
-  頼めば予約した ID を使い、`splitFrom` が一致する子は作り直さずに続ける。予約した ID の子が外で編集されていた（`splitFrom` が違う・
-  rev が進んだ）ら上書きせず、その案を競合として返す
-- **結果**: `{ created: [{ key, id }], failed: [{ key, error }], pending: [key] }`。全部を取り消すために作った子を消さない
+  頼めば予約した ID を使い、`splitFrom` が一致する子は作り直さずに続ける（作った後に直されていても上書きしない）。予約した ID に
+  別の要望がある（`splitFrom` が違う・読めない）なら上書きせず、その案を競合として返す（後の案は未実行）
+- **結果**: `{ created: [{ key, id }], failed: [{ key, error, code }], pending: [key] }`。全部を取り消すために作った子を消さない
+- **入口**: 規則は `core/preflight/service.ts` の `adopt`（検証・本文・版は `core/preflight/split.ts`）。CLI は `accept`（分割の run なら
+  採用）、API は今の materialize（確認は `mode: "children"` と案の版 `version`・`problems`・`adoption`、実行は `{version}` を添え、
+  失敗があれば 207。確認のあとで案が変わったら 409 `drafts_changed`）と `PATCH .../children/:key`（題・本文・採否）。分割の run から
+  タスク化（materialize）はしない。Mock は箇条書きが 6 件以上なら3件ずつの子の案を書く
 - **既存のタスクのある親**: 作業中のタスクがあっても、残りの作業を子に分けてよい。既存のタスクは親に残り、重なりは `overlaps` で
   レビューに出す。既存のタスクを置き換えたいときは、親の中で今までどおり再評価し `supersedes` で置き換える（子は親のタスクを置き換えない）
 
@@ -563,6 +567,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 要望・タスクの変更の手順（確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知） | `core/requestOps.ts`（CLI の各コマンドと API はここを呼ぶだけ） |
 | Preflight（開始・評価対象の固定・タスク化） | `core/preflight/service.ts`（`PreflightService`） |
 | 要望の親子（親にできるもの・関係の操作のロック・アーカイブの拒否・親子の問題） | `core/hierarchy.ts`（判定は `shared/hierarchy.ts`） |
+| Preflight の分割（子の案の検証・子の本文・案の版・採用） | `core/preflight/split.ts`・`core/preflight/service.ts` の `adopt` |
 | 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
@@ -857,6 +862,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 着手する前に、`--brief --json` の `work`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
 - 着手するときは `p3 move T003 doing`。テストを通したら、コミットする前に `p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）
 - 要望のタスクを全部終えたら、コミットする前に `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
+- 子の要望（`parent` のある要望）は、親とは別の要望として子ごとのタスクとブランチで作業する（親のタスクにしない）。分割の案の採用（`accept`）と子の Preflight は人が行う。親を対応済にするのは、親のタスクと見送り以外の子（`request show <親> --brief --json` の `children`）が全部終わってから
 - データのフォルダがこの作業ツリーの中で git 管理されているなら、要望のフォルダ（`requests/<要望ID>/`）の変更も実装と同じコミットに入れる（ほかの要望・関係ない変更は入れない。外・無視・worktree のときは入らないので、移動や `git add -f` はしない）。push に失敗したら完了の記録は残し、公開できていないことを伝える
 - コミットや PR の URL は後から `p3 move T003 done --output <URL>` で足す（完了・記録はそのまま。データをコミットしているなら追記もコミットして push）。複数のリポジトリにまたがるときは最後のタスクに `--repo-output <参照先>=<PR の URL>` で全部の PR を残す
 - 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる

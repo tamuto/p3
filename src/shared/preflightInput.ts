@@ -1,4 +1,4 @@
-import type { PreflightInput, PreflightRun } from "./types.ts";
+import type { InputField, PreflightInput, PreflightRun } from "./types.ts";
 
 /**
  * Preflight の評価対象（要望のタイトルと本文）の規則。サーバ（固定・比較・タスク化の判定）と画面（下書き）で同じものを使う。
@@ -10,17 +10,17 @@ export function normalizeText(s: string): string {
   return s.replace(/\r\n?/g, "\n").trim();
 }
 
-export function normalizeInput(r: { title: string; body: string }): PreflightInput {
+export function normalizeInput(r: { title: string; body: string }): Pick<PreflightInput, "title" | "body"> {
   return { title: normalizeText(r.title), body: normalizeText(r.body) };
 }
 
 /** 保存すると同じになる本文か */
 export const sameText = (a: string, b: string) => normalizeText(a) === normalizeText(b);
 
-const FIELD_LABEL = { title: "タイトル", body: "本文" } as const;
+const FIELD_LABEL: Record<InputField, string> = { title: "タイトル", body: "本文", parent: "親の目的（題・本文）", children: "子の要望" };
 
 /** 変わった項目の表示（「タイトルと本文」） */
-export const changedLabel = (fields: readonly (keyof PreflightInput)[] | undefined) => (fields ?? []).map((k) => FIELD_LABEL[k]).join("と");
+export const changedLabel = (fields: readonly InputField[] | undefined) => (fields ?? []).map((k) => FIELD_LABEL[k]).join("と");
 
 /** この run からのタスク化が終わっている（途中で止まったものは含めない） */
 export const isMaterialized = (run: Pick<PreflightRun, "materialized" | "materialization">) =>

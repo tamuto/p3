@@ -20,7 +20,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
-import { DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
+import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -121,7 +121,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     // 409 は code で分ける: rev_conflict（読み直してやり直す）/ stale_input（評価のあとで要望が変わった。再評価する）
-    if (err instanceof DraftConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
+    if (err instanceof DraftConflictError || err instanceof ChildConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
+    if (err instanceof ChildDraftsChangedError) return c.json({ error: err.message, code: err.code }, 409);
     if (err instanceof StaleInputError) return c.json({ error: err.message, code: err.code, inputMatch: err.match }, 409);
     if (err instanceof ConflictError) {
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
@@ -348,11 +349,25 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       .parse(await c.req.json());
     return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
   });
+  /** 子の要望の案（分割の run）を直す。expectedTitle は上と同じ */
+  app.patch("/requests/:rid/preflight/:run/children/:key", async (c) => {
+    const { expectedTitle, ...patch } = z
+      .object({ title: z.string(), description: z.string(), include: z.boolean(), expectedTitle: z.string() })
+      .partial()
+      .parse(await c.req.json());
+    return c.json(await preflight.updateChild(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
+  });
   app.get("/requests/:rid/preflight/:run/materialize", async (c) => c.json(await preflight.previewMaterialize(rid(c), c.req.param("run"))));
   app.post("/requests/:rid/preflight/:run/materialize", async (c) => {
     const body = z
-      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional() })
+      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional(), version: z.string().optional() })
       .parse(await c.req.json().catch(() => ({})));
+    const run = await preflight.get(rid(c), c.req.param("run"));
+    // 分割の run は子の要望を作る（version: 確認したときの子の案の版。違えば 409 drafts_changed）
+    if (run?.children) {
+      const r = await preflight.adopt(rid(c), c.req.param("run"), actorOf(c), { version: body.version });
+      return c.json(r, r.failed.length ? 207 : 201);
+    }
     return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c), { archive: body.archive }), 201);
   });
 

@@ -97,14 +97,19 @@ export async function withNewChild<T>(
 ): Promise<T> {
   return withHierarchyLock(ws, async () => {
     const p = await checkParent(ws, await fresh(ws), undefined, parent);
-    return fn({
-      ...input,
-      parent,
-      due: input.due ?? p.due,
-      milestone: input.milestone ?? p.milestone,
-      tags: input.tags?.length ? input.tags : [...p.tags],
-    });
+    return fn(inheritFrom(p, input));
   });
+}
+
+/** 子の作成の入力に、指定していない期限・マイルストーン・タグを親から写す（作るときだけ） */
+export function inheritFrom(p: Request, input: Partial<Request>): Partial<Request> {
+  return {
+    ...input,
+    parent: p.id,
+    due: input.due ?? p.due,
+    milestone: input.milestone ?? p.milestone,
+    tags: input.tags?.length ? input.tags : [...p.tags],
+  };
 }
 
 /** 親を付け替える・外す（parent が undefined）前に: ロックの中で確かめてから fn（保存）を呼ぶ。前の親を返す */

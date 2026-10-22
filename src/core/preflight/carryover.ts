@@ -117,7 +117,13 @@ export function renderCarryover(c: Carryover): string | undefined {
             (d) =>
               `### ${d.key} ${d.title}（${d.include ? "採用" : "不採用"}${d.dependsOn.length ? ` / 依存: ${d.dependsOn.join(", ")}` : ""}${d.repo !== undefined ? ` / 作業先: ${d.repo ?? "なし"}` : ""}）\n${d.description}`,
           )
-        : ["（なし）"]),
+        : [p.children ? "（なし。前回は子の要望に分ける案でした）" : "（なし）"]),
+      ...(p.children
+        ? [
+            `## 前回の子の要望の案（人の編集と採否を含む）${p.adoption?.done ? `。採用済み: ${Object.values(p.adoption.reserved).join(", ")}` : ""}`,
+            ...p.children.map((c) => `### ${c.key} ${c.title}（${c.include ? "採用" : "不採用"}${c.estimatedTasks !== undefined ? ` / 想定 ${c.estimatedTasks} 件` : ""}）\n${c.description}`),
+          ]
+        : []),
       uiCarryover(p),
     );
   } else if (c.previousSkipped) {

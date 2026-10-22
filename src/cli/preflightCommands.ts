@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve as resolvePath } from "node:path";
 import { AttachmentError, safeFileName } from "../core/store/attachments.ts";
-import { type PreflightRun, type InputMatch, type MaterializeResult, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
+import { type AdoptionResult, type PreflightRun, type InputMatch, type MaterializeResult, type UiMaterialsStatus, UI_MATERIAL_KINDS, type Attachment, ATTACHMENT_FORMATS } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { table } from "./format.ts";
@@ -117,8 +117,8 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
     case "drafts": {
       const rid = requestArg(args[0]);
       const run = await pickRun(ctx, rid, o.run);
-      // タスク化の前なら、置き換えられる既存タスクも見せる
-      const supersedes = run.materialized?.length ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
+      // タスク化の前なら、置き換えられる既存タスクも見せる（分割の run には無い）
+      const supersedes = run.materialized?.length || run.children ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
       const inputMatch = await ctx.preflight.inputMatch(rid, run);
       return out.result({ ...run, inputMatch, supersedes }, () =>
         [
@@ -137,6 +137,7 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       const keys = (s: string | undefined) => s?.split(",").map((x) => x.trim().toUpperCase());
       const only = keys(o.only);
       const skip = keys(o.skip) ?? [];
+      if (run.children) return adoptChildren(ctx, out, rid, run, only, skip, actor, !!o.json);
       for (const d of run.drafts) {
         const include = (only ? only.includes(d.key) : d.include) && !skip.includes(d.key);
         if (include !== d.include) await ctx.preflight.updateDraft(rid, run.id, d.key, { include });
@@ -168,6 +169,42 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
 
   }
   return undefined;
+}
+
+/**
+ * 分割の run の採用: 選んだ子の案から子の要望を作る（子のタスク化・Preflight はしない）。途中で失敗したら作った・失敗・未実行を出し、
+ * 同じ accept でやり直せる（作った子は作り直さない）。終了コード: 全部作れたら 0、失敗があれば 1
+ */
+async function adoptChildren(ctx: P3Context, out: CommandEnv["out"], rid: string, run: PreflightRun, only: string[] | undefined, skip: string[], actor: string, json: boolean) {
+  if (!run.adoption) {
+    for (const c of run.children ?? []) {
+      const include = (only ? only.includes(c.key) : c.include) && !skip.includes(c.key);
+      if (include !== c.include) await ctx.preflight.updateChild(rid, run.id, c.key, { include });
+    }
+  } else if (only || skip.length) {
+    throw new UsageError(`${run.id} は採用を始めています（選んだ案: ${run.adoption.keys.join(", ")}）。--only / --skip を外して、同じ採用を続けてください`);
+  }
+  let r: AdoptionResult;
+  try {
+    r = await ctx.preflight.adopt(rid, run.id, actor);
+  } catch (e) {
+    if (!(e instanceof StaleInputError) || !json) throw e;
+    out.result({ error: e.message, code: e.code, request: rid, run: run.id, inputMatch: e.match }, () => "");
+    return 1;
+  }
+  const title = (id: string) => ctx.ws.requests.get(id)?.title ?? "";
+  out.result(r, () =>
+    [
+      `子の要望を作りました (${rid} / ${run.id}):`,
+      table(r.created.map((c) => [`  ${c.key}`, c.id, title(c.id)])) || "  （なし）",
+      ...r.failed.map((f) => `\n作れませんでした: ${f.key}（${f.error}）`),
+      r.pending.length ? `まだ作っていない案: ${r.pending.join(", ")}（直してから p3 accept ${rid} --run ${run.id} で続けます。作った子は作り直しません）` : "",
+      r.failed.length ? "" : `\n親 ${rid} は残します。子ごとに Preflight を実行してください（例: p3 preflight ${r.created[0]?.id ?? "<子>"}）`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+  return r.failed.length ? 1 : 0;
 }
 
 /** 評価対象と今の要望の比較（drafts の表示） */
@@ -216,6 +253,28 @@ function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof p
       ),
     );
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
+  }
+  if (a?.split) {
+    lines.push("", `分割: ${a.split.decision === "split" ? "子の要望に分ける" : "分けない"}${a.split.estimatedTasks !== undefined ? `（想定 ${a.split.estimatedTasks} 件）` : ""}`, ...a.split.reasons.map((x) => `  - ${x}`));
+  }
+  if (run.children) {
+    lines.push("", `子の要望の案 (${run.children.filter((c) => c.include).length}/${run.children.length} 件を採用):`);
+    lines.push(
+      table(
+        run.children.map((c) => [
+          c.include ? "[x]" : "[ ]",
+          c.key,
+          c.title,
+          c.estimatedTasks !== undefined ? `想定 ${c.estimatedTasks} 件` : "",
+          c.requires.length ? `前提 ${c.requires.join(",")}` : "",
+          c.overlaps.length ? `重なり ${c.overlaps.join(",")}` : "",
+          run.adoption?.reserved[c.key] ? `→ ${run.adoption.reserved[c.key]}${run.adoption.created.includes(c.key) ? "" : "（予約）"}` : "",
+        ]),
+      ),
+    );
+    for (const p of run.draftProblems ?? []) lines.push(`  [問題] ${p}`);
+    lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "children"))}/`);
+    lines.push(run.adoption?.done ? "子の要望を作成済み（子ごとに Preflight を実行します）" : `採用: p3 accept ${rid} --run ${run.id}（親は残し、子の要望だけを作ります。子の Preflight はまだ）`);
   }
   lines.push("", ...uiLines(run.ui, relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "ui"))));
   if (run.materialized?.length) lines.push("", `タスク化済み: ${run.materialized.join(", ")}`);

@@ -68,9 +68,10 @@ describe("Preflight の評価対象の固定", () => {
   it("始めたときのタイトル・本文を run.input と request.md に固定し、エンジンにも同じものを渡す", async () => {
     const { ctx, engine, req, preflight, runDir } = await setup("- 送信基盤  \n- 設定画面\n\n");
     const run = await preflight();
-    expect(run.input).toEqual({ title: "通知", body: "- 送信基盤  \n- 設定画面" });
+    // 子の要望の集合も固定する（子が無ければ空。親は子の要望のときだけ）
+    expect(run.input).toEqual({ title: "通知", body: "- 送信基盤  \n- 設定画面", children: [] });
     expect(readFileSync(join(runDir(run.id), "request.md"), "utf8")).toBe(`# ${req.id} 通知\n\n- 送信基盤  \n- 設定画面`);
-    expect(engine.jobs[0]).toMatchObject(run.input!);
+    expect(engine.jobs[0]).toMatchObject({ title: run.input!.title, body: run.input!.body });
     expect(ctx.ws.requests.require(req.id).status).toBe("reviewed");
   });
 

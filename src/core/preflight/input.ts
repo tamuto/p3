@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { InputMatch, PreflightInput, PreflightRun } from "../../shared/types.ts";
+import type { InputField, InputMatch, PreflightInput, PreflightRun, Request } from "../../shared/types.ts";
 import { changedLabel, normalizeInput } from "../../shared/preflightInput.ts";
 
 export { normalizeInput };
@@ -35,6 +36,27 @@ export async function runInput(run: PreflightRun, runDir: string): Promise<Prefl
   const m = /^# (\S+) ([^\r\n]*)(?:\r?\n\r?\n([\s\S]*))?$/.exec(text);
   if (!m || m[1] !== run.requestId) return { error: "この run の request.md の形が読めません" };
   return normalizeInput({ title: m[2], body: m[3] ?? "" });
+}
+
+/** 要望の題と本文の識別子（親の目的・子の要望を run に固定して比べる。正規化してから作る） */
+export function inputHash(r: { title: string; body: string }): string {
+  const n = normalizeInput(r);
+  return createHash("sha256").update(`${n.title}\n${n.body}`).digest("hex").slice(0, 16);
+}
+
+/**
+ * 親子の評価対象を比べる（run に記録が無ければ比べない）。変わった項目を返す。
+ *   parent: 今の親が記録と違う・無い・題か本文が変わった / children: 今の子（この run の採用で作った子は除く）の集合か題・本文が違う
+ */
+export function compareFamily(saved: PreflightInput | undefined, runId: string, request: Request, parent: Request | undefined, children: readonly Request[]): InputField[] {
+  const out: InputField[] = [];
+  if (saved?.parent && (request.parent !== saved.parent.id || !parent || inputHash(parent) !== saved.parent.hash)) out.push("parent");
+  if (saved?.children) {
+    const now = children.filter((c) => !c.splitFrom?.startsWith(`${runId}/`)).map((c) => `${c.id}:${inputHash(c)}`).sort();
+    const then = saved.children.map((c) => `${c.id}:${c.hash}`).sort();
+    if (now.join(",") !== then.join(",")) out.push("children");
+  }
+  return out;
 }
 
 export function compareInput(saved: PreflightInput | { error: string }, current: { title: string; body: string }): InputMatch {
