@@ -51,14 +51,10 @@ describe("npm で配る中身", () => {
     for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "skills/p3/SKILL.md"]) {
       expect(files).toContain(f);
     }
-    // 画面と CLI・serve の JavaScript（lib/）はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる。
-    // 実際の tarball は scripts/verify-pack.mjs が確かめる）
+    // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）。CLI・serve の JavaScript（lib/）は
+    // ここでは見ない（test/pack.test.ts が並行して作り直すため）。lib/ を作って詰めて動かすのは pack.test.ts と scripts/verify-pack.mjs
     if (existsSync(new URL("dist/web/index.html", root))) expect(files).toContain("dist/web/index.html");
-    if (existsSync(new URL("lib/cli/main.js", root))) {
-      for (const f of ["lib/cli/main.js", "lib/core/context.js", "lib/shared/types.js", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/fonts-ja.conf", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/mock-ui.png", "lib/core/preflight/mock-ui.html", "lib/core/preflight/launcher.mjs"]) {
-        expect(files).toContain(f);
-      }
-    }
+    expect(pkg.files).toContain("lib");
     // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）
     for (const doc of DOCS) {
       expect(files).toContain(doc);
