@@ -176,7 +176,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
     routeTree.gen.ts ルート一覧（自動生成）
     components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
-bin/p3.mjs           CLI の起動口（tsx でソースをそのまま動かす）
+bin/p3.mjs           CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
 skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents / p3 agents で各プロジェクトの .claude/skills・.agents/skills の選んだ先に写す）
 scripts/             デモデータ・配布物の確認・使い方の動画（video/）
 docs/                導入・使い方・開発・設計・公開の文書
@@ -192,17 +192,19 @@ test/                ユニットテスト
 
 ## npm で配る中身
 
-`@infodb/p3` として npm に公開する（公開そのものは人が行う。手順は [docs/publishing.md](publishing.md)）。TypeScript のソースを
-`tsx` でそのまま動かし、画面だけをビルドして同梱する。
+`@infodb/p3` として npm に公開する（公開そのものは人が行う。手順は [docs/publishing.md](publishing.md)）。画面と CLI・serve を
+ビルドして同梱し、利用者の環境では TypeScript を変換しない（`tsx` とそれが使う esbuild を入れないので、pnpm がビルドのスクリプトの
+許可を聞かない）。このリポジトリの開発（`pnpm p3`・テスト）は、今までどおりソースを `tsx` でそのまま動かす。
 
 | 何を | どうする |
 | --- | --- |
-| 同梱するもの（`files`） | `bin/`・`src/cli`・`src/core`・`src/server`・`src/shared`（実行するソース。描画のイメージの資材 `src/core/preflight/render-image/` を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、`docs/`（README から辿る文書）、README・LICENSE |
-| 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・画面のソース（`src/web`）・開発用のスキル（`.claude/`） |
-| 実行時の依存 | `tsx`・`hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`。React などの画面の部品はビルドに使うだけなので開発用 |
+| 同梱するもの（`files`） | `bin/`、`lib/`（ビルド済みの CLI・serve。描画のイメージの資材 `lib/core/preflight/render-image/` などの .ts 以外の資材を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、`docs/`（README から辿る文書）、README・LICENSE |
+| 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・TypeScript のソース（`src/`）・開発用のスキル（`.claude/`） |
+| 実行時の依存 | `hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`。`tsx`（esbuild）と React などの画面の部品は開発用 |
+| CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。`tsc -p tsconfig.build.json` で `src/{cli,core,server,shared}` を同じ深さの `lib/` に 1:1 で出し（相対の import の `.ts` は `.js` に書き換わる）、.ts 以外の資材を同じ場所に写す。`src/` と同じ深さなので、`import.meta.url` からの相対の参照（`../../skills`・`dist/web`・`./mock-ui.html` など）はそのまま効く。資材を足すときは、その層のフォルダに置けば写る。`lib/` は git で追跡しない |
 | Node | `>=22`（`@infodb/codex-workspace` と同じ）。開発（Vite 8）は Node 24 |
 | 公開前のビルド | `prepack` で `pnpm build`。利用者が入れるときにはビルドも Docker の操作もしない |
-| bin | `p3`。起動口は今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
+| bin | `p3`（`bin/p3.mjs`）。`src/cli/main.ts` があるチェックアウトでは tsx でソースを、無ければ（配布物）`lib/cli/main.js` を動かす。ソースを動かすときは今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
 
 ```bash
 pnpm -s check                       # 型検査・lint・テスト・画面のビルド・UI テスト

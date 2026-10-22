@@ -41,25 +41,32 @@ describe("npm で配る中身", () => {
   });
 
   it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用）", () => {
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/chatgpt-plan", "@infodb/codex-workspace", "hono", "tsx", "yaml", "zod"]);
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/chatgpt-plan", "@infodb/codex-workspace", "hono", "yaml", "zod"]);
   });
 
   it("npm pack の一覧に、動かすのに要るものがあり、設定・テスト・開発用のものが無い", () => {
     const r = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: fileURLToPath(root), encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     const files: string[] = JSON.parse(r.stdout)[0].files.map((f: { path: string }) => f.path);
-    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "src/cli/main.ts", "src/core/context.ts", "src/shared/types.ts", "skills/p3/SKILL.md", "src/core/preflight/render-image/Dockerfile", "src/core/preflight/render-image/fonts-ja.conf", "src/core/preflight/render-image/render.mjs", "src/core/preflight/mock-ui.png", "src/core/preflight/mock-ui.html"]) {
+    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "skills/p3/SKILL.md"]) {
       expect(files).toContain(f);
     }
-    // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）
+    // 画面と CLI・serve の JavaScript（lib/）はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる。
+    // 実際の tarball は scripts/verify-pack.mjs が確かめる）
     if (existsSync(new URL("dist/web/index.html", root))) expect(files).toContain("dist/web/index.html");
+    if (existsSync(new URL("lib/cli/main.js", root))) {
+      for (const f of ["lib/cli/main.js", "lib/core/context.js", "lib/shared/types.js", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/fonts-ja.conf", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/mock-ui.png", "lib/core/preflight/mock-ui.html", "lib/core/preflight/launcher.mjs"]) {
+        expect(files).toContain(f);
+      }
+    }
     // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）
     for (const doc of DOCS) {
       expect(files).toContain(doc);
       for (const { target } of links(doc)) expect(files, `${doc} → ${target}`).toContain(target);
     }
     const unwanted = files.filter((f) =>
-      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/web\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || f.endsWith(".test.ts"),
+      // TypeScript のソース（src/）は入れない（実行はビルド済みの lib/。tsx・esbuild を利用者の環境に入れない）
+      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || f.endsWith(".ts"),
     );
     expect(unwanted).toEqual([]);
   });

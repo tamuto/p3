@@ -12,7 +12,7 @@
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
 //
 // 依存を使わない（Node だけで動く）。CI には入れない。公開の前に人が実行する（docs/publishing.md）。
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -85,10 +85,11 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    for (const f of ["bin/p3.mjs", "src/cli/main.ts", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "src/core/preflight/render-image/Dockerfile", "src/core/preflight/render-image/render.mjs"]) {
+    // CLI・serve はビルド済みの JavaScript（lib/）。TypeScript のソース（src/）は入れない
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/launcher.mjs", "lib/core/preflight/mock-ui.html"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
-    const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/web\/|node_modules\/)/.test(f));
+    const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|node_modules\/)/.test(f) || f.endsWith(".ts"));
     check(unwanted.length === 0, `入れてはいけないもの: ${unwanted.join(", ")}`);
     return `${files.length} ファイル`;
   });
@@ -100,8 +101,22 @@ try {
     const installed = JSON.parse(readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8"));
     check(!existsSync(join(prefix, "node_modules", "vite")), "開発用の依存（vite）まで入っています");
     check(!existsSync(join(prefix, "node_modules", "react")), "画面の部品（react）まで入っています");
+    // 実行時に TypeScript を変換しない（tsx と、それが使う esbuild のビルドのスクリプトを利用者に許可させない）
+    for (const d of ["tsx", "esbuild"]) check(!existsSync(join(prefix, "node_modules", d)), `実行時に要らない ${d} まで入っています`);
     const cw = JSON.parse(readFileSync(join(prefix, "node_modules", "@infodb", "codex-workspace", "package.json"), "utf8"));
     return `@infodb/p3 ${installed.version}・@infodb/codex-workspace ${cw.version}`;
+  });
+
+  await step("pnpm で入れてもビルドのスクリプトの許可を聞かない", () => {
+    const dir = join(work, "pnpm-install");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), '{ "name": "p3-verify-pnpm", "private": true }\n');
+    // 知らせは stderr に出る（pnpm 12 はプロジェクトへの add を ERR_PNPM_IGNORED_BUILDS で止める）ので、両方を見る
+    const r = spawnSync("pnpm", ["add", "--config.minimum-release-age=0", tgz], { cwd: dir, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const out = `${r.stdout}\n${r.stderr}`;
+    check(!/Ignored build scripts|approve-builds|IGNORED_BUILDS/.test(out), `ビルドのスクリプトの許可を求めています: ${out.trim().split("\n").slice(-3).join(" / ")}`);
+    check(r.status === 0, `pnpm add が失敗しました: ${out.trim().split("\n").slice(-3).join(" / ")}`);
+    return "許可を求めるスクリプトなし";
   });
 
   await step("対象のリポジトリを作る（P3 のチェックアウトの外）", () => {
