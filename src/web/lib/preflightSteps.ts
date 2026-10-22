@@ -13,8 +13,9 @@ export interface StepView {
   current: boolean;
 }
 
-export function preflightSteps(run: Pick<PreflightRun, "status" | "log" | "materialized">): StepView[] {
-  const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length ? 4 : run.status === "completed" ? 3 : 2;
+export function preflightSteps(run: Pick<PreflightRun, "status" | "log" | "materialized" | "adoption">): StepView[] {
+  // 分割の run は子の要望を作り終えたらタスク化の工程まで済み
+  const step = run.status === "running" ? (run.log.length > 1 ? 2 : 1) : run.materialized?.length || run.adoption?.done ? 4 : run.status === "completed" ? 3 : 2;
   return PREFLIGHT_STEPS.map((label, i) => {
     const n = i + 1;
     const state: StepView["state"] = n < step || (n === step && step === 4) ? "done" : n === step ? (run.status === "failed" ? "failed" : "current") : "todo";

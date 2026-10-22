@@ -2,7 +2,9 @@ import type { RepoRef } from "../../shared/repos.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type {
+  AdoptionResult,
   MaterializeResult,
+  ProposedChild,
   PreflightNote,
   PreflightPulse,
   PreflightRun,
@@ -250,9 +252,23 @@ export const api = {
   /** expectedTitle: 編集を始めたときの題（題を変えるときは必ず渡す。今の題と違えば 409 rev_conflict、body.current に今の案） */
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask> & { expectedTitle?: string }) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
-  /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない */
+  /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない。分割の run は mode: children と案の版・問題・途中経過 */
   previewMaterialize: (rid: string, runId: string) =>
-    call<{ include: string[]; candidates: SupersedeCandidate[]; materialized: string[]; inputMatch: InputMatch }>("GET", `/requests/${rid}/preflight/${runId}/materialize`),
+    call<{
+      mode: "tasks" | "children";
+      include: string[];
+      candidates: SupersedeCandidate[];
+      materialized: string[];
+      inputMatch: InputMatch;
+      version?: string;
+      problems?: string[];
+      adoption?: PreflightRun["adoption"] | null;
+    }>("GET", `/requests/${rid}/preflight/${runId}/materialize`),
+  /** 子の要望の案を直す（expectedTitle: 編集を始めたときの題。違えば 409 で書かない） */
+  patchChild: (rid: string, runId: string, key: string, patch: Partial<Pick<ProposedChild, "title" | "description" | "include">> & { expectedTitle?: string }) =>
+    call<ProposedChild>("PATCH", `/requests/${rid}/preflight/${runId}/children/${key}`, patch),
+  /** 子の案の採用（version: 確認したときの案の版。違えば 409 drafts_changed。失敗があっても結果を返す） */
+  adopt: (rid: string, runId: string, version?: string) => call<AdoptionResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { version }),
   /** archive: アーカイブする置き換えられるタスク（候補として見た rev つき） */
   materialize: (rid: string, runId: string, archive: { id: string; rev: number }[] = []) =>
     call<MaterializeResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { archive }),
