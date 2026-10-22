@@ -9,15 +9,22 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * npm pack の中身だけで動くか（files の漏れが無いか）を、ネットワーク無しで確かめる。
- * 依存はこのチェックアウトの node_modules を借りる。実行時の依存だけでレジストリから入れる確認は scripts/verify-pack.mjs
+ * 配布物は src/ を含まないので、bin はビルドした lib/ を動かす（tsx を使わない）。依存はこのチェックアウトの node_modules を借りる。実行時の依存だけでレジストリから入れる確認は scripts/verify-pack.mjs
  */
 describe("npm pack の中身だけで動く", () => {
   it("別の場所に展開した p3 で init・whoami・Mock の Preflight・serve が動く", async () => {
     const work = tempDir("p3-pack-");
+    // 配布物の CLI・serve（lib/）を今のソースから作ってから詰める（pnpm -s check はテストの後に画面をビルドするので、prepack は使わない）
+    execFileSync(process.execPath, [join(ROOT, "scripts", "build-cli.mjs")], { cwd: ROOT, encoding: "utf8" });
     const out = execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", work], { cwd: ROOT, encoding: "utf8" });
     const tgz = join(work, JSON.parse(out)[0].filename);
     execFileSync("tar", ["xzf", tgz, "-C", work]);
     const pkg = join(work, "package");
+    // 資材も lib/ に入り、TypeScript のソースは入らない
+    for (const f of ["lib/cli/main.js", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/mock-ui.png", "lib/core/preflight/mock-ui.html", "lib/core/preflight/launcher.mjs"]) {
+      expect(existsSync(join(pkg, f)), f).toBe(true);
+    }
+    expect(existsSync(join(pkg, "src"))).toBe(false);
     symlinkSync(join(ROOT, "node_modules"), join(pkg, "node_modules"));
 
     const repo = tempDir("p3-pack-repo-");
