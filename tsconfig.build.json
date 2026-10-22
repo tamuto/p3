@@ -1,0 +1,18 @@
+{
+  // 配布物の CLI・serve を JavaScript にする（scripts/build-cli.mjs）。src/{cli,core,server,shared} を同じ深さの lib/ に 1:1 で出し、
+  // 相対の import の .ts を .js に書き換える。型検査は tsconfig.json（pnpm typecheck）で行うので、ここでは出力だけ
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "lib",
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["src/cli", "src/core", "src/server", "src/shared"]
+}

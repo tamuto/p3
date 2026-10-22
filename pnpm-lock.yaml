@@ -178,9 +178,6 @@ importers:
       hono:
         specifier: ^4.13.13
         version: 4.13.13
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -239,6 +236,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

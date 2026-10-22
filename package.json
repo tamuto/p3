@@ -29,10 +29,7 @@
   },
   "files": [
     "bin",
-    "src/cli",
-    "src/core",
-    "src/server",
-    "src/shared",
+    "lib",
     "dist/web",
     "skills",
     "docs"
@@ -44,7 +41,7 @@
     "dev": "pnpm demo && concurrently -n server,web -c blue,magenta \"pnpm:dev:server\" \"pnpm:dev:web\"",
     "dev:server": "tsx watch --clear-screen=false src/cli/main.ts serve --dir .p3-demo",
     "dev:web": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-cli.mjs",
     "start": "pnpm demo && node bin/p3.mjs serve --dir .p3-demo",
     "p3": "node bin/p3.mjs",
     "demo": "tsx scripts/demo.ts",
@@ -65,7 +62,6 @@
     "@infodb/chatgpt-plan": "^0.1.1",
     "@infodb/codex-workspace": "^0.2.1",
     "hono": "^4.13.13",
-    "tsx": "^4.23.15",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
@@ -87,6 +83,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
     "vitest": "^4.1.11"

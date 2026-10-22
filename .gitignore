@@ -148,6 +148,8 @@ vite.config.ts.timestamp-*
 .turbo
 
 # p3
+# 配布物の CLI・serve（pnpm build で作る。scripts/build-cli.mjs）
+/lib/
 .p3-demo/
 .worktrees/
 .p3-video/
