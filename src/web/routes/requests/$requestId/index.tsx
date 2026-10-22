@@ -17,6 +17,7 @@ import { UNSAVED_BLOCKED, unsavedFields } from "../../../lib/requestEdit.ts";
 import { RunView } from "../../../components/request/RunView.tsx";
 import { Notes } from "../../../components/request/Notes.tsx";
 import { RequestMeta } from "../../../components/request/RequestMeta.tsx";
+import { Family } from "../../../components/request/Family.tsx";
 import { BodyEditor } from "../../../components/request/BodyEditor.tsx";
 import { useRequestDrafts } from "../../../lib/requestDrafts.ts";
 import { latestOnly, STALE } from "../../../lib/latest.ts";
@@ -212,6 +213,8 @@ function RequestPanel({
     // ブラウザの幅をそのまま使う（上限なし）。狭い画面では左右の余白を縮める
     <div className="w-full space-y-8 px-4 py-6 sm:px-6 lg:p-8">
       <RequestMeta ctx={ctx} data={data} drafts={drafts} />
+
+      <Family ctx={ctx} data={data} />
 
       <section className="space-y-3">
         <BodyEditor

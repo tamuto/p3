@@ -12,6 +12,7 @@ import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { CLOSED_STATUSES, filterRequests, parseShow, parseTagsSearch, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
 import { optionalString } from "../lib/search.ts";
+import { progressTree, type TreeRow } from "../lib/progressTree.ts";
 import { sortMilestones } from "../../shared/milestoneOrder.ts";
 import {
   addDays,
@@ -82,13 +83,27 @@ function ProgressPage() {
   const today = localToday();
 
   // マイルストーンの順（未所属は最後）→ 期限の順。既定（未完了）では対応済・完了済・見送りを隠す
-  const rows = useMemo(() => {
+  const matched = useMemo(() => {
     const order = (p: RequestProgress) => {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
     return filterRequests(ctx.requests, show, selectedTags).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
   }, [ctx.requests, milestones, show, selectedTags]);
+  // 親子の木: 子は親の下に並べ、絞り込みに合う子の祖先は文脈として出す（数えない）。畳んだ親はこの画面の間だけ覚える
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const tree = useMemo(() => progressTree(ctx.requests, matched, collapsed), [ctx.requests, matched, collapsed]);
+  const rows = useMemo(() => tree.map((t) => t.p), [tree]);
+  const toggle = useCallback(
+    (id: string) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
 
   // 描く期間: データのある全期間（上限なし）
   const range = useMemo(() => {
@@ -174,6 +189,9 @@ function ProgressPage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
         <h1 className="text-lg font-bold">進捗</h1>
+        <span className="text-sm text-slate-500" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
+          {matched.length} 件{tree.some((t) => t.context) ? "（ほかに親を文脈として表示）" : ""}
+        </span>
         <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
           {SHOW_OPTIONS.map(([v, label]) => (
             <Link
@@ -227,8 +245,8 @@ function ProgressPage() {
             {/* 左: 要望（見えている行だけ） */}
             <div className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ width: leftW }}>
               <div className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }} />
-              {rows.slice(first, last).map((p, k) => (
-                <RequestCell key={p.request.id} p={p} top={HEAD_H + (first + k) * ROW_H} narrow={narrow} />
+              {tree.slice(first, last).map((t, k) => (
+                <RequestCell key={t.p.request.id} t={t} top={HEAD_H + (first + k) * ROW_H} narrow={narrow} onToggle={toggle} />
               ))}
             </div>
 
@@ -336,25 +354,57 @@ function Legend() {
   );
 }
 
-/** 左の要望の行。狭い画面では、ステータスを上に、タイトルを下に2行まで出す（全文は Hint と要望の画面で） */
-function RequestCell({ p, top, narrow }: { p: RequestProgress; top: number; narrow: boolean }) {
+/**
+ * 左の要望の行。狭い画面では、ステータスを上に、タイトルを下に2行まで出す（全文は Hint と要望の画面で）。
+ * 子は深さだけ字下げし（深いものは4段まで）、子のある親には畳む・開くの印を出す。文脈として出す親は薄くし「文脈」と添える。
+ * 子のある親には配下の集計（自分と子孫のタスク）を添える（自分の値はスケジュールの印）
+ */
+function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; narrow: boolean; onToggle: (id: string) => void }) {
+  const { p } = t;
   const r = p.request;
+  const indent = Math.min(t.depth, 4) * (narrow ? 8 : 16);
   return (
-    <Link
-      to="/requests/$requestId"
-      params={{ requestId: r.id }}
-      className={cx(
-        "absolute inset-x-0 flex border-b border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-        narrow ? "flex-col justify-center gap-0.5 px-2" : "items-center gap-2 px-4",
+    <div className={cx("absolute inset-x-0 flex border-b border-slate-200 dark:border-slate-700", t.context && "opacity-60")} style={{ top, height: ROW_H, paddingLeft: indent }}>
+      {t.hasChildren ? (
+        <button
+          type="button"
+          onClick={() => onToggle(r.id)}
+          aria-expanded={!t.collapsed}
+          aria-label={`${r.title} の子を${t.collapsed ? "開く" : "畳む"}`}
+          className={cx("shrink-0 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200", narrow ? "w-5" : "w-6")}
+        >
+          {t.collapsed ? "▸" : "▾"}
+        </button>
+      ) : (
+        // 開閉の印の無い行も同じ幅を空けて、同じ深さの題をそろえる
+        <span className={cx("shrink-0", narrow ? "w-5" : "w-6")} />
       )}
-      style={{ top, height: ROW_H }}
-    >
-      <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
-      <Hint content={`${r.title}\n${r.id}`} className="min-w-0">
-        {/* 狭い幅は2行で切る（line-clamp は display: -webkit-box が要るので block を付けない）。全文は Hint で見る */}
-        <span className={cx("font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "block truncate")}>{r.title}</span>
-      </Hint>
-    </Link>
+      <Link
+        to="/requests/$requestId"
+        params={{ requestId: r.id }}
+        className={cx("flex min-w-0 flex-1 hover:bg-slate-50 dark:hover:bg-slate-800", narrow ? "flex-col justify-center gap-0.5 pr-2" : "items-center gap-2 pr-4")}
+      >
+        {/* 広い画面では印を縮めず、題のほうを切る（重ならないように） */}
+        <span className={cx("flex items-center gap-1", narrow ? "min-w-0" : "shrink-0")}>
+          <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
+          {t.context && <span className="shrink-0 text-xs text-slate-500">文脈</span>}
+          {!narrow && p.children.length > 0 && (
+            <span className="shrink-0 text-xs whitespace-nowrap text-slate-500" title="配下全体（自身を含む）の完了したタスク / 全部">
+              配下 {p.subtree.done}/{p.subtree.total}
+            </span>
+          )}
+          {p.hierarchyIssues.length > 0 && (
+            <span className="shrink-0 text-xs text-amber-700 dark:text-amber-400" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
+              ※親子
+            </span>
+          )}
+        </span>
+        <Hint content={`${r.title}\n${r.id}`} className="min-w-0">
+          {/* 狭い幅は2行で切る（line-clamp は display: -webkit-box が要るので block を付けない）。全文は Hint で見る */}
+          <span className={cx("font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "block truncate")}>{r.title}</span>
+        </Hint>
+      </Link>
+    </div>
   );
 }
 

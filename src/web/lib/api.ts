@@ -1,4 +1,5 @@
 import type { RepoRef } from "../../shared/repos.ts";
+import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type {
@@ -114,6 +115,13 @@ export interface RequestDetail {
   superseded: Record<string, SupersededMark[]>;
   /** 対応済なのに未完了のタスクがある（外部の直接編集など）ときの知らせ */
   issue: string | null;
+  /** 親子（無い以前のサーバでも動くように省略可）。ancestors は根から順、children は直下だけ（自分のタスクの数つき） */
+  parent?: string | null;
+  ancestors?: RequestLink[];
+  children?: (RequestLink & { tasks: { total: number; done: number } })[];
+  hierarchyIssues?: HierarchyIssue[];
+  /** 対応済にできるか（blocker: できない理由、excluded: 見送りで対象外の子） */
+  completion?: { blocker?: string; excluded: string[] };
 }
 
 /** 着手などで添えられる警告（操作は行われている） */
@@ -202,8 +210,10 @@ export const api = {
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),
   request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
-  createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[] }) => call<Request>("POST", "/requests", r),
-  patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) => call<Request>("PATCH", `/requests/${rid}`, patch),
+  createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[]; parent?: string }) => call<Request>("POST", "/requests", r),
+  /** 要望の更新。配下に未完了ができて祖先を戻したら reopenedAncestors、完了済の祖先は warnings（ancestor_done） */
+  patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>
+    call<Request & { reopenedAncestors?: string[]; warnings?: { code: string; target: string; message: string }[] }>("PATCH", `/requests/${rid}`, patch),
 
   task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),

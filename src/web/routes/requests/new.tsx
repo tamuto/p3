@@ -8,6 +8,7 @@ import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { sortMilestones } from "../../../shared/milestoneOrder.ts";
+import { parentChoices } from "../../lib/progressTree.ts";
 import { checkPending, sendPending, setUnsentAttachments, type PendingAttach } from "../../lib/uiMaterials.ts";
 
 export const Route = createFileRoute("/requests/new")({
@@ -26,6 +27,8 @@ function NewRequest() {
   const [areas, setAreas] = useState("");
   const [due, setDue] = useState("");
   const [milestone, setMilestone] = useState("");
+  /** 親の要望（子として作る。省いた期限・マイルストーン・タグは親から写す） */
+  const [parent, setParent] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   /** タグの入力欄の、まだ足していない文字（作成するときに足す） */
   const [tagText, setTagText] = useState("");
@@ -35,7 +38,7 @@ function NewRequest() {
   const [error, setError] = useState<string | null>(null);
   const check = checkPending(files.map((f) => f.file));
   const blocked = !!check.total || check.items.some(Boolean);
-  useUnsaved(!!(title.trim() || body.trim() || areas.trim() || due || milestone || tags.length || tagText.trim() || files.length));
+  useUnsaved(!!(title.trim() || body.trim() || areas.trim() || due || milestone || parent || tags.length || tagText.trim() || files.length));
   const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
   async function create() {
@@ -43,7 +46,7 @@ function NewRequest() {
     setError(null);
     let id: string;
     try {
-      ({ id } = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)] }));
+      ({ id } = await api.createRequest({ title, body, areas: list(areas), due: due || undefined, milestone: milestone || undefined, tags: [...addTag(tags, tagText)], parent: parent || undefined }));
     } catch (e) {
       setError((e as Error).message);
       setBusy(null);
@@ -82,6 +85,16 @@ function NewRequest() {
               <option key={m.id} value={m.id}>
                 {m.title}
                 {m.due ? `（${m.due}）` : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="親の要望（任意。子として作る）" hint={parent ? "期限・マイルストーン・タグを空にすると、親の値を写します（その後は別々）" : undefined}>
+          <select className={`${inputCls} !w-auto max-w-full min-w-0 sm:min-w-72`} value={parent} onChange={(e) => setParent(e.target.value)}>
+            <option value="">（なし）</option>
+            {parentChoices(ctx.requests.map((p) => p.request)).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}（{r.id}）
               </option>
             ))}
           </select>

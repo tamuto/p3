@@ -84,7 +84,7 @@ export function completionCheckOf(ws: Workspace, h: Hierarchy, rid: string): Com
     }
   };
   walk(rid);
-  if (problems.length) return result(`配下の要望が終わっていません: ${problems.join(" / ")}`);
+  if (problems.length) return result(`配下の要望が終わっていません: ${problems.join(" / ")}（子の作業を終えて子を対応済にするか、不要な子は見送りにしてから、もう一度）`);
   return result();
 }
 
