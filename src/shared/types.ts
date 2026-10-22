@@ -139,6 +139,10 @@ export interface Request {
   id: string;
   title: string;
   status: RequestStatus;
+  /** 親の要望 ID（子の要望のとき。1つだけ。子の一覧は保存せず逆引きする。shared/hierarchy.ts） */
+  parent?: string;
+  /** 分割で作った子の採用元（"<run>/<子の案のキー>"。採用のやり直しで同じ子を見分ける） */
+  splitFrom?: string;
   areas: string[];
   /** 期限（YYYY-MM-DD） */
   due?: string;

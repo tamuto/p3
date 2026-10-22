@@ -379,6 +379,23 @@ Preflight は始めたときの内容を固定して評価する。**評価の�
   - 画面: 値ごとに Enter で足し、× で外す（すぐ保存）。前後の空白は除き、同じ値は1つにまとめる。カンマ・空白・記号・日本語はそのまま
   - 進捗の絞り込み: 「タグ」から複数選ぶと、どれかが付いている要望（状態の絞り込みとは「かつ」）。URL は `?tags=`（JSON の配列）
 
+### 親と子の要望
+
+大きい要望は、子の要望に分けて、子ごとに Preflight・タスク・ブランチを持たせられる（分け方の基準と規則は
+[architecture](architecture.md#大きい要望の分割親と子の要望)）。
+
+```bash
+p3 request new "通知の Lambda を作る" --parent k7m3x   # 子を作る。省いた期限・マイルストーン・タグは親から写す（後は別々）
+p3 request ls --parent k7m3x                            # 直下の子
+p3 request show k7m3x --brief --json                    # parent・ancestors（根から順）・children（タスクの数つき）・hierarchyIssues
+p3 request set q2w8e parent=a1b2c                       # 付け替え。parent= で外す
+```
+
+- 親にできないもの: 無い要望・自分・自分の子孫・アーカイブした要望・形の違う ID（終了コード 1、API は 409 `hierarchy_invalid`）。
+  ほかの操作と重なったときは終了コード 3（API は 409 `hierarchy_busy`）で、そのままやり直してよい
+- 子のある要望・親のある要望はアーカイブできない。子の親を外してから（`parent=`）アーカイブする
+- `request.md` を直接編集して循環・無い親になったときは、`show` と画面の詳細に知らせ（`hierarchyIssues`）が出る。`parent` を直す
+
 ### リリースノート
 
 マイルストーンごとに1件、そのマイルストーンに属する要望のタスクの **変更の記録** から機能の要約をまとめる。

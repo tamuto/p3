@@ -4,6 +4,7 @@ import { openProject } from "../core/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
+import { HierarchyError } from "../core/hierarchy.ts";
 import { startServer, type RunningServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
 import { DataDirError, onlyRegistrationNotice, ProjectNotResolvedError, resolveProject, VIA_LABEL } from "../core/store/locate.ts";
@@ -325,6 +326,11 @@ main(process.argv.slice(2)).then(
     if (e instanceof GenerationRejected) {
       process.stderr.write(`${e.message}\n`);
       process.exit(1);
+    }
+    // 要望の親子: ロックを取れない → 3（そのままやり直せる）、規則に合わない → 1
+    if (e instanceof HierarchyError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(e.code === "hierarchy_busy" ? 3 : 1);
     }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);

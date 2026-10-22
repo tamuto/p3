@@ -31,6 +31,7 @@ const OPTIONS = {
   q: { type: "string", short: "q" },
   due: { type: "string" },
   milestone: { type: "string" },
+  parent: { type: "string" },
   tag: { type: "string", multiple: true },
   attach: { type: "string", multiple: true },
   title: { type: "string" },

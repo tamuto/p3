@@ -1,6 +1,7 @@
 import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
+import { withArchiveCheck, withNewChild, withParentChange } from "./hierarchy.ts";
 import { checkStatusChange, reopenIfNeeded } from "./requestStatus.ts";
 import { startWarnings, type Warning } from "./supersede.ts";
 import { checkRepoTarget, ensureWorkstreams } from "./workTargets.ts";
@@ -116,25 +117,43 @@ export async function archiveTask(ctx: P3Context, rid: string, tid: string): Pro
   changed(ctx, "task", rid, `${rid}/${tid}`);
 }
 
-/** 要望を作る（下書き） */
+/**
+ * 要望を作る（下書き）。parent を付けると子の要望にする（親を確かめ、指定していない期限・マイルストーン・タグを親から写す。
+ * hierarchy.ts）。子のブランチは子のタスク化で割り当てる（親の workstreams は写さない）
+ */
 export async function createRequest(ctx: P3Context, input: Partial<Request> & { title: string }, actor?: string): Promise<Request> {
-  checkMilestone(ctx, input.milestone);
-  const r = await ctx.ws.requests.create({ body: "", areas: [], tags: [], ...input, status: "draft" }, actor);
+  const create = async (inp: Partial<Request> & { title: string }) => {
+    checkMilestone(ctx, inp.milestone);
+    return ctx.ws.requests.create({ body: "", areas: [], tags: [], ...inp, status: "draft" }, actor);
+  };
+  const { parent, ...rest } = input;
+  const r = parent ? await withNewChild(ctx.ws, parent, rest, (inp) => create({ ...inp, title: input.title })) : await create(rest);
   changed(ctx, "request", r.id);
+  if (r.parent) changed(ctx, "request", r.parent);
   return r;
 }
 
-/** 要望を変える。対応済にするのは全タスクが完了のときだけ（requestStatus.ts） */
+/**
+ * 要望を変える。対応済にするのは全タスクが完了のときだけ（requestStatus.ts）。
+ * parent を含むなら親の付け替え（undefined で外す）を関係のロックの中で確かめてから書く（hierarchy.ts）
+ */
 export async function updateRequest(ctx: P3Context, rid: string, patch: Partial<Request>, opts: WriteOpts = {}): Promise<Request> {
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
-  const r = await ctx.ws.requests.update(rid, patch, opts);
+  if (!("parent" in patch)) {
+    const r = await ctx.ws.requests.update(rid, patch, opts);
+    changed(ctx, "request", r.id);
+    return r;
+  }
+  const { result: r, previous } = await withParentChange(ctx.ws, rid, patch.parent, () => ctx.ws.requests.update(rid, patch, opts));
   changed(ctx, "request", r.id);
+  // 前と今の親の子の一覧も変わる
+  for (const p of new Set([previous, r.parent])) if (p && p !== r.id) changed(ctx, "request", p);
   return r;
 }
 
-/** 要望をアーカイブする（フォルダごと .archive/ へ） */
+/** 要望をアーカイブする（フォルダごと .archive/ へ）。子のある要望・親のある要望は断る（hierarchy.ts） */
 export async function archiveRequest(ctx: P3Context, rid: string): Promise<void> {
-  await ctx.ws.requests.archive(rid);
+  await withArchiveCheck(ctx.ws, rid, () => ctx.ws.requests.archive(rid));
   changed(ctx, "request", rid);
 }

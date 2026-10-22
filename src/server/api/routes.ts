@@ -10,6 +10,7 @@ import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } fr
 import { bodyLimit } from "hono/body-limit";
 import { ReloadError } from "../../core/store/workspace.ts";
 import { resolvedIssue } from "../../core/requestStatus.ts";
+import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
@@ -55,6 +56,8 @@ const requestInput = z.object({
   due: date.nullish(),
   milestone: z.string().nullish(),
   tags: z.array(z.string()).optional(),
+  /** 親の要望 ID（子の要望にする。PATCH の null は親を外す） */
+  parent: z.string().nullish(),
 });
 const requestPatch = requestInput
   .partial()
@@ -124,6 +127,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
       return c.json({ error: err.message, code: "rev_conflict", current }, 409);
     }
+    // 要望の親子（code: hierarchy_invalid・hierarchy_busy・has_children・has_parent。何も書いていない）
+    if (err instanceof HierarchyError) return c.json({ error: err.message, code: err.code, ...err.detail }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
@@ -171,7 +176,12 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.route("/", releaseNoteRoutes(ctx));
 
   // --- requests -------------------------------------------------------------
-  app.get("/requests", (c) => c.json(progress(ctx)));
+  app.get("/requests", (c) => {
+    // ?parent=<ID>: 直下の子だけ
+    const parent = c.req.query("parent");
+    const all = progress(ctx);
+    return c.json(parent === undefined ? all : all.filter((p) => p.request.parent === parent));
+  });
   app.post("/requests", async (c) => {
     const b = unnull(requestInput.parse(await c.req.json()));
     return c.json(await createRequest(ctx, b, actorOf(c)), 201);
@@ -184,6 +194,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
       issue: resolvedIssue(ws, ws.requests.require(id)) ?? null,
+      // 親子（parent・ancestors・children・hierarchyIssues）
+      ...(await hierarchyView(ws, id)),
       // 置き換えられたタスクの印（T001 → 置き換えた側）
       superseded: Object.fromEntries(
         [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
