@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { parentChoices } from "../../lib/progressTree.ts";
@@ -107,28 +107,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </p>
         ))}
 
-        {children.length > 0 && (
-          <div className="space-y-2">
-            <p className="font-medium">子の要望（{children.length} 件）</p>
-            <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-              {children.map((c) => (
-                <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                  <RequestStatusBadge status={c.status} size="sm" />
-                  <Link to="/requests/$requestId" params={{ requestId: c.id }} className="min-w-0 flex-1 basis-48 font-medium break-words underline">
-                    {c.title}
-                  </Link>
-                  <span className="font-mono text-sm text-slate-500">{c.id}</span>
-                  <span className="text-sm whitespace-nowrap text-slate-600 dark:text-slate-400">
-                    自分のタスク {c.tasks.done}/{c.tasks.total}
-                  </span>
-                  <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("ghost", "text-sm underline")}>
-                    ボード
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {children.length > 0 && <ChildList ctx={ctx} data={data} />}
 
         {(children.length > 0 || ancestors.length > 0) && row && (
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
@@ -163,5 +142,144 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         {!children.length && !ancestors.length && !issues.length && <p className="text-sm text-slate-500">親も子もありません。大きい要望は Preflight の分割の案から子に分けられます。</p>}
       </div>
     </Section>
+  );
+}
+
+type Child = NonNullable<RequestData["children"]>[number];
+
+/**
+ * 子の一覧と表示順の並べ替え。並びはサーバが返す順（親の childOrder。shared/hierarchy.ts の orderSiblings）で、「上へ」「下へ」で
+ * 下書きを作り、「順序を保存」で直下の子を全部送る。保存するまで下書きで、失敗・競合でも並べた順を残す（読み直した子に合わせて、
+ * 下書きに無い子は後ろに足し、今は子でない ID は落とす）。表示の順で、着手できるかは表さない
+ */
+function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
+  const { request } = data;
+  const children = data.children ?? [];
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [moved, setMoved] = useState<string | null>(null);
+  const buttons = useRef(new Map<string, HTMLButtonElement | null>());
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const byId = new Map(children.map((c) => [c.id, c]));
+  // 下書きの順（今の子だけ）→ 下書きに無い今の子
+  const shown: Child[] = draft ? [...draft.flatMap((id) => byId.get(id) ?? []), ...children.filter((c) => !draft.includes(c.id))] : children;
+  const dirty = !!draft && shown.some((c, i) => c.id !== children[i]?.id);
+
+  // 子の並びが下書きと同じになった（保存して読み直した）ら下書きを外す
+  if (draft && draft.join(" ") === children.map((c) => c.id).join(" ")) setDraft(null);
+
+  // 動かした行の同じボタンにフォーカスを戻す（端に着いて押せなくなったら反対のボタン）
+  useEffect(() => {
+    if (!focusKey) return;
+    buttons.current.get(focusKey)?.focus();
+    setFocusKey(null);
+  }, [focusKey]);
+
+  function move(index: number, by: -1 | 1) {
+    const ids = shown.map((c) => c.id);
+    const [id] = ids.splice(index, 1);
+    const to = index + by;
+    ids.splice(to, 0, id);
+    setDraft(ids);
+    setError(null);
+    const c = byId.get(id)!;
+    setMoved(`${c.title} を ${to + 1} 番目に移しました（保存していません）`);
+    const atEdge = (by < 0 && to === 0) || (by > 0 && to === ids.length - 1);
+    setFocusKey(`${id}:${atEdge ? (by < 0 ? "down" : "up") : by < 0 ? "up" : "down"}`);
+  }
+
+  async function save() {
+    if (data.gone) return setError("この要望は見つからないので保存しません");
+    setSaving(true);
+    try {
+      const r = await api.orderChildren(request.id, shown.map((c) => c.id), request.rev);
+      // 下書きは、読み直した子の並びが保存した順になったら外す（読み直すまで前の順に戻して見せない）
+      setDraft(r.children);
+      setError(null);
+      setMoved("子の表示順を保存しました");
+      data.reload();
+      ctx.reload();
+    } catch (e) {
+      const code = e instanceof ApiError ? (e.body as { code?: string } | null)?.code : undefined;
+      setError(
+        code === "rev_conflict"
+          ? "競合: この要望は他で更新されています。並べた順は残してあります。読み直した内容を確かめて、もう一度保存してください"
+          : code === "child_order_invalid"
+            ? `子が変わりました: ${(e as Error).message}。並べた順は残してあります（新しい子は後ろに足しました）。確かめてもう一度保存してください`
+            : `表示順を保存できませんでした: ${(e as Error).message}（並べた順は残してあります）`,
+      );
+      data.reload();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="font-medium">子の要望（{children.length} 件・表示順）</p>
+      <p className="text-sm text-slate-500">表示順は着手可能かを判定しません。子の本文にある前提を確認してください。</p>
+      <ul className="divide-y divide-slate-200 dark:divide-slate-800" aria-label="子の要望（表示順）">
+        {shown.map((c, i) => (
+          <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2">
+            <span className="w-6 shrink-0 text-right font-mono text-sm text-slate-500" aria-hidden="true">
+              {i + 1}.
+            </span>
+            <RequestStatusBadge status={c.status} size="sm" />
+            <Link to="/requests/$requestId" params={{ requestId: c.id }} className="min-w-0 flex-1 basis-48 font-medium break-words underline">
+              {c.title}
+            </Link>
+            <span className="font-mono text-sm text-slate-500">{c.id}</span>
+            <span className="text-sm whitespace-nowrap text-slate-600 dark:text-slate-400">
+              自分のタスク {c.tasks.done}/{c.tasks.total}
+            </span>
+            <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("ghost", "text-sm underline")}>
+              ボード
+            </Link>
+            {shown.length > 1 && (
+              <span className="flex gap-1">
+                <Button
+                  ref={(el) => void buttons.current.set(`${c.id}:up`, el)}
+                  className="px-2 py-0.5 text-sm"
+                  aria-label={`${c.title} を上へ`}
+                  disabled={saving || data.gone || i === 0}
+                  onClick={() => move(i, -1)}
+                >
+                  上へ
+                </Button>
+                <Button
+                  ref={(el) => void buttons.current.set(`${c.id}:down`, el)}
+                  className="px-2 py-0.5 text-sm"
+                  aria-label={`${c.title} を下へ`}
+                  disabled={saving || data.gone || i === shown.length - 1}
+                  onClick={() => move(i, 1)}
+                >
+                  下へ
+                </Button>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {dirty && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" disabled={saving} onClick={() => void save()}>
+            {saving ? "保存中…" : "順序を保存"}
+          </Button>
+          <Button disabled={saving} onClick={() => (setDraft(null), setError(null), setMoved("並べ替えを取り消しました"))}>
+            取消
+          </Button>
+          <span className="text-sm text-slate-500">保存していない並べ替えがあります</span>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="break-words text-rose-600">
+          {error}
+        </p>
+      )}
+      <p role="status" className="sr-only">
+        {moved}
+      </p>
+    </div>
   );
 }

@@ -328,10 +328,11 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`${e.message}\n`);
       process.exit(1);
     }
-    // 要望の親子: ロックを取れない → 3（そのままやり直せる）、規則に合わない → 1
+    // 要望の親子: ロックを取れない・子の表示順を読んだ後に子の集合が変わった → 3（読み直してやり直す）、規則に合わない → 1
     if (e instanceof HierarchyError) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(e.code === "hierarchy_busy" ? 3 : 1);
+      const changedSet = e.code === "child_order_invalid" && (e.detail.reason === "not_child" || e.detail.reason === "missing");
+      process.exit(e.code === "hierarchy_busy" || changedSet ? 3 : 1);
     }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);

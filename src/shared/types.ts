@@ -141,6 +141,11 @@ export interface Request {
   status: RequestStatus;
   /** 親の要望 ID（子の要望のとき。1つだけ。子の一覧は保存せず逆引きする。shared/hierarchy.ts） */
   parent?: string;
+  /**
+   * 子の表示順（直下の子の ID。親の request.md に書く。任意）。親子の所属は子の parent が正で、ここに無い子・今は子でない ID は
+   * 読むときに扱う（shared/hierarchy.ts の orderSiblings）。実行の順・着手できるかは表さない
+   */
+  childOrder?: string[];
   /** 分割で作った子の採用元（"<run>/<子の案のキー>"。採用のやり直しで同じ子を見分ける） */
   splitFrom?: string;
   areas: string[];

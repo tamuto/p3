@@ -62,6 +62,8 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     status: REQUEST_STATUSES.includes(status) ? status : "draft",
     // 形の違う親もそのまま読む（直そうとせず、親子の問題として知らせる）
     ...(str(d.parent) ? { parent: str(d.parent) } : {}),
+    // 子の表示順は文字の並びとしてそのまま読む（重複・今は子でない ID は並べるときに除く。ファイルは書き換えない）
+    ...(Array.isArray(d.childOrder) ? { childOrder: d.childOrder.filter((x): x is string => typeof x === "string") } : {}),
     ...(str(d.splitFrom) ? { splitFrom: str(d.splitFrom) } : {}),
     areas: strs(d.areas),
     due: date(d.due),
@@ -78,7 +80,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 }
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
-  "id", "title", "status", "parent", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
+  "id", "title", "status", "parent", "childOrder", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 

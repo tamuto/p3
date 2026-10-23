@@ -18,7 +18,7 @@ import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
-import { archiveTask, checkMilestoneRemoval, createRequest, createTask, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
@@ -62,6 +62,8 @@ const requestInput = z.object({
 const requestPatch = requestInput
   .partial()
   .extend({ status: z.enum(REQUEST_STATUSES as [string, ...string[]]).optional(), rev: z.number().int().optional() });
+/** 子の表示順: 直下の子の ID を全部、上から順に */
+const childOrderInput = z.object({ children: z.array(z.string().min(1)), rev: z.number().int().optional() });
 const projectPatch = z
   .object({
     name: z.string().min(1),
@@ -178,10 +180,12 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => {
-    // ?parent=<ID>: 直下の子だけ
+    // ?parent=<ID>: 直下の子だけを、親の表示順（子の一覧・詳細と同じ）で。省くと更新の新しい順
     const parent = c.req.query("parent");
     const all = progress(ctx);
-    return c.json(parent === undefined ? all : all.filter((p) => p.request.parent === parent));
+    if (parent === undefined) return c.json(all);
+    const rows = new Map(all.map((p) => [p.request.id, p]));
+    return c.json(hierarchyNow(ws).children(parent).flatMap((r) => rows.get(r.id) ?? []));
   });
   app.post("/requests", async (c) => {
     const b = unnull(requestInput.parse(await c.req.json()));
@@ -207,6 +211,14 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.patch("/requests/:rid", async (c) => {
     const { rev, ...patch } = requestPatch.parse(await c.req.json());
     return c.json(await updateRequest(ctx, rid(c), unnull(patch) as Partial<Request>, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) }));
+  });
+
+  /** 子の表示順（直下の子を全部、上から順に。CLI の request order と同じ操作） */
+  app.put("/requests/:rid/child-order", async (c) => {
+    const { children, rev } = childOrderInput.parse(await c.req.json());
+    const id = rid(c);
+    const r = await orderChildren(ctx, id, children, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ request: r, children: hierarchyNow(ws).children(id).map((k) => k.id) });
   });
 
   // --- tasks（要望の中） --------------------------------------------------------

@@ -215,6 +215,9 @@ export const api = {
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>
     call<Request & { reopenedAncestors?: string[]; warnings?: { code: string; target: string; message: string }[] }>("PATCH", `/requests/${rid}`, patch),
 
+  /** 子の表示順の保存（直下の子を全部、上から順に）。子が変わっていれば 409 code: child_order_invalid（今の並び children）、rev 違いは rev_conflict */
+  orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
+
   task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** checked: 完了したタスクに人が「済み」を付ける / 外す */

@@ -575,7 +575,8 @@ export class PreflightService {
       if (match.status !== "same") throw new StaleInputError(requestId, runId, match);
       const resuming = !!run.adoption;
       if (!resuming && opts.version !== undefined && opts.version !== childrenVersion(run.children)) throw new ChildDraftsChangedError(runId);
-      const keys = run.adoption?.keys ?? run.children.filter((c) => c.include).map((c) => c.key);
+      // 新しい採用は案のキーの数の順（C1, C2, C10）に作り、その順で親の表示順に足す。キーの順は実行の順を表さない
+      const keys = run.adoption?.keys ?? run.children.filter((c) => c.include).map((c) => c.key).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       if (!keys.length) throw new Error("採用した子の案がありません");
 
       // ID の予約（書く前に run.json に残す）
@@ -618,6 +619,8 @@ export class PreflightService {
               const made = await this.ws.requests.createAt(id, input, actor);
               if (!made) throw new Error(`${id} を作れませんでした（既にあります）`);
             }
+            // 作ったことを残す前に親の表示順に足す（落ちてやり直しても、足してあれば重ねない）
+            await this.appendChildOrder(requestId, id, actor);
             state.created.push(key);
             await this.ws.preflight.save(run);
             this.ws.emit({ type: "changed", kind: "request", request: id });
@@ -641,6 +644,18 @@ export class PreflightService {
       this.ws.emit({ type: "changed", kind: "request", request: requestId });
       return result;
     });
+  }
+
+  /**
+   * 採用で作った子を親の表示順（childOrder）の末尾に足す。関係のロックの中で呼ぶ。今の並び（保存した順と、そこに無い子の作成順）を
+   * そのまま前に残すので、既存の兄弟・人が保存した順は変わらない。既に並んでいれば何もしない
+   */
+  private async appendChildOrder(parentId: string, childId: string, actor: string) {
+    await this.ws.requests.reload(parentId);
+    const parent = this.ws.requests.require(parentId);
+    if (parent.childOrder?.includes(childId)) return;
+    const now = hierarchyNow(this.ws).children(parentId).map((c) => c.id).filter((id) => id !== childId);
+    await this.ws.requests.update(parentId, { childOrder: [...now, childId] }, { actor });
   }
 
   /**

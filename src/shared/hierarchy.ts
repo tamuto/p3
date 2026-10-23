@@ -42,8 +42,23 @@ export interface HierarchySource {
 
 const link = (r: Request): RequestLink => ({ id: r.id, title: r.title, status: r.status });
 
-/** 作成日時の古い順 → ID（子の一覧の並び） */
-export const byCreated = (a: Request, b: Request) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true });
+/** 作成日時の古い順 → ID（数を含む部分は数として比べる）。保存した順に無い子の並び */
+export const byCreated = (a: Pick<Request, "id" | "createdAt">, b: Pick<Request, "id" | "createdAt">) =>
+  a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true });
+
+/**
+ * 兄弟の並び（子の一覧・詳細・親で絞った一覧・進捗の木で共通）。order は親の childOrder。
+ * order にある今の子を order の順に先に並べ（重複は最初の1回）、order に無い子は作成日時の古い順 → ID で後ろに置く。
+ * order に残っている今は子でない ID（外した・付け替えた・アーカイブした・形の違う値）は無視する（ファイルは書き換えない）。
+ * 表示の順で、実行の順・着手できるかは表さない
+ */
+export function orderSiblings<T extends Pick<Request, "id" | "createdAt">>(kids: readonly T[], order: readonly string[] | undefined): T[] {
+  const pos = new Map<string, number>();
+  for (const [i, id] of (order ?? []).entries()) if (!pos.has(id)) pos.set(id, i);
+  const listed = kids.filter((k) => pos.has(k.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!);
+  const rest = kids.filter((k) => !pos.has(k.id)).sort(byCreated);
+  return [...listed, ...rest];
+}
 
 export class Hierarchy {
   private byId = new Map<string, Request>();
@@ -59,7 +74,7 @@ export class Hierarchy {
       list.push(r);
       this.kids.set(r.parent, list);
     }
-    for (const list of this.kids.values()) list.sort(byCreated);
+    for (const [pid, list] of this.kids) this.kids.set(pid, orderSiblings(list, this.byId.get(pid)?.childOrder));
     this.unreadable = new Set(src.unreadable ?? []);
     this.archived = new Set(src.archived ?? []);
   }
@@ -68,7 +83,7 @@ export class Hierarchy {
     return this.byId.get(id);
   }
 
-  /** 直下の子（作成日時の古い順 → ID） */
+  /** 直下の子（親の childOrder の順。無い子は作成日時の古い順 → ID。orderSiblings） */
   children(id: string): Request[] {
     return this.kids.get(id) ?? [];
   }

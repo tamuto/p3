@@ -49,7 +49,7 @@ describe.skipIf(!inject("chromium").available)("親子の要望の画面", () =>
     });
 
     await step("親の概要に子の一覧と、自分・配下の集計を出す。子へ移れる", async () => {
-      await until.visible(family.getByText("子の要望（1 件）"));
+      await until.visible(family.getByText("子の要望（1 件・表示順）"));
       await until.visible(family.getByText("自分のタスク 0/1"));
       await until.visible(family.getByText(/配下全体（自身を含む）: 0\/1/));
       await until.visible(family.getByText(/自分のタスクが無い親です/));

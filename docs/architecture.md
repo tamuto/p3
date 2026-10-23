@@ -72,7 +72,8 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 ### データの形
 
 子は親のフォルダの下ではなく、ほかの要望と同じ `requests/<作成日-乱数>/` に置き、`request.md` の frontmatter に親を1つだけ書く。
-子の一覧は保存せず、親を指す要望を引いて作る（両側に書くと食い違うため）。
+子の一覧（親子の所属）は保存せず、親を指す要望を引いて作る（両側に書くと食い違うため）。親に書くのは子の表示順だけ
+（[子の表示順](#子の表示順)。所属は決めない）。
 
 ```yaml
 ---
@@ -107,7 +108,8 @@ tags: [feature]
 | --- | --- | --- |
 | 子を作る | `request new "<題>" --parent <ID>`（`--due`・`--milestone`・`--tag` を省くと親から写す） | `POST /api/requests` に `parent` |
 | 付け替え・外す | `request set <ID> parent=<ID>` / `parent=`（`--rev` で楽観ロック） | `PATCH /api/requests/:rid` に `parent`（外すのは `null`） |
-| 子の一覧 | `request ls --parent <ID>`（直下の子） | `GET /api/requests?parent=<ID>` |
+| 子の一覧 | `request ls --parent <ID>`（直下の子を表示順に） | `GET /api/requests?parent=<ID>`（同じ） |
+| 子の表示順 | `request order <親> <子>...`（子を省くと今の並び。`--rev` で楽観ロック） | `PUT /api/requests/:rid/child-order` に `{children, rev?}` |
 | 親子を読む | `request show <ID> --brief --json` | `GET /api/requests/:rid` |
 
 `show --brief --json` と要望の詳細には、今の項目に次を足す:
@@ -123,7 +125,7 @@ tags: [feature]
 }
 ```
 
-`ancestors` は根から順、`children` は直下だけ（作成日時の古い順 → ID）。
+`ancestors` は根から順、`children` は直下だけ（[子の表示順](#子の表示順)）。
 
 失敗の返し方（CLI は終了コード、API は HTTP の状態と `code`）:
 
@@ -134,8 +136,47 @@ tags: [feature]
 | ほかの操作が関係のロックを持っている | 3 | 409 `hierarchy_busy` | そのままやり直してよい（何も書いていない） |
 | 子のある要望のアーカイブ | 1 | 409 `has_children`（子の ID） | 子の親を外すか、子を先に片付ける |
 | 親のある要望のアーカイブ | 1 | 409 `has_parent` | `request set <ID> parent=` で外してからアーカイブ |
+| 子の表示順に同じ子が2回・無い要望 | 1 | 409 `child_order_invalid`（`reason`: `duplicate`・`not_found`。`ids`・今の並び `children`） | 並びを直す |
+| 子の表示順に直下でない子がある・子が足りない（読んだ後に子が変わった） | 3 | 409 `child_order_invalid`（`reason`: `not_child`・`missing`） | 読み直して並べ直す |
 
 アーカイブで未完了の子を暗黙に外さない（外すのは人の明示の操作だけ）。
+
+### 子の表示順
+
+一覧・詳細・進捗の更新の新しい順を兄弟にも使うと、後ろの子を更新しただけで子の並びが入れ替わり、段階的に進めたい子の順を人が保てない。
+そこで親の `request.md` に任意の `childOrder`（直下の子の ID の並び）を書き、兄弟は共通の規則（`shared/hierarchy.ts` の `orderSiblings`）
+で並べる。親子の所属は今までどおり子の `parent` が正で、`childOrder` は並びだけを決める。
+
+```yaml
+---
+id: 261022-8s1k5
+title: 大きい要望をサブ要望に分割する
+status: active
+childOrder:            # 上から順。任意（無ければ作成順）
+  - 261023-q2w8e
+  - 261023-a1b2c
+---
+```
+
+- 並べ方: `childOrder` にある今の直下の子を、その順に先に並べる（重複は最初の1回）。無い子（新しい子・付け替えて来た子・`childOrder`
+  の無い今までの親の子）は作成日時の古い順、同じ日時は数を考えた ID の順（`261023-b2` < `261023-b10`）で後ろに置く。
+  今は子でない ID（外した・付け替えた・アーカイブした子、形の違う値・文字でない値）は読むときに無視し、ファイルは書き換えない。
+  例: `childOrder: [B, A]` の親に子 A・B・C（作成順）なら B, A, C。B の親を外すと A, C。B を同じ親に戻すと、配列に残っているので
+  前の位置（B, A, C）に戻る。末尾にしたいときは並べ直して保存する（保存すると今の子だけの並びになる）
+- 同じ並びを、詳細と `show` の `children`・`request ls --parent`・`GET /api/requests?parent=`・進捗の木の兄弟（`web/lib/progressTree.ts`）・
+  子孫を辿る順（`Hierarchy.descendants`）に使う。孫以下も各親の `childOrder` で並べる。全体の平らな進捗の一覧と木の根は今までどおり
+  更新の新しい順。絞り込みで出す子が減っても、残った子の前後は変えない。循環・孤児は今までどおり根に出して止まる
+- 保存（`core/requestOps.ts` の `orderChildren`。CLI の `request order` と API の `PUT /api/requests/:rid/child-order` が同じ操作を呼ぶ）:
+  直下の子の完全な ID の並びを受け、関係のロックの中で親と子の集合をディスクから読み直してから、重複・無い要望・直下でない子
+  （ほかの親の子・親なし）・足りない子を断る（`child_order_invalid`。今の並びを `children` で返す）。親の `rev` は楽観ロックで比べ
+  （`rev_conflict`）、通れば親の1ファイルの `childOrder` だけを書く。子・タスク・親子の所属は変えない。読んだ後に子が増えた・
+  付け替えられたなら足りない・直下でないで断るので、集合の変化と `rev` の両方で競合を見つける。断るときは何も書かない
+- 分割の採用（`core/preflight/service.ts` の `adopt`）: 同じ run の子を案のキーの数の順（C1, C2, …, C10）に作り、1件作るごとに、
+  作ったことを run.json に残す前に親の `childOrder` の末尾に足す。足すときは今の並び（保存した順と、そこに無い子の作成順）を前に
+  そのまま残すので、既存の兄弟と人が保存した順は変わらない。途中で落ちてやり直しても、並んでいる子は足さないので重ならず、逆にならない。
+  前に採用した子は移さない（作成順のまま。本文や過去の run から順を推測しない）。案のキーの順は実行の依存を表さない
+- 表示順は実行の順・着手できるかを表さない（自動の並べ替え・着手の禁止・前提の完了による制御はしない）。子の案の `requires` は
+  子の本文の「他の子との前提と契約」に残る前提で、並びが前でも満たされているとは限らない。画面の「親子」と進捗にもそう書く
 
 ### Preflight の分割の案
 
@@ -244,7 +285,9 @@ include: true
   既存のタスクとの重なりを出す。子の案の題・本文・採否を直せ、未保存や競合の間と、選んだ案が0件・実行中は採用しない。採用の確認で
   「親は残す・子だけ作る・子の Preflight はまだ」と示し、途中で失敗したら作った子へのリンクと残りの再開を出す
 - **親子の移動と進捗**: 詳細の見出しに祖先へのリンク（`routes/requests/$requestId.tsx`）、概要の「親子」（`components/request/Family.tsx`）に
-  親の指定・付け替え・外す、子の一覧（状態・自分のタスクの数）、自分と配下の集計、完了できない理由（サーバの `completion`）・見送りの除外・
+  親の指定・付け替え・外す、子の一覧（状態・自分のタスクの数。表示順の「上へ」「下へ」「順序を保存」「取消」。保存するまでは下書きで、
+  失敗・競合でも並べた順を残し、読み直した子に合わせて下書きに無い子を後ろに足す。動かした子の操作にフォーカスを戻し、移した位置を
+  role="status" で知らせる）、自分と配下の集計、完了できない理由（サーバの `completion`）・見送りの除外・
   完了済の祖先・親子の問題。進捗は親子の木（`web/lib/progressTree.ts`）で、親を畳める。絞り込みで条件に合う子の祖先は文脈として出すが、
   件数には数えない。循環・孤児は根に出して止まる。完了を断られたら、サーバの理由（対象の子と次の操作）をそのまま出す。要望の画面には
   アーカイブの操作は無い（CLI の `request archive` が親子を断る）
@@ -577,7 +620,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | --- | --- |
 | 要望・タスクの変更の手順（確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知） | `core/requestOps.ts`（CLI の各コマンドと API はここを呼ぶだけ） |
 | Preflight（開始・評価対象の固定・タスク化） | `core/preflight/service.ts`（`PreflightService`） |
-| 要望の親子（親にできるもの・関係の操作のロック・アーカイブの拒否・親子の問題） | `core/hierarchy.ts`（判定は `shared/hierarchy.ts`） |
+| 要望の親子（親にできるもの・関係の操作のロック・アーカイブの拒否・親子の問題・子の表示順の保存の検証） | `core/hierarchy.ts`（判定と兄弟の並び `orderSiblings` は `shared/hierarchy.ts`） |
 | Preflight の分割（子の案の検証・子の本文・案の版・採用） | `core/preflight/split.ts`・`core/preflight/service.ts` の `adopt` |
 | 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |

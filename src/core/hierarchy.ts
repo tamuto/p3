@@ -14,15 +14,21 @@ import type { Workspace } from "./store/workspace.ts";
  *   - ロックを使わない直接編集は防げない。読み込みで親子の問題（Hierarchy.issues）として知らせる
  */
 
-export type HierarchyErrorCode = "hierarchy_invalid" | "hierarchy_busy" | "has_children" | "has_parent";
+export type HierarchyErrorCode = "hierarchy_invalid" | "hierarchy_busy" | "has_children" | "has_parent" | "child_order_invalid";
 export type HierarchyInvalidReason = "not_found" | "self" | "cycle" | "archived" | "invalid_id" | "unreadable";
+/**
+ * 子の表示順の保存を断る理由（child_order_invalid）。duplicate: 同じ ID が2回 / not_child: 今は直下の子でない（ほかの親の子・親の無い
+ * 要望）/ not_found: 要望が無い / missing: 直下の子が足りない / no_children: 子が無い。not_child・missing は読んだ後に子の集合が
+ * 変わったときにも起きる（読み直してやり直す）
+ */
+export type ChildOrderInvalidReason = "duplicate" | "not_child" | "not_found" | "missing" | "no_children";
 
 /** 親子の規則に合わない・ロックを取れない（何も書いていない） */
 export class HierarchyError extends Error {
   constructor(
     readonly code: HierarchyErrorCode,
     message: string,
-    readonly detail: { reason?: HierarchyInvalidReason; ids?: string[] } = {},
+    readonly detail: { reason?: HierarchyInvalidReason | ChildOrderInvalidReason; ids?: string[]; children?: string[] } = {},
   ) {
     super(message);
   }
@@ -119,6 +125,35 @@ export async function withParentChange<T>(ws: Workspace, rid: string, parent: st
     const cur = ws.requests.require(rid);
     if (parent !== undefined) await checkParent(ws, h, rid, parent);
     return { result: await fn(), previous: cur.parent };
+  });
+}
+
+/**
+ * 子の表示順を保存する前に: ロックの中で要望を読み直し、ids が今の直下の子の完全な並び（重複・過不足なし）かを確かめてから
+ * fn（親の保存。rev の楽観ロックは fn の側）を呼ぶ。合わなければ HierarchyError（child_order_invalid。detail.children に今の子の並び）
+ */
+export async function withChildOrder<T>(ws: Workspace, parent: string, ids: readonly string[], fn: () => Promise<T>): Promise<T> {
+  return withHierarchyLock(ws, async () => {
+    const h = await fresh(ws);
+    ws.requests.require(parent);
+    const now = h.children(parent).map((c) => c.id);
+    const invalid = (reason: ChildOrderInvalidReason, message: string, bad: string[] = []) =>
+      new HierarchyError("child_order_invalid", `${message}（何も変えていません）`, { reason, ids: bad, children: now });
+    if (!now.length) throw invalid("no_children", `${parent} には子の要望がありません`);
+    const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
+    if (dup.length) throw invalid("duplicate", `同じ子が2回あります: ${[...new Set(dup)].join(", ")}`, [...new Set(dup)]);
+    const unknown = ids.filter((id) => !h.get(id));
+    if (unknown.length) throw invalid("not_found", `要望がありません: ${unknown.join(", ")}`, unknown);
+    const others = ids.filter((id) => !now.includes(id));
+    if (others.length) {
+      const where = others.map((id) => `${id}（${h.get(id)!.parent ? `${h.get(id)!.parent} の子` : "親なし"}）`).join(", ");
+      throw invalid("not_child", `${parent} の直下の子ではありません: ${where}。子が変わっていれば読み直してやり直してください`, others);
+    }
+    const missing = now.filter((id) => !ids.includes(id));
+    if (missing.length) {
+      throw invalid("missing", `直下の子を全部並べてください。足りない子: ${missing.join(", ")}（子が増えていれば読み直してやり直してください）`, missing);
+    }
+    return fn();
   });
 }
 

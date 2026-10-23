@@ -1800,7 +1800,7 @@ describe("p3 request の親子", () => {
     const brief = p3(root, ["request", "show", rid, "--brief", "--json"]).json();
     expect(brief.children).toEqual([{ id: cid, title: "送信基盤", status: "draft", tasks: { total: 0, done: 0 } }]);
     expect(p3(root, ["request", "show", cid, "--brief", "--json"]).json()).toMatchObject({ parent: rid, ancestors: [{ id: rid }], item: { parent: rid } });
-    expect(p3(root, ["request", "show", rid]).out).toContain("子の要望 (1)");
+    expect(p3(root, ["request", "show", rid]).out).toContain("子の要望 (1、表示順。実行の順ではない)");
     // 循環・アーカイブ（子がある）は同じ規則で断る
     const cycle = p3(root, ["request", "set", rid, `parent=${cid}`]);
     expect(cycle.code).toBe(1);
