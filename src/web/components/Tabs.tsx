@@ -36,40 +36,44 @@ export function Tabs<T extends string>({
     onSelect(id);
     refs.current[id]?.focus();
   };
+  // 境界線は外の枠が持ち、選んだタブの下線を重ねる 1px は tablist が持つ。境界線を tablist（overflow-x-auto で縦も auto）に付けて
+  // タブに -mb-px を付けると、タブが境界線に食い込んで tablist が 1px 縦に送れ、縦のスクロールバーが出る（要望のタブも同じ）
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800" onKeyDown={onKey}>
-      {tabs.map((t) => {
-        const on = t.id === tab;
-        return (
-          <button
-            key={t.id}
-            ref={(el) => {
-              refs.current[t.id] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`${prefix}-tab-${t.id}`}
-            aria-selected={on}
-            aria-controls={`${prefix}-panel-${t.id}`}
-            tabIndex={on ? 0 : -1}
-            title={t.hint}
-            onClick={() => onSelect(t.id)}
-            className={cx(
-              "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 font-medium whitespace-nowrap transition",
-              on
-                ? "border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300"
-                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
-            )}
-          >
-            {t.label}
-            {unsaved?.[t.id] && (
-              <span className="text-xs text-amber-600 dark:text-amber-400" title="保存していない変更があります">
-                ●<span className="sr-only">（未保存）</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="border-b border-slate-200 dark:border-slate-800">
+      <div role="tablist" aria-label={label} className="-mb-px flex gap-1 overflow-x-auto" onKeyDown={onKey}>
+        {tabs.map((t) => {
+          const on = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              ref={(el) => {
+                refs.current[t.id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`${prefix}-tab-${t.id}`}
+              aria-selected={on}
+              aria-controls={`${prefix}-panel-${t.id}`}
+              tabIndex={on ? 0 : -1}
+              title={t.hint}
+              onClick={() => onSelect(t.id)}
+              className={cx(
+                "flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 font-medium whitespace-nowrap transition",
+                on
+                  ? "border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+              )}
+            >
+              {t.label}
+              {unsaved?.[t.id] && (
+                <span className="text-xs text-amber-600 dark:text-amber-400" title="保存していない変更があります">
+                  ●<span className="sr-only">（未保存）</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

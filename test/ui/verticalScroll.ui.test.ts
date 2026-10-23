@@ -1,6 +1,6 @@
 // 縦スクロールは1つ: 要望の画面では本文（request-content）だけが縦に送れ、共通の main と文書（ページ全体）は送れない。
 // 通常のタスク案・子の分割案・親を持つ子（長い祖先の題）と Preflight 未実行で、本文を末尾まで送れ、見出しのコピーとタブは
-// 本文の外に残る。横に送るタブと上のナビゲーションは縦に送れない。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード・対応済み）も文書は送れない。
+// 本文の外に残る。横に送るタブ（要望・設定・リリースノート）と上のナビゲーションは縦に送れない。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード・対応済み）も文書は送れない。
 // 局所スクロールの例外（実行ログ）は対象を名指しして、末尾まで届くことを確かめる。375 / 1280・明暗・高さ 900 / 600。
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -133,6 +133,10 @@ describe.skipIf(!inject("chromium").available)("縦スクロールは1つ", () =
                 await page.waitForLoadState("networkidle");
                 expect(await scrollableY(page), at(`${path} の文書の縦スクロール`)).toBe(0);
                 expect(await scrollableY(page, page.locator("header nav")), at(`${path} の上のナビゲーションの縦スクロール`)).toBe(0);
+                // 設定・リリースノートのタブ（components/Tabs.tsx）も横に送る枠で、縦には送れない
+                const tablists = await page.getByRole("tablist").all();
+                if (path.startsWith("/settings") || path === "/release-notes") expect(tablists.length, at(`${path} のタブ`)).toBeGreaterThan(0);
+                for (const t of tablists) expect(await scrollableY(page, t), at(`${path} のタブの縦スクロール`)).toBe(0);
               }
             },
             page,
