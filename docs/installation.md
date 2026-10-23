@@ -302,11 +302,11 @@ P3 をイメージにして、コンテナで動かすこともできる。イ�
 要望・タスクの作成と編集・添付・Preflight もいつもどおり使える。
 
 イメージは Docker Hub の **`tamuto/p3`**。中に p3 本体（npm の `@infodb/p3` と同じ版・同じ中身）と、Node 22・git・Docker の CLI が
-入っている（Codex は入れない。Preflight のたびにホストの Docker で Codex のイメージを使う）。版のタグ（`tamuto/p3:0.5.0` など）と
+入っている（Codex は入れない。Preflight のたびにホストの Docker で Codex のイメージを使う）。版のタグ（`tamuto/p3:0.6.0` など）と
 `latest` がある。決まった版で使うなら版のタグを指す。
 
 ```bash
-docker pull tamuto/p3:0.5.0
+docker pull tamuto/p3:0.6.0
 ```
 
 リポジトリから作るときは `docker build --pull -t tamuto/p3:dev .`（`--pull` で今の Node のベースを取る。[開発ガイド](development.md#docker-のイメージ)）。
@@ -327,7 +327,7 @@ root で動く開発コンテナ（DevContainer など）で p3 の CLI を使�
 # 開発コンテナの compose に足す例（パスは開発コンテナのマウントに合わせる）
 services:
   p3:
-    image: tamuto/p3:0.5.0
+    image: tamuto/p3:0.6.0
     restart: unless-stopped
     ports:
       - "127.0.0.1:4310:4310"
@@ -351,7 +351,7 @@ docker run -d --name p3 --restart unless-stopped \
   -v ~/.config/infodb-p3:/root/.config/infodb-p3 \
   -v /home/me/work:/home/me/work \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  tamuto/p3:0.5.0
+  tamuto/p3:0.6.0
 
 # 登録が無ければ、コンテナの中で登録する（既にあるデータに参加する。新しく作るなら p3 init）
 docker exec -w /home/me/work/myapp p3 p3 join --project myapp --yes
@@ -364,7 +364,7 @@ docker exec -w /home/me/work/myapp p3 p3 join --project myapp --yes
 ### どちらでも
 
 - 待ち受けは `127.0.0.1` に公開する。ブラウザで http://localhost:4310 を開く。登録が1つならそのプロジェクトが開き、複数なら一覧から選ぶ
-- **通常の serve に戻す**: コマンドを明示する（例: `docker run ... tamuto/p3:0.5.0 serve --project myapp --host 0.0.0.0`。compose なら
+- **通常の serve に戻す**: コマンドを明示する（例: `docker run ... tamuto/p3:0.6.0 serve --project myapp --host 0.0.0.0`。compose なら
   `command:`）。明示しない限り、コンテナの中かどうかで自動では切り替えない
 - **止める**: `docker stop p3`（SIGTERM。実行中の Preflight・生成を取り消して記録してから止まる。10 秒まで待つ）
 - **新しい版にする**: 版のタグを変えて作り直す（個人設定と接続はマウントした ~/.config、データはホストに残る）。
