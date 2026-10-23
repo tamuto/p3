@@ -39,7 +39,7 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（parent で直下の子だけ）" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）" },
     { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
     {
       method: "GET",
@@ -53,6 +53,14 @@ export const AI_MANIFEST = {
         "要望の更新（rev で楽観ロック。競合は 409 code: rev_conflict）。タイトル・本文はどの状態でも変えられる（評価のあとで変えるとその評価からはタスク化できない）。" +
         "status=resolved（対応済）は全タスクが完了のときだけ。done / rejected は人が決める。" +
         "parent で親を付け替える（null で外す）。無い・自分・子孫・アーカイブ済みの親は 409 code: hierarchy_invalid（reason）、ほかの操作と重なれば 409 code: hierarchy_busy（やり直してよい）",
+    },
+    {
+      method: "PUT",
+      path: "/api/requests/:rid/child-order",
+      desc:
+        "子の表示順の保存 {children: [直下の子の ID を全部、上から順に], rev?}（親の childOrder だけを書く。結果は {request, children}）。" +
+        "重複・無い要望・直下の子でない・足りないは 409 code: child_order_invalid（reason・ids・今の並び children。子が変わっていれば読み直す）、rev が違えば 409 code: rev_conflict。" +
+        "表示の順で、実行の順・着手できるかは表さない",
     },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },

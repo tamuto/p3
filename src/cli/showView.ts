@@ -97,7 +97,7 @@ export function formatFamily(f: Awaited<ReturnType<typeof hierarchyView>>): stri
   return [
     ...(f.ancestors.length ? [`  親      ${f.ancestors.map((a) => `${a.id} ${a.title}`).join(" > ")}`] : []),
     ...(f.children.length
-      ? ["", `子の要望 (${f.children.length}):`, table(f.children.map((c) => [`  ${c.id}`, c.status, `${c.tasks.done}/${c.tasks.total}`, c.title]))]
+      ? ["", `子の要望 (${f.children.length}、表示順。実行の順ではない):`, table(f.children.map((c) => [`  ${c.id}`, c.status, `${c.tasks.done}/${c.tasks.total}`, c.title]))]
       : []),
   ];
 }

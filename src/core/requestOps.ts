@@ -1,7 +1,7 @@
 import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
-import { withArchiveCheck, withNewChild, withParentChange } from "./hierarchy.ts";
+import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
 import { startWarnings, type Warning } from "./supersede.ts";
 import { checkRepoTarget, ensureWorkstreams } from "./workTargets.ts";
@@ -176,6 +176,17 @@ export async function updateRequest(ctx: P3Context, rid: string, patch: Partial<
   // 前と今の親の子の一覧も変わる
   for (const p of new Set([previous, r.parent])) if (p && p !== r.id) changed(ctx, "request", p);
   return after(r);
+}
+
+/**
+ * 子の表示順を保存する（親の request.md の childOrder だけを書く。子・タスク・親子の所属は変えない）。ids は今の直下の子の完全な並び。
+ * 子の集合が違えば child_order_invalid（hierarchy.ts）、expectedRev が親の rev と違えば ConflictError で、どちらも何も書かない。
+ * 表示の順で、実行の順・着手できるかは表さない
+ */
+export async function orderChildren(ctx: P3Context, rid: string, ids: string[], opts: WriteOpts = {}): Promise<Request> {
+  const r = await withChildOrder(ctx.ws, rid, ids, () => ctx.ws.requests.update(rid, { childOrder: [...ids] }, opts));
+  changed(ctx, "request", r.id);
+  return r;
 }
 
 /** 要望をアーカイブする（フォルダごと .archive/ へ）。子のある要望・親のある要望は断る（hierarchy.ts） */

@@ -1,3 +1,4 @@
+import { orderSiblings } from "../../shared/hierarchy.ts";
 import type { Request, RequestProgress } from "../../shared/types.ts";
 
 /**
@@ -5,6 +6,8 @@ import type { Request, RequestProgress } from "../../shared/types.ts";
  *   - 絞り込みに合う要望（matched）を数え、その祖先は位置を示す文脈（context）として出すが、数えない
  *   - 親が一覧に無い（孤児・アーカイブ・絞り込みの外でも文脈で出す）・循環している要望は根に出す（訪れた ID を覚えて止まる）
  *   - 畳んだ親（collapsed）の子孫は出さない
+ *   - 根は渡された順（更新の新しい順）。兄弟は親の保存した表示順（shared/hierarchy.ts の orderSiblings。子の一覧・詳細・CLI と同じ）で、
+ *     絞り込みで出す子が減っても残った子の前後は変えない
  */
 export interface TreeRow {
   p: RequestProgress;
@@ -54,6 +57,11 @@ export function progressTree(all: readonly RequestProgress[], matched: readonly 
   }
   const out: TreeRow[] = [];
   const visited = new Set<string>();
+  // 兄弟は親の表示順に並べ直す（渡された順は更新の順なので、子を更新しても兄弟の位置を変えない）
+  for (const [pid, kids] of kidsOf) {
+    const rows = new Map(kids.map((k) => [k.request.id, k]));
+    kidsOf.set(pid, orderSiblings(kids.map((k) => k.request), byId.get(pid)?.request.childOrder).map((r) => rows.get(r.id)!));
+  }
   const walk = (p: RequestProgress, depth: number) => {
     if (visited.has(p.request.id)) return;
     visited.add(p.request.id);

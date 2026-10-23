@@ -56,7 +56,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   request new <タイトル>         --body 本文|- --area パス --due YYYY-MM-DD --milestone id --tag 値（外部 ID・分類。繰り返し可）
                                --attach ファイル（PNG / JPEG / xlsx。繰り返し可。作る前に全部確かめ、だめなら要望を作らない）
                                --parent <要望>  子の要望にする（省いた期限・マイルストーン・タグは親から写す）
-  request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか。--parent <要望> で直下の子）
+  request ls                   一覧（--status draft,active ... --milestone id --tag 値。繰り返すとどれか。--parent <要望> で直下の子を表示順に）
   request show [<要望>]         --brief 作業に要る項目だけ（本文・状態・ブランチ・タスクの一覧・親子）
   request set [<要望>] キー=値   title status due milestone tags areas parent（status: ${REQUEST_STATUSES.join(" ")}。parent= で親を外す）
                                --body 本文|-  本文を書き換える（- は標準入力。どの状態でも書き換えられる。--rev で楽観ロック）
@@ -64,6 +64,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                    p3 request set <要望> --body - --rev 3 < body.md
                                評価のあとでタイトル・本文を変えると、その評価からはタスク化できない（もう一度 preflight）
                                --tag 値 ...  タグをこの値の並びに置き換える（カンマで分けない。tags=a,b はカンマで分ける）
+  request order <親> [<子>...]   直下の子の表示順を保存する（子を全部、上から順に。--rev で楽観ロック）。子を省くと今の並びを出す
+                               表示の順だけで、実行の順・着手できるかは表さない（前提は子の本文で確かめる）
   request archive <要望>        子のある要望・親のある要望はできない（先に親を外す）
 
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）

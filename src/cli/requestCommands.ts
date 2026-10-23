@@ -1,8 +1,8 @@
 import { basename, relative } from "node:path";
 import { REQUEST_STATUSES, type Request, type Attachment } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
-import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, updateRequest } from "../core/requestOps.ts";
-import { resolvedIssue } from "../core/requestStatus.ts";
+import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, orderChildren, updateRequest } from "../core/requestOps.ts";
+import { hierarchyNow, resolvedIssue } from "../core/requestStatus.ts";
 import { hierarchyView } from "../core/hierarchy.ts";
 import { resolveRequestId } from "../core/ops.ts";
 import { table } from "./format.ts";
@@ -69,13 +69,12 @@ export async function requestCommand(
     case "ls":
     case "list": {
       const status = o.status?.split(",");
-      const reqs = ctx.ws.requests
-        .list()
+      // --parent: 直下の子だけを、親の表示順（子の一覧・詳細・画面と同じ）で
+      const parent = o.parent === undefined ? undefined : parentArg(o.parent);
+      const reqs = (parent === undefined ? ctx.ws.requests.list() : hierarchyNow(ctx.ws).children(parent))
         .filter((r) => !status || status.includes(r.status))
         .filter((r) => !o.milestone || r.milestone === o.milestone)
-        .filter((r) => !o.tag?.length || o.tag.some((t) => r.tags.includes(t)))
-        // --parent: 直下の子だけ
-        .filter((r) => o.parent === undefined || r.parent === parentArg(o.parent));
+        .filter((r) => !o.tag?.length || o.tag.some((t) => r.tags.includes(t)));
       return out.result(reqs, () =>
         table(reqs.map((r) => [r.id, r.status, r.title, r.milestone ?? "", r.due ?? "", r.tags.map((t) => `#${t}`).join(" "), r.parent ? `↑${r.parent}` : ""])) || "要望はありません",
       );
@@ -137,13 +136,27 @@ export async function requestCommand(
       reopenedNote(undefined, next.reopenedAncestors);
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
+    case "order": {
+      // p3 request order <親> <子...>: 直下の子の表示順を保存する（全部の子を並べる）。子を省くと今の並びを出す
+      const [head, ...kids] = rest;
+      const rid = requestArg(head);
+      if (!kids.length) {
+        const now = hierarchyNow(ctx.ws).children(rid);
+        return out.result({ id: rid, children: now.map((c) => c.id) }, () => (now.length ? now.map((c, i) => `${i + 1}. ${c.id}  ${c.title}`).join("\n") : `${rid} には子の要望がありません`));
+      }
+      const r = await orderChildren(ctx, rid, kids.map((k) => resolveRequestId(ctx, k) ?? k), { expectedRev, actor });
+      const now = hierarchyNow(ctx.ws).children(rid);
+      return out.result({ id: r.id, rev: r.rev, children: now.map((c) => c.id) }, () =>
+        [`子の表示順を保存しました: ${r.id} (rev ${r.rev})`, ...now.map((c, i) => `  ${i + 1}. ${c.id}  ${c.title}`)].join("\n"),
+      );
+    }
     case "archive": {
       const rid = requestArg(rest[0]);
       await archiveRequest(ctx, rid);
       return out.result({ archived: rid }, () => `アーカイブ: ${rid}（requests/.archive/ へ）`);
     }
     default:
-      throw new UsageError("p3 request [new | ls | show | set | archive]");
+      throw new UsageError("p3 request [new | ls | show | set | order | archive]");
   }
 }
 
