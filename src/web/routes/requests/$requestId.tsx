@@ -90,7 +90,9 @@ function RequestFrame() {
             </button>
           </p>
         )}
-        <nav className="mt-3 flex gap-1 overflow-x-auto">
+        {/* 選択中のタブの下線を見出しの境界線に重ねる 1px は nav が持つ。リンクに持たせると nav からはみ出し、overflow-x-auto で
+            縦も auto になる nav が 1px 縦に送れて、縦のスクロールバーが出る */}
+        <nav aria-label="要望のタブ" className="-mb-px mt-3 flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <Link
               key={t.to}
@@ -98,7 +100,7 @@ function RequestFrame() {
               to={t.to}
               params={{ requestId: request.id }}
               activeOptions={{ exact: t.exact, includeSearch: false }}
-              className="-mb-px border-b-2 px-3 py-2 font-medium whitespace-nowrap"
+              className="border-b-2 px-3 py-2 font-medium whitespace-nowrap"
               activeProps={{ className: "border-indigo-600 text-indigo-700 dark:text-indigo-300" }}
               inactiveProps={{ className: "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200" }}
             >

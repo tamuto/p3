@@ -1,6 +1,6 @@
 // 縦スクロールは1つ: 要望の画面では本文（request-content）だけが縦に送れ、共通の main と文書（ページ全体）は送れない。
 // 通常のタスク案・子の分割案・親を持つ子（長い祖先の題）と Preflight 未実行で、本文を末尾まで送れ、見出しのコピーとタブは
-// 本文の外に残る。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード・対応済み）も文書は送れない。
+// 本文の外に残る。横に送るタブと上のナビゲーションは縦に送れない。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード・対応済み）も文書は送れない。
 // 局所スクロールの例外（実行ログ）は対象を名指しして、末尾まで届くことを確かめる。375 / 1280・明暗・高さ 900 / 600。
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -36,6 +36,9 @@ async function oneBodyScroll(page: Page, at: (w: string) => string) {
   expect(await scrollableY(page), at("文書の縦スクロール")).toBe(0);
   expect(await scrollableY(page, page.locator("main")), at("main の縦スクロール")).toBe(0);
   expect(await scrollableY(page, content), at("本文が縦に送れる")).toBeGreaterThan(0);
+  // 横に送るナビゲーション（タブ・上のナビゲーション）は縦に送れない（overflow-x-auto は縦も auto にする）
+  expect(await scrollableY(page, page.getByRole("navigation", { name: "要望のタブ" })), at("タブの縦スクロール")).toBe(0);
+  expect(await scrollableY(page, page.locator("header nav")), at("上のナビゲーションの縦スクロール")).toBe(0);
   // 本文を下端まで送ると、本文の最後の要素の下端が本文の見えている範囲に入る（途中で切れて届かない内容が無い）
   const end = await content.evaluate((el) => {
     el.scrollTop = el.scrollHeight;
@@ -129,6 +132,7 @@ describe.skipIf(!inject("chromium").available)("縦スクロールは1つ", () =
                 await until.visible(page.locator("main > *").first());
                 await page.waitForLoadState("networkidle");
                 expect(await scrollableY(page), at(`${path} の文書の縦スクロール`)).toBe(0);
+                expect(await scrollableY(page, page.locator("header nav")), at(`${path} の上のナビゲーションの縦スクロール`)).toBe(0);
               }
             },
             page,
