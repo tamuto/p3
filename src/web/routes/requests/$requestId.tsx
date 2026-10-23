@@ -90,7 +90,9 @@ function RequestFrame() {
             </button>
           </p>
         )}
-        <nav className="mt-3 flex gap-1 overflow-x-auto">
+        {/* 選択中のタブの下線を見出しの境界線に重ねる 1px は nav が持つ。リンクに持たせると nav からはみ出し、overflow-x-auto で
+            縦も auto になる nav が 1px 縦に送れて、縦のスクロールバーが出る */}
+        <nav aria-label="要望のタブ" className="-mb-px mt-3 flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
             <Link
               key={t.to}
@@ -98,7 +100,7 @@ function RequestFrame() {
               to={t.to}
               params={{ requestId: request.id }}
               activeOptions={{ exact: t.exact, includeSearch: false }}
-              className="-mb-px border-b-2 px-3 py-2 font-medium whitespace-nowrap"
+              className="border-b-2 px-3 py-2 font-medium whitespace-nowrap"
               activeProps={{ className: "border-indigo-600 text-indigo-700 dark:text-indigo-300" }}
               inactiveProps={{ className: "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200" }}
             >
@@ -108,7 +110,9 @@ function RequestFrame() {
         </nav>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* 本文の縦スクロールはここだけ（共通の main と文書は送らない）。ログ・入力欄・詳細などの局所スクロールは別。
+          relative は中の絶対配置をこの枠に収める（外の main を送れるようにしない。__root.tsx の main と同じ） */}
+      <div className="relative min-h-0 flex-1 overflow-auto" data-testid="request-content">
         <Outlet />
       </div>
 
