@@ -108,7 +108,9 @@ function RequestFrame() {
         </nav>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* 本文の縦スクロールはここだけ（共通の main と文書は送らない）。ログ・入力欄・詳細などの局所スクロールは別。
+          relative は中の絶対配置をこの枠に収める（外の main を送れるようにしない。__root.tsx の main と同じ） */}
+      <div className="relative min-h-0 flex-1 overflow-auto" data-testid="request-content">
         <Outlet />
       </div>
 

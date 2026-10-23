@@ -117,6 +117,22 @@ export async function reachByScroll(scroller: Locator, target: Locator, dir: "x"
   return inside ? [] : [`${what}: 端まで送っても（送れる量 ${before}px）目印が見えている範囲に入らない（目印 ${fmt(t)}、範囲 ${fmt(s)}）`];
 }
 
+/**
+ * 縦に送れる量（scrollHeight − clientHeight、px）。対象を省くと文書（ページ全体）。overflow が visible・hidden の要素は 0
+ * （送れない）。二重の縦スクロールは、本文を送る要素のほかに文書や外側の枠も送れることで見つける
+ */
+export function scrollableY(page: Page, l?: Locator): Promise<number> {
+  const measure = (e: Element | null) => {
+    if (!e) {
+      const d = document.scrollingElement ?? document.documentElement;
+      return Math.max(0, d.scrollHeight - d.clientHeight);
+    }
+    const oy = getComputedStyle(e).overflowY;
+    return oy === "auto" || oy === "scroll" ? Math.max(0, e.scrollHeight - e.clientHeight) : 0;
+  };
+  return l ? l.evaluate(measure) : page.evaluate(measure, null);
+}
+
 /** 操作できる（見えていて、ほかの要素に隠れていない。押しはしない） */
 export async function reachable(l: Locator, what: string): Promise<string[]> {
   try {

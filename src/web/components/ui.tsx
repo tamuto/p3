@@ -25,7 +25,9 @@ export function Button({ variant = "secondary", className, ...p }: ButtonHTMLAtt
 
 /**
  * ファイルを選ぶボタン。ブラウザ既定のファイル入力は押せるものに見えないので、入力は隠してボタンの形のラベルで開く
- * （キーボードでも入力にフォーカスが当たり、ボタンに枠が出る）。chosen を渡すと選んだファイルの名前を横に出す
+ * （キーボードでも入力にフォーカスが当たり、ボタンに枠が出る）。chosen を渡すと選んだファイルの名前を横に出す。
+ * 隠した入力（sr-only は position: absolute）の基準はラベル（relative）にする。基準が無いと画面の左上が基準になり、
+ * 本文のスクロールの中の入力の位置まで文書が縦に伸びて、本文とページの2つの縦スクロールが出る
  */
 export function FilePicker({
   label = "ファイルを選ぶ",
@@ -38,7 +40,7 @@ export function FilePicker({
       <label
         className={buttonCls(
           "secondary",
-          "cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
+          "relative cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
         )}
       >
         <input ref={inputRef} type="file" className="sr-only" {...p} />

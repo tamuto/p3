@@ -109,7 +109,9 @@ function Layout() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-auto">
+      {/* スクロールする枠は relative にする。基準の無い絶対配置（sr-only の入力・見出しなど）は画面の左上を基準にし、
+          枠の中の位置まで文書を縦に伸ばして、枠とページの2つの縦スクロールを出す */}
+      <main className="relative min-h-0 flex-1 overflow-auto">
         <Outlet />
       </main>
     </div>
