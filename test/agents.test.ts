@@ -32,6 +32,7 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     "requests/<要望ID>/", // 同じコミットに入れるのは、その要望のフォルダだけ
     "git add -f", // 外・無視・worktree のデータを無理に入れない
     "`children`", // 親を対応済にするのは子が終わってから
+    "マージするまで要望のブランチにしか無い", // 切り替えで消えたように見えても、作り直さない・写さない
   ];
   it.each(shared)("どちらにも「%s」がある", (word) => {
     expect(skill).toContain(word);

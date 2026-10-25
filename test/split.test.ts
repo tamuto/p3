@@ -1,9 +1,10 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { codexPrompt } from "../src/core/preflight/codexEngine.ts";
 import type { PreflightJob } from "../src/core/preflight/engine.ts";
 import { StaleInputError } from "../src/core/preflight/input.ts";
+import { hierarchyView } from "../src/core/hierarchy.ts";
 import { ChildDraftsChangedError } from "../src/core/preflight/service.ts";
 import { createRequest, updateRequest } from "../src/core/requestOps.ts";
 import { stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
@@ -124,6 +125,24 @@ describe("子の案の採用", () => {
     const r3 = await run();
     await createRequest(ctx, { title: "手で足した子", parent: parent.id });
     expect(((await ctx.preflight.adopt(parent.id, r3.id).catch((e: unknown) => e)) as StaleInputError).match.changed).toEqual(["children"]);
+  });
+
+  it("採用で作った子が requests にもアーカイブにも無ければ、親の詳細に知らせる（parent は戻さない）", async () => {
+    const { ctx, parent, run } = await setup(9);
+    const r = await run();
+    const { created } = await ctx.preflight.adopt(parent.id, r.id, "human:test");
+    const [gone, archived, kept] = created.map((c) => c.id);
+    // 要望のブランチにだけある子が、既定のブランチへの切り替えで作業ツリーから消えた形
+    rmSync(join(ctx.ws.requestsDir, gone), { recursive: true });
+    mkdirSync(join(ctx.ws.requestsDir, ".archive"), { recursive: true });
+    renameSync(join(ctx.ws.requestsDir, archived), join(ctx.ws.requestsDir, ".archive", archived));
+    await ctx.ws.reloadAll();
+    const view = await hierarchyView(ctx.ws, parent.id);
+    expect(view.hierarchyIssues).toEqual([expect.objectContaining({ code: "child_missing", request: gone, parent: parent.id })]);
+    expect(view.hierarchyIssues[0].message).toContain(`${r.id} / C1`);
+    expect(view.children.map((c) => c.id)).toEqual([kept]);
+    // 子の側には出さない（子の詳細は親を指す問題だけ）
+    expect((await hierarchyView(ctx.ws, kept)).hierarchyIssues).toEqual([]);
   });
 
   it("確認したときの版と違えば断る（drafts_changed）", async () => {

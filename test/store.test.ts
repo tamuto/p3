@@ -180,6 +180,35 @@ describe("要望とタスク", () => {
     expect(u).toMatchObject({ title: "外部で変更", rev: 3 });
   });
 
+  it("この版が知らない項目（新しい版が足した項目）は、更新しても消さずに書き戻す", async () => {
+    const { ctx } = await makeProject();
+    const parent = await newRequest(ctx, { title: "親" });
+    const r = await newRequest(ctx, { title: "子", parent: parent.id, splitFrom: "PF-20261022-000000-abcd/C1" });
+    const t = await newTask(ctx, r.id, { title: "A" });
+    // 古い版の p3 が新しい版の項目を知らずに書き戻すと消えていた（0.4.x の更新で parent と splitFrom が消えた）。
+    // 今の版が知らない項目を足して、同じことが起きないかを確かめる
+    const reqPath = ctx.ws.requests.path(r.id);
+    const taskPath = ctx.ws.tasksOf(r.id).path(t.id);
+    await writeFile(reqPath, (await readFile(reqPath, "utf8")).replace("rev: 1", "rev: 1\nfutureField: x\nfutureList:\n  - a\n  - b"));
+    await writeFile(taskPath, (await readFile(taskPath, "utf8")).replace("rev: 1", "rev: 1\nfutureTask:\n  k: v"));
+
+    const u = await ctx.ws.requests.update(r.id, { status: "resolved" }, { actor: "ai:claude" });
+    await ctx.ws.tasksOf(r.id).update(t.id, { status: "doing" }, { actor: "ai:claude" });
+    expect(u).toMatchObject({ parent: parent.id, splitFrom: "PF-20261022-000000-abcd/C1", status: "resolved" });
+    // 読んだ結果（API・CLI に出るもの）には足さない
+    expect(u).not.toHaveProperty("futureField");
+
+    const req = parseFrontmatter(await readFile(reqPath, "utf8")).data;
+    expect(req).toMatchObject({ parent: parent.id, splitFrom: "PF-20261022-000000-abcd/C1", futureField: "x", futureList: ["a", "b"], rev: 2 });
+    expect(parseFrontmatter(await readFile(taskPath, "utf8")).data).toMatchObject({ futureTask: { k: "v" }, status: "doing" });
+
+    // 知っている項目は今までどおり外せる（parent= で親を外す）
+    await ctx.ws.requests.update(r.id, { parent: undefined });
+    const after = parseFrontmatter(await readFile(reqPath, "utf8")).data;
+    expect(after).not.toHaveProperty("parent");
+    expect(after).toMatchObject({ futureField: "x" });
+  });
+
   it("壊れたファイルがあっても他は読め、エラーとして場所を記録する", async () => {
     const { ctx, dataDir } = await makeProject();
     const r = await newRequest(ctx);
