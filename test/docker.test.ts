@@ -37,9 +37,10 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain('org.opencontainers.image.source="https://github.com/tamuto/p3"');
     expect(dockerfile).toContain('org.opencontainers.image.licenses="MIT"');
     expect(dockerfile).toMatch(/HEALTHCHECK [^\n]*\\\n[^\n]*\/api\/mode/);
-    // 公開の手順は版を渡して両方の platform を作る
+    // 公開の手順は版を渡して amd64 だけを作る（arm64 は確かめるマシンが無いので対応しない）
     const publishing = read("docs/publishing.md");
-    expect(publishing).toContain("docker buildx build --pull --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V");
+    expect(publishing).toContain("docker buildx build --pull --platform linux/amd64 --build-arg P3_VERSION=$V");
+    expect(/--platform (\S+)/.exec(publishing)?.[1]).toBe("linux/amd64");
     expect(publishing).toContain("-t tamuto/p3:$V -t tamuto/p3:latest");
   });
 

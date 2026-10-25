@@ -67,15 +67,14 @@ push する（公開済みのイメージ・起動中のコンテナは自動で
   `P3_CODEX_PATH_MAP`。[development.md](development.md#docker-のイメージ)）
 - [ ] ソケットを渡したコンテナ（root）で Codex のイメージを作れる: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock tamuto/p3:<版> codex update`
 - [ ] 本物の Codex（ChatGPT の接続・ソケット）で、コンテナから Preflight が終わる（接続できる環境で手で確かめる）
-- [ ] amd64 と arm64 の両方を作る（Mac の Apple シリコンなど）。arm64 を作れない環境では、QEMU（binfmt）を入れたマシンか
-  arm64 のマシンで作る
+- [ ] 作るのは `linux/amd64` だけ。arm64 は確かめるマシンが無いので作らない（対応していない）
 
 ```bash
 V=$(node -p "require('./package.json').version")
 docker login                                                   # tamuto に push できるアカウント
-docker buildx build --pull --platform linux/amd64,linux/arm64 --build-arg P3_VERSION=$V \
+docker buildx build --pull --platform linux/amd64 --build-arg P3_VERSION=$V \
   -t tamuto/p3:$V -t tamuto/p3:latest --push .
-docker buildx imagetools inspect tamuto/p3:$V                  # 両方の platform があるか
+docker buildx imagetools inspect tamuto/p3:$V                  # 動かす platform が linux/amd64 だけか（unknown/unknown は来歴の記録で、動かす対象ではない）
 ```
 
 公開した後に、別の環境で `docker run --rm tamuto/p3:<版> --help` と、[導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)
