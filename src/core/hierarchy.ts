@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { Hierarchy } from "../shared/hierarchy.ts";
+import { Hierarchy, type HierarchyIssue } from "../shared/hierarchy.ts";
 import { REQUEST_ID } from "../shared/refs.ts";
 import type { Request } from "../shared/types.ts";
 import { withFileLock } from "./store/fsutil.ts";
@@ -173,11 +173,30 @@ export async function withArchiveCheck<T>(ws: Workspace, rid: string, fn: () => 
   });
 }
 
+/**
+ * 分割の採用（run.json の adoption）で作った子のうち、今の要望にもアーカイブにも無いもの。ファイルは変えず、parent も戻さない。
+ * 子のフォルダが要望のブランチにだけあって、既定のブランチに切り替えると作業ツリーから消えたときなど
+ */
+async function missingSplitChildren(ws: Workspace, rid: string, archived: Set<string>): Promise<HierarchyIssue[]> {
+  const out: HierarchyIssue[] = [];
+  for (const run of await ws.preflight.list(rid)) {
+    const a = run.adoption;
+    if (!a) continue;
+    for (const key of a.created) {
+      const id = a.reserved[key];
+      if (!id || ws.requests.get(id) || ws.requests.errors.has(id) || archived.has(id)) continue;
+      out.push({ request: id, code: "child_missing", parent: rid, message: `分割で作った子 ${id}（${run.id} / ${key}）が見つかりません（git のブランチを切り替えると、要望のブランチにだけある要望は作業ツリーから消えます）` });
+    }
+  }
+  return out;
+}
+
 /** 詳細・show --brief に添える親子（子にはタスクの数を付ける） */
 export async function hierarchyView(ws: Workspace, rid: string) {
   const v = (await hierarchyOf(ws)).view(rid);
   return {
     ...v,
+    hierarchyIssues: [...v.hierarchyIssues, ...(await missingSplitChildren(ws, rid, new Set(await archivedRequestIds(ws))))],
     children: v.children.map((c) => {
       const tasks = ws.tasksOf(c.id).list();
       return { ...c, tasks: { total: tasks.length, done: tasks.filter((t) => t.status === "done").length } };

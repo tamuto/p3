@@ -118,7 +118,7 @@ describe.skipIf(!inject("chromium").available)("親子の要望の画面", () =>
     await step("タグで子だけを選ぶ", async () => {
       await page.goto(`/?tags=${encodeURIComponent(JSON.stringify(["child-only"]))}`);
       // 子と、子から作った（タグを写した）孫が合う。合わない根の親は文脈で、件数に入らない
-      const count = page.getByText(/\d+ 件（ほかに親を文脈として表示）/);
+      const count = page.getByTitle(/絞り込みに合う要望の数/);
       await until.visible(count);
       const schedule = page.getByTestId("schedule");
       const contexts = schedule.getByRole("link").filter({ hasText: "文脈" });

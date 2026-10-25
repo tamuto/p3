@@ -12,12 +12,14 @@ export const SPLIT_HINT_TASKS = 6;
 /**
  * 直接編集などでできた親子の問題。読み込みでは止めずに一覧・詳細・進捗に出し、完了の判定では通さない。
  *   parent_missing: 親が無い / parent_archived: 親がアーカイブ済み / parent_cycle: 親を辿ると自分に戻る /
- *   parent_invalid: 親の ID の形が違う / parent_unreadable: 親のファイルが読めない
+ *   parent_invalid: 親の ID の形が違う / parent_unreadable: 親のファイルが読めない /
+ *   child_missing: 分割の採用で作った子が無い（requests にも .archive にも無い。git のブランチの切り替えなど）。親の詳細にだけ出す知らせで、
+ *   完了の判定は止めない
  */
-export type HierarchyIssueCode = "parent_missing" | "parent_archived" | "parent_cycle" | "parent_invalid" | "parent_unreadable";
+export type HierarchyIssueCode = "parent_missing" | "parent_archived" | "parent_cycle" | "parent_invalid" | "parent_unreadable" | "child_missing";
 
 export interface HierarchyIssue {
-  /** 問題のある要望（parent を書いている側） */
+  /** 問題のある要望（parent を書いている側。child_missing では見つからない子） */
   request: string;
   code: HierarchyIssueCode;
   parent: string;

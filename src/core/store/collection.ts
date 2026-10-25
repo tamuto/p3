@@ -61,7 +61,8 @@ export interface PreparedLoad {
   abort(): void;
 }
 
-type ReadResult<T> = { item: T } | { error: string } | { missing: true };
+/** extra: frontmatter のうち、この版が知らない項目（新しい版が足した項目など）。書き戻すときに残す */
+type ReadResult<T> = { item: T; extra: Record<string, unknown> } | { error: string } | { missing: true };
 
 /**
  * 1エンティティ = 1 Markdown ファイル（YAML frontmatter + 本文）のコレクション。
@@ -134,7 +135,10 @@ export class MarkdownCollection<T extends Entity> {
   private async read(id: string): Promise<ReadResult<T>> {
     try {
       const { data, body } = parseFrontmatter(await readFile(this.layout.path(id), "utf8"));
-      return { item: this.opts.normalize(data, body, id) };
+      const item = this.opts.normalize(data, body, id);
+      const known = new Set<string>(["body", ...(this.opts.keyOrder as string[]), ...((this.opts.derived ?? []) as string[]), ...Object.keys(item)]);
+      const extra = Object.fromEntries(Object.entries(data).filter(([k]) => !known.has(k)));
+      return { item, extra };
     } catch (e) {
       return (e as NodeJS.ErrnoException).code === "ENOENT" ? { missing: true } : { error: String(e) };
     }
@@ -151,7 +155,10 @@ export class MarkdownCollection<T extends Entity> {
 
   /** 1件を読み直す。消えていれば除く */
   async reload(id: string): Promise<void> {
-    const r = await this.read(id);
+    this.apply(id, await this.read(id));
+  }
+
+  private apply(id: string, r: ReadResult<T>) {
     if ("item" in r) {
       this.put(id, r.item);
       this.errors.delete(id);
@@ -181,12 +188,13 @@ export class MarkdownCollection<T extends Entity> {
     return this.layout.path(id);
   }
 
-  private serialize(item: T): string {
+  private serialize(item: T, extra: Record<string, unknown> = {}): string {
     const { body, ...rest } = item;
     const skip = new Set<string>(["body", ...((this.opts.derived ?? []) as string[])]);
     const ordered: Record<string, unknown> = {};
     for (const k of this.opts.keyOrder) if (!skip.has(k as string)) ordered[k as string] = (rest as Record<string, unknown>)[k as string];
     for (const [k, v] of Object.entries(rest)) if (!(k in ordered) && !skip.has(k)) ordered[k] = v;
+    for (const [k, v] of Object.entries(extra)) if (!(k in ordered) && !skip.has(k)) ordered[k] = v;
     return stringifyFrontmatter(ordered, body);
   }
 
@@ -227,8 +235,11 @@ export class MarkdownCollection<T extends Entity> {
    * 部分更新。expectedRev を渡すと楽観ロック（AI が古い状態を元に上書きするのを防ぐ）。
    */
   async update(id: string, patch: Partial<T>, opts: { expectedRev?: number; actor?: string } = {}): Promise<T> {
-    // 外部での編集を取りこぼさないよう、更新の直前にディスクから読み直す
-    await this.reload(id);
+    // 外部での編集を取りこぼさないよう、更新の直前にディスクから読み直す。
+    // この版が知らない項目（新しい版の p3 が書いた項目）は消さずに書き戻す（古い版の更新で親子などが消えないように）
+    const r = await this.read(id);
+    this.apply(id, r);
+    const extra = "item" in r ? r.extra : {};
     const cur = this.require(id);
     if (opts.expectedRev !== undefined && opts.expectedRev !== cur.rev) {
       throw new ConflictError(id, opts.expectedRev, cur.rev);
@@ -243,7 +254,7 @@ export class MarkdownCollection<T extends Entity> {
       updatedBy: opts.actor ?? cur.updatedBy,
     } as T;
     const next = this.opts.beforeWrite?.(cur, merged) ?? merged;
-    await writeFileAtomic(this.layout.path(id), this.serialize(next));
+    await writeFileAtomic(this.layout.path(id), this.serialize(next, extra));
     this.put(id, next);
     return next;
   }

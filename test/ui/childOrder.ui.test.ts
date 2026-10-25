@@ -92,7 +92,7 @@ describe.skipIf(!inject("chromium").available)("子の表示順", () => {
       const cli = JSON.parse(await s.env.p3(["request", "ls", "--parent", ids.parent, "--json"])) as { id: string }[];
       expect(cli.map((r) => r.id)).toEqual([ids.b, ids.a, ids.c]);
       await page.goto("/");
-      await until.visible(page.getByText("子は保存した表示順（順序の変更は親の概要から）"));
+      await until.visible(page.getByTestId("schedule").getByRole("link", { name: /子A/ }));
       const titles = await page.getByTestId("schedule").getByRole("link").allInnerTexts();
       const kids = titles.filter((t) => ["子A", "子B", LONG].some((k) => t.includes(k)));
       expect(kids.map((t) => (t.includes("子A") ? "A" : t.includes("子B") ? "B" : "C"))).toEqual(["B", "A", "C"]);

@@ -190,14 +190,8 @@ function ProgressPage() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
         <h1 className="text-lg font-bold">進捗</h1>
         <span className="text-sm text-slate-500" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
-          {matched.length} 件{tree.some((t) => t.context) ? "（ほかに親を文脈として表示）" : ""}
+          {matched.length} 件
         </span>
-        {/* 根は更新の新しい順、子は親の保存した表示順（progressTree）。実行の順ではない */}
-        {tree.some((t) => t.depth > 0) && (
-          <span className="text-sm text-slate-500" title="表示順は着手できるかを判定しません。子の本文にある前提を確かめてください">
-            子は保存した表示順（順序の変更は親の概要から）
-          </span>
-        )}
         <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
           {SHOW_OPTIONS.map(([v, label]) => (
             <Link
