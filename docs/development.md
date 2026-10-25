@@ -229,7 +229,7 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 `--pull` を付けて今のベースを取る（`scripts/verify-docker.mjs` も付ける。`--no-build` は作らずに既にあるイメージを確かめる）。
 Docker の CLI と pnpm は版を固定し、メジャー版を上げるのは別の変更として行う。作り直しても、公開済みのイメージと起動中の
 コンテナは変わらない（push し、使う側が pull して起動し直す）。
-公開（人が行う）は [publishing.md](publishing.md#6-docker-hubtamutop3) の手順で、CI は使わない。使い方は [導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)。
+公開（人が行う）は [publishing.md](publishing.md#6-docker-hubtamutop3) の手順で、`linux/amd64` だけを作り、CI は使わない。使い方は [導入ガイド](installation.md#docker-で動かすプロジェクトを跨ぐ-serve)。
 
 ```bash
 docker build --pull -t tamuto/p3:dev .

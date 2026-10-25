@@ -305,7 +305,8 @@ P3 をイメージにして、コンテナで動かすこともできる。イ�
 
 イメージは Docker Hub の **`tamuto/p3`**。中に p3 本体（npm の `@infodb/p3` と同じ版・同じ中身）と、Node 22・git・Docker の CLI が
 入っている（Codex は入れない。Preflight のたびにホストの Docker で Codex のイメージを使う）。版のタグ（`tamuto/p3:0.6.0` など）と
-`latest` がある。決まった版で使うなら版のタグを指す。
+`latest` がある。決まった版で使うなら版のタグを指す。対応する platform は `linux/amd64` だけ（arm64 は確かめるマシンが無いので
+作っていない）。
 
 ```bash
 docker pull tamuto/p3:0.6.0
