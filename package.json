@@ -1,6 +1,6 @@
 {
   "name": "@infodb/p3",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "File-based project management with AI-powered preflight (Codex App Server)",
   "keywords": [
     "project-management",
