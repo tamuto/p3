@@ -274,6 +274,9 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     const prompt = messages.find((m) => m.method === "turn/start").params.input[0].text;
     // 最初に読む参照先の主なフォルダは、以前のプロジェクトの docs と同じく評価の前に読ませる（入口は任意）
     expect(prompt).toContain("## 最初に読むもの\nプロジェクトの方針・用語・設計などが書かれています。評価の前に、必要な範囲で読んでください（入口があればそこから）。");
+    // ドキュメントと今のコードが食い違えばコードを正とし、食い違いは評価に残させる
+    expect(prompt).toContain("ドキュメント（「最初に読むもの」を含む）と今のコードが食い違えば、今のコードを正として評価し、タスク案を作る。");
+    expect(prompt).toContain("見つけた食い違いは黙ってどちらかに合わせず、すべてリスクか確認事項に書く。");
     expect(prompt).toContain("- /workspace/main/docs — 設計（入口 /workspace/main/docs/design.md");
     expect(prompt).toContain("- /workspace/main/README.md — README\n");
     expect(prompt).not.toContain("## 主なフォルダ"); // 案内だけの参照先は無い
