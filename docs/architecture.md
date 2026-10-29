@@ -941,6 +941,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - プロジェクトが無い・未登録のときは `p3 init` / `p3 join` を自分から実行せず、新しく作る（`init`）のか共有されたものに参加する（`join`）のかを人に確かめる
 - 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
   Preflight（`preflight`）とタスク化（`accept`）は人が行う（AI は実行しない。結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
+- 例外: 人がチャットで対象の要望の Preflight を明示的に頼んだときだけ、手元で評価してよい: `p3 preflight <要望ID> --prepare --json` → 返った指示のファイル（`instructions`）を最後まで読み、書くのは返った run の成果物（`outputs`）だけ → `p3 preflight <要望ID> --complete --run <run> --json` → `p3 drafts` の結果を伝えて終える（自分から始めない。タスク化 `accept` と着手はしない）
 - 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む
 - 着手する前に、`--brief --json` の `work`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
 - 着手するときは `p3 move T003 doing`。テストを通したら、コミットする前に `p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）

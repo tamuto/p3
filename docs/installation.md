@@ -8,7 +8,8 @@ P3 の Preflight は、Codex を **Docker のコンテナの中で** 動かす�
 
 Docker と ChatGPT の接続が要るのは Preflight（Codex）・リリースノートの要約の生成・画面イメージの描画だけで、要望・タスク・
 変更の記録・マイルストーンの管理と、リリースノートを手で書いて保存することは無くても動く。Docker を用意できない・Preflight が止まる間も、Preflight を通さずにタスクを作って進められる
-（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。
+（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。Preflight を Claude Code などの手元の対話エージェントに
+頼むなら Docker と ChatGPT は要らない（画面イメージの描画だけ Docker を使う。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）。
 
 ## 全体の流れ
 
@@ -261,7 +262,8 @@ DevContainer で「対応あり」にならなければ 5. を見直す。評価
 失敗はログとエラーに **次にすること** を添えて出す。直して、もう一度同じ操作をする。
 
 Preflight を使えない・失敗したとき（Docker・ChatGPT の接続・使用量の上限など、理由によらない）は、概要ページ・失敗した run・
-CLI の出力に、Preflight を通さずにタスクを作る道も出る。直すまでの間はそれで進めてよい（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。
+CLI の出力に、Preflight を通さずにタスクを作る道も出る。直すまでの間はそれで進めてよい（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。Preflight を Claude Code などの手元の対話エージェントに
+頼むなら Docker と ChatGPT は要らない（画面イメージの描画だけ Docker を使う。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）。
 
 | どこで | 出るもの | 確かめる | 直す |
 | --- | --- | --- | --- |

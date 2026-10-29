@@ -64,6 +64,12 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 
   個人のスキル（`~/.agents/skills`・`/etc/codex/skills`）と `~/.codex/config.toml` の `[[skills.config]]` に p3 が無いことを先に確かめる。
   Codex がスキルを探す場所は公式の文書（<https://developers.openai.com/codex/skills/> の「Where Codex loads local skills」）
+- 手元の対話エージェントの Preflight（`--prepare` / `--complete`）は、CLI と取り込みを別プロセスのテストで確かめる
+  （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が同梱のスキルを見つけて
+  明示の依頼のときだけ手順に従うか、指示のファイルを読み切るかはテストでは確かめられない。スキルの Preflight の節や指示の形を変えたときは、
+  一時フォルダのプロジェクト（`init --agents claude`）を Claude Code で開き、要望を作って「要望 <ID> の Preflight を Claude Code の
+  このチャットで実行して」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、依頼の無い登録では始めないことを
+  手で確かめる（結果はタスクの変更の記録に残す）。Claude Code がスキルを読む場所は公式の文書（<https://code.claude.com/docs/en/skills>）
 - CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `P3_*` の環境変数は効かないようにしている
 - `test/layers.test.ts` が src の層の依存の向き、`test/package.test.ts` が配布物の中身と文書のリンクを確かめる
 - 短い出力の量を測るときは:

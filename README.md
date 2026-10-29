@@ -27,6 +27,7 @@
 | ChatGPT のアカウント（プラン） | Preflight の Codex をその人のアカウントで動かす |
 
 Docker と ChatGPT が無くても、要望・タスクの管理は使える（Preflight を通さずにタスクを作る。[使い方ガイド](docs/how-to-use.md#preflight-を通さずにタスクを作る)）。
+Preflight も、Claude Code などの手元の対話エージェントのチャットで頼んで代わりに評価させられる（[使い方ガイド](docs/how-to-use.md#手元の対話エージェントで-preflight-する)）。
 
 ## 最短の手順
 

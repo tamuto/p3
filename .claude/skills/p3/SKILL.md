@@ -20,6 +20,7 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
 - 別の場所（作業ツリーなど）から呼ぶときは `pnpm -s --dir <依存を入れたチェックアウト> p3 ...`。p3 は呼び出し元の場所
   （`INIT_CWD`）に戻ってから、対象のプロジェクトと今の要望を判定する。作業ツリーで直接動かすなら、そこで `pnpm install` する
 - 対象のプロジェクトは `p3 whoami` で確かめる（名前やデータのフォルダを決め打ちしない）
+- 頼まれた Preflight（原本の「Preflight を頼まれたとき」）も同じ呼び方: `pnpm -s p3 preflight <要望ID> --prepare --json` → `--complete --run <run> --json`
 - ブランチを切り替えると、この CLI もそのブランチのコードで動く。CLI を壊す変更の途中で CLI が動かなくなったら、
   `git stash` などで戻してから操作し、ユーザーに伝える
 

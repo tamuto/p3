@@ -306,7 +306,7 @@ function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof p
     if (a.risks.length) lines.push("", "リスク:", ...a.risks.map((x) => `  - ${x}`));
     if (a.questions.length) lines.push("", "確認事項:", ...a.questions.map((x) => `  - ${x}`));
   }
-  lines.push("", ...scopeLines(run.scope));
+  lines.push("", ...scopeLines(run.scope, { local: run.engine === "local" }));
   if (a) lines.push("", ...evidenceLines(a.evidence));
   if (run.scope?.some((s) => s.status === "unregistered")) lines.push("  → このマシンのパスは p3 repo path <名前> <パス> で登録します");
   if (run.drafts.length) {

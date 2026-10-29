@@ -278,6 +278,9 @@ describe("CLI（別のプロセス）での手元のエージェントの Prefli
     expect(done.code, done.err).toBe(0);
     expect(done.json()).toMatchObject({ status: "completed", already: false, inputMatch: { status: "same" } });
     expect(p3(root, configHome, ["drafts", rid, "--json"]).json()).toMatchObject({ id: p.run, engine: "local", drafts: [{ key: "D1" }, { key: "D2" }] });
+    const shown = p3(root, configHome, ["drafts", rid]).out;
+    expect(shown).toContain("✓ main（本体）  このマシンのパスで読める");
+    expect(shown).not.toContain("/workspace/");
     const acc = p3(root, configHome, ["accept", rid, "--json", "--actor", "human:test"]);
     expect(acc.code, acc.err).toBe(0);
     expect(acc.json().tasks).toHaveLength(2);
