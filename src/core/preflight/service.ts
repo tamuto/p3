@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
@@ -20,7 +20,7 @@ import {
   type PreflightPulse,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { newRequestId, nowIso, writeFileAtomic } from "../store/fsutil.ts";
+import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { supersedeCandidates } from "../supersede.ts";
@@ -30,6 +30,9 @@ import { childBody, childrenVersion, draftProblems, parseSplit, splitMarker } fr
 import { redact } from "../redact.ts";
 import { renderCarryover, selectCarryover } from "./carryover.ts";
 import type { PreflightEngine, PreflightJob } from "./engine.ts";
+import { LOCAL_INSTRUCTIONS_FILE, LOCAL_OUTPUTS, localInstructions } from "./instructions.ts";
+import { renderManuscripts, type Renderer } from "./uiRender.ts";
+import { repoTargetProblem } from "../../shared/workTarget.ts";
 import { refScope, type ResolvedRef } from "../repoRefs.ts";
 import { checkRepoTarget, planWorkstreams, workstreamPatch } from "../workTargets.ts";
 import { hideConfigPath } from "../userConfig.ts";
@@ -87,6 +90,8 @@ export class PreflightService {
     private ws: Workspace,
     private engines: Partial<Record<PreflightEngine["name"], PreflightEngine>>,
     defaultEngine: PreflightEngine["name"] | { load: () => Promise<PreflightEngine["name"]>; initial: PreflightEngine["name"] },
+    /** 手元のエージェントの取り込みで画面イメージを描くとき: パスの対応（codex.pathMap）と、テスト用の描画の差し替え */
+    private renderOpts: { pathMap: () => Promise<[string, string][]>; render?: Renderer } = { pathMap: async () => [] },
   ) {
     if (typeof defaultEngine === "string") {
       this.lastDefault = defaultEngine;
@@ -149,6 +154,136 @@ export class PreflightService {
   }
 
   async start(requestId: string, opts: { engine?: PreflightEngine["name"]; actor?: string } = {}): Promise<PreflightRun> {
+    return this.locked(requestId, async () => {
+      const fixed = await this.fix(requestId);
+      // 既定のエンジンは始めるたびに個人設定から決める。読めなければ、この run を設定のエラーとして失敗にする
+      // （古い設定や Mock に落とさない。serve とほかの操作は続ける）
+      let engine: PreflightEngine | undefined;
+      if (opts.engine) engine = this.engines[opts.engine];
+      else {
+        try {
+          engine = this.engines[await this.currentDefault()];
+        } catch (e) {
+          const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`;
+          engine = failing(this.lastDefault, message);
+        }
+      }
+      if (!engine) throw new Error(`engine ${opts.engine} は利用できません`);
+      // 始めるときの設定に決める（この run の間は個人設定が変わっても使い続ける）
+      if (engine.snapshot) {
+        const from = engine;
+        engine = await from.snapshot!().catch((e: Error) => failing(from.name, e.message));
+      }
+      const opened = await this.open(fixed, engine.name, opts.actor);
+      const abort = new AbortController();
+      const done = this.execute(engine, opened, abort.signal);
+      this.active.set(opened.run.id, { run: opened.run, abort, done });
+      return opened.run;
+    });
+  }
+
+  /**
+   * 手元の対話エージェント（Claude Code など）に評価を頼む準備: 評価対象・参照先・親子・添付・メモ・前回の結果を通常の Preflight と
+   * 同じ方法で固定し、指示のファイル（instructions.md）を run のフォルダに書いて、評価を待つ run（engine: local・running）を残して返す。
+   * モデル・Codex・Docker は使わない。取り込みは complete、やめるのは cancelLocal（別のプロセスからでもよい）
+   */
+  async prepare(requestId: string, opts: { actor?: string } = {}): Promise<{ run: PreflightRun; runDir: string; instructions: string; outputs: string[] }> {
+    return this.locked(requestId, async () => {
+      const opened = await this.open(await this.fix(requestId), "local", opts.actor);
+      const { run, runDir } = opened;
+      run.local = { before: opened.before };
+      await this.extractAttachments(run, runDir);
+      const instructions = join(runDir, LOCAL_INSTRUCTIONS_FILE);
+      await writeFileAtomic(instructions, localInstructions(this.job(opened)));
+      this.log(run, { kind: "info", text: `手元のエージェントの評価を待っています（指示: ${LOCAL_INSTRUCTIONS_FILE}。取り込みは p3 preflight ${requestId} --complete --run ${run.id}）` });
+      await this.ws.preflight.save(run);
+      this.ws.emit({ type: "changed", kind: "preflight", request: requestId });
+      return { run, runDir, instructions, outputs: LOCAL_OUTPUTS.map((o) => join(runDir, o)) };
+    });
+  }
+
+  /**
+   * 手元のエージェントが書いた結果を取り込む。指定した run（engine: local で評価を待っているもの）の成果物だけを確かめ、通常の Preflight と
+   * 同じ取り込み（評価・案・分割・根拠・画面資料）で完了にする。成果物に問題があれば何も確定せず LocalResultError（直して同じ run で
+   * やり直せる）。取り込み済みなら何もせずに返す（already）
+   */
+  async complete(requestId: string, runId: string): Promise<{ run: PreflightRun; already: boolean }> {
+    return this.locked(requestId, async () => {
+      const run = await this.localRun(requestId, runId);
+      if (run.status === "completed") return { run, already: true };
+      if (run.status !== "running") {
+        throw new LocalRunError(`${runId} は${run.error === PREFLIGHT_CANCELLED ? "取り消し済み" : "失敗した run"}です。評価し直すなら p3 preflight ${requestId} --prepare から`);
+      }
+      const runDir = this.ws.preflight.runDir(requestId, runId);
+      const refs = this.ws.refs();
+      const problems = await localProblems(this.ws, run, runDir);
+      if (problems.length) {
+        run.local = { ...run.local!, rejected: (run.local?.rejected ?? 0) + 1 };
+        for (const p of problems) this.log(run, { kind: "error", text: `取り込めません: ${p}` });
+        await this.ws.preflight.save(run);
+        throw new LocalResultError(problems);
+      }
+      // 画面イメージ: 原稿があるときだけ描画のコンテナを使う。描けなくても評価は残す（取り込みで不足として扱う）
+      await renderManuscripts(runDir, { pathMap: await this.renderOpts.pathMap().catch(() => []), log: (e) => this.log(run, e), render: this.renderOpts.render });
+      await this.ingest(run, runDir, refs);
+      run.status = "completed";
+      await this.finish(run, run.local!.before);
+      return { run, already: false };
+    });
+  }
+
+  /** 手元のエージェントの評価を待つ run をやめる（取り込まない。成果物のファイルは残す）。取り消し済みなら何もしない */
+  async cancelLocal(requestId: string, runId: string): Promise<{ run: PreflightRun; already: boolean }> {
+    return this.locked(requestId, async () => {
+      const run = await this.localRun(requestId, runId);
+      if (run.status === "completed") throw new LocalRunError(`${runId} は取り込み済みです（取り消せません）`);
+      if (run.status === "failed") return { run, already: true };
+      run.status = "failed";
+      run.error = PREFLIGHT_CANCELLED;
+      run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
+      this.log(run, { kind: "error", text: run.error });
+      await this.finish(run, run.local!.before);
+      return { run, already: false };
+    });
+  }
+
+  private async localRun(requestId: string, runId: string): Promise<PreflightRun> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(runId);
+    this.ws.requests.require(requestId);
+    const run = await this.ws.preflight.get(requestId, runId);
+    if (!run) throw new NotFoundError(`${requestId}/${runId}`);
+    if (run.engine !== "local" || !run.local) throw new LocalRunError(`${runId} は手元のエージェントの run ではありません（engine: ${run.engine}）`);
+    return run;
+  }
+
+  /** 同じ要望の Preflight の開始・準備・取り込み・取消を、プロセスを跨いで1つずつにする */
+  private locked<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
+    if (!REQUEST_ID.test(requestId)) throw new NotFoundError(requestId);
+    return withFileLock(join(this.ws.requestsDir, `.preflight-${requestId}.lock`), fn, {
+      timeoutMs: 10_000,
+      busyMessage: `${requestId} の Preflight を別の操作が変えています。少し待ってからやり直してください`,
+    });
+  }
+
+  /**
+   * 同じ要望の Preflight が動いているか。このプロセスで実行中、手元のエージェントの評価を待っている、ほかのプロセス（serve・CLI）で
+   * 実行中（開始から STALE_RUNNING_MS まで。それより古いものは落ちたプロセスのものとして扱う）なら、その理由
+   */
+  private async busy(requestId: string): Promise<string | undefined> {
+    if ([...this.active.values()].some((a) => a.run.requestId === requestId)) return `${requestId} の preflight は実行中です`;
+    const last = this.ws.requests.get(requestId)?.lastPreflight;
+    if (!last) return undefined;
+    const run = await this.ws.preflight.get(requestId, last);
+    if (run?.status !== "running") return undefined;
+    if (run.engine === "local") {
+      return `${requestId} の preflight ${last} は手元のエージェントの評価を待っています（取り込む: p3 preflight ${requestId} --complete --run ${last} / やめる: p3 preflight ${requestId} --cancel --run ${last}）`;
+    }
+    if (Date.now() - Date.parse(run.startedAt) < STALE_RUNNING_MS) return `${requestId} の preflight ${last} が別のプロセスで実行中です`;
+    return undefined;
+  }
+
+  /** 評価対象を固定する（ディスクから読み直す）。同じ要望の Preflight が動いていれば PreflightBusyError */
+  private async fix(requestId: string) {
     // 評価対象はディスクから読み直して固定する（監視していない外部の編集も取り込む）。この後に変わっても、この run は固定した内容で評価する
     await this.ws.requests.reload(requestId);
     const current = this.ws.requests.require(requestId);
@@ -162,28 +297,15 @@ export class PreflightService {
       ...(parent ? { parent: { id: parent.id, hash: inputHash(parent) } } : {}),
       children: kids.map((c) => ({ id: c.id, hash: inputHash(c) })),
     };
-    if ([...this.active.values()].some((a) => a.run.requestId === requestId)) {
-      throw new PreflightBusyError(`${requestId} の preflight は実行中です`);
-    }
-    // 既定のエンジンは始めるたびに個人設定から決める。読めなければ、この run を設定のエラーとして失敗にする
-    // （古い設定や Mock に落とさない。serve とほかの操作は続ける）
-    let engine: PreflightEngine | undefined;
-    if (opts.engine) engine = this.engines[opts.engine];
-    else {
-      try {
-        engine = this.engines[await this.currentDefault()];
-      } catch (e) {
-        const message = `個人設定を読めないので Preflight を始めません（Docker は起動していません）: ${hideConfigPath(e)}`;
-        engine = failing(this.lastDefault, message);
-      }
-    }
-    if (!engine) throw new Error(`engine ${opts.engine} は利用できません`);
-    // 始めるときの設定に決める（この run の間は個人設定が変わっても使い続ける）
-    if (engine.snapshot) {
-      const from = engine;
-      engine = await from.snapshot!().catch((e: Error) => failing(from.name, e.message));
-    }
+    const busy = await this.busy(requestId);
+    if (busy) throw new PreflightBusyError(busy);
+    return { request, input, parent, kids };
+  }
 
+  /** run を作る: 前回の結果とメモ・参照先・添付を固定し、要望を評価中にする（エンジンによらず同じ） */
+  private async open(fixed: Awaited<ReturnType<PreflightService["fix"]>>, engine: PreflightRun["engine"], actor?: string) {
+    const { request, input, parent, kids } = fixed;
+    const requestId = request.id;
     const stamp = nowIso().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const id = `PF-${stamp}-${randomBytes(2).toString("hex")}`;
     // 前回の結果とその後のメモ。開始の時点で選んで固定する（実行中に足されたメモは次回に回る）
@@ -194,10 +316,10 @@ export class PreflightService {
     const run: PreflightRun = {
       id,
       requestId,
-      engine: engine.name,
+      engine,
       status: "running",
       startedAt: nowIso(),
-      startedBy: opts.actor,
+      startedBy: actor,
       previous: carry.previous?.id,
       notes: carry.notes.length ? carry.notes.map((n) => n.id) : undefined,
       log: [],
@@ -209,8 +331,8 @@ export class PreflightService {
     const runDir = this.ws.preflight.runDir(requestId, id);
     // 添付は始める時点のものを run の中にコピーして固定する。途中で変わったら始めない（原本は残るので、そのまま再試行できる）
     try {
-      const fixed = await this.ws.attachments.snapshot(requestId, runDir);
-      if (fixed.length) run.attachments = fixed;
+      const fixedAttachments = await this.ws.attachments.snapshot(requestId, runDir);
+      if (fixedAttachments.length) run.attachments = fixedAttachments;
     } catch (e) {
       await rm(runDir, { recursive: true, force: true });
       throw e;
@@ -240,19 +362,28 @@ export class PreflightService {
     await writeFileAtomic(join(runDir, "request.md"), renderRequestSnapshot(request.id, input));
     // ステータスを動かすのはタスク化する前の要望だけ。進行中・完了の要望で再評価しても状態は変えない
     const before = request.status;
-    const early = before === "draft" || before === "preflight" || before === "reviewed";
-    await this.ws.requests.update(requestId, early ? { status: "preflight", lastPreflight: id } : { lastPreflight: id }, { actor: opts.actor });
+    await this.ws.requests.update(requestId, isEarly(before) ? { status: "preflight", lastPreflight: id } : { lastPreflight: id }, { actor });
     this.ws.emit({ type: "changed", kind: "request", request: requestId });
-
-    const abort = new AbortController();
-    const after = (ok: boolean) => (early ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before);
     const family = {
       ...(parent ? { parent: { id: parent.id, title: parent.title, body: parent.body } } : {}),
       ...(kids.length ? { children: kids.map((c) => ({ id: c.id, title: c.title, status: c.status })) } : {}),
     };
-    const done = this.execute(engine, run, request, runDir, carried, abort.signal, after, refs, family);
-    this.active.set(id, { run, abort, done });
-    return run;
+    return { run, request, runDir, carried, refs, family, before };
+  }
+
+  /** エンジンに渡す仕事（始めたときに固定したもの） */
+  private job(o: Awaited<ReturnType<PreflightService["open"]>>): PreflightJob {
+    return {
+      project: this.ws.project,
+      // 始めたときに固定した要望（実行中に本文が変わっても、request.md・run.input と同じものを渡す）
+      request: o.request,
+      refs: o.refs,
+      dataDir: this.ws.dataDir,
+      runDir: o.runDir,
+      carryover: o.carried,
+      attachments: o.run.attachments ?? [],
+      ...o.family,
+    };
   }
 
   /** 実行中の run の完了を待つ（CLI 用）。完了後の run を返す */
@@ -299,54 +430,15 @@ export class PreflightService {
     return p.startsWith("/workspace") ? p : "（参照先の外）";
   }
 
-  private async execute(
-    engine: PreflightEngine,
-    run: PreflightRun,
-    request: Request,
-    runDir: string,
-    carryover: PreflightJob["carryover"],
-    signal: AbortSignal,
-    after: (ok: boolean) => Request["status"],
-    refs: ResolvedRef[],
-    family: Pick<PreflightJob, "parent" | "children">,
-  ) {
+  private async execute(engine: PreflightEngine, opened: Awaited<ReturnType<PreflightService["open"]>>, signal: AbortSignal) {
+    const { run, runDir, refs } = opened;
     try {
       await this.extractAttachments(run, runDir);
-      const outcome = await engine.run(
-        {
-          project: this.ws.project,
-          // 始めたときに固定した要望（実行中に本文が変わっても、request.md・run.input と同じものを渡す）
-          request,
-          refs,
-          dataDir: this.ws.dataDir,
-          runDir,
-          carryover,
-          attachments: run.attachments ?? [],
-          ...family,
-        },
-        (e) => this.log(run, e),
-        signal,
-      );
+      const outcome = await engine.run(this.job(opened), (e) => this.log(run, e), signal);
       // 書いてよい範囲の外が変更されていないか確かめる
       const stray = outcome.changed.filter((p) => !p.startsWith(`${runDir}/`));
       for (const p of stray) this.log(run, { kind: "error", text: `想定外の変更: ${this.shownPath(p, refs)}（確認して必要なら元に戻してください）` });
-
-      run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
-      run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
-      // 子の案（分割の run）: 確かめて、問題があれば残す（採用しない）
-      const children = await this.ws.preflight.loadChildren(run.requestId, run.id);
-      if (children) {
-        run.children = children;
-        const problems = draftProblems(run, this.ws.tasksOf(run.requestId).list().map((t) => t.id));
-        if (problems.length) run.draftProblems = problems;
-        for (const p of problems) this.log(run, { kind: "error", text: `子の案の問題: ${p}` });
-      }
-      // 画面資料: 確かめて取り込む。不正なものは除いて理由を残す（評価は消さない）。必要な画面イメージが足りなければ go を clarify に
-      run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, [...run.drafts, ...(run.children ?? [])].map((d) => d.key)));
-      for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
-      if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
-      run.ui = withCurrent(run.ui, run);
-      if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
+      await this.ingest(run, runDir, refs);
       run.status = "completed";
     } catch (e) {
       run.status = "failed";
@@ -355,19 +447,44 @@ export class PreflightService {
       run.error = signal.aborted ? PREFLIGHT_CANCELLED : redact((e as Error).message);
       this.log(run, { kind: "error", text: run.error });
     } finally {
-      run.finishedAt = nowIso();
-      await this.ws.preflight.save(run);
-      // 評価中にした要望だけ、終わったら評価済み（失敗なら元）へ戻す。実行中に人や AI が変えたステータス
-      // （進行中に戻した・完了済にしたなど）や、評価中にしていない要望（進行中・対応済など）は上書きしない
-      const status = after(run.status === "completed");
-      if (this.ws.requests.get(run.requestId)?.status === "preflight" && status !== "preflight") {
-        await this.ws.requests.update(run.requestId, { status });
-      }
-      // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
-      this.active.delete(run.id);
-      this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
-      this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
+      await this.finish(run, opened.before);
     }
+  }
+
+  /** run のフォルダの成果物（評価・案・子の案・画面資料）を取り込む。評価が読めなければ例外 */
+  private async ingest(run: PreflightRun, runDir: string, refs: ResolvedRef[]) {
+    run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
+    run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
+    // 子の案（分割の run）: 確かめて、問題があれば残す（採用しない）
+    const children = await this.ws.preflight.loadChildren(run.requestId, run.id);
+    if (children) {
+      run.children = children;
+      const problems = draftProblems(run, this.ws.tasksOf(run.requestId).list().map((t) => t.id));
+      if (problems.length) run.draftProblems = problems;
+      for (const p of problems) this.log(run, { kind: "error", text: `子の案の問題: ${p}` });
+    }
+    // 画面資料: 確かめて取り込む。不正なものは除いて理由を残す（評価は消さない）。必要な画面イメージが足りなければ go を clarify に
+    run.ui = applyUiShortage(run.assessment, await loadUiMaterials(runDir, run.id, [...run.drafts, ...(run.children ?? [])].map((d) => d.key)));
+    for (const p of run.ui.problems) this.log(run, { kind: "error", text: `画面資料を取り込めません: ${p}` });
+    if (run.ui.status === "missing") this.log(run, { kind: "info", text: `画面資料が足りません: ${run.ui.reason}` });
+    run.ui = withCurrent(run.ui, run);
+    if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
+  }
+
+  /** run を終える: 記録を保存し、評価中にした要望を評価済み（失敗なら元）へ戻す */
+  private async finish(run: PreflightRun, before: Request["status"]) {
+    run.finishedAt = nowIso();
+    await this.ws.preflight.save(run);
+    // 評価中にした要望だけ、終わったら評価済み（失敗なら元）へ戻す。実行中に人や AI が変えたステータス
+    // （進行中に戻した・完了済にしたなど）や、評価中にしていない要望（進行中・対応済など）は上書きしない
+    const status = statusAfter(before, run.status === "completed");
+    if (this.ws.requests.get(run.requestId)?.status === "preflight" && status !== "preflight") {
+      await this.ws.requests.update(run.requestId, { status });
+    }
+    // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
+    this.active.delete(run.id);
+    this.ws.emit({ type: "preflight-status", runId: run.id, status: run.status });
+    this.ws.emit({ type: "changed", kind: "request", request: run.requestId });
   }
 
   /**
@@ -801,6 +918,70 @@ export class PreflightService {
       ...(up.warnings.length ? { warnings: up.warnings } : {}),
     };
   }
+}
+
+/** ほかのプロセスで実行中の run を、落ちたものとみなすまでの時間（Codex の1ターンの上限 30 分に余裕を足す） */
+const STALE_RUNNING_MS = 35 * 60_000;
+
+/** ステータスを動かすのはタスク化する前の要望だけ */
+const isEarly = (s: Request["status"]) => s === "draft" || s === "preflight" || s === "reviewed";
+
+/** Preflight を終えたときの要望のステータス（評価中にしたものだけ。成功なら評価済み、失敗なら元） */
+function statusAfter(before: Request["status"], ok: boolean): Request["status"] {
+  return isEarly(before) ? (ok ? "reviewed" : before === "reviewed" ? "reviewed" : "draft") : before;
+}
+
+/** 手元のエージェントの run ではない・もう待っていない（使い方の誤り） */
+export class LocalRunError extends Error {}
+
+/** 手元のエージェントの成果物を取り込めない（何も確定していない。直して同じ run でやり直せる） */
+export class LocalResultError extends Error {
+  constructor(readonly problems: string[]) {
+    super(`成果物を取り込めません（何も確定していません。直してから同じ run でもう一度 --complete）:\n${problems.map((p) => `- ${p}`).join("\n")}`);
+  }
+}
+
+/**
+ * 手元のエージェントの成果物を取り込む前に確かめる（問題の一覧。無ければ空）: 成果物がシンボリックリンクでない（run の外を読ませない）、
+ * 評価が JSON として読める、タスク案と子の案の形（キー・題・依存・作業先・混在）
+ */
+async function localProblems(ws: Workspace, run: PreflightRun, runDir: string): Promise<string[]> {
+  const problems: string[] = [];
+  const link = async (rel: string) => (await lstat(join(runDir, rel)).catch(() => undefined))?.isSymbolicLink();
+  for (const rel of ["assessment.json", "drafts", "children", UI_DIR, `${UI_DIR}/src`, `${UI_DIR}/index.json`]) {
+    if (await link(rel)) problems.push(`${rel} がシンボリックリンクです（run のフォルダの中にファイルとして書いてください）`);
+  }
+  for (const dir of ["drafts", "children"]) {
+    if (await link(dir)) continue;
+    const files = await readdir(join(runDir, dir)).catch(() => [] as string[]);
+    for (const f of files) if (await link(`${dir}/${f}`)) problems.push(`${dir}/${f} がシンボリックリンクです`);
+  }
+  if (problems.length) return problems;
+  const text = await readFile(join(runDir, "assessment.json"), "utf8").catch(() => undefined);
+  if (text === undefined) problems.push("assessment.json がありません");
+  else {
+    try {
+      parseAssessment(text);
+    } catch (e) {
+      problems.push((e as Error).message);
+    }
+  }
+  const drafts = await ws.preflight.loadDrafts(run.requestId, run.id);
+  const children = await ws.preflight.loadChildren(run.requestId, run.id);
+  if (children) problems.push(...draftProblems({ drafts, children }, ws.tasksOf(run.requestId).list().map((t) => t.id)));
+  const keys = drafts.map((d) => d.key);
+  for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) problems.push(`タスク案のキーが重なっています: ${k}`);
+  for (const d of drafts) {
+    if (!/^D\d+$/.test(d.key)) problems.push(`タスク案のキーの形が違います: ${d.key}（D1, D2, ...）`);
+    if (!d.title.trim()) problems.push(`${d.key}: 題がありません`);
+    for (const dep of d.dependsOn) {
+      if (dep === d.key) problems.push(`${d.key}: 自分に依存しています`);
+      else if (!keys.includes(dep)) problems.push(`${d.key}: 依存先の ${dep} というタスク案はありません`);
+    }
+    const repo = repoTargetProblem(d.repo, ws.project);
+    if (repo) problems.push(`${d.key}: ${repo}`);
+  }
+  return problems;
 }
 
 /** 固定した添付の画像を、現状（添付）の画面資料として足す（対象のタスク案は無し） */

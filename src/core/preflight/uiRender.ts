@@ -58,7 +58,7 @@ export async function renderManuscripts(runDir: string, opts: RenderOptions & { 
     byId.set(id, item);
   }
   if (jobs.length) {
-    opts.log({ kind: "info", text: `画面イメージを描画します（${jobs.length} 枚。Codex の後に P3 が描きます）` });
+    opts.log({ kind: "info", text: `画面イメージを描画します（${jobs.length} 枚。評価の後に P3 が描きます）` });
     try {
       const results = await (opts.render ?? renderHtml)(jobs, uiDir, uiDir, opts);
       for (const r of results) {

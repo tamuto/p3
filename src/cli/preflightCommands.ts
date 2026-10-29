@@ -11,7 +11,7 @@ import { StaleInputError, staleMessage } from "../core/preflight/input.ts";
 import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { deps, directTaskHint, indent } from "./output.ts";
-import { PreflightBusyError } from "../core/preflight/service.ts";
+import { LocalResultError, PreflightBusyError } from "../core/preflight/service.ts";
 import { preflightFailed } from "../shared/directTask.ts";
 
 /** Preflight のコマンド（preflight / attach / notes / drafts / accept）。扱わないコマンドは undefined */
@@ -25,6 +25,8 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       const engine = o.engine as "codex" | "mock" | undefined;
       if (o["note-only"] && o.note === undefined) throw new UsageError("--note-only には --note でメモを渡してください");
       if (o["note-only"] && engine) throw new UsageError("--note-only は実行しないので --engine は使えません");
+      const local = localMode(o);
+      if (local) return localPreflight(env, rid, local);
       const note = o.note === undefined ? undefined : await ctx.preflight.addNote(rid, readBody(o.note), actor);
       if (o["note-only"]) return out.result(note, () => `メモ ${note!.id} を書き足しました（次の Preflight に渡します）`);
       if (note && !out.json) process.stderr.write(`メモ ${note.id} を書き足しました\n`);
@@ -169,6 +171,75 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
 
   }
   return undefined;
+}
+
+type LocalMode = "prepare" | "complete" | "cancel";
+
+/** 手元のエージェントの Preflight の操作（--prepare / --complete / --cancel）。どれでもなければ undefined。曖昧な組み合わせは何も書かずに断る */
+function localMode(o: CommandEnv["o"]): LocalMode | undefined {
+  const modes = (["prepare", "complete", "cancel"] as const).filter((m) => o[m]);
+  if (!modes.length) {
+    if (o.run !== undefined) throw new UsageError("p3 preflight の --run は --complete / --cancel と一緒に使います（結果を見るなら p3 drafts <要望> --run <PF-...>）");
+    return undefined;
+  }
+  if (modes.length > 1) throw new UsageError(`--${modes.join(" と --")} は一緒に使えません`);
+  const mode = modes[0];
+  if (o.engine !== undefined) throw new UsageError(`--${mode} は手元のエージェントの評価なので --engine は使えません`);
+  if (o["note-only"]) throw new UsageError(`--${mode} と --note-only は一緒に使えません`);
+  if (mode === "prepare" && o.run !== undefined) throw new UsageError("--prepare は新しい run を作るので --run は使えません");
+  if (mode !== "prepare" && o.run === undefined) throw new UsageError(`--${mode} には --run <PF-...> で run を指定してください（--prepare が返した ID）`);
+  if (mode !== "prepare" && o.note !== undefined) throw new UsageError(`--${mode} に --note は使えません（メモは次の Preflight に渡すものです）`);
+  return mode;
+}
+
+/**
+ * 手元の対話エージェント（Claude Code など）での Preflight。P3 はモデルを呼ばない:
+ *   --prepare  評価対象などを固定し、指示のファイルと成果物のパスを返して終わる（エージェントが指示を読んで成果物を書く）
+ *   --complete 指定した run の成果物を確かめて取り込む（問題があれば何も確定せず、直してやり直せる）
+ *   --cancel   評価を待つ run をやめる
+ */
+async function localPreflight(env: CommandEnv, rid: string, mode: LocalMode): Promise<number> {
+  const { ctx, out, o, actor } = env;
+  if (mode === "prepare") {
+    const note = o.note === undefined ? undefined : await ctx.preflight.addNote(rid, readBody(o.note), actor);
+    const p = await ctx.preflight.prepare(rid, { actor }).catch((e: Error) => {
+      if (note) e.message += `（メモ ${note.id} は保存済みです。書き直さずに p3 preflight ${rid} --prepare でやり直せます）`;
+      throw e;
+    });
+    const next = { complete: `p3 preflight ${rid} --complete --run ${p.run.id}`, cancel: `p3 preflight ${rid} --cancel --run ${p.run.id}` };
+    out.result(
+      { request: rid, run: p.run.id, status: p.run.status, engine: p.run.engine, runDir: p.runDir, instructions: p.instructions, outputs: p.outputs, ...(note ? { note: note.id } : {}), next },
+      () =>
+        [
+          `preflight ${p.run.id} を準備しました（手元のエージェントの評価を待っています）`,
+          `指示: ${p.instructions}`,
+          `書く成果物（run のフォルダ ${p.runDir}/ の中だけ）:`,
+          ...p.outputs.map((x) => `  ${x}`),
+          `書き終えたら: ${next.complete}`,
+          `やめるなら:   ${next.cancel}`,
+        ].join("\n"),
+    );
+    return 0;
+  }
+  const runId = o.run!;
+  if (mode === "cancel") {
+    const r = await ctx.preflight.cancelLocal(rid, runId);
+    out.result({ ...r.run, already: r.already }, () => (r.already ? `${runId} は取り消し済みです` : `${runId} を取り消しました（成果物のファイルは run のフォルダに残します）`));
+    return 0;
+  }
+  try {
+    const r = await ctx.preflight.complete(rid, runId);
+    const inputMatch = await ctx.preflight.inputMatch(rid, r.run);
+    out.result({ ...r.run, already: r.already, inputMatch }, () =>
+      [r.already ? `${runId} は取り込み済みです（何も変えていません）` : `${runId} を取り込みました`, formatRun(ctx, rid, r.run), inputMatchLine(rid, r.run, inputMatch)].join("\n"),
+    );
+    return 0;
+  } catch (e) {
+    if (!(e instanceof LocalResultError) || !o.json) throw e;
+    // --json では問題を機械可読で返す（終了コードは 1。run は評価を待ったまま）
+    out.result({ error: e.message, code: "invalid_result", request: rid, run: runId, problems: e.problems }, () => "");
+    return 1;
+  }
 }
 
 /**

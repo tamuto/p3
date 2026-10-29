@@ -312,6 +312,36 @@ Codex の失敗のどれでも、止まった理由と直し方に並べて、�
 （5. で採否を選ぶ）。案が既にあるタスクを置き換えるとき（`supersedes`）は、同じ要望の中で人が採否とアーカイブを選ぶ
 （後の「タスクの関係と置き換え」）。自動で置き換えたりまとめたりはしない
 
+### 手元の対話エージェントで Preflight する
+
+Codex（ChatGPT の接続と Docker）を使えないときは、手元の対話エージェント（Claude Code など）に評価させられる。P3 はモデルを
+呼ばない（`claude -p` や API も使わない）。評価の指示は Codex と同じ原本から P3 が作り、エージェントはそれを読んで run のフォルダに
+成果物を書き、P3 が通常と同じ取り込みをする。タスク化（accept）は今までどおり人が行う。
+
+```bash
+p3 preflight k7m3x --prepare --json
+# → run（PF-...）・指示のファイル instructions・成果物のパス outputs・次のコマンド next
+#   エージェントが instructions を読み、参照先を調べ、outputs（assessment.json・drafts/ など）を書く
+p3 preflight k7m3x --complete --run PF-... --json    # 確かめて取り込む
+p3 drafts k7m3x                                       # 評価とタスク案（人が読む）
+p3 accept k7m3x                                       # 人がタスク化
+```
+
+- 準備（`--prepare`）は、評価対象・参照先・親子・添付・メモ・前回の結果を通常の Preflight と同じに固定し、要望を「評価中」にする。
+  run は「実行中」（エンジン `local`）のまま、エージェントの評価を待つ。CLI を終えても残り、別のプロセス（画面・別の端末）から
+  見える。待っている間は、同じ要望の Preflight（`--prepare`・通常の実行・画面の実行）を始められない
+- 取り込み（`--complete`）は、その run の成果物だけを確かめる: 評価が JSON として読めるか、タスク案・子の案の形（キー・題・依存・
+  作業先・混在）、成果物がシンボリックリンクでないか。問題があれば何も確定せず理由を出し（`--json` では `code: invalid_result` と
+  `problems`、終了コード 1）、run は待ったまま。直して同じ `--complete` をやり直す。取り込み済みの run にもう一度 `--complete` しても
+  何も変えない（`already: true`）
+- 画面イメージの原稿（`ui/src/*.html`）があるときだけ、取り込みのときに P3 が描画のコンテナ（Docker）で PNG にする。Docker が
+  使えなくても評価は残し、必要な画面イメージが足りなければ go を clarify にする（Codex のときと同じ）。原稿が無ければ Docker は使わない
+- やめるとき・放置した run は `p3 preflight <要望> --cancel --run PF-...`（取り消し。成果物のファイルは残る）。要望の状態は元に戻る。
+  どの run が待っているかは `p3 drafts <要望>`（最新の run）か、始められなかったときのメッセージに出る
+- 評価のあとで要望を変えたら、通常の Preflight と同じくその評価からはタスク化できない（後の「要望の本文を変えたとき」）
+- 手元のエージェントにはコンテナの囲いが無い。参照先を読むだけにすること・書き込みを run の成果物に限ることは指示で伝えるだけで、
+  P3 は止められない（エージェントの権限の設定で守る）。どの程度の利用枠を使うかはエージェント側の契約による
+
 ### 要望の本文を変えたとき
 
 要望のタイトル・本文は、いつでも書き換えられる（画面の「本文を編集」→「本文を保存」、CLI の `request set`）。
@@ -745,6 +775,6 @@ AI にも CLI を使わせる（認証を持たせずに済む）。`p3 init --a
 | `p3 request new\|ls\|show\|set\|archive` | 要望 |
 | `p3 ls` / `p3 show` / `p3 find` | タスクの一覧（`--all` で全要望）/ 詳細（`--brief`）/ 参照・タイトルで探す |
 | `p3 new` / `p3 set` / `p3 move` / `p3 check` / `p3 archive` | タスクを足す / 直す / 状態を変える / 済みにする / アーカイブ |
-| `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`）/ メモ / 評価とタスク案 / タスク化 |
+| `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`。手元のエージェントなら `--prepare` / `--complete` / `--cancel`）/ メモ / 評価とタスク案 / タスク化 |
 | `p3 attach` / `p3 render` | 添付 / 画面イメージの描画 |
 | `p3 chatgpt` / `p3 codex update` / `p3 serve` | ChatGPT の接続 / Codex のイメージ / 画面（`--all-projects` で登録したプロジェクトを跨ぐ） |
