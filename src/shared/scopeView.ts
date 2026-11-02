@@ -21,14 +21,15 @@ export const evidenceWhere = (e: Evidence) =>
 export const historyLabel = (h: RefScope["history"]) =>
   !h ? "" : h.status === "ok" ? "git の履歴あり" : h.status === "shallow" ? `git の履歴は途中まで（${h.reason ?? "浅い clone"}）` : `git の履歴なし（${h.reason ?? "不明"}）`;
 
-export function scopeLines(scope: RefScope[] | undefined): string[] {
+/** local: 手元のエージェントの run（コンテナのパスではなく、このマシンのパスで読んだ。共有の記録にはパスを出さない） */
+export function scopeLines(scope: RefScope[] | undefined, opts: { local?: boolean } = {}): string[] {
   if (!scope) return ["調べた範囲: 記録なし（以前の評価）"];
   if (!scope.length) return ["調べた範囲: 参照先なし"];
   return [
     "調べた範囲:",
     ...scope.map(
       (s) =>
-        `  ${s.status === "ok" ? "✓" : "✕"} ${s.name}${s.role ? `（${s.role}）` : ""}  ${s.status === "ok" ? `/workspace/${s.mount}` : (s.reason ?? SCOPE_STATUS_LABEL[s.status])}${s.history ? `  ${historyLabel(s.history)}` : ""}`,
+        `  ${s.status === "ok" ? "✓" : "✕"} ${s.name}${s.role ? `（${s.role}）` : ""}  ${s.status === "ok" ? (opts.local ? "このマシンのパスで読める" : `/workspace/${s.mount}`) : (s.reason ?? SCOPE_STATUS_LABEL[s.status])}${s.history ? `  ${historyLabel(s.history)}` : ""}`,
     ),
   ];
 }

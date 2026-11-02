@@ -364,7 +364,9 @@ export interface UiMaterials {
 export interface PreflightRun {
   id: string;
   requestId: string;
-  engine: "codex" | "mock";
+  /** 評価したもの。local: 手元の対話エージェント（p3 preflight --prepare で準備し、--complete で取り込む。P3 はモデルを呼ばない） */
+  engine: "codex" | "mock" | "local";
+  /** running の間は、local ならエージェントの評価を待っている（プロセスを跨いで続く） */
   status: PreflightStatus;
   startedAt: string;
   finishedAt?: string;
@@ -417,6 +419,8 @@ export interface PreflightRun {
    * 無ければ以前の run（run の request.md から読む）
    */
   input?: PreflightInput;
+  /** 手元のエージェントの run（engine: local）: 準備したときの要望のステータス（取り込み・取消で戻す）と、取り込めなかった回数 */
+  local?: { before: RequestStatus; rejected?: number };
 }
 
 /** Preflight の評価対象（要望のタイトルと本文）。比べるのはこの2つだけ（タグ・期限・ステータスは比べない） */

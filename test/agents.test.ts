@@ -46,6 +46,27 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     expect(AGENTS_SNIPPET).toMatch(/Preflight（\\?`preflight\\?`）とタスク化（\\?`accept\\?`）は人が行う（AI は実行しない/);
   });
 
+  it("Preflight は明示の依頼があったときだけ手元で評価し、書くのは run の成果物だけ、タスク化と着手はしないと、どちらも書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet]) {
+      expect(text).toMatch(/人がチャットで対象の要望の Preflight を明示的に頼んだときだけ/);
+      expect(text).toContain("--prepare --json");
+      expect(text).toContain("--complete --run <run> --json");
+      expect(text).toMatch(/指示のファイル（`instructions`）|`instructions`（指示のファイル）/);
+      expect(text).toMatch(/自分から始めない/);
+      expect(text).toMatch(/run の成果物/);
+      expect(text).toMatch(/`accept`(?: と|）・)着手はしない|タスク化（`accept`）・タスクの着手はしない/);
+      expect(text).not.toContain("claude -p --");
+    }
+    // 直接編集の禁止の例外は、指定の run の成果物だけ（管理情報・指示のファイルは書かない）
+    expect(skill).toMatch(/「データのフォルダを直接編集しない」の唯一の例外で、\n\s*`run\.json`・`instructions\.md`・ほかの要望やタスクのファイルは書かない/);
+    expect(skill).toContain("`assessment.json`・`drafts/`・`children/`・`ui/index.json`・`ui/src/`");
+    expect(skill).toContain("自分の判断で `--cancel` しない");
+    // 長い指示をスキルに写さない（P3 が作る指示のファイルを読む）
+    expect(skill).not.toContain("ASSESSMENT_SPEC");
+    expect(skill).not.toContain("\"verdict\"");
+  });
+
   it("via が cwd でなければ操作を止めて確かめることを、どちらも書く", () => {
     const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
     for (const text of [skill, snippet]) {

@@ -51,7 +51,7 @@ export async function openProject(
   const preflight = new PreflightService(ws, engines, {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
-  });
+  }, { pathMap: async () => (await source.get()).codex.pathMap });
   // 要約の生成も Preflight と同じ接続と既定のエンジン（preflight.engine）を使う
   const releaseGenerator = new ReleaseGenerator(ws, { codex, mock: new MockSummarizer() }, { engine: async () => (await source.get()).preflight.engine });
   return { ws, preflight, releaseGenerator, chatgpt, projectName: opts.projectName };
