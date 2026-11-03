@@ -29,12 +29,16 @@ function fakeDocker(opts: { createdAgoMs?: number; version?: string; scenario?: 
 
 /** 偽の docker の環境変数をこのプロセスに置いて動かす（ライブラリは子プロセスに環境を引き継ぐ） */
 async function withEnv<T>(env: Record<string, string>, f: () => Promise<T>): Promise<T> {
-  const keep = { ...process.env };
+  // process.env をまるごと置き換えない（Node 26 では置き換えた後のオブジェクトが子プロセスに渡らない）。値を1つずつ戻す
+  const keep = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
   Object.assign(process.env, env);
   try {
     return await f();
   } finally {
-    process.env = keep;
+    for (const [k, v] of Object.entries(keep)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 }
 
@@ -80,6 +84,63 @@ describe("Codex のイメージ", () => {
     expect(await fail({ scenario: "nodaemon" })).toMatchObject({ step: "daemon", detail: expect.stringContaining("Cannot connect") });
     expect(await fail({ createdAgoMs: 0, scenario: "buildfail" })).toMatchObject({ step: "build", message: expect.stringContaining("ネットワーク") });
     expect(await fail({ createdAgoMs: 0, scenario: "versionfail" })).toMatchObject({ step: "version" });
+  });
+});
+
+describe("Codex のイメージの待ち時間の上限と後片付け（261103-gtfcg/T003）", () => {
+  const short = { inspectMs: 1_000, versionMs: 600, buildMs: 600, removeMs: 600 };
+  const containers = (d: ReturnType<typeof fakeDocker>) => {
+    const f = `${d.env.FAKE_DOCKER_STATE}.containers.json`;
+    return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as string[]) : [];
+  };
+
+  it("版を出した後も終わらない版の確認は、上限で止めて、そのコンテナだけを消す（ほかのコンテナには触れない）", async () => {
+    const d = fakeDocker({ createdAgoMs: 60_000, scenario: "versionhang" });
+    writeFileSync(`${d.env.FAKE_DOCKER_STATE}.containers.json`, JSON.stringify(["someone-else"]));
+    const cleanup: string[] = [];
+    const t0 = Date.now();
+    const e = await withEnv(d.env, () => ensureCodexImage({ docker: d.docker, limits: short, onCleanup: (t) => cleanup.push(t) })).catch((x: Error) => x);
+    expect(Date.now() - t0).toBeLessThan(8_000);
+    expect(e).toMatchObject({ reason: "timeout", message: expect.stringContaining("Codex の版の確認が 1 秒で終わらないので止めました") });
+    const runCall = d.calls().find((a) => a[0] === "run")!;
+    const name = runCall[runCall.indexOf("--name") + 1];
+    expect(name).toMatch(/^p3-codex-version-[0-9a-f]{6}$/);
+    expect(runCall).toEqual(expect.arrayContaining(["--label", "infodb.p3=codex-version", "--rm"]));
+    expect(d.calls().filter((a) => a[0] === "rm")).toEqual([["rm", "-f", name]]);
+    expect(containers(d)).toEqual(["someone-else"]);
+    expect(cleanup.join("\n")).toContain(`コンテナ ${name} が残っていたので消しました`);
+  });
+
+  it("終わったコンテナ（--rm で消えた）なら何も言わない", async () => {
+    const d = fakeDocker({ createdAgoMs: 60_000 });
+    const cleanup: string[] = [];
+    expect(await withEnv(d.env, () => ensureCodexImage({ docker: d.docker, limits: short, onCleanup: (t) => cleanup.push(t) }))).toBe("codex-cli 1.0.0");
+    expect(cleanup).toEqual([]);
+  });
+
+  it("イメージの確認・ビルドが終わらなければ上限で止める。確認の時間切れを「イメージが無い」とみなして作り直さない", async () => {
+    const inspect = fakeDocker({ createdAgoMs: 60_000, scenario: "inspecthang" });
+    expect(await withEnv(inspect.env, () => ensureCodexImage({ docker: inspect.docker, limits: short })).catch((x: Error) => x)).toMatchObject({ reason: "timeout", stage: "イメージの確認" });
+    expect(inspect.builds()).toEqual([]);
+    const build = fakeDocker({ createdAgoMs: 2 * DAY, scenario: "buildhang" });
+    expect(await withEnv(build.env, () => ensureCodexImage({ docker: build.docker, limits: short })).catch((x: Error) => x)).toMatchObject({ reason: "timeout", stage: "Codex のイメージのビルド" });
+  });
+
+  it("取消（Preflight の中止）でビルドの途中でも戻る", async () => {
+    const d = fakeDocker({ createdAgoMs: 2 * DAY, scenario: "buildhang" });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 200);
+    const t0 = Date.now();
+    const e = await withEnv(d.env, () => ensureCodexImage({ docker: d.docker, signal: ac.signal, limits: { buildMs: 60_000 } })).catch((x: Error) => x);
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    expect(e).toMatchObject({ reason: "aborted" });
+  });
+
+  it("消すこと自体が終わらなくても上限で戻り、残っているかもしれないことと消し方を知らせる", async () => {
+    const d = fakeDocker({ createdAgoMs: 60_000, scenario: "versionhang,rmhang" });
+    const cleanup: string[] = [];
+    await withEnv(d.env, () => ensureCodexImage({ docker: d.docker, limits: short, onCleanup: (t) => cleanup.push(t) })).catch(() => undefined);
+    expect(cleanup.join("\n")).toMatch(/コンテナ p3-codex-version-\w+ を消せませんでした（残っているかもしれません。docker ps -a --filter label=infodb\.p3 で確かめ、docker rm -f p3-codex-version-\w+ で消してください）/);
   });
 });
 

@@ -184,7 +184,33 @@ function RequestPanel({
     }
   }
 
-  const running = run?.status === "running";
+  // 再実行・本文の編集・メモは、選んでいる run ではなく要望の最新の run（lastPreflight）が動いているかで決める
+  // （古い履歴を見ていても、最新が動いていれば始めない。古い running の run を見ていても、最新が終わっていれば始められる）
+  const latestId = latest?.id ?? request.lastPreflight;
+  const latestStatus = latest?.id === latestId && latest?.status ? latest.status : run?.id === latestId ? run?.status : runs.find((r) => r.id === latestId)?.status;
+  const running = latestStatus === "running";
+  // 選んでいる run が running なら中断できる（最新でなくても）
+  const selectedRunning = run?.status === "running";
+  const [cancelNote, setCancelNote] = useState<{ runId: string; text: string } | null>(null);
+  const cancelRun = (acknowledgeStopped = false) => {
+    if (!run) return;
+    if (
+      acknowledgeStopped &&
+      !window.confirm(`${run.id} が止まっていることを確かめましたか？\n中断の記録を残すだけで、プロセスやコンテナは止めません（動いていれば止めてから操作してください）。`)
+    ) {
+      return;
+    }
+    const id = run.id;
+    runAction(
+      async () => {
+        const r = await api.cancelRun(request.id, id, { acknowledgeStopped });
+        setCancelNote(r.state === "requested" ? { runId: id, text: r.message } : null);
+        loadRun(id);
+        data.reload();
+      },
+      (m) => setError(`中止できませんでした: ${m}`),
+    );
+  };
   // メモ欄の入力は要望のページにいる間ずっと持つ（run を替えたり実行を始めたりしても消えない）
   const [draft, setDraft] = useState("");
   useUnsaved(!!draft.trim());
@@ -259,10 +285,25 @@ function RequestPanel({
             {engine.ok ? "●" : "✕"} {engine.detail}
           </span>
         )}
-        {running && run && (
-          <Button variant="ghost" onClick={() => runAction(() => api.cancelRun(request.id, run.id), (m) => setError(`中止できませんでした: ${m}`))}>
-            中止
+        {selectedRunning && run && (
+          <Button variant="ghost" onClick={() => cancelRun()}>
+            {run.cancelRequested ? "もう一度中止を頼む" : "中止"}
           </Button>
+        )}
+        {selectedRunning && run?.liveness?.state === "unknown" && (
+          <Button variant="ghost" onClick={() => cancelRun(true)}>
+            止まっていることを確かめて中断にする
+          </Button>
+        )}
+        {selectedRunning && run && (run.cancelRequested || cancelNote?.runId === run.id) && (
+          <p role="status" className="w-full text-sm text-amber-700 dark:text-amber-400">
+            {cancelNote?.runId === run.id ? cancelNote.text : `中断を頼んでいます（${run.cancelRequested!.at}）。実行しているプロセスが止めるまで実行中のままです`}
+          </p>
+        )}
+        {selectedRunning && run?.liveness && (run.liveness.state === "unknown" || run.liveness.state === "dead") && (
+          <p role="status" className="w-full text-sm text-slate-600 dark:text-slate-400">
+            この run を実行しているプロセスを確かめられません（{run.liveness.reason}）
+          </p>
         )}
         {runs.length > 0 && (
           <select

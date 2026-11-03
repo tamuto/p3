@@ -59,6 +59,8 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
     ctx.ws.watch();
+    // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
+    void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));
     app.route("/api", singleProjectApp(ctx));
   }
   if (opts.static) {

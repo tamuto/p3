@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, rename, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import type { P3Context } from "../src/core/context.ts";
 import { fixedSettings, resolveMachineSettings } from "../src/core/machineSettings.ts";
 import type { EngineOutcome, PreflightEngine } from "../src/core/preflight/engine.ts";
 import { MockEngine } from "../src/core/preflight/mockEngine.ts";
+import { currentOwner } from "../src/core/preflight/owner.ts";
 import { ProjectRegistry, RegistryError } from "../src/core/projectRegistry.ts";
 import type { Summarizer } from "../src/core/releaseNotes/generate.ts";
 import { checkDataDir } from "../src/core/store/locate.ts";
@@ -292,6 +293,36 @@ describe("プロジェクトを跨ぐ API", () => {
     expect(await s.registry.close({ timeoutMs: 2000 })).toEqual({ pending: 0 });
     expect(await ctx.ws.preflight.get(rid, run.id)).toMatchObject({ status: "failed", error: "中止しました" });
     await expect(s.registry.open("alpha")).rejects.toMatchObject({ code: "unavailable" });
+  });
+});
+
+describe("ProjectRegistry: 落ちたプロセスが残した Preflight", () => {
+  it.runIf(process.platform === "linux")("開いたときに、実行していたプロセスが終わっている run を中断にし、要望を評価中から戻す", async () => {
+    const s = await setup(["alpha"]);
+    // 開く前に、終わったプロセスが残した running の run を作る
+    const pre = await openTestProject(s.dirs.alpha);
+    const rid = (await newRequest(pre, { title: "残った", status: "draft", body: "- x\n" })).id;
+    const run = await pre.preflight.start(rid);
+    await pre.preflight.wait(rid, run.id);
+    const gone = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+    const file = join(s.dirs.alpha, "requests", rid, "preflight", run.id, "run.json");
+    const saved = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...saved, status: "running", finishedAt: undefined, before: "draft", owner: { ...currentOwner()!, pid: Number(gone.stdout), start: "1" } }));
+    await pre.ws.requests.update(rid, { status: "preflight" });
+    const logs: string[] = [];
+    const prev = console.error;
+    console.error = (m: string) => void logs.push(m);
+    try {
+      const ctx = await s.registry.open("alpha");
+      for (let i = 0; i < 100 && (await ctx.ws.preflight.get(rid, run.id))?.status === "running"; i++) await new Promise((r) => setTimeout(r, 20));
+      expect(await ctx.ws.preflight.get(rid, run.id)).toMatchObject({ status: "failed", interrupted: { reason: expect.any(String) } });
+      await ctx.ws.requests.reload(rid);
+      expect(ctx.ws.requests.get(rid)?.status).toBe("draft");
+      expect((await s.at("alpha")("GET", `/requests/${rid}`)).status).toBe(200);
+    } finally {
+      console.error = prev;
+    }
+    expect(logs.join("\n")).toContain(`中断にしました: ${rid}/${run.id}`);
   });
 });
 

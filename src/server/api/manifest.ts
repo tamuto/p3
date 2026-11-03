@@ -90,7 +90,18 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/requests/:rid/preflight[/:run]",
-      desc: "Preflight の run。各 run に inputMatch {status: same|changed|unknown, changed?: [title|body], reason?}（評価対象と今の要望が同じか。タグ・期限・ステータスは比べない）",
+      desc:
+        "Preflight の run。各 run に inputMatch {status: same|changed|unknown, changed?: [title|body], reason?}（評価対象と今の要望が同じか。タグ・期限・ステータスは比べない）。" +
+        "running の run には liveness {state: alive|waiting|dead|unknown, reason?}（実行しているプロセスの今の状態）と、頼まれていれば cancelRequested {at, by?}。" +
+        "中断した run には interrupted {reason, at, acknowledgedBy?}",
+    },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/preflight/:run/cancel",
+      desc:
+        "run を中断する {acknowledgeStopped?: boolean}（最新でなくてもよい）→ {state: cancelled|requested|already, message, run, acknowledgeable?}。" +
+        "requested は中断を頼んだ（まだ running。実行しているプロセスが止める）。acknowledgeable は動いているか確かめられない run で、" +
+        "止まっていることを人が確かめたら acknowledgeStopped: true で中断にできる。無い run は 404、完了した run・動いている run への確認は 409（code: completed|alive）",
     },
     {
       method: "PATCH",

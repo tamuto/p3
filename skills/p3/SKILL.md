@@ -73,7 +73,8 @@ P3_ACTOR=ai:<エージェント名> p3 <コマンド> [引数] --json
 1. `whoami --json` で対象のプロジェクトと担当を確かめ（`via` の扱いは上と同じ）、`request show <要望ID> --brief --json` で頼まれた要望かを確かめる
 2. 準備: `preflight <要望ID> --prepare --json`（変更なので `P3_ACTOR` を付ける）。評価対象を固定し、`instructions`（指示のファイル）・
    `outputs`（書く成果物）・`run`（PF-...）・`next`（次のコマンド）を返す。始められない（同じ要望の Preflight が待っている・実行中）
-   ときは止めて人に伝える（自分の判断で `--cancel` しない）
+   ときは止めて人に伝える（自分の判断で `--cancel` しない。`--acknowledge-stopped` は、人が run の止まっていることを確かめて
+   中断にするよう頼んだときだけ）
 3. `instructions` のファイルを最後まで読み、その「制約」に従って評価する。指示の長い文はスキルに写さない（P3 が要望ごとに作る）。
    参照先は読むだけ（変更・git の書き込み・アプリの起動をしない）。書き込むのは `outputs` に挙がった、その run の成果物だけ
    （`assessment.json`・`drafts/`・`children/`・`ui/index.json`・`ui/src/`）。これが「データのフォルダを直接編集しない」の唯一の例外で、

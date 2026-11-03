@@ -92,7 +92,10 @@ Preflight
   preflight [<要望>] --prepare  手元の対話エージェント（Claude Code など）で評価する準備。モデルは呼ばない。評価対象を固定し、
                                指示のファイル（instructions.md）と成果物のパス・run の ID を返して終わる（--note も使える）
   preflight [<要望>] --complete --run PF-...  エージェントが書いた成果物を確かめて取り込む（問題があれば何も確定せず、直してやり直せる）
-  preflight [<要望>] --cancel --run PF-...    評価を待つ run をやめる（待っている間は同じ要望の Preflight を始められない）
+  preflight [<要望>] --cancel --run PF-...    run を中断する（最新でなくてもよい。手元のエージェントの run は評価を待つのをやめる。
+                               Codex / Mock の run は、動いているプロセスに中断を頼み、止まるまで少し待つ。止まらなければ requested）
+                               --acknowledge-stopped  動いているか確かめられない run（以前の版・別の環境）を、止まっていることを確かめて中断にする
+                               （記録だけ。プロセスやコンテナは止めない）
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
   attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）
   attach add <ファイル>           添付を足す  --description 説明 --source 出典。次の Preflight を始めるときに run に固定して渡す

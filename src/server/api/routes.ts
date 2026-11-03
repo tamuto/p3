@@ -21,7 +21,7 @@ import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
-import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
+import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -351,9 +351,18 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const text = await preflight.fixedExtract(rid(c), c.req.param("run"), c.req.param("aid"));
     return c.body(text, 200, { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'" });
   });
-  app.post("/requests/:rid/preflight/:run/cancel", (c) => {
-    preflight.cancel(c.req.param("run"));
-    return c.json({ ok: true });
+  // 中断（最新でなくてもよい）。state: cancelled（中断した）/ requested（中断を頼んだ。まだ running）/ already（既に終わっている）。
+  // acknowledgeStopped: 動いているか確かめられない run を、人が止まっていることを確かめて中断にする。完了した run・動いている run への
+  // 確認は 409（code）。無い run は 404
+  app.post("/requests/:rid/preflight/:run/cancel", async (c) => {
+    const body = z.object({ acknowledgeStopped: z.boolean().optional() }).parse(await c.req.json().catch(() => ({})));
+    try {
+      const r = await preflight.cancelRun(rid(c), c.req.param("run"), { acknowledgeStopped: body.acknowledgeStopped, actor: actorOf(c) });
+      return c.json({ state: r.state, message: r.message, run: r.run, ...(r.acknowledgeable ? { acknowledgeable: true } : {}) });
+    } catch (e) {
+      if (e instanceof CancelRefusedError) return c.json({ error: e.message, code: e.code }, 409);
+      throw e;
+    }
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
     // expectedTitle: 編集を始めたときの題（制御用。案には書かない）。今の題と違えば 409 で書かない

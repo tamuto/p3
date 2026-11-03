@@ -16,5 +16,5 @@ export const LATER_PREFLIGHT_NOTE =
 /** 取り消した Preflight の記録のエラー（失敗とは扱わない） */
 export const PREFLIGHT_CANCELLED = "中止しました";
 
-/** Preflight が失敗した（取消は含まない）。直接作る道を案内する */
-export const preflightFailed = (run: Pick<PreflightRun, "status" | "error">) => run.status === "failed" && run.error !== PREFLIGHT_CANCELLED;
+/** Preflight が失敗した（取消と、落ちたプロセスが残した run の中断は含まない。中断は始め直せばよい）。直接作る道を案内する */
+export const preflightFailed = (run: Pick<PreflightRun, "status" | "error" | "interrupted">) => run.status === "failed" && run.error !== PREFLIGHT_CANCELLED && !run.interrupted;

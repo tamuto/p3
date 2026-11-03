@@ -122,7 +122,8 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       // タスク化の前なら、置き換えられる既存タスクも見せる（分割の run には無い）
       const supersedes = run.materialized?.length || run.children ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
       const inputMatch = await ctx.preflight.inputMatch(rid, run);
-      return out.result({ ...run, inputMatch, supersedes }, () =>
+      const next = runNext(rid, run);
+      return out.result({ ...run, inputMatch, supersedes, ...(next ? { next } : {}) }, () =>
         [
           formatRun(ctx, rid, run),
           inputMatchLine(rid, run, inputMatch),
@@ -178,16 +179,19 @@ type LocalMode = "prepare" | "complete" | "cancel";
 /** 手元のエージェントの Preflight の操作（--prepare / --complete / --cancel）。どれでもなければ undefined。曖昧な組み合わせは何も書かずに断る */
 function localMode(o: CommandEnv["o"]): LocalMode | undefined {
   const modes = (["prepare", "complete", "cancel"] as const).filter((m) => o[m]);
+  if (o["acknowledge-stopped"] && !o.cancel) throw new UsageError("--acknowledge-stopped は --cancel --run <PF-...> と一緒に使います（止まっていることを確かめた run を中断にする）");
   if (!modes.length) {
     if (o.run !== undefined) throw new UsageError("p3 preflight の --run は --complete / --cancel と一緒に使います（結果を見るなら p3 drafts <要望> --run <PF-...>）");
     return undefined;
   }
   if (modes.length > 1) throw new UsageError(`--${modes.join(" と --")} は一緒に使えません`);
   const mode = modes[0];
-  if (o.engine !== undefined) throw new UsageError(`--${mode} は手元のエージェントの評価なので --engine は使えません`);
+  if (o.engine !== undefined) throw new UsageError(mode === "cancel" ? "--cancel に --engine は使えません（指定した run を中断します）" : `--${mode} は手元のエージェントの評価なので --engine は使えません`);
   if (o["note-only"]) throw new UsageError(`--${mode} と --note-only は一緒に使えません`);
   if (mode === "prepare" && o.run !== undefined) throw new UsageError("--prepare は新しい run を作るので --run は使えません");
-  if (mode !== "prepare" && o.run === undefined) throw new UsageError(`--${mode} には --run <PF-...> で run を指定してください（--prepare が返した ID）`);
+  if (mode !== "prepare" && o.run === undefined) {
+    throw new UsageError(`--${mode} には --run <PF-...> で run を指定してください（${mode === "cancel" ? "p3 drafts <要望> の最新の run か、--prepare が返した ID" : "--prepare が返した ID"}）`);
+  }
   if (mode !== "prepare" && o.note !== undefined) throw new UsageError(`--${mode} に --note は使えません（メモは次の Preflight に渡すものです）`);
   return mode;
 }
@@ -196,7 +200,7 @@ function localMode(o: CommandEnv["o"]): LocalMode | undefined {
  * 手元の対話エージェント（Claude Code など）での Preflight。P3 はモデルを呼ばない:
  *   --prepare  評価対象などを固定し、指示のファイルと成果物のパスを返して終わる（エージェントが指示を読んで成果物を書く）
  *   --complete 指定した run の成果物を確かめて取り込む（問題があれば何も確定せず、直してやり直せる）
- *   --cancel   評価を待つ run をやめる
+ *   --cancel   指定した run を中断する（手元のエージェントの run も Codex / Mock の run も。cancelRun）
  */
 async function localPreflight(env: CommandEnv, rid: string, mode: LocalMode): Promise<number> {
   const { ctx, out, o, actor } = env;
@@ -223,8 +227,9 @@ async function localPreflight(env: CommandEnv, rid: string, mode: LocalMode): Pr
   }
   const runId = o.run!;
   if (mode === "cancel") {
-    const r = await ctx.preflight.cancelLocal(rid, runId);
-    out.result({ ...r.run, already: r.already }, () => (r.already ? `${runId} は取り消し済みです` : `${runId} を取り消しました（成果物のファイルは run のフォルダに残します）`));
+    // state: cancelled（中断した）/ requested（中断を頼んだ。まだ running。止まったら p3 drafts に出る）/ already（既に終わっている）
+    const r = await ctx.preflight.cancelRun(rid, runId, { acknowledgeStopped: o["acknowledge-stopped"], actor });
+    out.result({ ...r.run, state: r.state, message: r.message, already: r.state === "already" }, () => r.message);
     return 0;
   }
   try {
@@ -278,6 +283,16 @@ async function adoptChildren(ctx: P3Context, out: CommandEnv["out"], rid: string
   return r.failed.length ? 1 : 0;
 }
 
+const NEXT_LABEL = { rerun: "始め直す", cancel: "中断する", acknowledge: "止まっていると確かめたら" } as const;
+
+/** run の状態から次に使うコマンド（drafts の表示と --json の next）。完了した run は無し */
+function runNext(rid: string, run: PreflightRun): Partial<Record<keyof typeof NEXT_LABEL, string>> | undefined {
+  if (run.status === "failed") return { rerun: `p3 preflight ${rid}` };
+  if (run.status !== "running" || run.engine === "local") return undefined;
+  const cancel = `p3 preflight ${rid} --cancel --run ${run.id}`;
+  return run.cancelRequested ? { acknowledge: `${cancel} --acknowledge-stopped` } : { cancel };
+}
+
 /** 評価対象と今の要望の比較（drafts の表示） */
 function inputMatchLine(rid: string, run: PreflightRun, m: InputMatch): string {
   if (m.status === "same") return "";
@@ -300,6 +315,12 @@ function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof p
     lines.push(`引き継ぎ: ${run.previous ? `前回 ${run.previous}` : "前回なし"}${run.notes?.length ? ` / メモ ${run.notes.join(", ")}` : ""}`);
   }
   if (run.error) lines.push(`エラー: ${run.error}`);
+  if (run.interrupted) {
+    lines.push(`中断: ${run.interrupted.at}  ${run.interrupted.acknowledgedBy ? `止まっていることを ${run.interrupted.acknowledgedBy} が確かめた` : "実行していたプロセスが終わっていた"}（${run.interrupted.reason}）`);
+  }
+  if (run.cancelRequested) lines.push(`中断を頼んでいます: ${run.cancelRequested.at}${run.cancelRequested.by ? `（${run.cancelRequested.by}）` : ""}。実行しているプロセスが止めるまで running のままです`);
+  const next = runNext(rid, run);
+  if (next) lines.push(...Object.entries(next).map(([k, v]) => `${NEXT_LABEL[k as keyof typeof NEXT_LABEL]}: ${v}`));
   const a = run.assessment;
   if (a) {
     lines.push("", `判定: ${a.verdict}  妥当性 ${a.validity.score} / 実現可能性 ${a.feasibility.score}`, indent(a.summary));

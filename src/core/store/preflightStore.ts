@@ -10,6 +10,9 @@ import { writeFileAtomic } from "./fsutil.ts";
  *   drafts/D1.md ...  細分化されたタスク案（1案 = 1ファイル。人や AI が直接編集できる）
  *   children/C1.md ... 子の要望の案（分割の run。タスク案とは一緒に置かない）
  */
+/** 中断の依頼のファイル（run のフォルダの中） */
+export const CANCEL_REQUEST_FILE = "cancel-request.json";
+
 export class PreflightStore {
   /** requestsDir: .p3/requests */
   constructor(readonly requestsDir: string) {}
@@ -19,7 +22,8 @@ export class PreflightStore {
   }
 
   async save(run: PreflightRun): Promise<void> {
-    const { drafts, children, ...meta } = run;
+    // 中断の依頼は別のファイル（cancel-request.json。頼む側と実行する側が同じファイルを書き合わないように）
+    const { drafts, children, cancelRequested, ...meta } = run;
     await writeFileAtomic(join(this.runDir(run.requestId, run.id), "run.json"), JSON.stringify(meta, null, 2) + "\n");
   }
 
@@ -89,7 +93,8 @@ export class PreflightStore {
     try {
       const meta = JSON.parse(await readFile(join(this.runDir(requestId, runId), "run.json"), "utf8"));
       const children = await this.loadChildren(requestId, runId);
-      return { ...meta, drafts: await this.loadDrafts(requestId, runId), ...(children ? { children } : {}) };
+      const cancelRequested = meta.status === "running" ? await this.cancelRequest(requestId, runId) : undefined;
+      return { ...meta, drafts: await this.loadDrafts(requestId, runId), ...(children ? { children } : {}), ...(cancelRequested ? { cancelRequested } : {}) };
     } catch {
       return undefined;
     }
@@ -118,6 +123,21 @@ export class PreflightStore {
     } catch {
       return { id: runId, state: "broken" };
     }
+  }
+
+  /** 中断の依頼（無ければ undefined） */
+  async cancelRequest(requestId: string, runId: string): Promise<{ at: string; by?: string } | undefined> {
+    try {
+      const v = JSON.parse(await readFile(join(this.runDir(requestId, runId), CANCEL_REQUEST_FILE), "utf8")) as { at?: unknown; by?: unknown };
+      return { at: String(v.at ?? ""), ...(typeof v.by === "string" ? { by: v.by } : {}) };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** 中断を頼む（実行しているプロセスが見て止める） */
+  async requestCancel(requestId: string, runId: string, by?: string): Promise<void> {
+    await writeFileAtomic(join(this.runDir(requestId, runId), CANCEL_REQUEST_FILE), JSON.stringify({ at: new Date().toISOString(), ...(by ? { by } : {}) }) + "\n");
   }
 
   async list(requestId: string): Promise<PreflightRun[]> {
