@@ -1,4 +1,4 @@
-import { readdir, readFile, watch } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
@@ -7,6 +7,7 @@ import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type Prepa
 import { newRequestId } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
 import { AttachmentStore } from "./attachments.ts";
+import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";
 import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
@@ -70,7 +71,8 @@ export class Workspace {
   readonly releaseNotes: ReleaseNoteStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
-  private abort = new AbortController();
+  private watcher: DataWatcher | undefined;
+  private closed = false;
 
   /** localRepos: 個人設定の参照先の名前 → このマシンのパス（repoRefs.ts） */
   constructor(
@@ -272,28 +274,16 @@ export class Workspace {
   }
 
   /**
-   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI・Codex・git pull）を取り込む（補助）。
+   * データディレクトリを監視し、外部からのファイル編集（エディタ・AI・Codex・git pull）を取り込む（補助。dataWatcher.ts）。
    * NFS などでは通知が届かず、Node の再帰的な監視は置き換えて保存したファイルの2回目以降の変更を通知しないことがある。
-   * 正しさはこれに頼らず、画面の「再読み込み」（reloadAll）で保証する。
+   * 正しさはこれに頼らず、画面の「再読み込み」（reloadAll）で保証する。監視が壊れても serve は止めない（ログに残し、立て直す）。
+   * 既に監視していれば何もしない。close の後は始めない
    */
-  async watch(): Promise<void> {
-    const pending = new Map<string, NodeJS.Timeout>();
-    try {
-      for await (const ev of watch(this.dataDir, { recursive: true, signal: this.abort.signal })) {
-        const f = ev.filename;
-        if (!f || f.endsWith(".tmp") || f.includes(".archive")) continue;
-        clearTimeout(pending.get(f));
-        pending.set(
-          f,
-          setTimeout(() => {
-            pending.delete(f);
-            void this.onFileChanged(f);
-          }, 80),
-        );
-      }
-    } catch (e) {
-      if ((e as Error).name !== "AbortError") console.error("[watch]", e);
-    }
+  watch(options?: DataWatcherOptions): DataWatcher | undefined {
+    if (this.closed) return undefined;
+    this.watcher ??= new DataWatcher(this.dataDir, (rel) => this.onFileChanged(rel), options);
+    this.watcher.start();
+    return this.watcher;
   }
 
   private async onFileChanged(rel: string) {
@@ -330,6 +320,7 @@ export class Workspace {
   }
 
   close() {
-    this.abort.abort();
+    this.closed = true;
+    this.watcher?.close();
   }
 }

@@ -119,7 +119,7 @@ export class ProjectRegistry {
       e.ctx.then(
         (ctx) => {
           e.error = undefined;
-          void ctx.ws.watch();
+          ctx.ws.watch();
           // 開いている間に登録から外れた・変わった: 新しい要求には使わせず閉じる
           if (this.entries.get(name) !== e || this.closed) this.retire(ctx);
         },

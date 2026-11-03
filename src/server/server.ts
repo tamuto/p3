@@ -58,7 +58,7 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
-    void ctx.ws.watch();
+    ctx.ws.watch();
     app.route("/api", singleProjectApp(ctx));
   }
   if (opts.static) {
