@@ -19,6 +19,7 @@ import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
 
@@ -77,7 +78,8 @@ const projectPatch = z
       }),
     ),
     branchPattern: z.string().includes("{id}"),
-    preflight: z.object({ instructions: z.string() }),
+    // 担当（runner）は省ける（以前の形 { instructions } の更新でも、保存は項目ごとに重ねるので担当は残る）
+    preflight: z.object({ instructions: z.string().optional(), runner: z.enum(PREFLIGHT_RUNNERS as [PreflightRunner, ...PreflightRunner[]]).optional() }),
   })
   .partial()
   .superRefine((p, ctx) => {

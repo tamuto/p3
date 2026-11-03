@@ -897,6 +897,11 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
   ドキュメントは古いまま残ることがあるので、今のコードと食い違えば今のコードを正として評価・タスク案を作らせ、見つけた食い違いは
   黙って片方に合わせず、すべてリスクか確認事項に書かせる（`instructions.ts` の「やること」。過去の記録と今のコードの食い違いも同じ扱い）。
   `preflight.instructions` にはプロジェクト固有の評価の観点・制約を書く。どちらも Codex への指示に加わる。
+  `preflight.runner`（`codex` / `agent`。`src/shared/preflightRunner.ts`）は Preflight の担当で、AI 向けの手順が `whoami --json` の
+  `preflight` から読む方針（評価のエンジン・run の `engine` とは別。P3 の実行の仕方は変えない）。未設定は `codex`、読めない値は
+  `invalidRunner` に残して担当を決めない（保存しても消さない。`config set preflight.runner=` で直す）。保存（`saveProject`）は
+  `preflight` を項目ごとに重ねるので、観点だけ・担当だけの更新（以前の API の形 `{ instructions }` も）で、もう片方は消えない。
+  個人（マシン）の設定での上書きは設けない。
 
 ## 共有（同期）の方法
 

@@ -11,13 +11,15 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                このリポジトリを本体の参照先として登録する。データの既定はリポジトリのルートの .p3（既にあれば作らずに断る → join）
                                --project 名前 --dir フォルダ（外に置くとき。相対は今いる場所から）--repo-name 参照先の名前（既定はフォルダ名）--description
                                --instructions 観点 --yes
+                               --preflight-runner codex|agent  Preflight の担当（既定 codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）
                                --agents claude|codex|both  AI 向けの使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（値を省くと both。付けなければ置かない）
   agents claude|codex|both [--force]  AI 向けの使い方を、今いるリポジトリに後から置く・最新にする（選んだ先だけ。データ・個人設定は変えない）
                                違うものは上書きせず知らせる。--force で選んだ先のスキルと p3 の節だけを同梱の版にする（ほかの文は残す）
   join                         既にあるプロジェクト（共有されたデータのフォルダ）に参加する。個人設定に登録するだけで、データ・リポジトリのファイルは変えない
                                --project 名前 --dir フォルダ（既定はリポジトリのルートの .p3）--repo-name 参照先の名前（共有の定義にあるもの）--yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
-  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions）
+  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions preflight.runner）
+                               preflight.runner=codex|agent  Preflight の担当（共有。未設定は codex。p3 preflight の動きは変えず、AI 向けの手順が whoami で読む）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
                                add <名前> [<パス>] [role=… readFirst=true writable=true]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録

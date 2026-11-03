@@ -48,6 +48,7 @@ const OPTIONS = {
   repo: { type: "string" },
   description: { type: "string" },
   instructions: { type: "string" },
+  "preflight-runner": { type: "string" },
   // 値なしの --agents は both（joinValues が --agents=both にする）
   agents: { type: "string" },
   force: { type: "boolean" },

@@ -13,7 +13,7 @@ import { codexCommand } from "./codex.ts";
 import { userConfigCommand } from "./userConfig.ts";
 import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
-import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, UsageError } from "./project.ts";
+import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, runnerText, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
 import { readsOnly } from "./readOnly.ts";
 import { parse, type CommandEnv } from "./args.ts";
@@ -24,6 +24,7 @@ import { preflightCommand } from "./preflightCommands.ts";
 import { releaseNotesCommand } from "./releaseNotesCommands.ts";
 import { ReleaseNoteError } from "../core/releaseNotes/store.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
+import { isPreflightRunner, PREFLIGHT_RUNNERS, runnerView } from "../shared/preflightRunner.ts";
 import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 
 /**
@@ -107,7 +108,7 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "join") {
     // 参加は個人設定に登録するだけ。AI 向けのファイルと、作るときだけの項目は受け付けない（黙って無視しない）
     if (o.agents !== undefined) throw new UsageError("join は AI 向けのファイルを置きません（--agents は使えません）。置く・最新にするなら p3 agents claude|codex|both");
-    const createOnly = (["name", "description", "instructions"] as const).filter((k) => o[k] !== undefined);
+    const createOnly = (["name", "description", "instructions", "preflight-runner"] as const).filter((k) => o[k] !== undefined);
     if (createOnly.length) throw new UsageError(`join では ${createOnly.map((k) => `--${k}`).join("・")} は使えません（共有の定義は変えません。変えるなら p3 config set）`);
     if (args.length) throw new UsageError(`join は位置引数を取りません: ${args.join(" ")}（p3 join [--project <名前>] [--dir <フォルダ>] [--repo-name <名前>]）`);
     console.log(await joinProject({ cwd, project: o.project, dir: o.dir, repoName: o["repo-name"], yes: o.yes }));
@@ -117,6 +118,8 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "init") {
     if (o.agents !== undefined && !isAgentChoice(o.agents)) throw new UsageError(`--agents は claude / codex / both のどれか（値を省くと both）: ${o.agents || "（空）"}`);
     if (args.length) throw new UsageError(`init は位置引数を取りません: ${args.join(" ")}`);
+    const runner = o["preflight-runner"];
+    if (runner !== undefined && !isPreflightRunner(runner)) throw new UsageError(`--preflight-runner は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runner || "（空）"}`);
     console.log(
       await init({
         cwd,
@@ -125,6 +128,7 @@ async function main(argv: string[]): Promise<number> {
         name: o.name,
         description: o.description,
         instructions: o.instructions,
+        runner,
         agents: o.agents,
         yes: o.yes,
         repoName: o["repo-name"],
@@ -235,13 +239,17 @@ async function main(argv: string[]): Promise<number> {
 
     case "whoami": {
       const here = locateHere(ctx, cwd);
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null }, () =>
+      // Preflight の担当（AI 向けの手順が読む。読めなければ runner: null と problem。agent と推測しない）
+      const pf = runnerView(ctx.ws.project.preflight);
+      const preflight = { runner: pf.runner, source: pf.source, ...(pf.problem ? { problem: pf.problem } : {}) };
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
           `決まり方      ${target.via}（${VIA_LABEL[target.via]}）`,
           `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
+          `Preflight     ${runnerText(pf)}`,
         ].join("\n"),
       );
     }

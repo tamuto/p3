@@ -15,7 +15,8 @@ import { repoNameProblem } from "../shared/repos.ts";
 import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../core/repoAdmin.ts";
 import { normalizeProject } from "../core/store/normalize.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
-import type { Workspace } from "../core/store/workspace.ts";
+import type { ProjectPatch, Workspace } from "../core/store/workspace.ts";
+import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, runnerView, type PreflightRunner, type RunnerView } from "../shared/preflightRunner.ts";
 import { DATA_DIR_NAME } from "../core/store/locate.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
@@ -261,6 +262,8 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
+  /** Preflight の担当（未指定なら、対話では聞き（Enter は codex）、非対話では codex） */
+  runner?: PreflightRunner;
   /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
   agents?: AgentChoice;
   yes?: boolean;
@@ -341,6 +344,11 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
+    // 担当: codex は人が p3 から実行する（Codex と ChatGPT のプランが要る）。agent は Codex を使えない環境で、手元の AI エージェントに頼む
+    const runnerAnswer =
+      o.runner ?? (await ask("Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）", DEFAULT_PREFLIGHT_RUNNER));
+    if (!isPreflightRunner(runnerAnswer)) throw new UsageError(`Preflight の担当は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runnerAnswer}`);
+    const runner: PreflightRunner = runnerAnswer;
     // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
     let agents = o.agents;
     if (agents === undefined && interactive) {
@@ -358,7 +366,7 @@ export async function init(o: InitOptions): Promise<string> {
       repos: [{ name: refName, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
-      preflight: { instructions },
+      preflight: { instructions, runner },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
@@ -371,9 +379,12 @@ export async function init(o: InitOptions): Promise<string> {
       `  参照先        ${refName}（本体） → ${root}`,
       `  主なフォルダ  ${map.map((m) => m.path).join(", ") || "（なし。設定画面で足せます）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
+      `  Preflight     ${runner}（${RUNNER_LABEL[runner]}。変える: p3 config set preflight.runner=${runner === "codex" ? "agent" : "codex"}）`,
       ...agentLines,
       "",
-      "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
+      runner === "agent"
+        ? "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve"
+        : "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
       cfg.description ? "" : "※ description が空です。p3 config set description=\"...\" で設定してください（Preflight の精度に効きます）",
     ]
       .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))
@@ -533,18 +544,22 @@ export const resolvePath = (cwd: string, p: string) => resolve(cwd, p === "~" ? 
 
 const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 
-const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions"] as const;
+const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions", "preflight.runner"] as const;
 
 /** p3 config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
   if (args[0] === "set") {
-    const patch: Partial<ProjectConfig> = {};
+    const patch: ProjectPatch = {};
     for (const pair of args.slice(1)) {
       const eq = pair.indexOf("=");
       const key = pair.slice(0, eq) as (typeof CONFIG_KEYS)[number];
       const value = pair.slice(eq + 1).trim();
       if (eq < 1 || !CONFIG_KEYS.includes(key)) throw new UsageError(`設定できるキー: ${CONFIG_KEYS.join(", ")}`);
-      if (key === "instructions") patch.preflight = { instructions: value };
+      if (key === "instructions") patch.preflight = { ...patch.preflight, instructions: value };
+      else if (key === "preflight.runner") {
+        if (!isPreflightRunner(value)) throw new UsageError(`preflight.runner は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${value || "（空）"}`);
+        patch.preflight = { ...patch.preflight, runner: value };
+      }
       else if (key === "branchPattern" && !value.includes("{id}")) throw new UsageError("branchPattern には {id} を含めてください");
       else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
@@ -562,10 +577,17 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `milestones     ${sortMilestones(p.milestones).map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
+    `preflight.runner  ${runnerText(runnerView(p.preflight))}`,
     "",
     `ファイル: ${join(ws.dataDir, "project.yaml")}`,
   ].join("\n");
-  return { data: p, text };
+  return { data: { ...p, preflightRunner: runnerView(p.preflight) }, text };
+}
+
+/** 担当の表示（config・whoami）。読めない値は理由を出す */
+export function runnerText(v: RunnerView): string {
+  if (!v.runner) return `（読めません）${v.problem}`;
+  return `${v.runner}（${RUNNER_LABEL[v.runner]}${v.source === "default" ? "。未設定なので既定" : ""}）`;
 }
 
 function splitList(s: string): string[] {

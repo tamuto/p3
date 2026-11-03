@@ -18,8 +18,16 @@ function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknow
       ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
       : undefined,
     branchPattern: cfg.branchPattern,
-    preflight: cfg.preflight.instructions ? { instructions: cfg.preflight.instructions } : undefined,
+    preflight: preflightPlain(cfg.preflight),
   };
+}
+
+/** preflight の項目（空の観点は省く。担当は設定したときだけ書き、読めない値もそのまま残す） */
+function preflightPlain(p: ProjectConfig["preflight"]): Record<string, string> | undefined {
+  const out = Object.fromEntries(
+    Object.entries({ instructions: p.instructions || undefined, runner: p.runner ?? p.invalidRunner }).filter(([, v]) => v !== undefined),
+  ) as Record<string, string>;
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
