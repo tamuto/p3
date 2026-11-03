@@ -41,6 +41,7 @@ import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiM
 import { compareFamily, compareInput, inputHash, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
 import { changedLabel } from "../../shared/preflightInput.ts";
 import { PREFLIGHT_CANCELLED } from "../../shared/directTask.ts";
+import { currentOwner, ownerState, systemProbe, type OwnerProbe } from "./owner.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
 const failing = (name: PreflightEngine["name"], message: string): PreflightEngine => ({
@@ -92,6 +93,8 @@ export class PreflightService {
     defaultEngine: PreflightEngine["name"] | { load: () => Promise<PreflightEngine["name"]>; initial: PreflightEngine["name"] },
     /** 手元のエージェントの取り込みで画面イメージを描くとき: パスの対応（codex.pathMap）と、テスト用の描画の差し替え */
     private renderOpts: { pathMap: () => Promise<[string, string][]>; render?: Renderer } = { pathMap: async () => [] },
+    /** 実行しているプロセスの判定（テストが差し替える。owner.ts） */
+    private ownerOpts: { probe?: OwnerProbe } = {},
   ) {
     if (typeof defaultEngine === "string") {
       this.lastDefault = defaultEngine;
@@ -227,7 +230,7 @@ export class PreflightService {
       await renderManuscripts(runDir, { pathMap: await this.renderOpts.pathMap().catch(() => []), log: (e) => this.log(run, e), render: this.renderOpts.render });
       await this.ingest(run, runDir, refs);
       run.status = "completed";
-      await this.finish(run, run.local!.before);
+      await this.finishLocked(run, run.local!.before);
       return { run, already: false };
     });
   }
@@ -242,7 +245,7 @@ export class PreflightService {
       run.error = PREFLIGHT_CANCELLED;
       run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
       this.log(run, { kind: "error", text: run.error });
-      await this.finish(run, run.local!.before);
+      await this.finishLocked(run, run.local!.before);
       return { run, already: false };
     });
   }
@@ -265,12 +268,18 @@ export class PreflightService {
     });
   }
 
+  private get probe(): OwnerProbe {
+    return this.ownerOpts.probe ?? systemProbe;
+  }
+
   /**
-   * 同じ要望の Preflight が動いているか。このプロセスで実行中、手元のエージェントの評価を待っている、ほかのプロセス（serve・CLI）で
-   * 実行中（開始から STALE_RUNNING_MS まで。それより古いものは落ちたプロセスのものとして扱う）なら、その理由
+   * 同じ要望の Preflight が動いているか（ロックの中で呼ぶ）。先に、実行していたプロセスが終わっていると確かめられる run を中断にする
+   * （recoverRequest）。このプロセスで実行中、手元のエージェントの評価を待っている、ほかのプロセス（serve・CLI）で実行中、
+   * 動いているか確かめられない（以前の run・別の環境）なら、その理由。時間がたっただけでは始めない（生きている別のプロセスと重ねない）
    */
   private async busy(requestId: string): Promise<string | undefined> {
     if ([...this.active.values()].some((a) => a.run.requestId === requestId)) return `${requestId} の preflight は実行中です`;
+    await this.recoverRequest(requestId);
     const last = this.ws.requests.get(requestId)?.lastPreflight;
     if (!last) return undefined;
     const run = await this.ws.preflight.get(requestId, last);
@@ -278,8 +287,58 @@ export class PreflightService {
     if (run.engine === "local") {
       return `${requestId} の preflight ${last} は手元のエージェントの評価を待っています（取り込む: p3 preflight ${requestId} --complete --run ${last} / やめる: p3 preflight ${requestId} --cancel --run ${last}）`;
     }
-    if (Date.now() - Date.parse(run.startedAt) < STALE_RUNNING_MS) return `${requestId} の preflight ${last} が別のプロセスで実行中です`;
-    return undefined;
+    const owner = ownerState(run.owner, this.probe);
+    if (owner.state === "alive") return `${requestId} の preflight ${last} が別のプロセスで実行中です`;
+    return `${requestId} の preflight ${last} が実行中のまま残っています。動いていないと確かめられないので始めません（${owner.reason}）`;
+  }
+
+  /**
+   * 実行していたプロセスが終わっていると確かめられる、running のまま残った run（codex / mock。最新でなくても）を中断（failed）にする。
+   * ロックの中で呼ぶ。手元のエージェントの run（local）・このプロセスで実行中の run・確かめられない run は変えない。中断にした run の ID
+   */
+  private async recoverRequest(requestId: string): Promise<string[]> {
+    const done: string[] = [];
+    for (const run of await this.ws.preflight.list(requestId)) {
+      if (run.status !== "running" || run.engine === "local" || this.active.has(run.id)) continue;
+      const owner = ownerState(run.owner, this.probe);
+      if (owner.state !== "dead") continue;
+      run.status = "failed";
+      run.error = `中断しました: ${owner.reason}（serve や CLI が途中で止まった可能性があります）`;
+      run.interrupted = { reason: owner.reason, at: nowIso() };
+      run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
+      this.log(run, { kind: "error", text: run.error });
+      await this.finishLocked(run, run.before);
+      done.push(run.id);
+    }
+    return done;
+  }
+
+  /**
+   * プロジェクトを開いたとき（serve の起動・--all-projects で開いたとき）に、全部の要望の running のまま残った run を確かめ、
+   * 実行していたプロセスが終わっていると確かめられるものを中断にする。1件の失敗で止めない（理由をログに残し、ほかは続ける）
+   */
+  async recover(opts: { log?: (m: string) => void } = {}): Promise<{ recovered: string[]; errors: string[] }> {
+    const log = opts.log ?? ((m: string) => console.error(m));
+    const recovered: string[] = [];
+    const errors: string[] = [];
+    for (const req of this.ws.requests.list()) {
+      try {
+        // ロックを取る前に、候補（running の codex / mock で、終わっていると確かめられる）があるかだけを見る
+        const runs = await this.ws.preflight.list(req.id);
+        const candidates = runs.filter((r) => r.status === "running" && r.engine !== "local" && !this.active.has(r.id) && ownerState(r.owner, this.probe).state === "dead");
+        if (!candidates.length) continue;
+        recovered.push(...(await this.locked(req.id, async () => {
+          await this.ws.requests.reload(req.id);
+          return this.recoverRequest(req.id);
+        })).map((id) => `${req.id}/${id}`));
+      } catch (e) {
+        const m = `[preflight] ${this.ws.dataDir}: ${req.id} の残った run を確かめられません: ${(e as Error).message}`;
+        errors.push(m);
+        log(m);
+      }
+    }
+    for (const r of recovered) log(`[preflight] ${this.ws.dataDir}: 実行していたプロセスが終わっていた run を中断にしました: ${r}`);
+    return { recovered, errors };
   }
 
   /** 評価対象を固定する（ディスクから読み直す）。同じ要望の Preflight が動いていれば PreflightBusyError */
@@ -327,7 +386,11 @@ export class PreflightService {
       scope: refs.map(refScope),
       ui: { status: "generating", targets: [], items: [], problems: [] },
       input,
+      before: request.status,
     };
+    // 実行しているプロセスの記録（codex / mock）。手元のエージェントの run はプロセスを跨いで待つので記録しない
+    const owner = engine === "local" ? undefined : currentOwner();
+    if (owner) run.owner = owner;
     const runDir = this.ws.preflight.runDir(requestId, id);
     // 添付は始める時点のものを run の中にコピーして固定する。途中で変わったら始めない（原本は残るので、そのまま再試行できる）
     try {
@@ -451,6 +514,17 @@ export class PreflightService {
     }
   }
 
+  /** 実行の終わり（execute）: 要望ごとのロックの中で終える。ロックを取れなくても記録は残す（終わった状態を上書きしない規則は同じ） */
+  private async finish(run: PreflightRun, before: Request["status"] | undefined) {
+    try {
+      await this.locked(run.requestId, () => this.finishLocked(run, before));
+    } catch (e) {
+      if (!this.active.has(run.id)) return; // 終えた後に失敗した
+      console.error(`[preflight] ${run.requestId}/${run.id}: ロックを取れないまま終えます: ${(e as Error).message}`);
+      await this.finishLocked(run, before);
+    }
+  }
+
   /** run のフォルダの成果物（評価・案・子の案・画面資料）を取り込む。評価が読めなければ例外 */
   private async ingest(run: PreflightRun, runDir: string, refs: ResolvedRef[]) {
     run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
@@ -471,14 +545,27 @@ export class PreflightService {
     if (run.ui.verdictAdjusted) this.log(run, { kind: "info", text: "必要な画面イメージが足りないので、判定を go から clarify にしました" });
   }
 
-  /** run を終える: 記録を保存し、評価中にした要望を評価済み（失敗なら元）へ戻す */
-  private async finish(run: PreflightRun, before: Request["status"]) {
+  /**
+   * run を終える（ロックの中で呼ぶ）: 記録を保存し、評価中にした要望を評価済み（失敗なら元）へ戻す。
+   * ファイルの run が既に終わっていれば（別のプロセスが中断にした・取り消した）、その状態を上書きしない。
+   * 要望のステータスは、その run が最新（lastPreflight）のときだけ戻す（古い run の終わりで、新しい run と要望の状態を巻き戻さない）。
+   * 始める前の状態（before）が分からない run は、要望のステータスを変えない
+   */
+  private async finishLocked(run: PreflightRun, before: Request["status"] | undefined) {
+    const onDisk = await this.ws.preflight.get(run.requestId, run.id);
+    if (onDisk && onDisk.status !== "running") {
+      this.active.delete(run.id);
+      this.ws.emit({ type: "preflight-status", runId: run.id, status: onDisk.status });
+      return;
+    }
     run.finishedAt = nowIso();
     await this.ws.preflight.save(run);
     // 評価中にした要望だけ、終わったら評価済み（失敗なら元）へ戻す。実行中に人や AI が変えたステータス
     // （進行中に戻した・完了済にしたなど）や、評価中にしていない要望（進行中・対応済など）は上書きしない
-    const status = statusAfter(before, run.status === "completed");
-    if (this.ws.requests.get(run.requestId)?.status === "preflight" && status !== "preflight") {
+    await this.ws.requests.reload(run.requestId).catch(() => undefined);
+    const req = this.ws.requests.get(run.requestId);
+    const status = before ? statusAfter(before, run.status === "completed") : undefined;
+    if (status && req?.lastPreflight === run.id && req.status === "preflight" && status !== "preflight") {
       await this.ws.requests.update(run.requestId, { status });
     }
     // 保存が終わってから実行中の一覧から外す（先に外すと wait() が保存前のファイルを読む）
@@ -919,9 +1006,6 @@ export class PreflightService {
     };
   }
 }
-
-/** ほかのプロセスで実行中の run を、落ちたものとみなすまでの時間（Codex の1ターンの上限 30 分に余裕を足す） */
-const STALE_RUNNING_MS = 35 * 60_000;
 
 /** ステータスを動かすのはタスク化する前の要望だけ */
 const isEarly = (s: Request["status"]) => s === "draft" || s === "preflight" || s === "reviewed";

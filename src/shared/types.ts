@@ -422,6 +422,24 @@ export interface PreflightRun {
   input?: PreflightInput;
   /** 手元のエージェントの run（engine: local）: 準備したときの要望のステータス（取り込み・取消で戻す）と、取り込めなかった回数 */
   local?: { before: RequestStatus; rejected?: number };
+  /** 実行しているプロセス（codex / mock。core/preflight/owner.ts）。落ちたプロセスの run を見分けるのに使う。以前の run には無い */
+  owner?: RunOwner;
+  /** 始める前の要望のステータス（codex / mock。中断にしたとき、最新の run なら要望をこれに基づいて戻す。local は local.before） */
+  before?: RequestStatus;
+  /** 実行しているプロセスが終わっていたので、running のまま残った run を中断（failed）にした。理由と日時 */
+  interrupted?: { reason: string; at: string };
+}
+
+/**
+ * Preflight の run を実行しているプロセス（共有するデータに置く。パス・認証情報・ホスト名そのものは残さない）。
+ * instance はこのマシン（コンテナ）の不透明な識別子、boot は OS の起動、pidNs は PID の名前空間、start はプロセスの起動の時刻（Linux）
+ */
+export interface RunOwner {
+  instance: string;
+  boot?: string;
+  pidNs?: string;
+  pid: number;
+  start?: string;
 }
 
 /** Preflight の評価対象（要望のタイトルと本文）。比べるのはこの2つだけ（タグ・期限・ステータスは比べない） */
