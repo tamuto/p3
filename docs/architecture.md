@@ -873,6 +873,24 @@ package.json では公開版の版の範囲（`^0.2.0` など）で指定し、�
     失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/core/preflight/codexImage.ts`）
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のままでよい）
+  - P3 は `ensureImage` そのものは呼ばない（inspect・build・版の確認のどれにも待つ時間の上限が無く、取消も受けないため）。同じ判定と
+    ビルドを、同梱の `DOCKER_CONTEXT` と `parseCreated` を使って `codexImage.ts` で行う（Dockerfile は写さない）
+- **Docker の待ち時間の上限と後片付け**（`src/core/preflight/docker.ts`）: 以前は版の確認のコンテナ（`codex --version`）が版を出した後も
+  終わらず、Preflight がそれを待って止まったことがある（2026-11-03）。P3 が動かす docker の操作には上限があり、時間切れ・中止では
+  docker の CLI を止め、P3 が名前を付けて起こしたコンテナはそのコンテナだけを `docker rm -f <名前>` で消す（`docker ps` の全部や
+  イメージ名では消さない）
+  - 上限（`DOCKER_LIMITS`）: デーモンに聞くだけの操作（version・image inspect）15 秒、版の確認 60 秒、ビルド 10 分、コンテナを消す 10 秒。
+    評価の1ターンは codex-workspace の既定の 30 分、初期化・使用量などターンの外の要求は同じく 120 秒（`requestTimeoutMs` の既定）
+  - イメージの確認の時間切れは「イメージが無い」とみなさない（作り直しに進まない）
+  - 名前とラベル: 版の確認は `p3-codex-version-<ランダム>`、評価は `p3-preflight-<ランダム>`、Preflight 以外の頼みごと（リリースノート
+    の要約）は `p3-ask-<ランダム>`。ラベルは `infodb.p3=<種類>`（人が `docker ps -a --filter label=infodb.p3` で見分けるため）
+  - 片付け: 版の確認は、時間切れ・中止・失敗のときにそのコンテナを消す（正常に終われば `--rm` が消す）。評価のコンテナは、正常・失敗・
+    中止・時間切れのどの終わり方でも、終わった後に消す（正常に終わったときは `--rm` の削除の途中のことがあるので、消せなかったときだけ
+    記録に出す）。消せない・時間切れなら「残っているかもしれない」と、確かめ方と消し方を run のログに出す（消えたとは断定しない）
+  - 中止: 中止すると `turn/interrupt` を送る。app-server が答えなければ 15 秒（`abortGraceMs`）で打ち切り、app-server を閉じ
+    （codex-workspace が最長 30 秒待って止める）、コンテナを消す。中止から終わるまで最長でおよそ 1 分。イメージの用意の途中の中止も戻る
+  - 限界: Docker のデーモンが止まっている・応答しないときは消せない（記録に残す）。起動の途中で中止して、まだコンテナができていなければ
+    消すものは無い。描画のコンテナ（下の「画面イメージの描画のイメージ」）は対象外
 
 手元の llmcs の変更を P3 で試すときは、一時的にリンクに替え、試し終えたら公開版に戻す（リンクはコミットしない）:
 

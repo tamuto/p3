@@ -282,6 +282,7 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 | 〃 | `permission denied ... docker.sock` | `ls -l /var/run/docker.sock` | `docker` グループなど、ソケットの権限を直す |
 | Preflight | `bind source path does not exist: <参照先 …>` / `<データ>` | ログの「パスの対応」、`p3 user-config` の `codex.pathMap`、5-1. の `docker inspect` | `p3 user-config set codex.pathMap+=<このマシンのパス>=<ホストのパス>`。「対応あり」なのに無いなら、右側（ホストのパス）の誤り。serve はそのままで次の Preflight から効く |
 | Preflight | 「Codex のイメージを用意できません（app-server を起こす前）」 | `p3 codex update` の出力 | ネットワーク（プロキシ）を確かめて `p3 codex update` をやり直す。`Unable to find image` も同じ |
+| Preflight | 「〜が 60 秒で終わらないので止めました」（イメージの確認 15 秒・版の確認 60 秒・ビルド 10 分） | `docker ps -a --filter label=infodb.p3`（P3 が起こしたコンテナ） | P3 はそのコンテナを消してから終わる。Docker が重い・止まっていないかを確かめてやり直す。「コンテナ p3-… を消せませんでした（残っているかもしれません）」と出たら、出ている `docker rm -f <名前>` で消す |
 | Preflight・画面 | 「ChatGPT にサインインしてください」「ChatGPT の接続が切れています」「プランの利用が許可されていません」 | `p3 chatgpt status` | `p3 chatgpt login`（届かなければ `--paste`）。プランの利用に同意する |
 | Preflight | 「Usage limit reached」 | ChatGPT の Manage usage（https://chatgpt.com/settings/usage） | 上限が戻るのを待つ |
 | Preflight・画面 | 個人設定を読めない（YAML の行と直すファイル） | `~/.config/infodb-p3/config.yaml` | 書き間違いを直す。serve はそのままで次の Preflight から効く |

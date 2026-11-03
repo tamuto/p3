@@ -15,6 +15,7 @@ import { APP_NAME, chatgptAccount, ChatGptAuthError, CODEX_TOKEN_MIN_VALID_MS, t
 import type { MachineSettings } from "../machineSettings.ts";
 import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
+import { CONTAINER_LABEL, containerName, DOCKER_LIMITS, DockerAbortError, removeContainer, removeLog, withContainerName } from "./docker.ts";
 import { renderManuscripts, type Renderer } from "./uiRender.ts";
 import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
 import { prepareLaunch } from "./launch.ts";
@@ -254,17 +255,17 @@ export class CodexWorkspaceEngine implements PreflightEngine {
    */
   async ask(input: { instructions: string; prompt: string; label: string }, log: Log, signal: AbortSignal): Promise<AskResult> {
     return this.authorized(input.label, log, async ({ cfg, auth, env, log }) => {
-      await this.prepareImage(cfg, log);
+      await this.prepareImage(cfg, log, signal);
       const command =
         cfg.command?.({ repos: [], data: null, auth: auth.mode }) ??
         withMounts(dockerCommand(PLACEHOLDER, auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: cfg.authVolume, authFile: cfg.authFile }), [], null);
-      return this.launched(cfg, command, [], log, signal, (launch, onError) =>
+      return this.launched("ask", cfg, command, [], log, signal, (launch, onError) =>
         this.session(cfg, launch, env, log, onError, async (session) => {
           await checkUsage(session, auth, log);
           await session.startThread(input.instructions);
           log({ kind: "info", text: `スレッドを立てました (model: ${session.model})` });
           try {
-            const result = await session.runTurn(input.prompt, { signal });
+            const result = await turnWithGrace(session, input.prompt, signal, log);
             if (result.status === "interrupted" || signal.aborted) throw new Error("中止しました");
             if (result.status !== "completed") throw new Error(`Codex が終わりませんでした（${result.status}）`);
             log({ kind: "info", text: `完了 (${result.seconds}s, ${result.commands.length} commands)` });
@@ -315,13 +316,14 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     }
   }
 
-  /** イメージが古ければ作り直す（個人設定で止められる） */
-  private async prepareImage(cfg: CodexWorkspaceConfig, log: Log) {
+  /** イメージが古ければ作り直す（個人設定で止められる）。各段に上限があり、中止で戻る（docker.ts） */
+  private async prepareImage(cfg: CodexWorkspaceConfig, log: Log, signal?: AbortSignal) {
     if (!cfg.ensureImage) return;
     log({ kind: "info", text: "コンテナのイメージを確かめています" });
     try {
-      log({ kind: "info", text: `Codex ${await ensureCodexImage()}` });
+      log({ kind: "info", text: `Codex ${await ensureCodexImage({ signal, onCleanup: (text) => log({ kind: "info", text }) })}` });
     } catch (e) {
+      if (e instanceof DockerAbortError && e.reason === "aborted") throw new Error("中止しました", { cause: e });
       // docker run の前（イメージの用意）で失敗した
       throw new Error(`Codex のイメージを用意できません（app-server を起こす前）: ${(e as Error).message}`, { cause: e });
     }
@@ -332,6 +334,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
    * work には、中継ごしのコマンドと、app-server が終わったことによる失敗に診断を付ける onError を渡す
    */
   private async launched<T>(
+    kind: "preflight" | "ask",
     cfg: CodexWorkspaceConfig,
     command: string[],
     mappings: PathMapping[],
@@ -339,7 +342,10 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     signal: AbortSignal,
     work: (command: string[], onError: (e: unknown, phase: "start" | "run") => Promise<unknown>) => Promise<T>,
   ): Promise<T> {
-    const launch = await prepareLaunch(command);
+    // docker run なら名前とラベルを付けて起こし、終わったら（正常・失敗・中止・時間切れのどれでも）そのコンテナだけを消す
+    const docker = command[1] === "run" ? command[0] : undefined;
+    const name = docker ? containerName(kind) : undefined;
+    const launch = await prepareLaunch(docker && name ? withContainerName(command, name, { [CONTAINER_LABEL]: kind }) : command);
     const diag = { image: DEFAULT_IMAGE, mappings, rules: cfg.pathMap.length };
     /** app-server が終わったことによる失敗なら、診断つきのエラーにする（それ以外は undefined） */
     const diagnosed = async (e: unknown, phase: "start" | "run") => {
@@ -353,10 +359,19 @@ export class CodexWorkspaceEngine implements PreflightEngine {
       if (d.stderr) log({ kind: "error", text: `Docker の出力:\n${d.stderr}` });
       return new Error(d.message, { cause: e });
     };
+    let ok = false;
     try {
-      return await work(launch.command, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+      const r = await work(launch.command, async (e, phase) => (await diagnosed(e, phase)) ?? e);
+      ok = true;
+      return r;
     } finally {
       await launch.cleanup();
+      if (docker && name) {
+        // どの終わり方でも消す（残っていれば）。正常に終わったときは --rm の削除の途中のことがあるので、消せなかったときだけ知らせる
+        const removed = await removeContainer(docker, name);
+        const text = ok && removed.state === "removed" ? undefined : removeLog(name, removed);
+        if (text) log({ kind: removed.state === "failed" ? "error" : "info", text });
+      }
     }
   }
 
@@ -378,7 +393,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
     for (const r of readable) for (const m of r.map) if (m.entry && entryMissing(r, m.entry)) log({ kind: "info", text: `入口のファイルがありません: ${r.name}:${m.entry}` });
-    await this.prepareImage(cfg, log);
+    await this.prepareImage(cfg, log, signal);
 
     const command =
       cfg.command?.({ repos, data, auth: auth.mode }) ??
@@ -387,7 +402,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
         repos,
         data,
       );
-    const outcome = await this.launched(cfg, command, mappings, log, signal, (launch, onError) =>
+    const outcome = await this.launched("preflight", cfg, command, mappings, log, signal, (launch, onError) =>
       this.session(cfg, launch, env, log, onError, (session) => this.turn(session, job, auth, log, signal)),
     );
     // 画面イメージ: Codex が書いた原稿を、Codex の後に P3 が描画のコンテナで PNG にする（Codex のコンテナに Docker は渡さない）。
@@ -432,13 +447,39 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     await session.startThread(developerInstructions(job, env));
     log({ kind: "info", text: `スレッドを立てました (model: ${session.model})` });
     try {
-      const result = await session.runTurn(preflightPrompt(job, env), { signal });
+      const result = await turnWithGrace(session, preflightPrompt(job, env), signal, log);
       if (result.status === "interrupted") throw new Error("中止しました");
       log({ kind: "info", text: `完了 (${result.seconds}s, ${result.commands.length} commands, 変更 ${result.changed.length} files)` });
       return { changed: result.changed.map((p) => localPath(job, p)), usage: result.usage ?? undefined, threadModel: session.model ?? undefined };
     } catch (e) {
       throw limitError(e, auth);
     }
+  }
+}
+
+/**
+ * 1回頼む（runTurn。上限 30 分は codex-workspace の turnTimeoutMs の既定）。中止したら turn/interrupt を送るが、app-server が
+ * 応答しなければ runTurn はターンの上限まで待ち続けるので、中止から DOCKER_LIMITS.abortGraceMs で打ち切る（後片付けで閉じて消す）
+ */
+async function turnWithGrace(session: WorkspaceSession, prompt: string, signal: AbortSignal, log: Log) {
+  let timer: NodeJS.Timeout | undefined;
+  let arm = () => {};
+  const giveUp = new Promise<never>((_, reject) => {
+    arm = () => {
+      timer = setTimeout(() => {
+        log({ kind: "error", text: `中止を頼みましたが、app-server が ${DOCKER_LIMITS.abortGraceMs / 1000} 秒で止まらないので打ち切ります` });
+        reject(new Error("中止しました"));
+      }, DOCKER_LIMITS.abortGraceMs);
+    };
+  });
+  giveUp.catch(() => undefined);
+  if (signal.aborted) arm();
+  else signal.addEventListener("abort", arm, { once: true });
+  try {
+    return await Promise.race([session.runTurn(prompt, { signal }), giveUp]);
+  } finally {
+    signal.removeEventListener("abort", arm);
+    clearTimeout(timer);
   }
 }
 
