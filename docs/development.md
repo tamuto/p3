@@ -5,7 +5,7 @@ P3 そのものを開発するときの手順と、ソースの構成。使い�
 
 ## このリポジトリから動かす
 
-開発には Node 24 を使う（Vite 8）。使うだけなら Node 22 以上でよい。
+開発には Node 26 を使う（Docker のイメージと同じ）。使うだけなら Node 24 以上でよい（`engines` は `>=24`）。
 
 ```bash
 pnpm install
@@ -77,18 +77,10 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   読めないエラー・開始の失敗・読み込みの失敗）は監視を差し替えて確実に起こし、ログ・立て直し・続けての失敗でやめること・close の後に
   何も残らないことを見る。実際の監視は、通常の serve を別のプロセスで動かし（`test/fixtures/watchChild.ts`）、`drafts/` を作っては
   消し続けても落ちず、API が答え、close の後に自分で終わることを見る。`--all-projects` で一方の監視が壊れても両方の API と
-  Preflight が続くことは `test/allProjects.test.ts`。元の例外（Node 22 の再帰監視の未処理の `'error'`）は開発の Node 26 では
-  起きなかったので、監視を変えたときは Docker のイメージ（Node 22）で、別のプロセスに作っては消させて確かめる:
-
-  ```bash
-  # 確かめる処理を1つのファイルにまとめ（esbuild）、イメージの node に標準入力で渡す（ホストのパスのマウントは要らない）
-  node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild <確かめる処理>.ts --bundle --platform=node --format=esm --outfile=check.mjs \
-    "--banner:js=import{createRequire as __cr}from'module';const require=__cr(import.meta.url);"
-  docker run --rm -i --entrypoint node tamuto/p3:latest --input-type=module - < check.mjs
-  ```
-
-  確かめる処理は、一時フォルダに `project.yaml` を置いて `new Workspace(dir)`・`load()`・`watch()` し、`node -e` の別のプロセスに
-  `requests/<ID>/preflight/PF/drafts/` を作っては消させ（20 秒ほど）、終わった後に生きていることと `[watch]` のログを出す
+  Preflight が続くことは `test/allProjects.test.ts`。元の例外（Node 22 の再帰監視の未処理の `'error'`。2026-11-03 に `--all-projects` の
+  serve が落ちた）は、Node 22.23.4 では別のプロセスに `drafts/` を作っては消させると再現し、Node 24.22.2・26.13.0 では同じ操作で
+  起きなかった（2026-11-03 の記録。261103-fb5z1 / 261103-fx63g）。今の対象の Node（24 以上）では起きないので、毎回の手での確かめは
+  しない。`'error'` を必ず聞く守りは残す（Node のほかの監視の失敗でも serve を落とさないため）。退行は差し替えた監視のテストが見る
 - `test/layers.test.ts` が src の層の依存の向き、`test/package.test.ts` が配布物の中身と文書のリンクを確かめる
 - 短い出力の量を測るときは:
 
@@ -232,7 +224,7 @@ test/                ユニットテスト
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・TypeScript のソース（`src/`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`。`tsx`（esbuild）と React などの画面の部品は開発用 |
 | CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。`tsc -p tsconfig.build.json` で `src/{cli,core,server,shared}` を同じ深さの `lib/` に 1:1 で出し（相対の import の `.ts` は `.js` に書き換わる）、.ts 以外の資材を同じ場所に写す。`src/` と同じ深さなので、`import.meta.url` からの相対の参照（`../../skills`・`dist/web`・`./mock-ui.html` など）はそのまま効く。資材を足すときは、その層のフォルダに置けば写る。`lib/` は git で追跡しない |
-| Node | `>=22`（`@infodb/codex-workspace` と同じ）。開発（Vite 8）は Node 24 |
+| Node | `>=24`（`@infodb/codex-workspace`・`@infodb/chatgpt-plan` の `>=22` を満たす）。開発と Docker のイメージは Node 26 |
 | 公開前のビルド | `prepack` で `pnpm build`。利用者が入れるときにはビルドも Docker の操作もしない |
 | bin | `p3`（`bin/p3.mjs`）。`src/cli/main.ts` があるチェックアウトでは tsx でソースを、無ければ（配布物）`lib/cli/main.js` を動かす。ソースを動かすときは今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
 
@@ -245,10 +237,10 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --re
 
 ## Docker のイメージ
 
-`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 24 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
-入れる。実行は Node 22・git・Docker の CLI と buildx。既定は `serve --all-projects --host 0.0.0.0`）と `.dockerignore`
+`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 26 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
+入れる。実行も Node 26・git・Docker の CLI と buildx。既定は `serve --all-projects --host 0.0.0.0`）と `.dockerignore`
 （git・依存・ビルドの出力・データ・個人設定・認証・テストを入れない）。約束は `test/docker.test.ts` が確かめる。
-ベースの Node はメジャー版（`node:24-bookworm-slim` / `node:22-bookworm-slim`）だけを指定し、同じメジャーの中の更新（セキュリティ
+ベースの Node はメジャー版（ビルドも実行も `node:26-bookworm-slim`。描画のイメージも同じ）だけを指定し、同じメジャーの中の更新（セキュリティ
 リリースなど）は作り直すと入るようにしている。ただし Docker は手元にあるベースをそのまま使う（キャッシュ）ので、作るときは
 `--pull` を付けて今のベースを取る（`scripts/verify-docker.mjs` も付ける。`--no-build` は作らずに既にあるイメージを確かめる）。
 Docker の CLI と pnpm は版を固定し、メジャー版を上げるのは別の変更として行う。作り直しても、公開済みのイメージと起動中の

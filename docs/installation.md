@@ -15,7 +15,7 @@ Docker と ChatGPT の接続が要るのは Preflight（Codex）・リリース�
 
 | # | すること | 終わったと分かる目安 |
 | --- | --- | --- |
-| 1 | 必要なものをそろえる | `node -v` が 22 以上、`git --version`、`docker version` が通る |
+| 1 | 必要なものをそろえる | `node -v` が 24 以上（推奨 26）、`git --version`、`docker version` が通る |
 | 2 | どこで P3 を動かすか決める（ホスト / DevContainer） | 下の「動かす場所」のどちらかに当てはまる |
 | 3 | Docker に繋がるか確かめる | `docker version` に **Client と Server の両方** が出る |
 | 4 | プロジェクトを作る（か参加する） | `p3 whoami` にプロジェクトとデータのフォルダが出る |
@@ -30,14 +30,19 @@ P3 を Docker のコンテナで動かす（プロジェクトを跨ぐ serve �
 
 | もの | 何に使う | 確かめ方 |
 | --- | --- | --- |
-| Node.js 22 以上 | P3 本体（CLI と `p3 serve`） | `node -v` |
+| Node.js 24 以上（推奨 26） | P3 本体（CLI と `p3 serve`） | `node -v` |
 | pnpm（`pnpx`）か npm（`npx`） | P3 を入れずに動かす。`pnpm add -g @infodb/p3` / `npm i -g @infodb/p3` で `p3` コマンドにしてもよい | `pnpm -v` / `npm -v` |
 | Git | 管理したいリポジトリと、要望ごとのブランチ。Preflight の Codex も履歴を読む | `git --version` |
 | Docker（CLI とデーモン） | Preflight の Codex を、リポジトリとデータのフォルダだけを見せたコンテナの中で動かす。画面イメージの描画にも使う | `docker version`（下の 3.） |
 | ChatGPT のアカウント（プラン） | Preflight の Codex をその人のアカウントで動かす | 6. で接続する |
 
 - Codex をこのマシンに入れる必要はない（コンテナのイメージに入れる）。画面はビルド済みのものが入っているので、ビルドも要らない
-- P3 そのものを開発するときは Node 24 を使う（[開発ガイド](development.md)）。使うだけなら 22 以上でよい
+- P3 そのものを開発するときと、Docker のイメージ（`tamuto/p3`・描画のイメージ）は Node 26 を使う（[開発ガイド](development.md)）。
+  使うだけなら 24 以上でよい
+- **Node 22 から上げるとき**: Node 22 はサポートの終わり（2027-04-30）が近いので、この版から P3 は Node 24 以上で動かす（`engines` は
+  `>=24`）。Node 22 のままでも止められるとは限らない: npm は入れるときに警告（`EBADENGINE`）を出して入れ、`engine-strict=true`
+  なら断る。pnpm（12.10 で確かめた）と `pnpx` は警告を出さずに入れて動かす。`node -v` を確かめ、24 以上（推奨 26）に上げてから入れ直す。Docker で動かしているなら、新しいイメージを `docker pull` してコンテナを作り直す
+  （起動し直すだけでは前のイメージの Node のまま）
 - 以下の例では `p3` と書く。入れていなければ `pnpx @infodb/p3`（または `npx @infodb/p3`）に読み替える
 - 同じデータを使う人と AI は、なるべく同じ版で動かす（`pnpx @infodb/p3@<版>` のように版を付けられる。`pnpx` は取った版をしばらく
   使い続ける）。古い版で更新すると、新しい版で足した項目が消えることがある（[データの形](architecture.md#データの形)）
@@ -316,7 +321,7 @@ P3 をイメージにして、コンテナで動かすこともできる。イ�
 --host 0.0.0.0`）で、個人設定に登録したプロジェクトを画面で選んで扱う（[使い方ガイド](how-to-use.md#画面)）。閲覧専用ではなく、
 要望・タスクの作成と編集・添付・Preflight もいつもどおり使える。
 
-イメージは Docker Hub の **`tamuto/p3`**。中に p3 本体（npm の `@infodb/p3` と同じ版・同じ中身）と、Node 22・git・Docker の CLI が
+イメージは Docker Hub の **`tamuto/p3`**。中に p3 本体（npm の `@infodb/p3` と同じ版・同じ中身）と、Node 26・git・Docker の CLI が
 入っている（Codex は入れない。Preflight のたびにホストの Docker で Codex のイメージを使う）。版のタグ（`tamuto/p3:0.9.0` など）と
 `latest` がある。決まった版で使うなら版のタグを指す。対応する platform は `linux/amd64` だけ（arm64 は確かめるマシンが無いので
 作っていない）。

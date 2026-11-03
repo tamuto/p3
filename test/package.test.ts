@@ -33,7 +33,7 @@ describe("npm で配る中身", () => {
     expect(pkg.name).toBe("@infodb/p3");
     expect(pkg.publishConfig).toEqual({ access: "public" });
     expect(pkg.license).toBe("MIT");
-    expect(pkg.engines.node).toBe(">=22");
+    expect(pkg.engines.node).toBe(">=24");
     expect(pkg.bin).toEqual({ p3: "bin/p3.mjs" });
     expect(pkg.scripts.prepack).toBe("pnpm build");
     // 利用者が入れるときにビルドや Docker を動かさない

@@ -5,7 +5,7 @@
 # Playwright と Chromium（headless shell）の版は固定し、日本語のフォント（Noto CJK, SIL Open Font License 1.1）を入れる。
 # 日本語の既定と、イメージに無い日本語のフォント名は fonts-ja.conf で Noto CJK JP にする（Playwright の依存で入る
 # 中国語の字形のフォントが先に選ばれないように）。
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     NODE_ENV=production

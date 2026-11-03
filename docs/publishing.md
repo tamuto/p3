@@ -30,7 +30,11 @@ node scripts/verify-pack.mjs --docker     # npm pack → 実行時の依存だ�
 - [ ] 全段が `ok`。確かめる段: Node の版と engines / tarball の中身 / `npm install`（開発用の依存が入らない）/
   別のリポジトリで `init --agents`・`init --agents codex` と `p3 agents`（後から足す・`--force`）・`whoami`・要望の作成・Mock の Preflight・メモを足した再評価・`serve`（画面・資産・API）/
   `codex update`（`--docker`。未登録・未認証のまま本物の Docker でイメージを作り直し、版を読む）
-- [ ] 下限の Node でも通す: `PATH=$(dirname $(npx -y node@22.0.0 -e "console.log(process.execPath)")):$PATH node scripts/verify-pack.mjs`
+- [ ] 下限の Node（24.0.0）でも、作った tarball で通す（開発用の依存のインストールとビルドは下限の版で要らない）:
+  `PATH=$(dirname $(npx -y node@24.0.0 -e "console.log(process.execPath)")):$PATH node scripts/verify-pack.mjs --tgz <作った tarball>`
+- [ ] Node の下限を上げた版を出すときは、リリースノートに知らせる: 前の下限の Node では、npm は警告を出して入れ（`engine-strict` なら断る）、
+  pnpm・`pnpx` は警告を出さずに入れる（止められない）ので、利用者が `node -v` を確かめること、
+  Node を上げて入れ直すこと、Docker のイメージは pull してコンテナを作り直すこと（Node 22 → 24 以上は [導入ガイド](installation.md) の「Node 22 から上げるとき」）
 - [ ] Docker が無い環境で確かめたときは、`codex update` の段が「実行していない」と出る。その場合は Docker のある環境で
   `--docker` を付けて通すまで、公開に進まない
 
