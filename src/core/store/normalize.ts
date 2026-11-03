@@ -1,4 +1,5 @@
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
+import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
@@ -84,6 +85,13 @@ export const REQUEST_KEY_ORDER: (keyof Request)[] = [
   "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
+/** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
+function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {
+  const raw = str(v)?.trim();
+  if (raw === undefined || raw === "") return {};
+  return isPreflightRunner(raw) ? { runner: raw } : { invalidRunner: raw };
+}
+
 export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
   const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
@@ -96,7 +104,7 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
           .map((m) => ({ id: String(m.id), title: str(m.title) ?? String(m.id), due: date(m.due), done: m.done === true ? true : undefined }))
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
-    preflight: { instructions: str(preflight.instructions) ?? "" },
+    preflight: { instructions: str(preflight.instructions) ?? "", ...runnerOf(preflight.runner) },
   };
 }
 

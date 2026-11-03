@@ -15,7 +15,8 @@ import { repoNameProblem } from "../shared/repos.ts";
 import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../core/repoAdmin.ts";
 import { normalizeProject } from "../core/store/normalize.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
-import type { Workspace } from "../core/store/workspace.ts";
+import type { ProjectPatch, Workspace } from "../core/store/workspace.ts";
+import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, runnerView, type PreflightRunner, type RunnerView } from "../shared/preflightRunner.ts";
 import { DATA_DIR_NAME } from "../core/store/locate.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
@@ -136,17 +137,18 @@ export function agentsSnippet(kinds: readonly AgentKind[]): string {
 - 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
   詳しい手順はスキル ${skills}
 - 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
-- 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる
+- 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる（Preflight の担当 \`preflight.runner\` も出る）
 - \`whoami\` の \`via\`（プロジェクトの決まり方）が \`cwd\` でなければ（\`dir\` / \`project\` / \`legacy\` / \`only\`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した \`--project\` / \`--dir\` で避けない。人が指定・確認した後はその対象のまま続ける）
 - プロジェクトが無い・未登録のときは \`p3 init\` / \`p3 join\` を自分から実行せず、新しく作る（\`init\`）のか共有されたものに参加する（\`join\`）のかを人に確かめる
 - 新しい作業を頼まれたら \`p3 request new "<タイトル>" --body "..."\` で要望を登録し、ID を伝えて終える。
-  Preflight（\`preflight\`）とタスク化（\`accept\`）は人が行う（AI は実行しない。結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
-- 例外: 人がチャットで対象の要望の Preflight を明示的に頼んだときだけ、手元で評価してよい: \`p3 preflight <要望ID> --prepare --json\` → 返った指示のファイル（\`instructions\`）を最後まで読み、書くのは返った run の成果物（\`outputs\`）だけ → \`p3 preflight <要望ID> --complete --run <run> --json\` → \`p3 drafts\` の結果を伝えて終える（自分から始めない。タスク化 \`accept\` と着手はしない）
+  Preflight（\`preflight\`）は自分から始めない（勧めない・尋ねない）。タスク化（\`accept\`）は人が行う（結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
+- Preflight を頼まれたら、担当（\`whoami --json\` の \`preflight.runner\`）で分ける。\`codex\`: 人が \`p3 preflight\` か画面で実行する（AI は \`--prepare\` の無い \`p3 preflight\` をしない）。人がチャットで対象の要望の手元の評価を明示的に頼んだときだけ手元で評価し、「Preflight して」とだけなら、人が実行するのか手元で評価するのかを確かめる。\`agent\`: 人に「Preflight して」と頼まれたら手元で評価する（「このチャットで」は求めない）。\`null\`（読めない）: \`agent\` と推測せず \`problem\` を伝え、\`codex\` と同じ扱い。子の要望も同じ。対象の要望が分からなければ確かめる
+- 手元の評価: \`p3 preflight <要望ID> --prepare --json\` → 返った指示のファイル（\`instructions\`）を最後まで読み、書くのは返った run の成果物（\`outputs\`）だけ → \`p3 preflight <要望ID> --complete --run <run> --json\` → \`p3 drafts\` の結果を伝えて終える（自分から始めない。タスク化 \`accept\` と着手はしない）
 - 着手する前に \`p3 show T003 --brief --json\` で本文・依存とその状態（\`dependencies\`）・置き換えの注意（\`warnings\`）を読む
 - 着手する前に、\`--brief --json\` の \`work\`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
 - 着手するときは \`p3 move T003 doing\`。テストを通したら、コミットする前に \`p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -\` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）
 - 要望のタスクを全部終えたら、コミットする前に \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
-- 子の要望（\`parent\` のある要望）は、親とは別の要望として子ごとのタスクとブランチで作業する（親のタスクにしない）。分割の案の採用（\`accept\`）と子の Preflight は人が行う。親を対応済にするのは、親のタスクと見送り以外の子（\`request show <親> --brief --json\` の \`children\`）が全部終わってから
+- 子の要望（\`parent\` のある要望）は、親とは別の要望として子ごとのタスクとブランチで作業する（親のタスクにしない）。分割の案の採用（\`accept\`）は人が行う。子の Preflight は親と同じ担当で、頼まれたときだけ（分割の採用・子の作成から自分で評価へ進まない）。親を対応済にするのは、親のタスクと見送り以外の子（\`request show <親> --brief --json\` の \`children\`）が全部終わってから
 - データのフォルダがこの作業ツリーの中で git 管理されているなら、要望のフォルダ（\`requests/<要望ID>/\`）の変更も実装と同じコミットに入れる（後のレビューで要望とやったことを精査するため。子なら祖先の要望のフォルダ、親を対応済にするときは子孫の要望のフォルダ（見送りの子など）のまだ入っていない変更も入れ、ほかの要望・関係ない変更は入れない。外・無視・worktree のときは入らないので、移動や \`git add -f\` はしない）。push に失敗したら完了の記録は残し、公開できていないことを伝える。要望のフォルダは、マージするまで要望のブランチにしか無い。既定のブランチに切り替えると、その要望（子なら親の子の一覧からも）が消えたように見えるが、データはブランチにある（作り直したり、別のブランチから写したりしない）
 - コミットや PR の URL は後から \`p3 move T003 done --output <URL>\` で足す（完了・記録はそのまま。データをコミットしているなら追記もコミットして push）。複数のリポジトリにまたがるときは最後のタスクに \`--repo-output <参照先>=<PR の URL>\` で全部の PR を残す
 - 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
@@ -261,6 +263,8 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
+  /** Preflight の担当（未指定なら、対話では聞き（Enter は codex）、非対話では codex） */
+  runner?: PreflightRunner;
   /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
   agents?: AgentChoice;
   yes?: boolean;
@@ -341,6 +345,11 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
+    // 担当: codex は人が p3 から実行する（Codex と ChatGPT のプランが要る）。agent は Codex を使えない環境で、手元の AI エージェントに頼む
+    const runnerAnswer =
+      o.runner ?? (await ask("Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）", DEFAULT_PREFLIGHT_RUNNER));
+    if (!isPreflightRunner(runnerAnswer)) throw new UsageError(`Preflight の担当は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runnerAnswer}`);
+    const runner: PreflightRunner = runnerAnswer;
     // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
     let agents = o.agents;
     if (agents === undefined && interactive) {
@@ -358,7 +367,7 @@ export async function init(o: InitOptions): Promise<string> {
       repos: [{ name: refName, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
-      preflight: { instructions },
+      preflight: { instructions, runner },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
@@ -371,9 +380,12 @@ export async function init(o: InitOptions): Promise<string> {
       `  参照先        ${refName}（本体） → ${root}`,
       `  主なフォルダ  ${map.map((m) => m.path).join(", ") || "（なし。設定画面で足せます）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
+      `  Preflight     ${runner}（${RUNNER_LABEL[runner]}。変える: p3 config set preflight.runner=${runner === "codex" ? "agent" : "codex"}）`,
       ...agentLines,
       "",
-      "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
+      runner === "agent"
+        ? "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve"
+        : "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
       cfg.description ? "" : "※ description が空です。p3 config set description=\"...\" で設定してください（Preflight の精度に効きます）",
     ]
       .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))
@@ -533,18 +545,22 @@ export const resolvePath = (cwd: string, p: string) => resolve(cwd, p === "~" ? 
 
 const slugifyName = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|-+$/g, "") || undefined;
 
-const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions"] as const;
+const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions", "preflight.runner"] as const;
 
 /** p3 config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
   if (args[0] === "set") {
-    const patch: Partial<ProjectConfig> = {};
+    const patch: ProjectPatch = {};
     for (const pair of args.slice(1)) {
       const eq = pair.indexOf("=");
       const key = pair.slice(0, eq) as (typeof CONFIG_KEYS)[number];
       const value = pair.slice(eq + 1).trim();
       if (eq < 1 || !CONFIG_KEYS.includes(key)) throw new UsageError(`設定できるキー: ${CONFIG_KEYS.join(", ")}`);
-      if (key === "instructions") patch.preflight = { instructions: value };
+      if (key === "instructions") patch.preflight = { ...patch.preflight, instructions: value };
+      else if (key === "preflight.runner") {
+        if (!isPreflightRunner(value)) throw new UsageError(`preflight.runner は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${value || "（空）"}`);
+        patch.preflight = { ...patch.preflight, runner: value };
+      }
       else if (key === "branchPattern" && !value.includes("{id}")) throw new UsageError("branchPattern には {id} を含めてください");
       else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
@@ -562,10 +578,17 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `milestones     ${sortMilestones(p.milestones).map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
+    `preflight.runner  ${runnerText(runnerView(p.preflight))}`,
     "",
     `ファイル: ${join(ws.dataDir, "project.yaml")}`,
   ].join("\n");
-  return { data: p, text };
+  return { data: { ...p, preflightRunner: runnerView(p.preflight) }, text };
+}
+
+/** 担当の表示（config・whoami）。読めない値は理由を出す */
+export function runnerText(v: RunnerView): string {
+  if (!v.runner) return `（読めません）${v.problem}`;
+  return `${v.runner}（${RUNNER_LABEL[v.runner]}${v.source === "default" ? "。未設定なので既定" : ""}）`;
 }
 
 function splitList(s: string): string[] {

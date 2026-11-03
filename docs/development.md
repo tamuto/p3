@@ -66,10 +66,12 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   Codex がスキルを探す場所は公式の文書（<https://developers.openai.com/codex/skills/> の「Where Codex loads local skills」）
 - 手元の対話エージェントの Preflight（`--prepare` / `--complete`）は、CLI と取り込みを別プロセスのテストで確かめる
   （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が同梱のスキルを見つけて
-  明示の依頼のときだけ手順に従うか、指示のファイルを読み切るかはテストでは確かめられない。スキルの Preflight の節や指示の形を変えたときは、
-  一時フォルダのプロジェクト（`init --agents claude`）を Claude Code で開き、要望を作って「要望 <ID> の Preflight を Claude Code の
-  このチャットで実行して」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、依頼の無い登録では始めないことを
-  手で確かめる（結果はタスクの変更の記録に残す）。Claude Code がスキルを読む場所は公式の文書（<https://code.claude.com/docs/en/skills>）
+  担当（`preflight.runner`）どおりに依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。担当で分けた節の書き方の
+  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。スキルの Preflight の
+  節や指示の形を変えたときは、一時フォルダのプロジェクト（`init --agents claude --preflight-runner agent`）を Claude Code で開き、
+  親と子の要望を作って「要望 <ID> の Preflight をして」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、
+  依頼の無い登録では始めないことを確かめる。`p3 config set preflight.runner=codex` に変えて、「Preflight して」とだけ頼むと聞き返すこと、
+  「このチャットで実行して」と明示すると手元で評価することも確かめる（版と結果はタスクの変更の記録に残す。確かめられなければ未検証と書く）。Claude Code がスキルを読む場所は公式の文書（<https://code.claude.com/docs/en/skills>）
 - CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `P3_*` の環境変数は効かないようにしている
 - `test/layers.test.ts` が src の層の依存の向き、`test/package.test.ts` が配布物の中身と文書のリンクを確かめる
 - 短い出力の量を測るときは:

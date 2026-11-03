@@ -286,4 +286,28 @@ describe("CLI（別のプロセス）での手元のエージェントの Prefli
     expect(acc.json().tasks).toHaveLength(2);
     expect(p3(root, configHome, ["preflight", rid, "--complete", "--run", p.run, "--json"]).json().already).toBe(true);
   });
+  it("担当が agent のプロジェクトで、親と子のどちらも prepare → 成果物 → complete → drafts を Codex・Docker 無しで通せ、タスク化・着手には進まない", () => {
+    const root = tempDir("p3-local-agent-");
+    gitInit(root);
+    const configHome = tempDir("p3-config-");
+    expect(p3(root, configHome, ["init", "--yes", "--description", "在庫", "--dir", ".p3", "--repo-name", "main", "--preflight-runner", "agent"]).code).toBe(0);
+    expect(p3(root, configHome, ["whoami", "--json"]).json().preflight).toEqual({ runner: "agent", source: "project" });
+    const parent = p3(root, configHome, ["request", "new", "通知", "--body", "通知を送る", "--json"]).json().id as string;
+    const child = p3(root, configHome, ["request", "new", "メールの通知", "--body", "メールで送る", "--json"]).json().id as string;
+    expect(p3(root, configHome, ["request", "set", child, `parent=${parent}`, "--json"]).code).toBe(0);
+
+    for (const rid of [parent, child]) {
+      const prep = p3(root, configHome, ["preflight", rid, "--prepare", "--json"]);
+      expect(prep.code, prep.err).toBe(0);
+      const p = prep.json();
+      expect(p).toMatchObject({ request: rid, engine: "local" });
+      writeResult(p.runDir);
+      const done = p3(root, configHome, ["preflight", rid, "--complete", "--run", p.run, "--json"]);
+      expect(done.code, done.err).toBe(0);
+      expect(p3(root, configHome, ["drafts", rid, "--json"]).json()).toMatchObject({ id: p.run, engine: "local", drafts: [{ key: "D1" }, { key: "D2" }] });
+      // 取り込みはタスクを作らない（タスク化は人の accept）
+      expect(p3(root, configHome, ["ls", "--req", rid, "--json"]).json()).toEqual([]);
+      expect(p3(root, configHome, ["request", "show", rid, "--brief", "--json"]).json().item.status).not.toBe("active");
+    }
+  });
 });

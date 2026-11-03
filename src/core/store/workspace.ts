@@ -58,6 +58,9 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  *
  * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */
+/** saveProject の更新（preflight は項目ごと） */
+export type ProjectPatch = Omit<Partial<ProjectConfig>, "preflight"> & { preflight?: Partial<ProjectConfig["preflight"]> };
+
 export class Workspace {
   project!: ProjectConfig;
   readonly requests: MarkdownCollection<Request>;
@@ -228,9 +231,13 @@ export class Workspace {
   }
 
   /** プロジェクト設定を更新して project.yaml に書く（コメントは残す） */
-  async saveProject(patch: Partial<ProjectConfig>): Promise<ProjectConfig> {
+  async saveProject(patch: ProjectPatch): Promise<ProjectConfig> {
     await this.loadProject();
-    const next = { ...this.project, ...patch };
+    // preflight は項目ごとに重ねる（観点だけ・担当だけの更新で、もう片方を消さない。以前の API の形 { instructions } も同じ）。
+    // 担当を設定したら、読めなかった値は消す
+    const pf = patch.preflight;
+    const preflight = pf ? { ...this.project.preflight, ...pf, ...(pf.runner ? { invalidRunner: undefined } : {}) } : this.project.preflight;
+    const next: ProjectConfig = { ...this.project, ...patch, preflight };
     await writeProjectFile(join(this.dataDir, "project.yaml"), next);
     await this.loadProject();
     this.emit({ type: "changed", kind: "project" });

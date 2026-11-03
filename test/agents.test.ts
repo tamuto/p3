@@ -41,15 +41,51 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     expect(AGENTS_SNIPPET.replaceAll("\\`", "`")).toContain(word.replace("人への質問をタスクにしない", "人への質問はタスクにしない"));
   });
 
-  it("Preflight とタスク化を人が行うことを、どちらもはっきり書く", () => {
-    expect(skill).toMatch(/Preflight（評価・細分化）とタスク化（`accept`）は人が行う/);
-    expect(AGENTS_SNIPPET).toMatch(/Preflight（\\?`preflight\\?`）とタスク化（\\?`accept\\?`）は人が行う（AI は実行しない/);
+  it("タスク化は人が行い、Preflight は自分から始めないことを、どちらもはっきり書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    expect(skill).toMatch(/Preflight（評価・細分化）は自分から始めず、タスク化（`accept`）は人が行う/);
+    expect(snippet).toMatch(/Preflight（`preflight`）は自分から始めない（勧めない・尋ねない）。タスク化（`accept`）は人が行う/);
+    expect(skill).toMatch(/Preflight を勧めたり、実行してよいか尋ねたりもしない/);
+    // Preflight を通さないタスクの登録・作業の手順は残す
+    for (const text of [skill, snippet]) expect(text).toContain("request new");
   });
 
-  it("Preflight は明示の依頼があったときだけ手元で評価し、書くのは run の成果物だけ、タスク化と着手はしないと、どちらも書く", () => {
+  it("Preflight を頼まれたときは担当（whoami の preflight.runner）で分け、codex / agent / 読めないときを、どちらも書く", () => {
     const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
     for (const text of [skill, snippet]) {
-      expect(text).toMatch(/人がチャットで対象の要望の Preflight を明示的に頼んだときだけ/);
+      expect(text).toContain("`preflight.runner`");
+      // codex: 人が実行。AI は通常の実行をしない。手元の評価は明示の依頼のときだけ
+      expect(text).toMatch(/`codex`/);
+      expect(text).toMatch(/AI は[^\n]*`--prepare` の無い[^\n]*`p3 preflight`[^\n]*をしない|AI は `p3 preflight <要望ID>`（`--prepare` の無い通常の実行）をしない/);
+      expect(text).toMatch(/人がチャットで対象の要望[^\n]*手元の評価を(?:\n\s*)?明示的に(?:\n\s*)?頼んだときだけ/);
+      // agent: 「Preflight して」で手元で評価し、「このチャットで」は求めない
+      expect(text).toMatch(/`agent`/);
+      expect(text).toMatch(/「Preflight して」/);
+      expect(text).toMatch(/「このチャットで」(?:のような言い方)?は求めない/);
+      // 読めない担当を agent と推測しない
+      expect(text).toMatch(/`agent` と推測しない|`agent` と推測せず/);
+      // 子も親と同じ
+      expect(text).toMatch(/子の要望も(?:親と)?同じ/);
+      expect(text).toContain("対象の要望が分からなければ確かめる");
+    }
+  });
+
+  it("スキルの役割の表・登録の後・子の要望・してはいけないことが同じ分け方で、前の「Preflight は人」の決まりを残さない", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    expect(skill).toMatch(/\| Preflight（評価・細分化。`preflight`） \| 担当（`whoami --json` の `preflight\.runner`）で決まる/);
+    expect(skill).toMatch(/子の Preflight は親と同じく、頼まれたときだけ\n\s*「Preflight を頼まれたとき」の担当に従う/);
+    expect(snippet).toMatch(/子の Preflight は親と同じ担当で、頼まれたときだけ/);
+    expect(skill).toMatch(/手元の評価（`--prepare` \/ `--complete`）は、上の「Preflight を頼まれたとき」の担当ごとの条件を満たしたときだけ/);
+    for (const text of [skill, snippet]) {
+      expect(text).not.toMatch(/子の Preflight は人が行う/);
+      expect(text).not.toMatch(/Preflight（[^）]*）とタスク化（`accept`）は人が行う/);
+      expect(text).not.toMatch(/Preflight の実行（`preflight`）とタスク化（`accept`）をしない/);
+    }
+  });
+
+  it("Preflight を頼まれたときは手元で評価し、書くのは run の成果物だけ、タスク化と着手はしないと、どちらも書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet]) {
       expect(text).toContain("--prepare --json");
       expect(text).toContain("--complete --run <run> --json");
       expect(text).toMatch(/指示のファイル（`instructions`）|`instructions`（指示のファイル）/);

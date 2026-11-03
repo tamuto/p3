@@ -228,7 +228,31 @@ p3 request set k7m3x status=done               # 要望を完了済にする（�
 | --- | --- |
 | `name` / `description` | 画面の表示と、Preflight の前提（説明が空だと画面に警告を出す） |
 | `instructions`（`preflight.instructions`） | プロジェクト固有の評価の観点・制約。Codex への指示に加わる |
+| `preflight.runner` | Preflight の担当: `codex`（既定。未設定もこれ）か `agent`。下の「Preflight の担当」 |
 | `branchPattern` | 要望のブランチ名（既定 `req/{id}-{slug}`。作業先のリポジトリごとに同じ名前で割り当てる） |
+
+#### Preflight の担当
+
+誰が Preflight を実行するかを、プロジェクトで1つ決める（`project.yaml` の `preflight.runner`。`p3 init` で尋ね、Enter・`--yes` は
+`codex`）。AI エージェント向けの使い方（スキルと AGENTS.md の節）は `p3 whoami --json` の `preflight.runner` を読んで手順を選ぶ。
+
+| 担当 | 向いている環境 | Preflight の実行 |
+| --- | --- | --- |
+| `codex` | Codex（ChatGPT のプランと Docker）を使える | 人が `p3 preflight` か画面から実行し、Codex が評価する。AI は、人が対象の要望の手元の評価をはっきり頼んだときだけ評価する |
+| `agent` | Codex を使えない（準備していない・ChatGPT のプランが無い） | 人がチャットで「Preflight して」と頼むと、手元の AI エージェントが評価する（下の「手元の対話エージェントで Preflight する」） |
+
+```bash
+p3 config set preflight.runner=agent     # codex に戻すなら preflight.runner=codex
+p3 whoami                                 # Preflight     agent（手元の AI エージェントが評価する（頼まれたとき））
+```
+
+- どちらでも、AI が自分から Preflight を始めたり勧めたりはしない。タスク化（`accept`）は人が行う。Preflight を通さずにタスクを作る
+  道も今までどおり使える
+- 担当は AI 向けの手順を選ぶための方針で、`p3 preflight` のエンジン（このマシンの `preflight.engine`）や `--prepare` / `--complete`
+  の動きは変えない。`codex` でも手元の評価はでき、`agent` でも人が `p3 preflight` を実行すれば Codex で評価する
+- 個人（マシン）の設定での上書きは設けない（担当を共有の方針として1つに読めるようにする）。Codex を使えない人が `codex` の
+  プロジェクトに参加しているときは、手元の評価をはっきり頼めば同じように評価できる
+- `project.yaml` に読めない値が書いてあると、`whoami` は担当を決めずに（`runner: null`）直し方を出す。AI は `agent` と推測しない
 
 マイルストーンは `p3 milestone add|set|rm` か画面のリリースノートの「マイルストーン」タブ（下の「リリースノートの画面」）、参照先は下の「参照先と作業先」。
 
@@ -343,11 +367,21 @@ p3 accept k7m3x                                       # 人がタスク化
   P3 は止められない（エージェントの権限の設定で守る）。どの程度の利用枠を使うかはエージェント側の契約による
 
 **Claude Code のチャットで頼む**: 上の手順は、同梱のスキル（`.claude/skills/p3/SKILL.md`。後の「AI エージェントから使う」）に書いてある。
-Claude Code のチャットで、対象の要望を挙げて明示的に頼む:
+頼み方はプロジェクトの Preflight の担当（上の「Preflight の担当」）で変わる。エージェントは `p3 whoami --json` で担当を読む。
 
 ```text
+# 担当が agent のとき（Codex を使えない環境）: 対象の要望を挙げて頼めばよい
+要望 261009-k7m3x の Preflight をして
+
+# 担当が codex のとき: 手元で評価してほしいことをはっきり頼む（「Preflight して」とだけ頼むと、p3 で実行するのか手元で評価するのかを聞き返す）
 要望 261009-k7m3x の Preflight を Claude Code のこのチャットで実行して
 ```
+
+- どちらの担当でも、エージェントは評価を取り込んで `p3 drafts` の要約を伝えたところで止まる。タスク化（`accept`）と着手は人が案を
+  確かめてから。要望の登録やタスクの作業のついでに、エージェントから Preflight を始めたり勧めたりはしない。子の要望も同じ
+- 担当を変えても、置いたスキルと AGENTS.md の節は置き直さなくてよい（実行のたびに `whoami` で読む）。以前の版のスキルを置いている
+  リポジトリは、`p3 agents claude|codex|both` で同梱の版との違いを確かめ、最新にするなら選んだ先だけ `--force` で置き換える
+  （ほかの文は残す。後の「AI エージェントから使う」）
 
 - Claude Code はスキルに従って `--prepare` → 指示のファイルを読んで評価し、成果物を書く → `--complete` → `p3 drafts` の要約を返す、
   までを同じチャットで行う。タスク化（`accept`）とタスクの着手はしない（人が `p3 drafts` か画面で案を確かめてから `p3 accept`）。

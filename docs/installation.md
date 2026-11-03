@@ -95,12 +95,16 @@ p3 init --agents
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
 #   最初に読むドキュメント（カンマ区切り。Preflight が評価の前に読みます） [docs, README.md]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
+#   Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価） [codex]:
 
 # AI やスクリプトからは引数で（--yes で質問しない。--dir を付けなければリポジトリのルートの .p3）
 p3 init --yes --agents --project myapp --description "社内向けの経費精算アプリ"
 
 # リポジトリの外に置くなら --dir で指定する
 p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
+
+# Codex（ChatGPT のプラン）を使わず、Claude Code などの手元のエージェントに Preflight を頼むなら
+p3 init --yes --agents claude --project myapp --preflight-runner agent --description "社内向けの経費精算アプリ"
 ```
 
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
@@ -113,6 +117,11 @@ p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社�
   （値を省くと both。付けなければ置かない。対話では聞き、Enter は置かない）。置いたファイルはリポジトリに入れて共有する。
   作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md) の「AI エージェントから使う」。`init --agents` を
   既にあるプロジェクトで実行し直しても置かない）
+- **Preflight の担当**（`preflight.runner`。共有の設定）を決める。`codex`（既定。Enter と `--yes` もこれ）は人が `p3 preflight` や
+  画面から実行し、Codex が評価する（6. と 7. が要る）。`agent` は Codex を使えない環境（Codex を準備していない・ChatGPT のプランが
+  無い）向けで、人がチャットで「Preflight して」と頼むと手元の AI エージェントが評価する（6. と 7. は要らない。画面イメージの描画
+  だけ Docker を使う）。後から `p3 config set preflight.runner=agent|codex` で変えられる（[使い方ガイド](how-to-use.md) の
+  「プロジェクトの設定」）
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
 
 ### 参加する（ほかの人が作ったプロジェクト）
@@ -133,7 +142,7 @@ p3 join --project myapp --dir ~/p3-data/myapp        # リポジトリの外の�
   決まらなければ登録せず、`p3 repo ls` と `p3 repo path <名前> <パス>` を案内する
 - データのフォルダが無い・`project.yaml` が無い・壊れている・読めないときは、理由を出して止まり、何も登録しない（作りもしない。
   新しく作るなら `init`）。同じ名前で別のフォルダは断る。同じ参加をもう一度しても何も変えない
-- `--agents` と、作るときだけの項目（`--name`・`--description`・`--instructions`）は使えない（共有の定義を変えるなら `p3 config set`）
+- `--agents` と、作るときだけの項目（`--name`・`--description`・`--instructions`・`--preflight-runner`）は使えない（共有の定義を変えるなら `p3 config set`）
 
 確かめる:
 
@@ -144,6 +153,7 @@ p3 whoami
 # 今いる参照先  myapp  ブランチ main
 # 変更者        human:<git の user.name>
 # 要望          （なし）
+# Preflight     codex（人が p3 から実行する（Codex））
 ```
 
 プロジェクトが決まらないと、登録済みの一覧と選び方（`--project <名前>`）が出る。リポジトリの外で使うときや、複数のプロジェクトに

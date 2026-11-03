@@ -122,7 +122,7 @@ function SettingsPage() {
               className={inputCls}
               placeholder="例: 外部 SaaS の追加は要相談。個人情報を扱う変更は必ずリスクに挙げる。"
               value={draft.preflight.instructions}
-              onChange={(e) => set("preflight", { instructions: e.target.value })}
+              onChange={(e) => set("preflight", { ...draft.preflight, instructions: e.target.value })}
             />
           </Field>
         </Section>
