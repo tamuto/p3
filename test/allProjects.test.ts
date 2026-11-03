@@ -295,6 +295,47 @@ describe("プロジェクトを跨ぐ API", () => {
   });
 });
 
+describe("ProjectRegistry: データのフォルダの監視の障害", () => {
+  it("一方のプロジェクトの監視が壊れても、両方の API と再読み込みが使え、始めた Preflight は取り消されずに終わる", async () => {
+    const engines = { alpha: new GateEngine(), beta: new GateEngine() };
+    const s = await setup(["alpha", "beta"], { engines });
+    const runs: Record<string, { rid: string; run: string; ctx: P3Context }> = {};
+    for (const n of ["alpha", "beta"] as const) {
+      const ctx = await s.registry.open(n);
+      const rid = (await newRequest(ctx, { title: "評価する", status: "draft", body: "- 一つ目\n" })).id;
+      const r = await s.at(n)("POST", `/requests/${rid}/preflight`, { engine: "mock" });
+      expect(r.status).toBe(202);
+      runs[n] = { rid, run: r.body.id, ctx };
+    }
+    // open が監視を始めている（同じものを返す）。その中の実際の監視に、入れ子の消失と読めないエラーを起こす
+    const watcher = runs.alpha.ctx.ws.watch()!;
+    expect(watcher.state).toBe("watching");
+    const fsWatcher = (watcher as unknown as { watcher: import("node:events").EventEmitter }).watcher;
+    const logs: string[] = [];
+    const prev = console.error;
+    console.error = (m: string) => void logs.push(m);
+    try {
+      fsWatcher.emit("error", Object.assign(new Error("ENOENT: scandir drafts"), { code: "ENOENT" }));
+      fsWatcher.emit("error", Object.assign(new Error("EIO: 読めません"), { code: "EIO" }));
+    } finally {
+      console.error = prev;
+    }
+    expect(watcher.state).toBe("retrying");
+    expect(logs.join("\n")).toContain(s.dirs.alpha);
+    for (const n of ["alpha", "beta"] as const) {
+      expect((await s.at(n)("GET", "/requests")).status).toBe(200);
+      expect((await s.at(n)("POST", "/reload")).status).toBe(200);
+      expect(runs[n].ctx.preflight.running()).toBe(1);
+    }
+    engines.alpha.release();
+    engines.beta.release();
+    for (const n of ["alpha", "beta"] as const) expect((await runs[n].ctx.preflight.wait(runs[n].rid, runs[n].run))?.status).toBe("completed");
+    // 立て直す（既定の待ち 1 秒）
+    for (let i = 0; i < 40 && watcher.state !== "watching"; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(watcher.state).toBe("watching");
+  });
+});
+
 describe("通常の serve の API", () => {
   it("モードを返し、無い API は画面ではなく 404 の JSON", async () => {
     const { dataDir } = await makeRepo();
