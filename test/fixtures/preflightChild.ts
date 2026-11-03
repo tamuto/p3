@@ -6,12 +6,17 @@ import { Workspace } from "../../src/core/store/workspace.ts";
 const [dataDir, requestId] = process.argv.slice(2);
 const ws = new Workspace(dataDir);
 await ws.load();
+// 終わらない（中止されたときだけ止まる）エンジン
 const never = {
   name: "mock" as const,
   status: async () => ({ name: "mock" as const, ok: true, detail: "" }),
-  run: () => new Promise<never>(() => {}),
+  run: (_job: unknown, _log: unknown, signal: AbortSignal) => new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })),
 };
 const service = new PreflightService(ws, { mock: never }, "mock");
 const run = await service.start(requestId, { actor: "test" });
 process.stdout.write(`started ${run.id}\n`);
-setInterval(() => {}, 60_000);
+const timer = setInterval(() => {}, 60_000);
+// 止まったら（中断の依頼を見て止めた）知らせて終わる
+await service.wait(requestId, run.id);
+process.stdout.write(`finished ${(await ws.preflight.get(requestId, run.id))?.status}\n`);
+clearInterval(timer);

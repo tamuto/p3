@@ -426,9 +426,17 @@ export interface PreflightRun {
   owner?: RunOwner;
   /** 始める前の要望のステータス（codex / mock。中断にしたとき、最新の run なら要望をこれに基づいて戻す。local は local.before） */
   before?: RequestStatus;
-  /** 実行しているプロセスが終わっていたので、running のまま残った run を中断（failed）にした。理由と日時 */
-  interrupted?: { reason: string; at: string };
+  /**
+   * running のまま残った run を中断（failed）にした。理由と日時。acknowledgedBy は、動いているか確かめられない run を、人が止まって
+   * いることを確かめて中断にした（p3 preflight --cancel --acknowledge-stopped・画面）。無ければ、実行していたプロセスが終わっていたので P3 が中断にした
+   */
+  interrupted?: { reason: string; at: string; acknowledgedBy?: string };
+  /** 中断を頼まれている（cancel-request.json。実行しているプロセスが見て止める。止まるまでは running のまま） */
+  cancelRequested?: { at: string; by?: string };
 }
+
+/** running の run を実行しているプロセスの今の状態（GET run の liveness。core/preflight/owner.ts の判定。local は評価を待っている） */
+export type RunLiveness = { state: "alive" | "waiting" } | { state: "dead" | "unknown"; reason: string };
 
 /**
  * Preflight の run を実行しているプロセス（共有するデータに置く。パス・認証情報・ホスト名そのものは残さない）。

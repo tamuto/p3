@@ -9,6 +9,7 @@ import type {
   PreflightNote,
   PreflightPulse,
   PreflightRun,
+  RunLiveness,
   ProjectConfig,
   ProposedTask,
   Request,
@@ -29,7 +30,7 @@ import type {
 } from "../../shared/types.ts";
 
 /** API の run（評価対象と今の要望が同じか inputMatch を添える。run.json には無い） */
-export type RunInfo = PreflightRun & { inputMatch?: InputMatch };
+export type RunInfo = PreflightRun & { inputMatch?: InputMatch; liveness?: RunLiveness };
 
 export interface AttachmentList {
   items: Attachment[];
@@ -232,7 +233,9 @@ export const api = {
   /** 最新の Preflight と見ている run の今の状態だけ（ディスクから。開いている要望の画面が軽く確かめる） */
   preflightStatus: (rid: string, runId?: string) =>
     call<PreflightPulse>("GET", `/requests/${rid}/preflight-status${runId ? `?run=${encodeURIComponent(runId)}` : ""}`),
-  cancelRun: (rid: string, runId: string) => call("POST", `/requests/${rid}/preflight/${runId}/cancel`, {}),
+  /** 中断（最新でなくてもよい）。acknowledgeStopped: 動いているか確かめられない run を、止まっていることを確かめて中断にする */
+  cancelRun: (rid: string, runId: string, opts: { acknowledgeStopped?: boolean } = {}) =>
+    call<{ state: "cancelled" | "requested" | "already"; message: string; acknowledgeable?: boolean }>("POST", `/requests/${rid}/preflight/${runId}/cancel`, opts),
   attachments: (rid: string) => call<AttachmentList>("GET", `/requests/${rid}/attachments`),
   /** 添付を足す（multipart。説明・出典は空なら送らない） */
   addAttachment: async (rid: string, input: { file: File; description?: string; source?: string }): Promise<Attachment> => {

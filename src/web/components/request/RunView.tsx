@@ -13,6 +13,7 @@ import { Drafts } from "./Drafts.tsx";
 import { ChildDrafts } from "./ChildDrafts.tsx";
 import { DirectTaskLink } from "./DirectTaskLink.tsx";
 import { preflightFailed } from "../../../shared/directTask.ts";
+import { fmtTime } from "../../lib/format.ts";
 
 /** 表示中の Preflight の run（工程・文脈・ログ・評価・画面資料・メモ・調べた範囲・影響・タスク案） */
 
@@ -78,6 +79,16 @@ export function RunView({
         <div role="status" className="space-y-1 rounded-md bg-amber-50 px-4 py-3 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
           <p className="font-semibold">{stale.title}</p>
           <p className="break-words">{stale.text}</p>
+        </div>
+      )}
+
+      {run.interrupted && (
+        <div role="status" className="space-y-1 rounded-md bg-slate-100 px-4 py-3 text-slate-800 ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700">
+          <p className="font-semibold">中断した run（{fmtTime(run.interrupted.at)}）</p>
+          <p className="break-words">
+            {run.interrupted.acknowledgedBy ? `止まっていることを ${run.interrupted.acknowledgedBy} が確かめて中断にしました` : "実行していたプロセスが終わっていたので中断にしました"}
+            （{run.interrupted.reason}）。評価の結果はありません。もう一度 Preflight を実行できます
+          </p>
         </div>
       )}
 

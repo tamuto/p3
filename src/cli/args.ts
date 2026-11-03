@@ -54,6 +54,7 @@ const OPTIONS = {
   force: { type: "boolean" },
   "note-only": { type: "boolean" },
   prepare: { type: "boolean" },
+  "acknowledge-stopped": { type: "boolean" },
   complete: { type: "boolean" },
   cancel: { type: "boolean" },
   "archive-superseded": { type: "boolean" },

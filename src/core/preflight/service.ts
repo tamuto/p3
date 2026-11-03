@@ -18,6 +18,7 @@ import {
   type FixedAttachment,
   type InputMatch,
   type PreflightPulse,
+  type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
@@ -179,7 +180,17 @@ export class PreflightService {
       }
       const opened = await this.open(fixed, engine.name, opts.actor);
       const abort = new AbortController();
-      const done = this.execute(engine, opened, abort.signal);
+      // 別のプロセス（CLI・別の serve）からの中断の依頼（cancel-request.json）を見て止める
+      const watch = setInterval(() => {
+        void this.ws.preflight.cancelRequest(requestId, opened.run.id).then((r) => {
+          if (r && !abort.signal.aborted) {
+            this.log(opened.run, { kind: "info", text: `中断を頼まれたので止めます${r.by ? `（${r.by}）` : ""}` });
+            abort.abort();
+          }
+        });
+      }, CANCEL_POLL_MS);
+      watch.unref();
+      const done = this.execute(engine, opened, abort.signal).finally(() => clearInterval(watch));
       this.active.set(opened.run.id, { run: opened.run, abort, done });
       return opened.run;
     });
@@ -235,6 +246,100 @@ export class PreflightService {
     });
   }
 
+  /**
+   * run を中断する（p3 preflight --cancel --run・画面の「中止」）。最新でなくてもよい。成果物・ログ・履歴は消さない。
+   *   - local: 評価を待つのをやめる（cancelLocal）
+   *   - このプロセスで実行中: 止めて、終わるまで少し待つ
+   *   - 実行していたプロセスが終わっていると確かめられる: その場で中断にする（T001 の回復と同じ）
+   *   - ほかのプロセスで動いている: 中断を頼む（cancel-request.json。そのプロセスが見て止める）。止まるまで少し待ち、
+   *     止まらなければ requested（中断を頼んだ。まだ running）。acknowledgeStopped は断る（動いているので）
+   *   - 動いているか確かめられない（以前の run・別の環境）: 中断を頼んだうえで、acknowledgeStopped（人が止まっていることを確かめた）が
+   *     あるときだけ中断にする。無ければ requested と、確かめて中断にする方法を返す（確かめずに中断したことにしない）
+   * 完了した run は断る（CancelRefusedError）。中断・失敗済みなら already。プロセスやコンテナを kill しない
+   */
+  async cancelRun(
+    requestId: string,
+    runId: string,
+    opts: { acknowledgeStopped?: boolean; actor?: string; waitMs?: number } = {},
+  ): Promise<{ state: "cancelled" | "requested" | "already"; run: PreflightRun; message: string; acknowledgeable?: boolean }> {
+    if (!/^PF-[\w-]+$/.test(runId)) throw new NotFoundError(`run の ID の形ではありません: ${runId}`);
+    this.ws.requests.require(requestId);
+    const found = await this.ws.preflight.get(requestId, runId);
+    if (!found) throw new NotFoundError(`${requestId} に ${runId} はありません`);
+    if (found.engine === "local") {
+      if (opts.acknowledgeStopped) throw new CancelRefusedError("not_needed", `${runId} は手元のエージェントの run です（--acknowledge-stopped は要りません）`);
+      const r = await this.cancelLocal(requestId, runId);
+      return { state: r.already ? "already" : "cancelled", run: r.run, message: r.already ? `${runId} は取り消し済みです` : `${runId} を取り消しました（成果物のファイルは run のフォルダに残します）` };
+    }
+    if (found.status === "completed") throw new CancelRefusedError("completed", `${runId} は完了しています（中断にはしません）`);
+    if (found.status !== "running") return { state: "already", run: found, message: `${runId} は既に終わっています（${found.error ?? found.status}）` };
+    const waitMs = opts.waitMs ?? CANCEL_WAIT_MS;
+    const settled = async () => {
+      const until = Date.now() + waitMs;
+      for (;;) {
+        const now = await this.ws.preflight.get(requestId, runId);
+        if (now && now.status !== "running") return now;
+        if (Date.now() >= until) return undefined;
+        await new Promise((r) => setTimeout(r, Math.min(200, waitMs)));
+      }
+    };
+    // このプロセスで実行中
+    const mine = this.active.get(runId);
+    if (mine) {
+      if (opts.acknowledgeStopped) throw new CancelRefusedError("alive", `${runId} はこの serve で実行中です（--acknowledge-stopped は使えません。そのまま中止できます）`);
+      mine.abort.abort();
+      await Promise.race([mine.done, new Promise((r) => setTimeout(r, waitMs))]);
+      const now = await settled();
+      return now ? { state: "cancelled", run: now, message: `${runId} を中止しました` } : { state: "requested", run: (await this.ws.preflight.get(requestId, runId)) ?? found, message: `${runId} を止めています（まだ終わっていません）` };
+    }
+    const owner = ownerState(found.owner, this.probe);
+    if (owner.state === "dead") {
+      await this.locked(requestId, async () => {
+        await this.ws.requests.reload(requestId);
+        await this.recoverRequest(requestId);
+      });
+      const now = (await this.ws.preflight.get(requestId, runId)) ?? found;
+      return { state: now.status === "running" ? "requested" : "cancelled", run: now, message: `${runId} を中断にしました（${owner.reason}）` };
+    }
+    if (owner.state === "alive" && opts.acknowledgeStopped) {
+      throw new CancelRefusedError("alive", `${runId} は別のプロセスで動いています（--acknowledge-stopped は使えません。--cancel だけで中断を頼めます）`);
+    }
+    if (owner.state === "unknown" && opts.acknowledgeStopped) {
+      let done = false;
+      await this.locked(requestId, async () => {
+        const run = await this.ws.preflight.get(requestId, runId);
+        if (!run || run.status !== "running") return;
+        await this.ws.requests.reload(requestId);
+        run.status = "failed";
+        run.error = `中断しました: 止まっていることを人が確かめました（${owner.reason}）`;
+        run.interrupted = { reason: owner.reason, at: nowIso(), acknowledgedBy: opts.actor ?? "unknown" };
+        run.ui = withCurrent({ status: "missing", reason: "評価が終わらなかったので、画面資料を取り込んでいません", targets: [], items: [], problems: [] }, run);
+        this.log(run, { kind: "error", text: `${run.error}${opts.actor ? `（${opts.actor}）` : ""}` });
+        await this.finishLocked(run, run.before);
+        done = true;
+      });
+      const now = (await this.ws.preflight.get(requestId, runId)) ?? found;
+      return done
+        ? { state: "cancelled", run: now, message: `${runId} を中断にしました（止まっていることを確かめた記録を残しました。プロセスやコンテナは止めていません）` }
+        : { state: "already", run: now, message: `${runId} は既に終わっています` };
+    }
+    // 動いている・確かめられない: 中断を頼む（そのプロセスが見て止める）
+    await this.ws.preflight.requestCancel(requestId, runId, opts.actor);
+    this.ws.emit({ type: "changed", kind: "preflight", request: requestId });
+    const now = await settled();
+    if (now) return { state: "cancelled", run: now, message: `${runId} を中止しました` };
+    const current = (await this.ws.preflight.get(requestId, runId)) ?? found;
+    return {
+      state: "requested",
+      run: current,
+      ...(owner.state === "unknown" ? { acknowledgeable: true } : {}),
+      message:
+        owner.state === "alive"
+          ? `${runId} の中断を頼みました。実行しているプロセスが止めるまで running のままです`
+          : `${runId} の中断を頼みました。動いているか確かめられません（${owner.reason}）。止まっていることを確かめたら、p3 preflight ${requestId} --cancel --run ${runId} --acknowledge-stopped で中断にできます（プロセスやコンテナは止めません）`,
+    };
+  }
+
   /** 手元のエージェントの評価を待つ run をやめる（取り込まない。成果物のファイルは残す）。取り消し済みなら何もしない */
   async cancelLocal(requestId: string, runId: string): Promise<{ run: PreflightRun; already: boolean }> {
     return this.locked(requestId, async () => {
@@ -288,8 +393,11 @@ export class PreflightService {
       return `${requestId} の preflight ${last} は手元のエージェントの評価を待っています（取り込む: p3 preflight ${requestId} --complete --run ${last} / やめる: p3 preflight ${requestId} --cancel --run ${last}）`;
     }
     const owner = ownerState(run.owner, this.probe);
-    if (owner.state === "alive") return `${requestId} の preflight ${last} が別のプロセスで実行中です`;
-    return `${requestId} の preflight ${last} が実行中のまま残っています。動いていないと確かめられないので始めません（${owner.reason}）`;
+    if (owner.state === "alive") return `${requestId} の preflight ${last} が別のプロセスで実行中です（やめるなら p3 preflight ${requestId} --cancel --run ${last}）`;
+    return (
+      `${requestId} の preflight ${last} が実行中のまま残っています。動いていないと確かめられないので始めません（${owner.reason}）。` +
+      `止まっていることを確かめたら p3 preflight ${requestId} --cancel --run ${last} --acknowledge-stopped で中断にでき、始め直せます`
+    );
   }
 
   /**
@@ -713,8 +821,15 @@ export class PreflightService {
   }
 
   /** run に今の要望との比較（inputMatch）を添える（画面・CLI・API の表示用。run.json には書かない） */
-  async withInputMatch(requestId: string, run: PreflightRun): Promise<PreflightRun & { inputMatch: InputMatch }> {
-    return { ...run, inputMatch: await this.inputMatch(requestId, run) };
+  async withInputMatch(requestId: string, run: PreflightRun): Promise<PreflightRun & { inputMatch: InputMatch; liveness?: RunLiveness }> {
+    return { ...run, inputMatch: await this.inputMatch(requestId, run), ...(run.status === "running" ? { liveness: this.liveness(run) } : {}) };
+  }
+
+  /** running の run を実行しているプロセスの今の状態（画面の「中止」の出し分け。書かない）。local は待っている（waiting） */
+  liveness(run: PreflightRun): RunLiveness {
+    if (run.engine === "local") return { state: "waiting" };
+    if (this.active.has(run.id)) return { state: "alive" };
+    return ownerState(run.owner, this.probe);
   }
 
   /** タスク化の前に見せるもの: 採用する案と、置き換えられる既存タスク、評価対象が今の要望と同じか（ファイルは変えない） */
@@ -1004,6 +1119,20 @@ export class PreflightService {
       ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}),
       ...(up.warnings.length ? { warnings: up.warnings } : {}),
     };
+  }
+}
+
+/** 中断の依頼を見る間隔（実行しているプロセス）と、頼んだ側が止まるのを待つ時間 */
+const CANCEL_POLL_MS = 1_000;
+const CANCEL_WAIT_MS = 5_000;
+
+/** 中断できない（完了した run・動いている run への確認の操作など）。何も変えていない */
+export class CancelRefusedError extends Error {
+  constructor(
+    readonly code: "completed" | "alive" | "not_needed",
+    message: string,
+  ) {
+    super(message);
   }
 }
 
