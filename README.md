@@ -20,7 +20,7 @@
 
 | もの | 何に使う |
 | --- | --- |
-| Node.js 22 以上 | P3 本体（CLI と `p3 serve`） |
+| Node.js 24 以上（推奨 26） | P3 本体（CLI と `p3 serve`） |
 | pnpm（`pnpx`）か npm（`npx`） | P3 を入れずに動かす（`pnpm add -g @infodb/p3` で `p3` コマンドにしてもよい） |
 | Git | 管理したいリポジトリと、要望ごとのブランチ |
 | Docker（CLI とデーモン） | Preflight の Codex をコンテナの中で動かす |

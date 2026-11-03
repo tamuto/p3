@@ -77,6 +77,8 @@ describe("描画のコンテナ", () => {
     expect(readdirSync(RENDER_IMAGE_DIR).sort()).toEqual([...RENDER_IMAGE_FILES].sort());
     const dockerfile = readFileSync(join(RENDER_IMAGE_DIR, "Dockerfile"), "utf8");
     expect(dockerfile).toMatch(/playwright@\d+\.\d+\.\d+/);
+    // 描画のイメージも本体のイメージと同じ Node 26（メジャー版の指定。Dockerfile の FROM はこの1行だけ）
+    expect(dockerfile.match(/^FROM .+$/gm)).toEqual(["FROM node:26-bookworm-slim"]);
     expect(dockerfile).toContain("fonts-noto-cjk");
     expect(dockerfile).toContain("COPY fonts-ja.conf /etc/fonts/conf.d/");
     expect(dockerfile).toMatch(/^USER render$/m);

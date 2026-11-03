@@ -19,8 +19,9 @@ describe("Dockerfile", () => {
   it("Node はメジャー版に追従し（同じメジャーの更新は作り直すと入る）、ほかのベースは版を固定する。実行は engines を満たす Node、ビルドは packageManager と同じ pnpm", () => {
     const froms = directive("FROM");
     const nodes = froms.filter((f) => f.startsWith("node:"));
-    // ビルドは Node 24、実行は Node 22。どちらも bookworm-slim で、マイナー・パッチは書かない（書くとセキュリティリリースが入らない）
-    expect(nodes).toEqual(["node:24-bookworm-slim AS build", "node:22-bookworm-slim"]);
+    // ビルドも実行も Node 26（開発の標準と同じ。利用者の下限は engines の 24）。どちらも bookworm-slim で、マイナー・パッチは書かない
+    // （書くとセキュリティリリースが入らない）
+    expect(nodes).toEqual(["node:26-bookworm-slim AS build", "node:26-bookworm-slim"]);
     for (const f of froms.filter((x) => !x.startsWith("node:"))) expect(f, f).toMatch(/^[\w./-]+:\d+\.\d+\.\d+[\w.-]*( AS \w[\w-]*)?$/);
     expect(froms.find((f) => f.startsWith("docker:"))).toMatch(/^docker:\d+\.\d+\.\d+-cli AS docker-cli$/);
     const runtime = froms.at(-1)!;

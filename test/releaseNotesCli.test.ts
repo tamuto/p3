@@ -96,7 +96,7 @@ describe("p3 release-notes", () => {
     p3(root, ["release-notes", "show", "v1"]);
     expect(readFileSync(file, "utf8")).toBe(before);
     expect(p3(root, ["release-notes", "show", "v1", "--json"]).json()).toMatchObject({ materialChanged: false, note: { updatedBy: "human:tester" } });
-  });
+  }, 60_000); // CLI を何度も起こすので、全体を並べて流すと 20 秒を超えることがある
 
   it("要望の一括完了: show で判定と hash を見て、complete-requests で対応済を完了済にする（タスクの済みは変えない）", () => {
     const { root, a, b } = setup();

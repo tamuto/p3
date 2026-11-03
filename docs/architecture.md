@@ -605,9 +605,9 @@ serve の中で起きたこと（画面からの保存、Preflight の進み具�
 - 変更を読み込む処理の失敗はログに残すだけ（次の変更か「再読み込み」で反映）
 - ログは標準エラーに `[watch] <データのフォルダ>: <何が起きたか>。<続ける / 立て直す / やめる>: <原因>` の形で出す
 - `close` で監視・遅らせた通知・立て直しの予定を全部やめ、その後は通知も立て直しも起こさない（close の後に watch しても始めない）
-- 限界: 監視をやめた・立て直している間の外での変更は画面に自動では出ない（「再読み込み」で取り込む）。開発の Node 26 では、同じ操作で
-  元の例外は起きなかった（`test/dataWatcher.test.ts` の実際の監視は、開発の Node では元の例外を起こせない。Node 22 では手で確かめる。
-  docs/development.md）
+- 限界: 監視をやめた・立て直している間の外での変更は画面に自動では出ない（「再読み込み」で取り込む）。Node 24.22.2・26.13.0 では、同じ操作で
+  元の例外は起きなかった（2026-11-03 の記録）。今の対象（`engines` の `>=24`、イメージの 26）では起きないが、`'error'` を聞く守りは残す。
+  `test/dataWatcher.test.ts` の実際の監視は元の例外を起こせないので、退行は差し替えた監視のテストが見る
 
 画面は定期的には問い合わせない、の例外を1つだけ置く: 要望の「概要・Preflight」を開いている間だけ、その要望の最新の Preflight を
 軽く確かめる（`GET /api/requests/:rid/preflight-status`、`PreflightService.pulse`）。CLI など外で始めた run とその進み・終わりは
@@ -910,7 +910,7 @@ Dockerfile（`src/core/preflight/render-image/`）で作る。llmcs の Dockerfi
 Playwright が入っても、それだけでは描画の安全の条件（ネットワークなし・認証情報なし・リポジトリなし・原稿は読むだけ）を
 満たさないので、描画は別のコンテナで行う。
 
-- 版: Playwright 1.63.0（Chromium の headless shell）、Node 22（`node:22-bookworm-slim`）、`fonts-noto-cjk`。
+- 版: Playwright 1.63.0（Chromium の headless shell）、Node 26（`node:26-bookworm-slim`）、`fonts-noto-cjk`。
   Playwright はイメージの中で npm から入れる（P3 の依存には足さない）。版は公開から1日を過ぎたものに固定する
 - イメージの名前は資材（`Dockerfile`・`fonts-ja.conf`・`render.mjs`。`render.ts` の `RENDER_IMAGE_FILES`）の中身の hash
   （`infodb-p3-render:<12桁>`）。どれかが変われば（フォントの設定だけでも）次の描画で作り直す。

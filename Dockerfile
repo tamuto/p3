@@ -15,7 +15,7 @@
 # Docker の CLI と pnpm は版を固定する（中身の変わり方をこちらで決める）
 
 # --- ビルド: 画面をビルドし、npm で配るのと同じ中身（package.json の files）を作る -----------------------------
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /src
 # package.json の packageManager と同じ版の pnpm（Node に付いた corepack はこの版の配布の形を扱えないので npm で入れる）
 RUN npm install -g pnpm@12.10.1
@@ -31,7 +31,7 @@ RUN cp pnpm-lock.yaml pnpm-workspace.yaml /opt/p3/ && cd /opt/p3 && pnpm install
 FROM docker:27.5.1-cli AS docker-cli
 
 # --- 実行 ------------------------------------------------------------------------------------------------------
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 # 版は package.json の version を渡す（docs/publishing.md）
 ARG P3_VERSION=dev
 LABEL org.opencontainers.image.title="infodb p3" \

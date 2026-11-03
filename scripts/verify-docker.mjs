@@ -136,6 +136,9 @@ try {
     check(JSON.stringify(entry) === '["p3"]', `ENTRYPOINT が違います: ${JSON.stringify(entry)}`);
     check(JSON.stringify(cmd) === '["serve","--all-projects","--host","0.0.0.0"]', `CMD が違います: ${JSON.stringify(cmd)}`);
     const tools = docker("run", "--rm", "--entrypoint", "sh", image, "-c", "node -v && docker --version && git --version");
+    // 中の Node は Dockerfile の実行の段（最後の FROM node:<メジャー>-...）のメジャー版（古いベースのキャッシュを使っていない）
+    const runtime = [...readFileSync(new URL("../Dockerfile", import.meta.url), "utf8").matchAll(/^FROM node:(\d+)-/gm)].at(-1)?.[1];
+    check(!!runtime && tools.startsWith(`v${runtime}.`), `中の Node が Dockerfile の実行の段（node:${runtime}）と違います: ${tools.split("\n")[0]}`);
     // root で動き、個人設定は root の既定の場所（開発コンテナと同じ）
     const who = docker("run", "--rm", "--entrypoint", "sh", image, "-c", 'id -u && echo "${XDG_CONFIG_HOME:-$HOME/.config}"');
     check(who === "0\n/root/.config", `root で動いていない・個人設定の場所が違います: ${who}`);
