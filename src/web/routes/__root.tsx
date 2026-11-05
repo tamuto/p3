@@ -12,7 +12,7 @@ import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
  *   /requests/$requestId                要望の概要と Preflight（?run=）
  *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
  *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
- *   /release-notes?m=                   リリースノート（マイルストーンごと）
+ *   /release-notes?tab=                 マイルストーンの管理（既定）/ notes リリースノート（?m=）/ review レビュー
  *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。

@@ -69,14 +69,14 @@ describe.skipIf(!inject("chromium").available)("マイルストーンの並び�
     const { page, step } = s;
     const nav = page.getByRole("navigation", { name: "マイルストーン" });
     await step("指定なし", async () => {
-      await page.goto("/release-notes");
+      await page.goto("/release-notes?tab=notes");
       await until.count(nav.getByRole("link"), 4);
       const shown = await nav.getByRole("link").evaluateAll((ls) => ls.map((l) => new URL((l as HTMLAnchorElement).href).searchParams.get("m")));
       expect(shown).toEqual(["v0.10", "v0.9", "v0.2", "v0.1"]);
       await until.visible(nav.locator('[aria-current="page"]').filter({ hasText: "v0.10" }));
     });
     await step("URL で v0.2 を指定", async () => {
-      await page.goto("/release-notes?m=v0.2");
+      await page.goto("/release-notes?tab=notes&m=v0.2");
       await until.visible(nav.locator('[aria-current="page"]').filter({ hasText: "v0.2" }));
       expect(await nav.locator('[aria-current="page"]').count()).toBe(1);
     });
