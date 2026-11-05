@@ -4,6 +4,7 @@ import {
   REVIEW_STATUS_LABELS,
   REVIEW_VERDICT_LABELS,
   REVIEW_VERDICTS,
+  type ReviewCodeRef,
   type ReviewListItem,
   type ReviewRun,
   type ReviewVerdict,
@@ -142,7 +143,7 @@ export function MilestoneReviewPanel({
   return (
     <div className="min-w-0 space-y-6">
       <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-        保存してある目的・予定機能と、このマイルストーンに属する要望・タスクの記録を比べた参考の記録です。リリースするかは人が読んで決めます
+        保存してある目的・予定機能に対して、Codex が参照先のコードと git の履歴を読み、達成の度合い・不足・意図しない変更を確かめた参考の記録です（要望・タスクの記録は手がかり）。リリースするかは人が読んで決めます
         （レビューをしなくても、要望の完了やリリースノートの操作はできます）。
       </p>
 
@@ -178,6 +179,7 @@ export function MilestoneReviewPanel({
               {preview.requests > 0 && `（${Object.entries(preview.statuses).map(([s, n]) => `${STATUS_JA[s] ?? s} ${n}`).join("・")}）`}
               {preview.context > 0 && `・別のマイルストーンの親子 ${preview.context} 件（文脈として渡し、成果に数えません）`}
             </p>
+            <CodeList code={preview.code} />
             {preview.warnings.length > 0 && (
               <ul className="space-y-1 text-sm text-amber-700 dark:text-amber-300">
                 {preview.warnings.map((w) => (
@@ -346,8 +348,54 @@ function Purpose({ text }: { text?: string }) {
   );
 }
 
-/** 根拠の参照（要望 ID・<要望ID>/T001）を今の要望・タスクへのリンクにする（消されていれば開いた先で「無い」と出る） */
+/** 確かめるコード（参照先ごとの状態・HEAD・タスクに残したコミット）。detail: コミットを1件ずつ出す（評価したときの材料） */
+function CodeList({ code, detail = false }: { code?: ReviewCodeRef[]; detail?: boolean }) {
+  if (!code) return null;
+  const ok = code.filter((c) => c.status === "ok");
+  return (
+    <div>
+      <p className="text-sm font-medium">確かめるコード（参照先。読むだけで Codex に渡します）</p>
+      {code.length ? (
+        <ul className="mt-1 space-y-1 text-sm" aria-label="確かめるコード">
+          {code.map((c) => (
+            <li key={c.name} className="break-words">
+              <span className="font-mono">{c.name}</span>
+              {c.status === "ok" ? (
+                <span className="text-slate-600 dark:text-slate-300">
+                  {c.head ? ` · ${c.branch ? `${c.branch} ` : ""}${c.head.slice(0, 7)}` : c.history === "unavailable" ? " · git の履歴なし" : ""}
+                  {c.dirty ? ` · 未コミットの変更 ${c.dirty} 件` : ""}
+                  {c.commits.length > 0 &&
+                    ` · タスクのコミット ${c.commits.filter((x) => x.found).length} 件${c.commits.some((x) => !x.found) ? `（見つからない ${c.commits.filter((x) => !x.found).length} 件）` : ""}`}
+                </span>
+              ) : (
+                <span className="text-amber-700 dark:text-amber-300"> · 読めません（{c.reason ?? c.status}）</span>
+              )}
+              {detail && c.commits.length > 0 && (
+                <ul className="mt-1 pl-4" aria-label={`${c.name} のタスクのコミット`}>
+                  {c.commits.map((x) => (
+                    <li key={`${x.sha}:${x.from}`} className="break-all">
+                      <code className="font-mono">{x.sha.slice(0, 12)}</code> <RefLink r={x.from} />
+                      {!x.found && <span className="text-amber-700 dark:text-amber-300">（履歴に無い）</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {!ok.length && (
+        <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">読める参照先がありません。実装は確かめられず、記録だけの点検になります（達成とは判定しません）。</p>
+      )}
+    </div>
+  );
+}
+
+const RECORD_REF = /^\d{6}-[0-9a-z]{5}(\/T\d+)?$/;
+
+/** 根拠の参照。要望 ID・<要望ID>/T001 は今の要望・タスクへのリンク（消されていれば開いた先で「無い」と出る）。コードの場所・コミットは文字のまま */
 function RefLink({ r }: { r: string }) {
+  if (!RECORD_REF.test(r)) return <code className="font-mono break-all">{r}</code>;
   const [rid, tid] = r.split("/");
   return tid ? (
     <Link to="/" search={{ task: r }} className="font-mono underline">
@@ -368,7 +416,7 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
     <div className="space-y-4">
       {changed && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          評価した後に、目的・予定機能か要望・タスクが変わっています（この記録は評価したときの材料のままです）。
+          評価した後に、目的・予定機能か要望・タスク、参照先のコードが変わっています（この記録は評価したときの材料のままです）。
           {canRerun && (
             <Button disabled={busy} onClick={onRerun}>
               今の内容でもう一度実行
@@ -412,12 +460,37 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
           </li>
         ))}
       </ul>
+      {result.unplanned && (
+        <div>
+          <p className="text-sm font-medium">目的・予定機能に無い変更（意図しない変更の候補）</p>
+          {result.unplanned.length ? (
+            <ul className="mt-1 space-y-2 text-sm" aria-label="意図しない変更の候補">
+              {result.unplanned.map((u, i) => (
+                <li key={i} className="space-y-1 rounded-md border border-amber-200 p-2 dark:border-amber-900">
+                  <p className="break-words">{u.text}</p>
+                  {u.evidence.length > 0 && (
+                    <p className="flex flex-wrap gap-x-2">
+                      <span className="text-slate-500">根拠:</span>
+                      {u.evidence.map((r) => (
+                        <RefLink key={r} r={r} />
+                      ))}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-slate-500">（見つかっていません）</p>
+          )}
+        </div>
+      )}
       <p className="text-sm text-slate-500 dark:text-slate-400">範囲: {result.scope}</p>
       {input && (
         <details className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-          <summary className="cursor-pointer text-sm font-medium">評価したときの材料（目的・予定機能・要望の文面）</summary>
+          <summary className="cursor-pointer text-sm font-medium">評価したときの材料（目的・予定機能・参照先のコード・要望の文面）</summary>
           <div className="mt-3 max-h-96 space-y-3 overflow-y-auto text-sm">
             <Purpose text={input.milestone.purpose} />
+            <CodeList code={input.code} detail />
             {input.units.length > 0 && (
               <ul>
                 {input.units.map((u) => (
@@ -439,7 +512,14 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
                     <p className="break-words">
                       <span className="font-mono text-slate-500">{t.id}</span> {t.title}（{t.status}）
                     </p>
-                    {t.record && <p className="whitespace-pre-wrap break-words text-slate-600 dark:text-slate-300">{t.record}</p>}
+                    {t.body && <p className="whitespace-pre-wrap break-words text-slate-600 dark:text-slate-300">{t.body}</p>}
+                    {t.record && (
+                      <p className="whitespace-pre-wrap break-words text-slate-600 dark:text-slate-300">
+                        <span className="text-slate-500">変更の記録: </span>
+                        {t.record}
+                      </p>
+                    )}
+                    {t.outputs.length > 0 && <p className="break-all text-slate-500">成果物: {t.outputs.join(" / ")}</p>}
                   </div>
                 ))}
               </div>

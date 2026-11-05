@@ -168,7 +168,7 @@ export const AI_MANIFEST = {
       desc: "生成1件 {status: running|completed|failed|cancelled, failure?, items（文と出典）, markdown（本文の案）, warnings, materialChanged, log} / 取り消し",
     },
     { method: "GET", path: "/api/milestone-reviews", desc: "レビューの履歴のあるマイルストーン {milestones}（project.yaml に無い孤立も。履歴のあるマイルストーンは消せず ID も変えられない）" },
-    { method: "GET", path: "/api/milestones/:mid/review-preview", desc: "マイルストーンレビューの今の材料（比較単位・目的・要望の件数と状態・範囲・警告・hash）。何も書かない" },
+    { method: "GET", path: "/api/milestones/:mid/review-preview", desc: "マイルストーンレビューの今の材料（比較単位・目的・要望の件数と状態・参照先のコード・範囲・警告・hash）。何も書かない" },
     {
       method: "GET|POST",
       path: "/api/milestones/:mid/reviews",

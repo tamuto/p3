@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   PURPOSE_UNIT_ID,
   REVIEW_SCOPE,
+  REVIEW_SCOPE_RECORDS_ONLY,
+  type ReviewCodeRef,
   type ReviewContextRequest,
   type ReviewInput,
   type ReviewInputRequest,
@@ -9,14 +11,18 @@ import {
   type ReviewWarning,
 } from "../../shared/milestoneReview.ts";
 import type { Milestone } from "../../shared/types.ts";
+import type { ResolvedRef } from "../repoRefs.ts";
 import { hierarchyNow } from "../requestStatus.ts";
 import { Workspace } from "../store/workspace.ts";
+import { reviewCode } from "./code.ts";
 
 /**
  * マイルストーンレビューの比較材料を取り出す。リリースノートの材料（releaseNotes/material.ts）とは別の規則で、あちらの収録の
  * 条件は変えない。
  *
  *   - 比べるのは保存してある目的・予定機能（画面の書きかけは使わない）。比較単位は予定機能。予定機能が無く目的だけなら目的そのもの
+ *   - 確かめる対象は参照先のコード（code.ts。Codex に読むだけでマウントする）。参照先ごとの HEAD・未コミットの変更・
+ *     タスクに残したコミットを固定する。読める参照先が無ければ警告し、範囲を「記録だけ」にする
  *   - 材料は、マイルストーンに直接属する要望の全部の状態（下書き・進行中・対応済・完了済・見送り）。要望の本文、各タスクの本文・状態・
  *     変更の記録・成果物の参照の文字列。未完了・記録なしも省かない（見送りは状態のまま残し、成果と混同しないよう評価の指示で扱う）
  *   - 親子: 親・子が別のマイルストーンなら文脈（context）として ID・題・状態だけを持ち、材料には数えない（二重に数えない）
@@ -27,11 +33,27 @@ import { Workspace } from "../store/workspace.ts";
  * 抽出のたびにディスクから読み直した別の Workspace を使う（画面・CLI のキャッシュに左右されない）。複数のファイルを同じ時点で
  * 読んだとは保証しない（抽出の始めと終わりを残す）。何も書かない。
  */
-export async function extractReviewInput(dataDir: string, mid: string): Promise<ReviewInput> {
+export async function extractReviewInput(dataDir: string, mid: string, refs: readonly ResolvedRef[] = []): Promise<ReviewInput> {
   const extractedAt = new Date().toISOString();
   const snap = new Workspace(dataDir);
   await snap.load();
-  return reviewInputOf(snap, mid, extractedAt);
+  const records = reviewInputOf(snap, mid, extractedAt);
+  const { code, warnings } = await reviewCode(refs, records.requests, dataDir);
+  return withCode(records, code, warnings);
+}
+
+/** 記録の材料にコードの材料を足す（範囲・警告・hash も合わせる） */
+export function withCode(i: ReviewInput, code: ReviewCodeRef[], warnings: ReviewWarning[] = []): ReviewInput {
+  const body = {
+    milestone: i.milestone,
+    units: i.units,
+    requests: i.requests,
+    context: i.context,
+    warnings: [...i.warnings, ...warnings],
+    code,
+    scope: code.some((c) => c.status === "ok") ? REVIEW_SCOPE : REVIEW_SCOPE_RECORDS_ONLY,
+  };
+  return { ...body, extractedAt: i.extractedAt, extractedUntil: new Date().toISOString(), hash: reviewInputHash(body) };
 }
 
 const byId = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
@@ -107,17 +129,21 @@ export function reviewInputOf(ws: Workspace, mid: string, extractedAt = new Date
     ...(m?.goals?.length ? { goals: m.goals.map((g) => ({ id: g.id, text: g.text })) } : {}),
   };
   const units = reviewUnits(m);
-  const body = { milestone, units, requests, context, warnings, scope: REVIEW_SCOPE };
+  const body = { milestone, units, requests, context, warnings, scope: REVIEW_SCOPE_RECORDS_ONLY };
   return { ...body, extractedAt, extractedUntil: new Date().toISOString(), hash: reviewInputHash(body) };
 }
 
 /** 材料の識別子（抽出の日時・警告の文言は含めない） */
-export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "requests" | "context" | "warnings">): string {
+export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "requests" | "context" | "warnings" | "code">): string {
   const key = {
     milestone: [i.milestone.id, i.milestone.title, i.milestone.known, i.milestone.purpose ?? null, (i.milestone.goals ?? []).map((g) => [g.id, g.text])],
     requests: i.requests,
     context: i.context.map((c) => [c.id, c.status, c.milestone ?? null, c.relation, c.of]),
     missing: i.warnings.filter((w) => w.code === "broken_request" || w.code === "broken_task").map((w) => w.target),
+    // 読んだコード（HEAD・ブランチ・未コミットの変更の中身・コミットが見つかるか）が変われば材料が変わった
+    ...(i.code
+      ? { code: i.code.map((c) => [c.name, c.status, c.head ?? null, c.branch ?? null, c.dirty ?? 0, c.dirtyDigest ?? null, c.commits.map((x) => [x.sha, x.from, x.found])]) }
+      : {}),
   };
   return createHash("sha256").update(JSON.stringify(key)).digest("hex");
 }

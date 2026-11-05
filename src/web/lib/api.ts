@@ -2,7 +2,7 @@ import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
-import type { ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
+import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
   AdoptionResult,
   MaterializeResult,
@@ -102,6 +102,8 @@ export interface ReviewPreview {
   requests: number;
   statuses: Record<string, number>;
   context: number;
+  /** 確かめる参照先のコード */
+  code: ReviewCodeRef[];
   warnings: ReviewWarning[];
   scope: string;
   hash: string;

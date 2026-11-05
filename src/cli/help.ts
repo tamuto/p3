@@ -35,7 +35,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   milestone purpose <id>       目的を保存する  --body 本文|- / --file 目的.md / --off（外す）
   milestone goal add <id> <文>  予定機能を足す（ID は G1, G2, ... を振り、振り直さない）。goal set <id> <G番号> <文> / goal rm <id> <G番号>
                                マイルストーンの変更はどれも --version <版> を付けると、その版から変わっていれば競合（終了コード 3）
-  milestone review <id>        目的・予定機能と要望の記録を比べるレビューを Codex で実行して待つ（記録する。--engine codex|mock。Ctrl-C で取消）
+  milestone review <id>        目的・予定機能に対して参照先のコードと履歴を確かめるレビューを Codex で実行して待つ（記録する。--engine codex|mock。Ctrl-C で取消）
   milestone reviews <id>       レビューの履歴 / review-show <id> <run> 1回分 / review-cancel <id> <run> 取消
                                （所有者を確かめられない run は --acknowledge-stopped で中断。無い → 2、実行中・終わっている → 3）
   release-notes [ls]           マイルストーンごとのリリースノートの有無と要望の数

@@ -355,6 +355,14 @@ function formatReview(d: ReviewDetail): string {
   if (input) {
     lines.push("", "評価したときの目的:", input.milestone.purpose ? input.milestone.purpose.split("\n").map((l) => `  ${l}`).join("\n") : "  （なし）");
     lines.push(`材料: 要望 ${input.requests.length} 件・文脈 ${input.context.length} 件（${input.extractedAt}）`);
+    for (const c of input.code ?? []) {
+      lines.push(
+        c.status === "ok"
+          ? `  参照先 ${c.name}: ${c.head ? `${c.branch ? `${c.branch} ` : ""}${c.head.slice(0, 7)}` : "HEAD なし"}${c.dirty ? `・未コミットの変更 ${c.dirty} 件` : ""}・タスクのコミット ${c.commits.filter((x) => x.found).length} 件`
+          : `  参照先 ${c.name}: 読めません（${c.reason ?? c.status}）`,
+      );
+      for (const x of c.commits) lines.push(`    ${x.sha.slice(0, 12)}  ${x.from}${x.found ? "" : "  （履歴に無い）"}`);
+    }
     for (const w of input.warnings) lines.push(`  ⚠ ${w.message}`);
   }
   if (result) {
@@ -365,6 +373,11 @@ function formatReview(d: ReviewDetail): string {
       lines.push(`  理由: ${u.reason}`);
       if (u.evidence.length) lines.push(`  根拠: ${u.evidence.join(", ")}`);
       for (const g of u.gaps) lines.push(`  不足: ${g}`);
+    }
+    if (result.unplanned) {
+      lines.push("", "目的・予定機能に無い変更（意図しない変更の候補）:");
+      if (!result.unplanned.length) lines.push("  （見つかっていません）");
+      for (const u of result.unplanned) lines.push(`  - ${u.text}${u.evidence.length ? `（根拠: ${u.evidence.join(", ")}）` : ""}`);
     }
     lines.push("", `範囲: ${result.scope}`);
   }

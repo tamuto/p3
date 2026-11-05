@@ -37,6 +37,8 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
       await until.visible(panel(page).getByText(/目的も予定機能もまだありません/));
       expect(await panel(page).getByRole("button", { name: "レビューを実行" }).isDisabled()).toBe(true);
       await until.visible(panel(page).getByText(/所属する要望 1 件/));
+      // 確かめるコード（参照先）を出す
+      await until.visible(panel(page).getByText(/確かめるコード/).first());
     });
     await step("マイルストーンのタブで予定機能を書いて保存し、レビューのタブに戻ると実行できる", async () => {
       await panel(page).getByRole("link", { name: /目的・予定機能を書く・直す/ }).click();
@@ -63,7 +65,7 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
       await until.visible(panel(page).getByText(/実行中です/));
       await until.visible(panel(page).getByText("判断材料不足").first());
       await until.visible(panel(page).getByText(/（Mock）評価していません/).first());
-      await until.visible(panel(page).getByText(/ソースコードの妥当性/).first());
+      await until.visible(panel(page).getByText(/テストやアプリを実際に動かしてはいません|実装・実際の動作・公開されたかは確かめていません/).first());
       await until.count(panel(page).getByRole("list", { name: "レビューの履歴" }).getByRole("listitem"), 1);
       await until.visible(panel(page).getByRole("button", { name: "もう一度実行", exact: true }));
     });
@@ -85,7 +87,7 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
       await until.visible(panel(page).getByRole("heading", { name: /最後の成功結果/ }));
       await s.env.p3(["milestone", "goal", "add", "v1", "承認の画面"]);
       await reload(page);
-      await until.visible(panel(page).getByText(/評価した後に、目的・予定機能か要望・タスクが変わっています/));
+      await until.visible(panel(page).getByText(/評価した後に、目的・予定機能か要望・タスク、参照先のコードが変わっています/));
     });
     await step("もう一度実行してすぐ取り消すと取消になり、前の成功結果は残る", async () => {
       await panel(page).getByRole("button", { name: "もう一度実行", exact: true }).click();
