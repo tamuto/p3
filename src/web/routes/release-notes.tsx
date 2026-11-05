@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReleaseNoteSummary, ReleaseWarning } from "../../shared/types.ts";
 import { MilestoneEditor } from "../components/releaseNotes/MilestoneEditor.tsx";
+import { MilestoneReviewPanel } from "../components/releaseNotes/MilestoneReview.tsx";
+import { useServerEvents } from "../lib/live.ts";
 import { ReleaseNotePanel } from "../components/releaseNotes/ReleaseNotePanel.tsx";
 import { TabPanel, Tabs } from "../components/Tabs.tsx";
 import { cx, Empty } from "../components/ui.tsx";
@@ -12,7 +14,8 @@ import { optionalString } from "../lib/search.ts";
 
 const TABS = [
   { id: "notes", label: "リリースノート", hint: "マイルストーンごとのノートの生成・編集" },
-  { id: "milestones", label: "マイルストーン", hint: "マイルストーンの追加・変更・リリース済み（project.yaml）" },
+  { id: "milestones", label: "マイルストーン", hint: "マイルストーンの追加・変更・リリース済み・目的と予定機能（project.yaml）" },
+  { id: "review", label: "マイルストーンレビュー", hint: "目的・予定機能と要望の記録を比べた達成の度合いと不足（参考の記録）" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -21,17 +24,24 @@ type Tab = (typeof TABS)[number]["id"];
  * 切り替える。ノートのタブは、左でマイルストーンを選び（URL の ?m=。タブを移っても保つ）、右で対象の要望と警告・機能の要約の生成・
  * 本文の編集と保存・ダウンロードを行う。規則（収録・警告・材料）はサーバ（core/releaseNotes）のもので、画面では判定しない。
  * 狭い画面では一覧の下に詳細を並べる。選んでいないタブは隠すだけにして、書きかけの入力を残す。
+ * レビューのタブ（?tab=review）も左でマイルストーンを選び（?m= をほかのタブと共有）、選んだ記録は ?run= で開ける。
  */
 export const Route = createFileRoute("/release-notes")({
-  validateSearch: (s: Record<string, unknown>): { m?: string; tab?: "milestones" } => ({ m: optionalString(s.m), tab: s.tab === "milestones" ? "milestones" : undefined }),
+  validateSearch: (s: Record<string, unknown>): { m?: string; tab?: "milestones" | "review"; run?: string } => ({
+    m: optionalString(s.m),
+    tab: s.tab === "milestones" || s.tab === "review" ? s.tab : undefined,
+    run: optionalString(s.run),
+  }),
   component: ReleaseNotesPage,
 });
 
 function ReleaseNotesPage() {
   const { tick } = useAppData();
-  const { m, tab = "notes" } = Route.useSearch();
+  const { m, tab = "notes", run } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [unsaved, setUnsaved] = useState<Record<Tab, boolean>>({ notes: false, milestones: false });
+  const [unsaved, setUnsaved] = useState<Record<Tab, boolean>>({ notes: false, milestones: false, review: false });
+  /** レビューの履歴のあるマイルストーン（ID の変更・削除を止める。project.yaml に無いものもレビューのタブで読める） */
+  const [reviewed, setReviewed] = useState<string[]>([]);
   const onNoteDirty = useCallback((d: boolean) => setUnsaved((u) => (u.notes === d ? u : { ...u, notes: d })), []);
   const onMilestonesDirty = useCallback((d: boolean) => setUnsaved((u) => (u.milestones === d ? u : { ...u, milestones: d })), []);
   const [list, setList] = useState<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }>();
@@ -51,10 +61,25 @@ function ReleaseNotesPage() {
   useEffect(() => {
     void load();
   }, [load, tick]);
+  const loadReviewed = useCallback(() => void api.reviewedMilestones().then((r) => setReviewed(r.milestones), () => undefined), []);
+  useEffect(() => loadReviewed(), [loadReviewed, tick]);
+  useServerEvents((e) => {
+    if (e.type === "milestone-review") loadReviewed();
+  });
 
   const selected = m ?? list?.milestones[0]?.milestone;
   const noteIds = useMemo(() => new Set(list?.milestones.filter((x) => x.note.state !== "none").map((x) => x.milestone)), [list]);
   const unknownNotes = useMemo(() => list?.milestones.filter((x) => !x.known).map((x) => x.milestone) ?? [], [list]);
+  const reviewIds = useMemo(() => new Set(reviewed), [reviewed]);
+  /** レビューのタブの一覧: ノートの一覧（登録したマイルストーンと孤立したノート）に、孤立したレビューの履歴を足す */
+  const reviewItems = useMemo<ReleaseNoteSummary[]>(
+    () => [
+      ...(list?.milestones ?? []),
+      ...reviewed.filter((id) => !list?.milestones.some((x) => x.milestone === id)).map((id) => ({ milestone: id, title: id, known: false, requests: 0, note: { state: "none" as const } })),
+    ],
+    [list, reviewed],
+  );
+  const selectTab = (t: Tab) => void navigate({ search: (prev) => ({ ...prev, tab: t === "notes" ? undefined : t, run: undefined }), replace: true });
   return (
     <div className="w-full space-y-6 px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-8">
       <header className="space-y-1">
@@ -69,10 +94,37 @@ function ReleaseNotesPage() {
         unsaved={unsaved}
         label="リリースノートの分類"
         prefix="rn"
-        onSelect={(t) => void navigate({ search: (prev) => ({ ...prev, tab: t === "milestones" ? t : undefined }), replace: true })}
+        onSelect={selectTab}
       />
       <TabPanel id="milestones" tab={tab} prefix="rn">
-        <MilestoneEditor noteIds={noteIds} unknownNotes={unknownNotes} onDirtyChange={onMilestonesDirty} />
+        <MilestoneEditor noteIds={noteIds} reviewIds={reviewIds} unknownNotes={unknownNotes} onDirtyChange={onMilestonesDirty} />
+      </TabPanel>
+      <TabPanel id="review" tab={tab} prefix="rn">
+        {/* 書きかけの入力を持たないので、選んでいるときだけ描く（履歴の読み込みもそのときだけ） */}
+        {tab !== "review" ? null : !list ? (
+          !error && <p className="text-slate-500">Loading…</p>
+        ) : !reviewItems.length ? (
+          <Empty>
+            マイルストーンがありません。
+            <Link to="/release-notes" search={{ tab: "milestones" }} className="underline">
+              「マイルストーン」タブ
+            </Link>
+            で作り、目的と予定している機能を書いてください。
+          </Empty>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <MilestoneList items={reviewItems} warnings={[]} selected={selected} tab="review" label="レビューするマイルストーン" />
+            {selected && (
+              <MilestoneReviewPanel
+                key={selected}
+                milestone={selected}
+                run={run}
+                milestonesDirty={unsaved.milestones}
+                onSelectRun={(r) => void navigate({ search: (prev) => ({ ...prev, run: r }) })}
+              />
+            )}
+          </div>
+        )}
       </TabPanel>
       <TabPanel id="notes" tab={tab} prefix="rn" className="space-y-6">
         {error && (
@@ -104,16 +156,29 @@ function ReleaseNotesPage() {
   );
 }
 
-function MilestoneList({ items, warnings, selected }: { items: ReleaseNoteSummary[]; warnings: ReleaseWarning[]; selected?: string }) {
+function MilestoneList({
+  items,
+  warnings,
+  selected,
+  tab,
+  label = "マイルストーン",
+}: {
+  items: ReleaseNoteSummary[];
+  warnings: ReleaseWarning[];
+  selected?: string;
+  /** 選んだときに開くタブ（省くとノートのタブ） */
+  tab?: "review";
+  label?: string;
+}) {
   return (
-    <nav aria-label="マイルストーン" className="space-y-2">
+    <nav aria-label={label} className="space-y-2">
       <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">マイルストーン</h2>
       <ul className="space-y-1">
         {items.map((m) => (
           <li key={m.milestone}>
             <Link
               to="/release-notes"
-              search={{ m: m.milestone }}
+              search={{ m: m.milestone, ...(tab ? { tab } : {}) }}
               aria-current={m.milestone === selected ? "page" : undefined}
               className={cx(
                 "block rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none",
@@ -124,7 +189,7 @@ function MilestoneList({ items, warnings, selected }: { items: ReleaseNoteSummar
                 {m.title} <span className="font-mono text-sm text-slate-500">{m.milestone}</span>
               </span>
               <span className="block text-sm text-slate-500 dark:text-slate-400">
-                {noteLabel(m)}・要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
+                {tab ? "" : `${noteLabel(m)}・`}要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
               </span>
               {!m.known && <span className="block text-sm text-amber-700 dark:text-amber-300">⚠ project.yaml にありません</span>}
             </Link>

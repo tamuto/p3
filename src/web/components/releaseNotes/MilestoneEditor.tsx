@@ -32,7 +32,18 @@ const orderOf = (rows: readonly Row[]): number[] => [...rows].sort((a, b) => com
  *     ID（G1, G2, ...）は足したときに振り、並べ替え・文言の変更で振り直さない。保存は全項目を送る（空なら消す）
  *   - 保存してもノートの本文・要望・タスクは変えない
  */
-export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { noteIds: ReadonlySet<string>; unknownNotes: readonly string[]; onDirtyChange?: (dirty: boolean) => void }) {
+export function MilestoneEditor({
+  noteIds,
+  reviewIds = new Set(),
+  unknownNotes,
+  onDirtyChange,
+}: {
+  noteIds: ReadonlySet<string>;
+  /** レビューの履歴のあるマイルストーン（ID の変更・削除はできない） */
+  reviewIds?: ReadonlySet<string>;
+  unknownNotes: readonly string[];
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const ctx = useAppCtx();
   const saved = ctx.info.project.milestones;
   const savedVersion = ctx.info.milestonesVersion;
@@ -131,6 +142,7 @@ export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { note
     const n = inMilestone(r.orig);
     if (n) return `要望 ${n} 件が使っているので、ID の変更と削除はできません（要望のマイルストーンを外してから）`;
     if (noteIds.has(r.orig)) return "リリースノートがあるので、ID の変更と削除はできません";
+    if (reviewIds.has(r.orig)) return "レビューの履歴があるので、ID の変更と削除はできません";
     return null;
   };
   const byKey = new Map(rows.map((r) => [r.key, r]));

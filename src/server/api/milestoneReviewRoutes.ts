@@ -8,6 +8,7 @@ import { checkReviewMilestoneId, ReviewStoreError } from "../../core/milestoneRe
 /**
  * マイルストーンレビュー（画面のため）。規則と保存は core/milestoneReview（CLI の p3 milestone review と同じ）。
  *
+ *   GET  /milestone-reviews                     履歴のあるマイルストーン（project.yaml に無い孤立も）
  *   GET  /milestones/:mid/review-preview        今の材料（比較単位・目的・要望の件数と状態・範囲・警告・hash）。何も書かない
  *   GET  /milestones/:mid/reviews               履歴（新しい順。読めない記録も broken で出す）
  *   POST /milestones/:mid/reviews               実行を始める（202。目的も予定機能も無ければ 400 no_goals、実行中なら 409 running）
@@ -37,6 +38,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
     return c.json({ error: err.message }, 400);
   });
 
+  app.get("/milestone-reviews", async (c) => c.json({ milestones: await ctx.ws.milestoneReviews.milestones() }));
   app.get("/milestones/:mid/review-preview", async (c) => {
     const mid = c.req.param("mid");
     checkReviewMilestoneId(mid);

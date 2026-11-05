@@ -20,7 +20,7 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
   const milestones = async () => JSON.parse(await s.env.p3(["milestone", "--json"])) as Ms[];
   const projectYaml = () => join(s.env.repo, ".p3", "project.yaml");
   const panel = (page: Page) => page.getByRole("tabpanel", { name: "マイルストーン" });
-  const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}`) });
+  const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}(?!レビュー)`) });
   const idInputs = (page: Page) => panel(page).getByLabel("ID", { exact: true });
   const shownIds = (page: Page) => idInputs(page).evaluateAll((is) => is.map((i) => (i as HTMLInputElement).value));
   /** 今その ID が出ている行（ID の入力の値で探す） */
