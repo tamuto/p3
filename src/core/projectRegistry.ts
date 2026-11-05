@@ -171,14 +171,14 @@ export class ProjectRegistry {
     for (const e of this.entries.values()) e.ctx = undefined;
     const settle = Promise.all([
       ...all.map(async (ctx) => {
-        await Promise.all([ctx.preflight.settle({ cancel: true }), ctx.releaseGenerator.settle({ cancel: true })]);
+        await Promise.all([ctx.preflight.settle({ cancel: true }), ctx.releaseGenerator.settle({ cancel: true }), ctx.milestoneReview.settle({ cancel: true })]);
         ctx.ws.close();
       }),
       ...this.retiring,
     ]).then(() => false);
     const timedOut = await Promise.race([settle, new Promise<boolean>((r) => setTimeout(() => r(true), opts.timeoutMs ?? 10_000).unref())]);
     for (const ctx of all) ctx.ws.close();
-    return { pending: timedOut ? all.reduce((n, c) => n + c.preflight.running() + c.releaseGenerator.running(), 0) : 0 };
+    return { pending: timedOut ? all.reduce((n, c) => n + c.preflight.running() + c.releaseGenerator.running() + c.milestoneReview.running(), 0) : 0 };
   }
 
   private async load(): Promise<ProjectListing> {
@@ -227,7 +227,7 @@ export class ProjectRegistry {
   }
 
   private retire(ctx: P3Context) {
-    const p = Promise.all([ctx.preflight.settle(), ctx.releaseGenerator.settle()]).then(() => ctx.ws.close());
+    const p = Promise.all([ctx.preflight.settle(), ctx.releaseGenerator.settle(), ctx.milestoneReview.settle()]).then(() => ctx.ws.close());
     this.retiring.add(p);
     void p.finally(() => this.retiring.delete(p));
   }

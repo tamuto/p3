@@ -15,7 +15,7 @@ import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
-import { MilestoneReviewStore } from "../milestoneReview/store.ts";
+import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -371,6 +371,11 @@ export class Workspace {
 
   private async onFileChanged(rel: string) {
     const [top, rid, kind, file] = rel.split(/[\\/]/);
+    if (top === MILESTONE_REVIEWS_DIR) {
+      // レビューの履歴（ほかのプロセスの実行・取消）。ロックのフォルダ .locks は除く
+      if (rid && !rid.startsWith(".")) this.emit({ type: "milestone-review", milestone: rid });
+      return;
+    }
     if (top === RELEASE_NOTES_DIR) {
       // リリースノートの作成・更新・削除（ロックのファイル .<ID>.lock は除く）
       if (rid?.endsWith(".md") && !rid.startsWith(".") && kind === undefined) this.emit({ type: "changed", kind: "release-note", milestone: rid.slice(0, -3) });

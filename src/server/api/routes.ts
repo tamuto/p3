@@ -18,6 +18,7 @@ import { UserConfigError } from "../../core/userConfig.ts";
 import { AI_MANIFEST } from "./manifest.ts";
 import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
+import { milestoneReviewRoutes } from "./milestoneReviewRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
@@ -32,6 +33,7 @@ import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftC
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
+ *   /milestones/:mid/review[s...]          マイルストーンレビュー（milestoneReviewRoutes.ts）
  */
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -191,6 +193,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   /** マイルストーンのリリースノート（材料・保存・出力・要約の生成） */
   app.route("/", releaseNoteRoutes(ctx));
+  app.route("/", milestoneReviewRoutes(ctx));
 
   // --- requests -------------------------------------------------------------
   app.get("/requests", (c) => {

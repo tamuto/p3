@@ -170,7 +170,9 @@ export class MilestoneReviewStore {
         out.push({ state: "broken", id, error: (e as Error).message });
       }
     }
-    return out;
+    // 同じ秒の run は ID では並ばないので、始めた時刻（ミリ秒）の新しい順にする（読めない記録は ID の時刻で）
+    const at = (x: ReviewListItem) => (x.state === "ok" ? x.run.startedAt.replace(/[-:]/g, "").replace("T", "-") : x.id.slice(3, 18));
+    return out.sort((a, b) => (at(a) < at(b) ? 1 : at(a) > at(b) ? -1 : 0));
   }
 
   /** run.json を書き換える（呼ぶ側がロックの中で呼ぶ）。終わった run は finished で断る */

@@ -5,6 +5,8 @@ import { machineSettingsSource, resolveMachineSettings, SettingsError } from "..
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
 import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
+import { ReviewCancelRefused, ReviewRejected } from "../core/milestoneReview/service.ts";
+import { ReviewStoreError } from "../core/milestoneReview/store.ts";
 import { HierarchyError } from "../core/hierarchy.ts";
 import { startServer, type RunningServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
@@ -292,7 +294,7 @@ async function main(argv: string[]): Promise<number> {
 
     case "milestone":
     case "milestones":
-      return milestoneCommand(ctx, out, args, o);
+      return milestoneCommand(ctx, out, args, o, actor);
 
     case "release-notes":
     case "release-note":
@@ -342,6 +344,12 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`${e.message}\n`);
       const changedSet = e.code === "child_order_invalid" && (e.detail.reason === "not_child" || e.detail.reason === "missing");
       process.exit(e.code === "hierarchy_busy" || changedSet ? 3 : 1);
+    }
+    // マイルストーンレビュー: 無い → 2、実行中・終わっている・動いている所有者がいる → 3、ほか（目的が無い・上限・ID・読めない）→ 1
+    if (e instanceof ReviewRejected || e instanceof ReviewStoreError || e instanceof ReviewCancelRefused) {
+      process.stderr.write(`${e.message}\n`);
+      const code = e.code;
+      process.exit(code === "not_found" || code === "unknown_milestone" ? 2 : code === "running" || code === "finished" || code === "owner_alive" || code === "exists" ? 3 : 1);
     }
     // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
     if (e instanceof MilestonesConflictError) {

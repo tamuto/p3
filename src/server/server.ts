@@ -98,10 +98,10 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
       if (registry) pending = (await registry.close({ timeoutMs })).pending;
       else if (ctx) {
         const c = ctx;
-        const settle = Promise.all([c.preflight.settle({ cancel: true }), c.releaseGenerator.settle({ cancel: true })]).then(() => false);
+        const settle = Promise.all([c.preflight.settle({ cancel: true }), c.releaseGenerator.settle({ cancel: true }), c.milestoneReview.settle({ cancel: true })]).then(() => false);
         const timedOut = await Promise.race([settle, new Promise<boolean>((r) => setTimeout(() => r(true), timeoutMs).unref())]);
         c.ws.close();
-        pending = timedOut ? c.preflight.running() + c.releaseGenerator.running() : 0;
+        pending = timedOut ? c.preflight.running() + c.releaseGenerator.running() + c.milestoneReview.running() : 0;
       }
       await Promise.race([closed, new Promise<void>((r) => setTimeout(r, 1000).unref())]);
       return { pending };

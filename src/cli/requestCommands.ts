@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { basename, relative, resolve as resolvePath } from "node:path";
 import { REQUEST_STATUSES, type Attachment, type Milestone, type Request } from "../shared/types.ts";
 import { nextGoalId } from "../shared/milestoneGoals.ts";
+import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../shared/milestoneReview.ts";
+import type { ReviewDetail } from "../core/milestoneReview/service.ts";
 import { type P3Context } from "../core/context.ts";
 import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, orderChildren, updateRequest } from "../core/requestOps.ts";
 import { hierarchyNow, resolvedIssue } from "../core/requestStatus.ts";
@@ -166,14 +168,15 @@ export async function requestCommand(
 
 /** マイルストーン（リリース）。複数の要望をまとめる単位で、project.yaml に書く */
 const MILESTONE_USAGE =
-  "p3 milestone [ls | show <id> | add <id> | set <id> | rm <id> | purpose <id> (--body 本文|- | --file ファイル | --off) | goal add <id> <文> | goal set <id> <G番号> <文> | goal rm <id> <G番号>]";
+  "p3 milestone [ls | show <id> | add <id> | set <id> | rm <id> | purpose <id> (--body 本文|- | --file ファイル | --off) | goal add <id> <文> | goal set <id> <G番号> <文> | goal rm <id> <G番号> | review <id> | reviews <id> | review-show <id> <run> | review-cancel <id> <run>]";
 
 /**
  * マイルストーンの操作。保存はロックの中で読んだ最新の並びから作り直す（Workspace.updateMilestones。指定した項目のほかを巻き戻さない）。
  * --version（show --json の milestonesVersion）を付けると、その版から変わっていれば競合（終了コード 3）で何も書かない
  */
-export async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
+export async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"], actor?: string): Promise<number> {
   const [sub, id] = args;
+  if (sub === "review" || sub === "reviews" || sub === "review-show" || sub === "review-cancel") return reviewCommand(ctx, out, args, o, actor);
   const ms = ctx.ws.project.milestones;
   const count = (mid: string) => ctx.ws.requests.list().filter((r) => r.milestone === mid).length;
   const save = { milestonesVersion: o.version };
@@ -272,3 +275,98 @@ function formatMilestone(m: Milestone, requests: number): string {
   return lines.join("\n");
 }
 
+
+// --- マイルストーンレビュー ----------------------------------------------------
+
+/**
+ * マイルストーンレビュー（core/milestoneReview。画面と同じ規則）。review は終わるまで待ち、進み具合は stderr に出す（Ctrl-C で取り消す）。
+ * 結果は参考の記録で、要望の状態・リリースノート・リリース済みは変えない
+ */
+async function reviewCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"], actor?: string): Promise<number> {
+  const [sub, mid, run] = args;
+  if (!mid) throw new UsageError(`p3 milestone ${sub} <id>${sub === "review-show" || sub === "review-cancel" ? " <run>" : ""}`);
+  const svc = ctx.milestoneReview;
+  if (sub === "reviews") {
+    const items = await svc.list(mid);
+    return out.result(items, () =>
+      items.length
+        ? table(
+            items.map((x) =>
+              x.state === "broken"
+                ? [x.id, "読めない", x.error]
+                : [x.run.id, REVIEW_STATUS_LABELS[x.run.status], x.run.startedAt.slice(0, 16).replace("T", " "), verdictSummary(x.verdicts), x.run.error ?? ""],
+            ),
+          )
+        : `レビューの履歴はありません（p3 milestone review ${mid}）`,
+    );
+  }
+  if (sub === "review-show" || sub === "review-cancel") {
+    if (!run) throw new UsageError(`p3 milestone ${sub} ${mid} <run>`);
+    if (sub === "review-show") {
+      const d = await svc.get(mid, run);
+      return out.result(d, () => formatReview(d));
+    }
+    const r = await svc.cancel(mid, run, actor, { acknowledgeStopped: o["acknowledge-stopped"] });
+    return out.result(r, () =>
+      r.requested
+        ? `取消を頼みました: ${mid}/${run}（実行しているプロセスが見つけて止めます）`
+        : r.run.abandoned
+          ? `中断にしました: ${mid}/${run}（記録の上で終わりにしました。ほかの環境で動いているプロセスを止めたとは限りません）`
+          : `終わりにしました: ${mid}/${run}（${REVIEW_STATUS_LABELS[r.run.status]}${r.run.error ? `: ${r.run.error}` : ""}）`,
+    );
+  }
+  if (o.engine !== undefined && o.engine !== "codex" && o.engine !== "mock") throw new UsageError("--engine は codex か mock");
+  const started = await svc.start(mid, actor, o.engine);
+  process.stderr.write(`レビューを始めました: ${mid}/${started.id}（Ctrl-C で取り消す）\n`);
+  let shown = 0;
+  const tick = setInterval(() => {
+    void svc.get(mid, started.id).then((d) => {
+      for (const e of d.run.log.slice(shown)) process.stderr.write(`  ${e.text}\n`);
+      shown = Math.max(shown, d.run.log.length);
+    }, () => undefined);
+  }, 500);
+  const onInt = () => void svc.cancel(mid, started.id, actor).catch(() => undefined);
+  process.on("SIGINT", onInt);
+  const d = await svc.wait(mid, started.id);
+  clearInterval(tick);
+  process.removeListener("SIGINT", onInt);
+  for (const e of d.run.log.slice(shown)) process.stderr.write(`  ${e.text}\n`);
+  if (d.run.status !== "completed") {
+    if (out.json) out.result(d, () => "");
+    else process.stderr.write(`${REVIEW_STATUS_LABELS[d.run.status]}: ${d.run.error ?? ""}\n`);
+    return 1;
+  }
+  return out.result(d, () => formatReview(d));
+}
+
+function verdictSummary(v: Partial<Record<ReviewVerdict, number>> | undefined): string {
+  if (!v) return "";
+  return REVIEW_VERDICTS.filter((k) => v[k]).map((k) => `${REVIEW_VERDICT_LABELS[k]} ${v[k]}`).join(" · ");
+}
+
+/** review-show の人向けの表示 */
+function formatReview(d: ReviewDetail): string {
+  const { run, input, result } = d;
+  const lines = [`${run.milestone}/${run.id}  ${REVIEW_STATUS_LABELS[run.status]}  ${run.startedAt}${run.startedBy ? `  ${run.startedBy}` : ""}  (${run.engine})`];
+  if (run.error) lines.push(`  ${run.error}`);
+  if (d.owner && d.owner.state !== "local" && d.owner.state !== "alive") {
+    lines.push(`  実行しているプロセスを確かめられません（${"reason" in d.owner ? d.owner.reason : ""}）。止まっていると確かめたら p3 milestone review-cancel ${run.milestone} ${run.id} --acknowledge-stopped`);
+  }
+  if (input) {
+    lines.push("", "評価したときの目的:", input.milestone.purpose ? input.milestone.purpose.split("\n").map((l) => `  ${l}`).join("\n") : "  （なし）");
+    lines.push(`材料: 要望 ${input.requests.length} 件・文脈 ${input.context.length} 件（${input.extractedAt}）`);
+    for (const w of input.warnings) lines.push(`  ⚠ ${w.message}`);
+  }
+  if (result) {
+    const text = new Map(input?.units.map((u) => [u.id, u.text]));
+    lines.push("", "全体の所見:", ...result.overall.split("\n").map((l) => `  ${l}`), "");
+    for (const u of result.units) {
+      lines.push(`■ ${u.unit}  ${REVIEW_VERDICT_LABELS[u.verdict]}  ${(text.get(u.unit) ?? "").split("\n")[0]}`);
+      lines.push(`  理由: ${u.reason}`);
+      if (u.evidence.length) lines.push(`  根拠: ${u.evidence.join(", ")}`);
+      for (const g of u.gaps) lines.push(`  不足: ${g}`);
+    }
+    lines.push("", `範囲: ${result.scope}`);
+  }
+  return lines.join("\n");
+}

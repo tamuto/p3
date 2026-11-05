@@ -9,6 +9,8 @@ import { checkDataDir } from "./store/locate.ts";
 import { Workspace } from "./store/workspace.ts";
 import { ReleaseGenerator } from "./releaseNotes/generate.ts";
 import { MockSummarizer } from "./releaseNotes/mockSummarizer.ts";
+import { MilestoneReviewService } from "./milestoneReview/service.ts";
+import { MockReviewer } from "./milestoneReview/mockReviewer.ts";
 
 /** p3 本体（パッケージ）のルート */
 export const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -18,6 +20,8 @@ export interface P3Context {
   preflight: PreflightService;
   /** リリースノートの要約の生成（Codex の接続を Preflight と共有する） */
   releaseGenerator: ReleaseGenerator;
+  /** マイルストーンレビュー（Codex の接続を Preflight と共有する） */
+  milestoneReview: MilestoneReviewService;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
   /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
@@ -54,5 +58,6 @@ export async function openProject(
   }, { pathMap: async () => (await source.get()).codex.pathMap });
   // 要約の生成も Preflight と同じ接続と既定のエンジン（preflight.engine）を使う
   const releaseGenerator = new ReleaseGenerator(ws, { codex, mock: new MockSummarizer() }, { engine: async () => (await source.get()).preflight.engine });
-  return { ws, preflight, releaseGenerator, chatgpt, projectName: opts.projectName };
+  const milestoneReview = new MilestoneReviewService(ws, { codex, mock: new MockReviewer() }, { engine: async () => (await source.get()).preflight.engine });
+  return { ws, preflight, releaseGenerator, milestoneReview, chatgpt, projectName: opts.projectName };
 }

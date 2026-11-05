@@ -14,6 +14,8 @@ import type { RepoRef } from "../src/shared/repos.ts";
 import { Workspace } from "../src/core/store/workspace.ts";
 import { ReleaseGenerator, type Summarizer } from "../src/core/releaseNotes/generate.ts";
 import { MockSummarizer } from "../src/core/releaseNotes/mockSummarizer.ts";
+import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
+import { MockReviewer } from "../src/core/milestoneReview/mockReviewer.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする
@@ -75,7 +77,12 @@ export async function openTestProject(
   const ws = new Workspace(dataDir, repos);
   await ws.load();
   const preflight = new PreflightService(ws, engines, engines.codex ? "codex" : "mock");
-  return { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, { codex: opts.summarizer, mock: new MockSummarizer({ delayMs: 0 }) }) };
+  return {
+    ws,
+    preflight,
+    releaseGenerator: new ReleaseGenerator(ws, { codex: opts.summarizer, mock: new MockSummarizer({ delayMs: 0 }) }),
+    milestoneReview: new MilestoneReviewService(ws, { mock: new MockReviewer({ delayMs: 0 }) }),
+  };
 }
 
 export async function makeProject(config: Partial<ProjectConfig> = {}) {

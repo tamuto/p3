@@ -13,6 +13,7 @@ import { MockEngine } from "../src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../src/core/preflight/service.ts";
 import { Workspace } from "../src/core/store/workspace.ts";
 import { ReleaseGenerator } from "../src/core/releaseNotes/generate.ts";
+import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
 import { makeRepo, newRequest, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
@@ -44,7 +45,7 @@ async function setup(env: Record<string, string | undefined> = {}) {
     initial: initial?.preflight.engine ?? "codex",
     load: async () => (await source.get()).preflight.engine,
   });
-  const ctx = { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, {}) };
+  const ctx = { ws, preflight, releaseGenerator: new ReleaseGenerator(ws, {}), milestoneReview: new MilestoneReviewService(ws, {}) };
   const write = (yaml: string) => writeFile(configPath, yaml);
   const legacy = "codex:\n  authVolume: vol\n  ensureImage: false\n";
   const runOnce = async (opts: { engine?: "codex" | "mock" } = {}) => {

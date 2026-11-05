@@ -333,7 +333,7 @@ include: true
   `ui.theme`）だけを変えて書く（`updateUserConfig`）。init・project add / rm・テーマの保存が同じ経路を通るので、
   CLI と serve が同時に書いても消し合わない。壊れた YAML・読めないファイルは書かずにエラーにする（無いのとは区別する）。
   ChatGPT の接続（`chatgpt.json`）は別のファイル・別のロックのまま
-- 1人1つのサーバで画面からプロジェクトを切り替える形（決定済み）は、次の段階で入れる
+- 1人1つのサーバで画面からプロジェクトを切り替える形は `p3 serve --all-projects` で入れた（下の「プロジェクトを跨ぐ serve」）
 
 ### 要望・タスクのデータ
 
@@ -379,7 +379,8 @@ include: true
 
 ### マイルストーンレビューのデータ
 
-レビューは、保存してあるマイルストーンの目的・予定機能と、所属する要望・タスクの記録を比べる参考の記録。比較材料の抽出は `core/milestoneReview/material.ts`、履歴は `core/milestoneReview/store.ts`、
+レビューは、保存してあるマイルストーンの目的・予定機能と、所属する要望・タスクの記録を比べる参考の記録（操作は
+[使い方ガイド](how-to-use.md#マイルストーンレビュー)）。比較材料の抽出は `core/milestoneReview/material.ts`、履歴は `core/milestoneReview/store.ts`、
 形は `shared/milestoneReview.ts`。リリースノートの材料（`releaseNotes/material.ts`）の収録の条件は変えない。
 
 - **範囲**: マイルストーンに直接属する要望の全部の状態（見送り・未完了も）。要望の本文、各タスクの本文・状態・変更の記録・成果物の
@@ -400,6 +401,23 @@ include: true
 - **保護**: 履歴のあるマイルストーンは消せず、ID も変えられない（`requestOps.ts` の `checkMilestoneRemoval`）。project.yaml を直接
   編集して定義が消えても、履歴は孤立として一覧・閲覧できる
 - 抽出と履歴の保存は、要望の状態・リリースノート・リリース済みを変えない
+- **実行**（`core/milestoneReview/service.ts`・依頼文と確かめ方は `review.ts`）: Preflight と同じ Codex の接続の `ask`（何もマウントしない。
+  認証・診断・使用量の上限・取消を共有）。Mock は明示したときだけで、失敗しても切り替えない。結果は JSON で受け、取り込む前に形・
+  全部の比較単位がちょうど1回ずつ・区分・根拠が資料の参照にあるか・件数・文字数を確かめる（だめなら `invalid_output` で失敗）。
+  入力が上限（`REVIEW_INPUT_LIMIT`）を超えたら切り詰めずに断る。タスクの完了数を達成の証明にしない・数値の達成率を出さない・
+  確かめていないことを確かめたように書かないことを指示に入れる
+- **1つずつ**: 同じデータ・同じマイルストーンで実行中の run は1つだけ（開始はマイルストーンのロックの中で、実行中の run が無いことを
+  確かめてから作る。CLI の別プロセスと serve の同時の開始でも片方だけ）。別のマイルストーンは独立
+- **所有者と回復**: run.json に実行しているプロセス（`preflight/owner.ts`）を書き、死んだと確かめられた run（`dead`）だけ失敗
+  （`crashed`）にする。分からない・ほかの環境の run（`unknown`）は自動で終わりにせず、人が `--acknowledge-stopped`（画面では
+  明示の中断）で記録の上で中断にできる（動いていると確かめられる所有者がいれば断る。ほかの環境のプロセスを止めたとは限らない）
+- **取消**: このプロセスの run は止める。ほかのプロセスの run は `cancelRequested` を書き、所有者が見つけて止める（所有者は1秒ごとに
+  run.json を読み、ログも書き足す）。終わりの状態はロックの中でまだ実行中かを確かめて書くので、中断の後に届いた結果は取り込まない
+- **組み込み**: `P3Context.milestoneReview`。通常の serve と、プロジェクトを跨ぐ serve の停止・登録の解除は、Preflight・要約の生成と
+  同じく実行中のレビューを取り消して（解除は待って）から閉じる。変更通知は `milestone-review`（ほかのプロセスが書いた履歴の変化も
+  ファイルの監視で知らせる）
+- レビューの実施の有無・結果は、要望の完了・リリースの条件にしない。人の承認の状態・タスクの自動作成・複数のマイルストーンを
+  まとめたレポートは持たない
 
 ### リリースノートのデータ
 
@@ -700,6 +718,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 | マイルストーンの表示の順（ID のバージョンの降順。CLI・API・画面の一覧と選ぶ欄。project.yaml の順は変えない） | `shared/milestoneOrder.ts` |
+| マイルストーンレビュー（材料の範囲・履歴の保存・依頼文と結果の確かめ方・実行の排他と回復） | `core/milestoneReview/`（`material.ts`・`store.ts`・`review.ts`・`service.ts`） |
 | マイルストーンの目的・予定機能（件数・文字数・空・重複・ID の振り方） | `shared/milestoneGoals.ts`（保存の排他と版の照合は `core/store/workspace.ts` の `saveProject`） |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
