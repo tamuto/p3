@@ -25,7 +25,14 @@ export const AI_MANIFEST = {
         "ここに無い API は /api/projects/:project/... の下に置く（通常の serve の /api/... と同じ）。変える操作には x-p3-project-generation が要る（無ければ 428、違えば 409 code: changed）。" +
         "プロジェクトを書かないデータの API は 404 code: project_required。/api/chatgpt（engine は null）・/api/user-theme・/api/events（一覧・テーマ・接続の変更）はプロジェクトを選ばずに使える",
     },
-    { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
+    { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
+    {
+      method: "PUT",
+      path: "/api/project",
+      desc:
+        "プロジェクト設定を項目ごとに保存する。milestones の各項目は purpose（目的）・goals（予定機能 {id, text}）を持てる（キーを省くと今の値を残す。null・空で消す）。" +
+        "milestonesVersion を付けると最新の版と照らし、違えば 409 code: milestones_conflict で何も書かない",
+    },
     {
       method: "POST",
       path: "/api/reload",

@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
-import type { ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
+import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/milestoneGoals.ts";
+import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
-import { newRequestId } from "./fsutil.ts";
+import { newRequestId, withFileLock } from "./fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";
@@ -15,6 +17,15 @@ import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
 
 type Listener = (e: ServerEvent) => void;
+
+/** 保存する並びの各項目で、purpose / goals のキーが無ければ同じ ID の今の値を残す */
+function keepGoals(next: readonly Milestone[], cur: readonly Milestone[]): Milestone[] {
+  return next.map((m) => {
+    const was = cur.find((c) => c.id === m.id);
+    if (!was) return m;
+    return { ...m, ...(!("purpose" in m) ? { purpose: was.purpose } : {}), ...(!("goals" in m) ? { goals: was.goals } : {}) };
+  });
+}
 
 /** 全件の読み直しの結果 */
 export interface ReloadResult {
@@ -61,6 +72,38 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  */
 /** saveProject の更新（preflight は項目ごと） */
 export type ProjectPatch = Omit<Partial<ProjectConfig>, "preflight"> & { preflight?: Partial<ProjectConfig["preflight"]> };
+
+/** マイルストーンの保存の指定 */
+export interface MilestoneSaveOpts {
+  /**
+   * 編集を始めたときのマイルストーンの版（milestonesVersion）。渡すと、保存の直前に読んだ最新の版と照らし、違えば
+   * MilestonesConflictError で何も書かない（画面と、読んでから書くまでに間のある操作は必ず渡す）
+   */
+  milestonesVersion?: string;
+}
+
+/** 編集を始めた後に、マイルストーンが他（CLI・ほかの画面・エディタ）で変わった。何も書いていない */
+export class MilestonesConflictError extends Error {
+  readonly code = "milestones_conflict";
+  constructor(
+    readonly expected: string,
+    readonly current: string,
+  ) {
+    super(`マイルストーンが他で変わりました（版 ${expected} → ${current}）。最新を読み直してからやり直してください`);
+  }
+}
+
+/** プロジェクトの設定として保存できない値（何も書いていない） */
+export class ProjectInputError extends Error {}
+
+/**
+ * マイルストーンの版: 中身（ID・名前・期限・リリース済み・目的・予定機能と並び）のハッシュ。ファイルの書き方（コメント・空白）
+ * やほかの設定の項目は含めない
+ */
+export function milestonesVersion(ms: readonly Milestone[]): string {
+  const plain = ms.map((m) => [m.id, m.title, m.due ?? null, !!m.done, m.purpose ?? null, (m.goals ?? []).map((g) => [g.id, g.text])]);
+  return createHash("sha256").update(JSON.stringify(plain)).digest("hex").slice(0, 16);
+}
 
 export class Workspace {
   project!: ProjectConfig;
@@ -232,16 +275,52 @@ export class Workspace {
     return out;
   }
 
-  /** プロジェクト設定を更新して project.yaml に書く（コメントは残す） */
-  async saveProject(patch: ProjectPatch): Promise<ProjectConfig> {
-    await this.loadProject();
-    // preflight は項目ごとに重ねる（観点だけ・担当だけの更新で、もう片方を消さない。以前の API の形 { instructions } も同じ）。
-    // 担当を設定したら、読めなかった値は消す
-    const pf = patch.preflight;
-    const preflight = pf ? { ...this.project.preflight, ...pf, ...(pf.runner ? { invalidRunner: undefined } : {}) } : this.project.preflight;
-    const next: ProjectConfig = { ...this.project, ...patch, preflight };
-    await writeProjectFile(join(this.dataDir, "project.yaml"), next);
-    await this.loadProject();
+  /** 今のマイルストーンの版（milestonesVersion） */
+  get milestonesVersion(): string {
+    return milestonesVersion(this.project.milestones);
+  }
+
+  /**
+   * プロジェクト設定を更新して project.yaml に書く（コメントは残す）。別のプロセス（CLI・serve）の保存とはロックで1つずつにし、
+   * ロックの中で最新のファイルを読んでから、patch の項目だけを重ねる。
+   *
+   *   - preflight は項目ごとに重ねる
+   *   - milestones の各項目で purpose / goals のキーが無ければ、同じ ID の今の値を残す（目的を知らない古い画面・API の保存で落とさない）。
+   *     消すなら空（purpose: "" / goals: []）を渡す
+   *   - opts.milestonesVersion を渡すと、最新の版と照らして違えば MilestonesConflictError（何も書かない）
+   */
+  async saveProject(patch: ProjectPatch, opts: MilestoneSaveOpts = {}): Promise<ProjectConfig> {
+    return this.writeProject((cur) => {
+      // preflight は項目ごとに重ねる（観点だけ・担当だけの更新で、もう片方を消さない。以前の API の形 { instructions } も同じ）。
+      // 担当を設定したら、読めなかった値は消す
+      const pf = patch.preflight;
+      const preflight = pf ? { ...cur.preflight, ...pf, ...(pf.runner ? { invalidRunner: undefined } : {}) } : cur.preflight;
+      const milestones = patch.milestones ? keepGoals(patch.milestones, cur.milestones) : cur.milestones;
+      return { ...cur, ...patch, milestones, preflight };
+    }, opts);
+  }
+
+  /**
+   * マイルストーンを、ロックの中で読んだ最新の並びから作り直して書く（CLI の milestone の操作。指定した項目のほかを巻き戻さない）。
+   * fn が投げたら何も書かない
+   */
+  async updateMilestones(fn: (cur: readonly Milestone[]) => Milestone[], opts: MilestoneSaveOpts = {}): Promise<ProjectConfig> {
+    return this.writeProject((cur) => ({ ...cur, milestones: fn(cur.milestones) }), opts);
+  }
+
+  private async writeProject(make: (cur: ProjectConfig) => ProjectConfig, opts: MilestoneSaveOpts): Promise<ProjectConfig> {
+    const path = join(this.dataDir, "project.yaml");
+    await withFileLock(join(this.dataDir, ".project.yaml.lock"), async () => {
+      await this.loadProject();
+      const now = milestonesVersion(this.project.milestones);
+      if (opts.milestonesVersion !== undefined && opts.milestonesVersion !== now) throw new MilestonesConflictError(opts.milestonesVersion, now);
+      const next = make(this.project);
+      next.milestones = next.milestones.map((m) => tidyMilestoneGoals(m));
+      const problems = next.milestones.flatMap((m) => milestoneGoalProblems(m));
+      if (problems.length) throw new ProjectInputError(problems.join(" / "));
+      await writeProjectFile(path, next);
+      await this.loadProject();
+    }, { busyMessage: "project.yaml を保存できませんでした（別のプロセスが保存中です。少し待ってやり直してください）" });
     this.emit({ type: "changed", kind: "project" });
     return this.project;
   }

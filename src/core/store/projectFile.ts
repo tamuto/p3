@@ -15,7 +15,18 @@ function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknow
     name: cfg.name,
     description: cfg.description || undefined,
     milestones: cfg.milestones.length
-      ? cfg.milestones.map((m) => Object.fromEntries(Object.entries({ id: m.id, title: m.title, due: m.due, done: m.done || undefined }).filter(([, v]) => v !== undefined)))
+      ? cfg.milestones.map((m) =>
+          Object.fromEntries(
+            Object.entries({
+              id: m.id,
+              title: m.title,
+              due: m.due,
+              done: m.done || undefined,
+              purpose: m.purpose || undefined,
+              goals: m.goals?.length ? m.goals.map((g) => ({ id: g.id, text: g.text })) : undefined,
+            }).filter(([, v]) => v !== undefined),
+          ),
+        )
       : undefined,
     branchPattern: cfg.branchPattern,
     preflight: preflightPlain(cfg.preflight),

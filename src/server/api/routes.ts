@@ -8,7 +8,7 @@ import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
-import { ReloadError } from "../../core/store/workspace.ts";
+import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
 import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
 import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
@@ -75,11 +75,19 @@ const projectPatch = z
         title: z.string().min(1),
         due: date.optional(),
         done: z.boolean().optional(),
+        // 目的・予定機能（キーを省くと今の値を残す。null・空で消す）。件数・文字数・空・重複の規則は保存の側（shared/milestoneGoals.ts）
+        purpose: z.string().nullish().transform((v) => (v === null ? "" : v)),
+        goals: z
+          .array(z.object({ id: z.string(), text: z.string() }))
+          .nullish()
+          .transform((v) => (v === null ? [] : v)),
       }),
     ),
     branchPattern: z.string().includes("{id}"),
     // 担当（runner）は省ける（以前の形 { instructions } の更新でも、保存は項目ごとに重ねるので担当は残る）
     preflight: z.object({ instructions: z.string().optional(), runner: z.enum(PREFLIGHT_RUNNERS as [PreflightRunner, ...PreflightRunner[]]).optional() }),
+    /** 編集を始めたときのマイルストーンの版（GET /api/project の milestonesVersion）。違えば 409 milestones_conflict */
+    milestonesVersion: z.string(),
   })
   .partial()
   .superRefine((p, ctx) => {
@@ -134,6 +142,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     }
     // 要望の親子（code: hierarchy_invalid・hierarchy_busy・has_children・has_parent。何も書いていない）
     if (err instanceof HierarchyError) return c.json({ error: err.message, code: err.code, ...err.detail }, 409);
+    // マイルストーンの版が違う（編集を始めた後に他で変わった。何も書いていない）
+    if (err instanceof MilestonesConflictError) return c.json({ error: err.message, code: err.code, milestonesVersion: err.current }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
@@ -152,6 +162,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.get("/project", (c) =>
     c.json({
       project: ws.project,
+      milestonesVersion: ws.milestonesVersion,
       dataDir: ws.dataDir,
       engines: preflight.availableEngines(),
       defaultEngine: preflight.defaultEngine,
@@ -159,10 +170,11 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     }),
   );
   app.put("/project", async (c) => {
-    const patch = projectPatch.parse(await c.req.json());
+    const { milestonesVersion, ...patch } = projectPatch.parse(await c.req.json());
     // 使っている要望・リリースノートのあるマイルストーンは消さない（CLI の milestone rm と同じ規則）
     if (patch.milestones) await checkMilestoneRemoval(ctx, patch.milestones.map((m) => m.id));
-    return c.json(await ws.saveProject(patch));
+    const milestones = patch.milestones?.map((m) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as typeof m);
+    return c.json(await ws.saveProject({ ...patch, ...(milestones ? { milestones } : {}) }, { milestonesVersion }));
   });
   app.get("/ai/manifest", (c) => c.json(AI_MANIFEST));
   /** 参照先（設定画面。このマシンのパスはローカルの画面からだけ） */

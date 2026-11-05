@@ -4,6 +4,7 @@ import { openProject } from "../core/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
+import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
 import { HierarchyError } from "../core/hierarchy.ts";
 import { startServer, type RunningServer } from "../server/server.ts";
 import { ConflictError, NotFoundError } from "../core/store/collection.ts";
@@ -342,11 +343,16 @@ main(process.argv.slice(2)).then(
       const changedSet = e.code === "child_order_invalid" && (e.detail.reason === "not_child" || e.detail.reason === "missing");
       process.exit(e.code === "hierarchy_busy" || changedSet ? 3 : 1);
     }
+    // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
+    if (e instanceof MilestonesConflictError) {
+      process.stderr.write(`競合: ${e.message}\n`);
+      process.exit(3);
+    }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );

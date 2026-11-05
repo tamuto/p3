@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { MILESTONE_GOAL_LIMITS, nextGoalId } from "../../../shared/milestoneGoals.ts";
 import { compareMilestoneIds } from "../../../shared/milestoneOrder.ts";
-import type { Milestone } from "../../../shared/types.ts";
+import type { Milestone, MilestoneGoal } from "../../../shared/types.ts";
 import { api, saveErrorText } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
@@ -26,36 +27,55 @@ const orderOf = (rows: readonly Row[]): number[] => [...rows].sort((a, b) => com
  *   - 行は取り込んだときに ID の降順に並べ、編集の間は動かさない（ID を書き換えても動かない。足した行は最後）。保存する順
  *     （project.yaml）は行の元の順のままで、表示のために並べ替えない。保存して取り込み直すと降順に並べ直す
  *   - 外（CLI・ほかの画面・エディタ）で変わったら、編集中でなければ取り込む。編集中は入力を残して知らせ、読み直しを選べる
+ *   - 保存は編集を始めたときの版（milestonesVersion）を付けて送る。その後に外で変わっていればサーバが断り（409）、入力は残す
+ *   - 行の「目的・予定機能」を開くと、目的（複数行）と予定している機能・目標を編集できる（リリース済みでも変えられる）。予定機能の
+ *     ID（G1, G2, ...）は足したときに振り、並べ替え・文言の変更で振り直さない。保存は全項目を送る（空なら消す）
  *   - 保存してもノートの本文・要望・タスクは変えない
  */
 export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { noteIds: ReadonlySet<string>; unknownNotes: readonly string[]; onDirtyChange?: (dirty: boolean) => void }) {
   const ctx = useAppCtx();
   const saved = ctx.info.project.milestones;
+  const savedVersion = ctx.info.milestonesVersion;
   const [rows, setRows] = useState<Row[]>(() => rowsOf(saved));
   const [order, setOrder] = useState<number[]>(() => orderOf(rows));
   /** 編集を始めたときのマイルストーン（編集中に外で変わったかを見る） */
   const [base, setBase] = useState<readonly Milestone[]>(saved);
+  /** base の版（保存のときに送る） */
+  const [baseVersion, setBaseVersion] = useState(savedVersion);
+  /** 目的・予定機能を開いている行の key */
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const added = useRef<HTMLInputElement | null>(null);
   const focusAdded = useRef(false);
 
+  /** 行を作り直すとき、開いていた行（元の ID で見る）を開いたままにする */
+  const keepOpen = (next: readonly Row[]) => {
+    const ids = new Set(rows.filter((r) => open.has(r.key)).map((r) => r.orig ?? r.m.id));
+    setOpen(new Set(next.filter((r) => ids.has(r.m.id)).map((r) => r.key)));
+  };
   const reset = () => {
     const r = rowsOf(saved);
+    keepOpen(r);
     setRows(r);
     setOrder(orderOf(r));
     setBase(saved);
+    setBaseVersion(savedVersion);
     setDirty(false);
   };
   // 外で変わったら、編集中でなければ取り込む（保存の後もここで降順に並べ直す）
   useEffect(() => {
     if (dirty || JSON.stringify(saved) === JSON.stringify(base)) return;
     const r = rowsOf(saved);
+    keepOpen(r);
     setRows(r);
     setOrder(orderOf(r));
     setBase(saved);
-  }, [saved, base, dirty]);
+    setBaseVersion(savedVersion);
+    // keepOpen は今の行と開いている行を読むだけ（取り込みのきっかけにしない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved, savedVersion, base, dirty]);
   const changedElsewhere = dirty && JSON.stringify(saved) !== JSON.stringify(base);
 
   useUnsaved(dirty);
@@ -76,6 +96,7 @@ export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { note
     edit(rows.filter((r) => r.key !== key));
     setOrder(order.filter((k) => k !== key));
   };
+  const toggle = (key: number) => setOpen((o) => (o.has(key) ? new Set([...o].filter((k) => k !== key)) : new Set([...o, key])));
   const add = () => {
     const key = nextKey++;
     edit([...rows, { key, m: { id: "", title: "" } }]);
@@ -86,7 +107,11 @@ export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { note
   async function save() {
     setBusy(true);
     try {
-      await api.saveProject({ milestones: rows.map((r) => r.m) });
+      // 目的・予定機能も必ず送る（空は消す意味。キーを省くとサーバは今の値を残す）
+      await api.saveProject({
+        milestones: rows.map((r) => ({ ...r.m, purpose: r.m.purpose ?? "", goals: r.m.goals ?? [] })),
+        milestonesVersion: baseVersion,
+      });
       setDirty(false);
       setMsg({ ok: true, text: "保存しました" });
       ctx.reload();
@@ -146,6 +171,26 @@ export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { note
                 削除
               </Button>
               {lock && <p className="w-full text-sm text-slate-500 dark:text-slate-400">{lock}</p>}
+              <div className="w-full">
+                <button
+                  type="button"
+                  className="text-sm text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
+                  aria-expanded={open.has(key)}
+                  aria-controls={`ms-goals-${key}`}
+                  onClick={() => toggle(key)}
+                >
+                  {open.has(key) ? "▾" : "▸"} 目的・予定機能
+                  <span className="ml-2 text-slate-400">{goalSummary(r.m)}</span>
+                </button>
+                {open.has(key) && (
+                  <GoalsEditor
+                    id={`ms-goals-${key}`}
+                    m={r.m}
+                    used={[...(base.find((b) => b.id === r.orig)?.goals ?? []), ...(r.m.goals ?? [])]}
+                    onChange={(patch) => update(key, patch)}
+                  />
+                )}
+              </div>
             </li>
           );
         })}
@@ -172,12 +217,83 @@ export function MilestoneEditor({ noteIds, unknownNotes, onDirtyChange }: { note
       </div>
       {changedElsewhere && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          編集中にマイルストーンが他で変わりました。保存するとこの画面の内容で上書きします。
+          編集中にマイルストーンが他で変わりました。このまま保存すると断られます（入力は残ります）。必要な入力を控えてから、最新を読み直してください。
           <Button variant="ghost" onClick={() => (reset(), setMsg(null))}>
             入力を捨てて最新を読み直す
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 閉じた行に出す、目的・予定機能の有無 */
+function goalSummary(m: Milestone): string {
+  const parts = [m.purpose ? "目的あり" : "目的なし", m.goals?.length ? `予定機能 ${m.goals.length} 件` : "予定機能なし"];
+  return parts.join(" · ");
+}
+
+/**
+ * 1つのマイルストーンの目的と予定している機能・目標の編集。used は ID を振るときに避ける ID（取り込んだときの予定機能と今の予定機能。
+ * 消した直後に足しても同じ ID を使わない）
+ */
+function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used: readonly MilestoneGoal[]; onChange: (patch: Partial<Milestone>) => void }) {
+  const goals = m.goals ?? [];
+  const setGoals = (next: MilestoneGoal[]) => onChange({ goals: next });
+  const addRef = useRef<HTMLInputElement | null>(null);
+  const focusAdded = useRef(false);
+  useEffect(() => {
+    if (!focusAdded.current) return;
+    focusAdded.current = false;
+    addRef.current?.focus();
+  }, [goals.length]);
+  const full = goals.length >= MILESTONE_GOAL_LIMITS.goals;
+  return (
+    <div id={id} className="mt-2 space-y-3 rounded-md bg-slate-50 p-3 dark:bg-slate-900">
+      <label className="block">
+        <span className="text-sm font-medium">目的</span>
+        <textarea
+          rows={4}
+          className={cx(inputCls, "mt-1")}
+          value={m.purpose ?? ""}
+          maxLength={MILESTONE_GOAL_LIMITS.purpose}
+          placeholder="このマイルストーンで目指すこと・解決したいこと"
+          onChange={(e) => onChange({ purpose: e.target.value })}
+        />
+      </label>
+      <div role="group" aria-label="予定している機能・目標">
+        <p className="text-sm font-medium">予定している機能・目標</p>
+        {!goals.length && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">まだありません。</p>}
+        <div className="mt-1 space-y-2">
+          {goals.map((g, i) => (
+            <div key={g.id} className="flex items-center gap-2">
+              <span className="w-10 shrink-0 font-mono text-sm text-slate-500">{g.id}</span>
+              <input
+                ref={i === goals.length - 1 ? addRef : undefined}
+                aria-label={`予定機能 ${g.id}`}
+                className={cx(inputCls, "!w-auto min-w-0 flex-1")}
+                value={g.text}
+                maxLength={MILESTONE_GOAL_LIMITS.goalText}
+                onChange={(e) => setGoals(goals.map((x) => (x.id === g.id ? { ...x, text: e.target.value } : x)))}
+              />
+              <Button variant="ghost" aria-label={`予定機能 ${g.id} を削除`} onClick={() => setGoals(goals.filter((x) => x.id !== g.id))}>
+                削除
+              </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          className="mt-2"
+          disabled={full}
+          title={full ? `予定機能は ${MILESTONE_GOAL_LIMITS.goals} 件までです` : undefined}
+          onClick={() => {
+            focusAdded.current = true;
+            setGoals([...goals, { id: nextGoalId(used), text: "" }]);
+          }}
+        >
+          ＋ 予定機能を追加
+        </Button>
+      </div>
     </div>
   );
 }

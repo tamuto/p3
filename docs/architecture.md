@@ -358,6 +358,25 @@ include: true
   ディスクを読むので扱わない。応答は読み直しを終えた後（画面はその後に取り直す）。ほかの serve・CLI が同時に書いている
   最中のファイルは、読んだ時点の内容になる（次の読み直しで追いつく）
 
+### マイルストーンの目的と予定機能
+
+- project.yaml の `milestones` の各項目に、任意の `purpose`（複数行の文字列）と `goals`（`{ id, text }` の並び）を書く
+  （型は `shared/types.ts` の `Milestone`、規則は `shared/milestoneGoals.ts`）。無い古いファイルは空として読み、空は書かない。
+  予定機能の ID は足したときに `G<最大の番号 + 1>` を振り、並べ替え・文言の変更では変えない（後のレビューの比較単位の名前になる）
+- 保存はどの道（画面・API・CLI・`p3 config`）も `Workspace.saveProject` / `updateMilestones` を通す。プロセスの間はロックのファイル
+  （`<データのフォルダ>/.project.yaml.lock`。`fsutil.ts` の `withFileLock`）で1つずつにし、ロックの中で最新の project.yaml を読み、
+  渡された項目だけを重ねて書く。件数・文字数・空・重複はここで確かめる（`ProjectInputError`。何も書かない）
+- 版: `milestonesVersion` はマイルストーンの中身（ID・名前・期限・リリース済み・目的・予定機能と並び）のハッシュ（ファイルの書き方や
+  ほかの設定の項目は入れない）。`GET /api/project` が返し、画面は編集を始めたときの版を保存に付ける。版を付けた保存はロックの中で
+  最新と照らし、違えば `MilestonesConflictError`（API は 409 `milestones_conflict`、CLI は終了コード 3）で何も書かない。CLI の
+  `milestone` の操作はロックの中で読んだ最新の並びの対象の項目だけを変え（指定した項目のほかを巻き戻さない）、`--version` を
+  付けたときだけ照らす
+- 版の無い古い道（目的を知らない画面・API の呼び出し）が `purpose` / `goals` のキーの無い項目を送ったら、同じ ID の今の値を残す
+  （消すには空か null を送る）。ID を変えた項目は引き継がない
+- 限界: ロックと版は p3 を通した保存どうしの競合を防ぐだけで、エディタで project.yaml を直接書き換えるのは防げない（画面は外の変更を
+  知らせ、次の保存で版が合わずに断る）。目的・予定機能を知らない古い p3 で保存すると、どちらも project.yaml から消える。データを
+  共有する人は p3 の版をそろえる
+
 ### リリースノートのデータ
 
 マイルストーンごとに1件、`<data>/release-notes/<マイルストーンID>.md` に置く（`core/releaseNotes/`）。要望のフォルダの外に
@@ -657,6 +676,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 | マイルストーンの表示の順（ID のバージョンの降順。CLI・API・画面の一覧と選ぶ欄。project.yaml の順は変えない） | `shared/milestoneOrder.ts` |
+| マイルストーンの目的・予定機能（件数・文字数・空・重複・ID の振り方） | `shared/milestoneGoals.ts`（保存の排他と版の照合は `core/store/workspace.ts` の `saveProject`） |
 
 CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
 `requestCommands.ts`・`preflightCommands.ts`）に分ける。大きい画面は、ルートのファイルを組み立てだけにして部品を

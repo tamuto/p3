@@ -607,6 +607,17 @@ export interface Milestone {
   due?: string;
   /** リリース済み */
   done?: boolean;
+  /** 目的（複数行の自由文。マイルストーンレビューで所属する要望と比べる）。規則は shared/milestoneGoals.ts */
+  purpose?: string;
+  /** 予定している機能・目標（id は振ったら変えない） */
+  goals?: MilestoneGoal[];
+}
+
+/** マイルストーンの予定機能・目標の1件 */
+export interface MilestoneGoal {
+  /** 安定した ID（G1, G2, ...）。並べ替え・文言の変更で振り直さない */
+  id: string;
+  text: string;
 }
 
 // ---------------------------------------------------------------------------

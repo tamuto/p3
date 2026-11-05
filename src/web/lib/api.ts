@@ -96,6 +96,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export interface ProjectInfo {
   project: ProjectConfig;
+  /** マイルストーンの版。マイルストーンを保存するときに渡す（違えば 409 milestones_conflict） */
+  milestonesVersion: string;
   dataDir: string;
   engines: ("codex" | "mock")[];
   defaultEngine: "codex" | "mock";
@@ -200,7 +202,7 @@ export const api = {
   chatgptCancel: () => call("POST", "/chatgpt/cancel", {}),
   chatgptPaste: (url: string) => call<ChatGptState>("POST", "/chatgpt/paste", { url }),
   chatgptLogout: (forget = false) => call<{ revoked: boolean; message: string }>("POST", "/chatgpt/logout", { forget }),
-  saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
+  saveProject: (patch: Partial<ProjectConfig> & { milestonesVersion?: string }) => call<ProjectConfig>("PUT", "/project", patch),
   repos: () => call<{ local: boolean; registered: boolean; repos: RepoInfo[] }>("GET", "/repos"),
   addRepo: (b: RepoInput & { name: string; path?: string }) => call<RepoRef>("POST", "/repos", b),
   updateRepo: (name: string, b: RepoInput) => call<RepoRef>("PATCH", `/repos/${encodeURIComponent(name)}`, b),
