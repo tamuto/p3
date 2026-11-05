@@ -1,6 +1,6 @@
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
-import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
+import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
 const num = (v: unknown): number | undefined => (v === undefined || v === null || v === "" ? undefined : Number(v));
@@ -92,6 +92,25 @@ function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: strin
   return isPreflightRunner(raw) ? { runner: raw } : { invalidRunner: raw };
 }
 
+/**
+ * マイルストーンの目的と予定機能（無い古いファイルは空として読む）。予定機能は id と text のある項目だけを読み、重複した id は
+ * 最初のものを残す（読めない項目は画面・CLI に出ず、次の保存で消える）
+ */
+function milestoneGoalsOf(m: Record<string, unknown>): Pick<Milestone, "purpose" | "goals"> {
+  const purpose = typeof m.purpose === "string" && m.purpose.trim() ? m.purpose.replace(/\s+$/, "") : undefined;
+  const goals: MilestoneGoal[] = [];
+  if (Array.isArray(m.goals)) {
+    for (const g of m.goals as unknown[]) {
+      if (!g || typeof g !== "object") continue;
+      const { id, text } = g as Record<string, unknown>;
+      const gid = typeof id === "string" || typeof id === "number" ? String(id).trim() : "";
+      if (!gid || typeof text !== "string" || !text.trim() || goals.some((x) => x.id === gid)) continue;
+      goals.push({ id: gid, text: text.trim() });
+    }
+  }
+  return { ...(purpose ? { purpose } : {}), ...(goals.length ? { goals } : {}) };
+}
+
 export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
   const preflight = (d.preflight ?? {}) as Record<string, unknown>;
   return {
@@ -101,7 +120,13 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
     milestones: Array.isArray(d.milestones)
       ? (d.milestones as unknown[])
           .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !!(m as Record<string, unknown>).id)
-          .map((m) => ({ id: String(m.id), title: str(m.title) ?? String(m.id), due: date(m.due), done: m.done === true ? true : undefined }))
+          .map((m) => ({
+            id: String(m.id),
+            title: str(m.title) ?? String(m.id),
+            due: date(m.due),
+            done: m.done === true ? true : undefined,
+            ...milestoneGoalsOf(m),
+          }))
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     preflight: { instructions: str(preflight.instructions) ?? "", ...runnerOf(preflight.runner) },

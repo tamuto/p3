@@ -65,6 +65,10 @@ export async function checkMilestoneRemoval(ctx: P3Context, next: string[]): Pro
   if (notes.length) {
     throw new OpRuleError(`リリースノートのあるマイルストーンは消せません: ${notes.join(", ")}（release-notes/<ID>.md を残すなら消さないでください）`);
   }
+  const reviewed = (await ctx.ws.milestoneReviews.milestones()).filter((id) => removed.includes(id));
+  if (reviewed.length) {
+    throw new OpRuleError(`レビューの履歴のあるマイルストーンは消せません（ID も変えられません）: ${reviewed.join(", ")}（milestone-reviews/<ID>/ に残っています）`);
+  }
 }
 
 /** 要望を変えた後: 配下に未完了ができたら対応済の祖先を進行中に戻し（変更通知も）、完了済の祖先は警告にする */

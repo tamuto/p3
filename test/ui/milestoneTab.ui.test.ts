@@ -1,6 +1,6 @@
 // リリースノートの「マイルストーン」タブ: 0 件からの追加・編集・削除・リリース済みの付け外しと保存、使用中・ノートありの ID の保護、
 // タブの往復で両方の書きかけが残ること、外での変更の知らせ、設定（プロジェクトの基本）とマイルストーンが互いを巻き戻さないこと、
-// 旧 URL（?m=）と不正な ?tab=、project.yaml に無いノート、幅 1280 / 375 での収まりを確かめる。Docker も ChatGPT も使わない。
+// 旧 URL（?m=）と不正な ?tab=、project.yaml に無いノート、目的・予定機能の編集と外の変更での保存の拒否、幅 1280 / 375 での収まりを確かめる。Docker も ChatGPT も使わない。
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
@@ -20,7 +20,7 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
   const milestones = async () => JSON.parse(await s.env.p3(["milestone", "--json"])) as Ms[];
   const projectYaml = () => join(s.env.repo, ".p3", "project.yaml");
   const panel = (page: Page) => page.getByRole("tabpanel", { name: "マイルストーン" });
-  const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}`) });
+  const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}(?!レビュー)`) });
   const idInputs = (page: Page) => panel(page).getByLabel("ID", { exact: true });
   const shownIds = (page: Page) => idInputs(page).evaluateAll((is) => is.map((i) => (i as HTMLInputElement).value));
   /** 今その ID が出ている行（ID の入力の値で探す） */
@@ -240,6 +240,66 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
       await page.goto("/release-notes?m=v5");
       await until.visible(page.getByText("⚠ project.yaml にありません"));
       await until.value(page.locator("#rn-body"), "孤立したノート");
+    });
+  });
+
+  it("目的と予定機能を開いて直し、保存・読み直し・元に戻す。外で変わったら保存を断って入力を残す。タブを往復しても残る", async () => {
+    const { page, step } = s;
+    const goalsOf = async () => (await milestones()).find((m) => m.id === "v1") as Ms & { purpose?: string; goals?: { id: string; text: string }[] };
+    const open = async () => {
+      const r = await row(page, "v1");
+      await r.getByRole("button", { name: /目的・予定機能/ }).click();
+      return r;
+    };
+    await step("開いて目的と予定機能を書き、保存する", async () => {
+      await page.goto("/release-notes?tab=milestones");
+      await until.count(idInputs(page), 4);
+      const r = await open();
+      expect(await r.getByRole("button", { name: /目的・予定機能/ }).getAttribute("aria-expanded")).toBe("true");
+      await r.getByLabel("目的").fill("在庫の確認を速くする\n店舗の負担を減らす");
+      await r.getByRole("button", { name: "＋ 予定機能を追加" }).click();
+      // 足した予定機能の入力に移る
+      expect(await r.getByLabel("予定機能 G1", { exact: true }).evaluate((el) => el === document.activeElement)).toBe(true);
+      await page.keyboard.type("在庫の一覧");
+      await r.getByRole("button", { name: "＋ 予定機能を追加" }).click();
+      await r.getByLabel("予定機能 G2", { exact: true }).fill("通知");
+      await panel(page).getByRole("button", { name: "保存", exact: true }).click();
+      await until.visible(panel(page).getByRole("status").filter({ hasText: "保存しました" }));
+      expect(await goalsOf()).toMatchObject({ purpose: "在庫の確認を速くする\n店舗の負担を減らす", goals: [{ id: "G1", text: "在庫の一覧" }, { id: "G2", text: "通知" }] });
+    });
+    await step("読み直しても残る。閉じた行に件数が出る。消して足しても ID を使い回さない。元に戻すで保存した内容に戻る", async () => {
+      await page.goto("/release-notes?tab=milestones");
+      await until.count(idInputs(page), 4);
+      await until.visible((await row(page, "v1")).getByText("目的あり · 予定機能 2 件"));
+      const r = await open();
+      await until.value(r.getByLabel("目的"), "在庫の確認を速くする\n店舗の負担を減らす");
+      await r.getByRole("button", { name: "予定機能 G2 を削除" }).click();
+      await r.getByRole("button", { name: "＋ 予定機能を追加" }).click();
+      await until.visible(r.getByLabel("予定機能 G3", { exact: true }));
+      expect(await r.getByLabel("予定機能 G2", { exact: true }).count()).toBe(0);
+      await panel(page).getByRole("button", { name: "元に戻す" }).click();
+      await until.value(r.getByLabel("予定機能 G2", { exact: true }), "通知");
+      expect(await r.getByLabel("予定機能 G3", { exact: true }).count()).toBe(0);
+    });
+    await step("書きかけのままタブを往復しても残る", async () => {
+      const r = await row(page, "v1");
+      await r.getByLabel("目的").fill("書きかけの目的");
+      await tab(page, "リリースノート").click();
+      await tab(page, "マイルストーン").click();
+      await until.value((await row(page, "v1")).getByLabel("目的"), "書きかけの目的");
+    });
+    await step("外で予定機能が変わると知らせ、保存は断られて入力が残る。外の変更は上書きしない", async () => {
+      await s.env.p3(["milestone", "goal", "add", "v1", "外で足した"]);
+      await reload(page);
+      await until.visible(panel(page).getByText(/編集中にマイルストーンが他で変わりました/));
+      await panel(page).getByRole("button", { name: "保存", exact: true }).click();
+      await until.visible(panel(page).getByRole("alert").filter({ hasText: /他で変わりました/ }));
+      await until.value((await row(page, "v1")).getByLabel("目的"), "書きかけの目的");
+      const now = await goalsOf();
+      expect(now.purpose).toBe("在庫の確認を速くする\n店舗の負担を減らす");
+      expect(now.goals?.map((g) => g.text)).toEqual(["在庫の一覧", "通知", "外で足した"]);
+      await panel(page).getByRole("button", { name: "入力を捨てて最新を読み直す" }).click();
+      await until.visible((await row(page, "v1")).getByText("目的あり · 予定機能 3 件"));
     });
   });
 

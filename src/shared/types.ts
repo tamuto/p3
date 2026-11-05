@@ -607,6 +607,17 @@ export interface Milestone {
   due?: string;
   /** リリース済み */
   done?: boolean;
+  /** 目的（複数行の自由文。マイルストーンレビューで所属する要望と比べる）。規則は shared/milestoneGoals.ts */
+  purpose?: string;
+  /** 予定している機能・目標（id は振ったら変えない） */
+  goals?: MilestoneGoal[];
+}
+
+/** マイルストーンの予定機能・目標の1件 */
+export interface MilestoneGoal {
+  /** 安定した ID（G1, G2, ...）。並べ替え・文言の変更で振り直さない */
+  id: string;
+  text: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -835,6 +846,8 @@ export type ServerEvent =
   | { type: "changed"; kind: "release-note"; milestone: string }
   /** リリースノートの要約の生成の状態が変わった */
   | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
+  /** マイルストーンレビューの実行の状態（このプロセスの実行と、ほかのプロセスが書いた履歴の変化。status は分からなければ無い） */
+  | { type: "milestone-review"; id?: string; milestone: string; status?: "running" | "completed" | "failed" | "cancelled" }
   | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
   | { type: "preflight-status"; runId: string; status: PreflightStatus };
 

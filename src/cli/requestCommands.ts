@@ -1,5 +1,9 @@
-import { basename, relative } from "node:path";
-import { REQUEST_STATUSES, type Request, type Attachment } from "../shared/types.ts";
+import { readFile } from "node:fs/promises";
+import { basename, relative, resolve as resolvePath } from "node:path";
+import { REQUEST_STATUSES, type Attachment, type Milestone, type Request } from "../shared/types.ts";
+import { nextGoalId } from "../shared/milestoneGoals.ts";
+import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../shared/milestoneReview.ts";
+import type { ReviewDetail } from "../core/milestoneReview/service.ts";
 import { type P3Context } from "../core/context.ts";
 import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, orderChildren, updateRequest } from "../core/requestOps.ts";
 import { hierarchyNow, resolvedIssue } from "../core/requestStatus.ts";
@@ -163,37 +167,206 @@ export async function requestCommand(
 // --- マイルストーン -----------------------------------------------------------
 
 /** マイルストーン（リリース）。複数の要望をまとめる単位で、project.yaml に書く */
-export async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"]): Promise<number> {
+const MILESTONE_USAGE =
+  "p3 milestone [ls | show <id> | add <id> | set <id> | rm <id> | purpose <id> (--body 本文|- | --file ファイル | --off) | goal add <id> <文> | goal set <id> <G番号> <文> | goal rm <id> <G番号> | review <id> | reviews <id> | review-show <id> <run> | review-cancel <id> <run>]";
+
+/**
+ * マイルストーンの操作。保存はロックの中で読んだ最新の並びから作り直す（Workspace.updateMilestones。指定した項目のほかを巻き戻さない）。
+ * --version（show --json の milestonesVersion）を付けると、その版から変わっていれば競合（終了コード 3）で何も書かない
+ */
+export async function milestoneCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"], actor?: string): Promise<number> {
   const [sub, id] = args;
+  if (sub === "review" || sub === "reviews" || sub === "review-show" || sub === "review-cancel") return reviewCommand(ctx, out, args, o, actor);
   const ms = ctx.ws.project.milestones;
   const count = (mid: string) => ctx.ws.requests.list().filter((r) => r.milestone === mid).length;
+  const save = { milestonesVersion: o.version };
+  /** 最新の並びの中で id のマイルストーンを変える（無ければ使い方の誤り） */
+  const change = async (mid: string, fn: (m: Milestone) => Milestone): Promise<Milestone> => {
+    const p = await ctx.ws.updateMilestones((cur) => {
+      if (!cur.some((m) => m.id === mid)) throw new UsageError(`マイルストーンがありません: ${mid}`);
+      return cur.map((m) => (m.id === mid ? fn(m) : m));
+    }, save);
+    return p.milestones.find((m) => m.id === mid)!;
+  };
+  const needId = (cmd: string) => {
+    if (!id) throw new UsageError(`p3 milestone ${cmd} <id>`);
+    return id;
+  };
   if (sub === "add" || sub === "set") {
     if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) throw new UsageError(`p3 milestone ${sub} <id>（英数字と . _ -）`);
-    const cur = ms.find((m) => m.id === id);
-    if (sub === "add" && cur) throw new UsageError(`既にあります: ${id}（変えるなら p3 milestone set）`);
-    if (sub === "set" && !cur) throw new UsageError(`マイルストーンがありません: ${id}`);
-    const next = {
+    const make = (cur: Milestone | undefined): Milestone => ({
+      ...cur,
       id,
       title: o.title ?? cur?.title ?? id,
       due: o.due !== undefined ? (o.due ? date(o.due) : undefined) : cur?.due,
       done: o.done ?? cur?.done,
-    };
-    await ctx.ws.saveProject({ milestones: cur ? ms.map((m) => (m.id === id ? next : m)) : [...ms, next] });
-    return out.result(next, () => `${cur ? "更新" : "追加"}しました: ${next.title}（${id}${next.due ? ` · ${next.due}` : ""}）`);
+    });
+    let existed = false;
+    const p = await ctx.ws.updateMilestones((cur) => {
+      const was = cur.find((m) => m.id === id);
+      existed = !!was;
+      if (sub === "add" && was) throw new UsageError(`既にあります: ${id}（変えるなら p3 milestone set）`);
+      if (sub === "set" && !was) throw new UsageError(`マイルストーンがありません: ${id}`);
+      return was ? cur.map((m) => (m.id === id ? make(m) : m)) : [...cur, make(undefined)];
+    }, save);
+    const next = p.milestones.find((m) => m.id === id)!;
+    return out.result(next, () => `${existed ? "更新" : "追加"}しました: ${next.title}（${id}${next.due ? ` · ${next.due}` : ""}）`);
   }
   if (sub === "rm" || sub === "remove") {
     if (!id || !ms.some((m) => m.id === id)) throw new UsageError(`マイルストーンがありません: ${id ?? ""}`);
     await checkMilestoneRemoval(ctx, ms.filter((m) => m.id !== id).map((m) => m.id));
-    await ctx.ws.saveProject({ milestones: ms.filter((m) => m.id !== id) });
+    await ctx.ws.updateMilestones((cur) => cur.filter((m) => m.id !== id), save);
     return out.result({ removed: id }, () => `外しました: ${id}`);
   }
-  if (sub && sub !== "ls" && sub !== "list") throw new UsageError("p3 milestone [ls | add <id> | set <id> | rm <id>]");
+  if (sub === "show") {
+    const mid = needId("show");
+    const m = ms.find((x) => x.id === mid);
+    if (!m) throw new UsageError(`マイルストーンがありません: ${mid}`);
+    return out.result({ ...m, requests: count(mid), milestonesVersion: ctx.ws.milestonesVersion }, () => formatMilestone(m, count(mid)));
+  }
+  if (sub === "purpose") {
+    const mid = needId("purpose");
+    const given = [o.off, o.body !== undefined, o.file !== undefined].filter(Boolean).length;
+    if (given !== 1) throw new UsageError(`p3 milestone purpose ${mid} --body 本文|- か --file ファイル か --off（どれか1つ）`);
+    const text = o.off ? "" : o.file !== undefined ? await readFile(resolvePath(process.cwd(), o.file), "utf8") : readBody(o.body);
+    const m = await change(mid, (x) => ({ ...x, purpose: text }));
+    return out.result(m, () => (m.purpose ? `目的を保存しました: ${mid}` : `目的を外しました: ${mid}`));
+  }
+  if (sub === "goal") {
+    const [, op, mid, a, b] = args;
+    if (!mid || !["add", "set", "rm", "remove"].includes(op ?? "")) throw new UsageError("p3 milestone goal add <id> <文> | goal set <id> <G番号> <文> | goal rm <id> <G番号>");
+    if (op === "add") {
+      if (a === undefined) throw new UsageError(`p3 milestone goal add ${mid} <文>`);
+      let gid = "";
+      const m = await change(mid, (x) => {
+        gid = nextGoalId(x.goals ?? []);
+        return { ...x, goals: [...(x.goals ?? []), { id: gid, text: a }] };
+      });
+      return out.result({ ...m, added: gid }, () => `予定機能を追加しました: ${mid} ${gid}`);
+    }
+    if (!a) throw new UsageError(`p3 milestone goal ${op} ${mid} <G番号>`);
+    const exists = (x: Milestone) => {
+      if (!(x.goals ?? []).some((g) => g.id === a)) throw new UsageError(`予定機能がありません: ${mid} ${a}`);
+    };
+    if (op === "set") {
+      if (b === undefined) throw new UsageError(`p3 milestone goal set ${mid} ${a} <文>`);
+      const m = await change(mid, (x) => (exists(x), { ...x, goals: (x.goals ?? []).map((g) => (g.id === a ? { ...g, text: b } : g)) }));
+      return out.result(m, () => `予定機能を更新しました: ${mid} ${a}`);
+    }
+    const m = await change(mid, (x) => (exists(x), { ...x, goals: (x.goals ?? []).filter((g) => g.id !== a) }));
+    return out.result({ ...m, removed: a }, () => `予定機能を外しました: ${mid} ${a}`);
+  }
+  if (sub && sub !== "ls" && sub !== "list") throw new UsageError(MILESTONE_USAGE);
   const shown = sortMilestones(ms);
   return out.result(
     shown,
     () =>
-      table(shown.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`])) ||
+      table(shown.map((m) => [m.id, m.title, m.due ?? "", m.done ? "済" : "", `要望 ${count(m.id)}`, m.purpose ? "目的あり" : "", m.goals?.length ? `予定機能 ${m.goals.length}` : ""])) ||
       "マイルストーンはありません（p3 milestone add v0.1 --title 最初のリリース --due 2026-11-30）",
   );
 }
 
+/** milestone show の人向けの表示 */
+function formatMilestone(m: Milestone, requests: number): string {
+  const lines = [`${m.id}  ${m.title}${m.due ? `  期限 ${m.due}` : ""}${m.done ? "  リリース済み" : ""}  要望 ${requests}`, "", "目的:"];
+  lines.push(m.purpose ? m.purpose.split("\n").map((l) => `  ${l}`).join("\n") : `  （なし。p3 milestone purpose ${m.id} --file 目的.md）`);
+  lines.push("", "予定している機能・目標:");
+  lines.push(m.goals?.length ? m.goals.map((g) => `  ${g.id}  ${g.text}`).join("\n") : `  （なし。p3 milestone goal add ${m.id} "文"）`);
+  return lines.join("\n");
+}
+
+
+// --- マイルストーンレビュー ----------------------------------------------------
+
+/**
+ * マイルストーンレビュー（core/milestoneReview。画面と同じ規則）。review は終わるまで待ち、進み具合は stderr に出す（Ctrl-C で取り消す）。
+ * 結果は参考の記録で、要望の状態・リリースノート・リリース済みは変えない
+ */
+async function reviewCommand(ctx: P3Context, out: Output, args: string[], o: ReturnType<typeof parse>["values"], actor?: string): Promise<number> {
+  const [sub, mid, run] = args;
+  if (!mid) throw new UsageError(`p3 milestone ${sub} <id>${sub === "review-show" || sub === "review-cancel" ? " <run>" : ""}`);
+  const svc = ctx.milestoneReview;
+  if (sub === "reviews") {
+    const items = await svc.list(mid);
+    return out.result(items, () =>
+      items.length
+        ? table(
+            items.map((x) =>
+              x.state === "broken"
+                ? [x.id, "読めない", x.error]
+                : [x.run.id, REVIEW_STATUS_LABELS[x.run.status], x.run.startedAt.slice(0, 16).replace("T", " "), verdictSummary(x.verdicts), x.run.error ?? ""],
+            ),
+          )
+        : `レビューの履歴はありません（p3 milestone review ${mid}）`,
+    );
+  }
+  if (sub === "review-show" || sub === "review-cancel") {
+    if (!run) throw new UsageError(`p3 milestone ${sub} ${mid} <run>`);
+    if (sub === "review-show") {
+      const d = await svc.get(mid, run);
+      return out.result(d, () => formatReview(d));
+    }
+    const r = await svc.cancel(mid, run, actor, { acknowledgeStopped: o["acknowledge-stopped"] });
+    return out.result(r, () =>
+      r.requested
+        ? `取消を頼みました: ${mid}/${run}（実行しているプロセスが見つけて止めます）`
+        : r.run.abandoned
+          ? `中断にしました: ${mid}/${run}（記録の上で終わりにしました。ほかの環境で動いているプロセスを止めたとは限りません）`
+          : `終わりにしました: ${mid}/${run}（${REVIEW_STATUS_LABELS[r.run.status]}${r.run.error ? `: ${r.run.error}` : ""}）`,
+    );
+  }
+  if (o.engine !== undefined && o.engine !== "codex" && o.engine !== "mock") throw new UsageError("--engine は codex か mock");
+  const started = await svc.start(mid, actor, o.engine);
+  process.stderr.write(`レビューを始めました: ${mid}/${started.id}（Ctrl-C で取り消す）\n`);
+  let shown = 0;
+  const tick = setInterval(() => {
+    void svc.get(mid, started.id).then((d) => {
+      for (const e of d.run.log.slice(shown)) process.stderr.write(`  ${e.text}\n`);
+      shown = Math.max(shown, d.run.log.length);
+    }, () => undefined);
+  }, 500);
+  const onInt = () => void svc.cancel(mid, started.id, actor).catch(() => undefined);
+  process.on("SIGINT", onInt);
+  const d = await svc.wait(mid, started.id);
+  clearInterval(tick);
+  process.removeListener("SIGINT", onInt);
+  for (const e of d.run.log.slice(shown)) process.stderr.write(`  ${e.text}\n`);
+  if (d.run.status !== "completed") {
+    if (out.json) out.result(d, () => "");
+    else process.stderr.write(`${REVIEW_STATUS_LABELS[d.run.status]}: ${d.run.error ?? ""}\n`);
+    return 1;
+  }
+  return out.result(d, () => formatReview(d));
+}
+
+function verdictSummary(v: Partial<Record<ReviewVerdict, number>> | undefined): string {
+  if (!v) return "";
+  return REVIEW_VERDICTS.filter((k) => v[k]).map((k) => `${REVIEW_VERDICT_LABELS[k]} ${v[k]}`).join(" · ");
+}
+
+/** review-show の人向けの表示 */
+function formatReview(d: ReviewDetail): string {
+  const { run, input, result } = d;
+  const lines = [`${run.milestone}/${run.id}  ${REVIEW_STATUS_LABELS[run.status]}  ${run.startedAt}${run.startedBy ? `  ${run.startedBy}` : ""}  (${run.engine})`];
+  if (run.error) lines.push(`  ${run.error}`);
+  if (d.owner && d.owner.state !== "local" && d.owner.state !== "alive") {
+    lines.push(`  実行しているプロセスを確かめられません（${"reason" in d.owner ? d.owner.reason : ""}）。止まっていると確かめたら p3 milestone review-cancel ${run.milestone} ${run.id} --acknowledge-stopped`);
+  }
+  if (input) {
+    lines.push("", "評価したときの目的:", input.milestone.purpose ? input.milestone.purpose.split("\n").map((l) => `  ${l}`).join("\n") : "  （なし）");
+    lines.push(`材料: 要望 ${input.requests.length} 件・文脈 ${input.context.length} 件（${input.extractedAt}）`);
+    for (const w of input.warnings) lines.push(`  ⚠ ${w.message}`);
+  }
+  if (result) {
+    const text = new Map(input?.units.map((u) => [u.id, u.text]));
+    lines.push("", "全体の所見:", ...result.overall.split("\n").map((l) => `  ${l}`), "");
+    for (const u of result.units) {
+      lines.push(`■ ${u.unit}  ${REVIEW_VERDICT_LABELS[u.verdict]}  ${(text.get(u.unit) ?? "").split("\n")[0]}`);
+      lines.push(`  理由: ${u.reason}`);
+      if (u.evidence.length) lines.push(`  根拠: ${u.evidence.join(", ")}`);
+      for (const g of u.gaps) lines.push(`  不足: ${g}`);
+    }
+    lines.push("", `範囲: ${result.scope}`);
+  }
+  return lines.join("\n");
+}

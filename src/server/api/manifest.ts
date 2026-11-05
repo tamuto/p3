@@ -25,7 +25,14 @@ export const AI_MANIFEST = {
         "ここに無い API は /api/projects/:project/... の下に置く（通常の serve の /api/... と同じ）。変える操作には x-p3-project-generation が要る（無ければ 428、違えば 409 code: changed）。" +
         "プロジェクトを書かないデータの API は 404 code: project_required。/api/chatgpt（engine は null）・/api/user-theme・/api/events（一覧・テーマ・接続の変更）はプロジェクトを選ばずに使える",
     },
-    { method: "GET", path: "/api/project", desc: "プロジェクト設定" },
+    { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
+    {
+      method: "PUT",
+      path: "/api/project",
+      desc:
+        "プロジェクト設定を項目ごとに保存する。milestones の各項目は purpose（目的）・goals（予定機能 {id, text}）を持てる（キーを省くと今の値を残す。null・空で消す）。" +
+        "milestonesVersion を付けると最新の版と照らし、違えば 409 code: milestones_conflict で何も書かない",
+    },
     {
       method: "POST",
       path: "/api/reload",
@@ -159,6 +166,18 @@ export const AI_MANIFEST = {
       method: "GET|POST",
       path: "/api/release-generations/:id[/cancel]",
       desc: "生成1件 {status: running|completed|failed|cancelled, failure?, items（文と出典）, markdown（本文の案）, warnings, materialChanged, log} / 取り消し",
+    },
+    { method: "GET", path: "/api/milestone-reviews", desc: "レビューの履歴のあるマイルストーン {milestones}（project.yaml に無い孤立も。履歴のあるマイルストーンは消せず ID も変えられない）" },
+    { method: "GET", path: "/api/milestones/:mid/review-preview", desc: "マイルストーンレビューの今の材料（比較単位・目的・要望の件数と状態・範囲・警告・hash）。何も書かない" },
+    {
+      method: "GET|POST",
+      path: "/api/milestones/:mid/reviews",
+      desc: "レビューの履歴 {items}（新しい順。読めない記録は state: broken）/ 実行を始める {engine?: codex|mock}（202。目的も予定機能も無ければ 400 no_goals、実行中は 409 running）",
+    },
+    {
+      method: "GET|POST",
+      path: "/api/milestones/:mid/reviews/:run[/cancel]",
+      desc: "1回分 {run, input, result, owner?} / 取消 {acknowledgeStopped?}（ほかのプロセスの run は要求を残す。終わっている・所有者が動いていれば 409）。結果は参考で、要望・ノート・リリース済みを変えない",
     },
     { method: "GET", path: "/api/resolve?q=&request=", desc: "参照・タイトルから対象を特定" },
     { method: "GET", path: "/api/chatgpt", desc: "ChatGPT プランの接続の状態（トークンは返さない）。このマシンからだけ" },

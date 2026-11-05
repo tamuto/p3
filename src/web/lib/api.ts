@@ -2,6 +2,7 @@ import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
+import type { ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
   AdoptionResult,
   MaterializeResult,
@@ -94,8 +95,27 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
+/** レビューの材料のプレビュー（GET /milestones/:mid/review-preview） */
+export interface ReviewPreview {
+  milestone: ReviewInput["milestone"];
+  units: ReviewUnit[];
+  requests: number;
+  statuses: Record<string, number>;
+  context: number;
+  warnings: ReviewWarning[];
+  scope: string;
+  hash: string;
+}
+
+/** レビューの1回分。実行中は所有者の状態（local: serve 自身） */
+export type ReviewDetailView =
+  | (ReviewRecord & { owner?: { state: "local" } | { state: "alive" } | { state: "dead"; reason: string } | { state: "unknown"; reason: string } })
+  | { error: string };
+
 export interface ProjectInfo {
   project: ProjectConfig;
+  /** マイルストーンの版。マイルストーンを保存するときに渡す（違えば 409 milestones_conflict） */
+  milestonesVersion: string;
   dataDir: string;
   engines: ("codex" | "mock")[];
   defaultEngine: "codex" | "mock";
@@ -200,7 +220,7 @@ export const api = {
   chatgptCancel: () => call("POST", "/chatgpt/cancel", {}),
   chatgptPaste: (url: string) => call<ChatGptState>("POST", "/chatgpt/paste", { url }),
   chatgptLogout: (forget = false) => call<{ revoked: boolean; message: string }>("POST", "/chatgpt/logout", { forget }),
-  saveProject: (patch: Partial<ProjectConfig>) => call<ProjectConfig>("PUT", "/project", patch),
+  saveProject: (patch: Partial<ProjectConfig> & { milestonesVersion?: string }) => call<ProjectConfig>("PUT", "/project", patch),
   repos: () => call<{ local: boolean; registered: boolean; repos: RepoInfo[] }>("GET", "/repos"),
   addRepo: (b: RepoInput & { name: string; path?: string }) => call<RepoRef>("POST", "/repos", b),
   updateRepo: (name: string, b: RepoInput) => call<RepoRef>("PATCH", `/repos/${encodeURIComponent(name)}`, b),
@@ -265,6 +285,14 @@ export const api = {
   releaseGenerations: (mid: string) => call<ReleaseGeneration[]>("GET", `/release-notes/${encodeURIComponent(mid)}/generations`),
   releaseGeneration: (id: string) => call<ReleaseGeneration>("GET", `/release-generations/${id}`),
   cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
+  /** レビューの履歴のあるマイルストーン（project.yaml に無い孤立も） */
+  reviewedMilestones: () => call<{ milestones: string[] }>("GET", "/milestone-reviews"),
+  reviewPreview: (mid: string) => call<ReviewPreview>("GET", `/milestones/${encodeURIComponent(mid)}/review-preview`),
+  reviews: (mid: string) => call<{ items: ReviewListItem[] }>("GET", `/milestones/${encodeURIComponent(mid)}/reviews`),
+  review: (mid: string, run: string) => call<ReviewDetailView>("GET", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}`),
+  startReview: (mid: string) => call<ReviewRun>("POST", `/milestones/${encodeURIComponent(mid)}/reviews`, {}),
+  cancelReview: (mid: string, run: string, acknowledgeStopped = false) =>
+    call<{ run: ReviewRun; requested: boolean }>("POST", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}/cancel`, { acknowledgeStopped }),
   /** expectedTitle: 編集を始めたときの題（題を変えるときは必ず渡す。今の題と違えば 409 rev_conflict、body.current に今の案） */
   patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask> & { expectedTitle?: string }) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
