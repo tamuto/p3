@@ -15,6 +15,7 @@ import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
+import { MilestoneReviewStore } from "../milestoneReview/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -112,6 +113,8 @@ export class Workspace {
   readonly notes: NoteStore;
   readonly attachments: AttachmentStore;
   readonly releaseNotes: ReleaseNoteStore;
+  /** マイルストーンレビューの履歴（milestoneReview/store.ts） */
+  readonly milestoneReviews: MilestoneReviewStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private watcher: DataWatcher | undefined;
@@ -131,6 +134,7 @@ export class Workspace {
     this.notes = new NoteStore(this.requestsDir);
     this.attachments = new AttachmentStore(this.requestsDir);
     this.releaseNotes = new ReleaseNoteStore(dataDir);
+    this.milestoneReviews = new MilestoneReviewStore(dataDir);
   }
 
   get requestsDir() {
