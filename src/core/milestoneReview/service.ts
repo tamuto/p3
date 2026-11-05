@@ -4,9 +4,10 @@ import { ChatGptAuthError } from "../chatgpt.ts";
 import { CodexUnavailableError, CodexUsageLimitError } from "../preflight/codexEngine.ts";
 import { currentOwner, ownerState, systemProbe, type OwnerProbe, type OwnerState } from "../preflight/owner.ts";
 import type { Summarizer } from "../releaseNotes/generate.ts";
+import type { ResolvedRef } from "../repoRefs.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { extractReviewInput } from "./material.ts";
-import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt } from "./review.ts";
+import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt, type ReviewLocals } from "./review.ts";
 import { checkReviewMilestoneId, newReviewRunId, ReviewStoreError } from "./store.ts";
 
 /**
@@ -14,6 +15,7 @@ import { checkReviewMilestoneId, newReviewRunId, ReviewStoreError } from "./stor
  * 確かめ方は review.ts、保存は store.ts。
  *
  *   - 頼む先は Preflight と同じ Codex の接続（CodexWorkspaceEngine の ask。認証・診断・使用量の上限・取消を共有する）。
+ *     参照先（このマシンのパス）を Preflight と同じく読むだけでマウントし、コードと git の履歴を読ませる。
  *     Mock は明示したときだけ（失敗しても Mock に切り替えない）
  *   - 同じデータ・同じマイルストーンで実行中の run は1つだけ（プロセスの間もロックの中で確かめる）。別のマイルストーンは独立
  *   - 実行しているプロセスが死んだと確かめられた run（owner.ts の ownerState が dead）だけ、失敗（crashed）として終わりにする。
@@ -61,6 +63,13 @@ interface LocalJob {
   done: Promise<void>;
 }
 
+/** 開始の日時（このプロセスでは前より必ず後にする。一覧を開始の順に並べるので、同じミリ秒の開始でも順が分かるように） */
+let lastStart = 0;
+function startedNow(): string {
+  lastStart = Math.max(Date.now(), lastStart + 1);
+  return new Date(lastStart).toISOString();
+}
+
 export class MilestoneReviewService {
   private local = new Map<string, LocalJob>();
 
@@ -82,7 +91,8 @@ export class MilestoneReviewService {
   /** 始める（終わるのは wait で待つ）。材料はここで固定する */
   async start(mid: string, actor?: string, engine?: ReviewEngine): Promise<ReviewRun> {
     checkReviewMilestoneId(mid);
-    const input = await extractReviewInput(this.ws.dataDir, mid);
+    const refs = this.ws.refs();
+    const input = await extractReviewInput(this.ws.dataDir, mid, refs);
     if (!input.milestone.known) throw new ReviewRejected("unknown_milestone", `マイルストーンがありません: ${mid}`);
     if (!input.units.length) {
       throw new ReviewRejected(
@@ -102,7 +112,7 @@ export class MilestoneReviewService {
       milestone: mid,
       status: "running",
       engine: name,
-      startedAt: new Date().toISOString(),
+      startedAt: startedNow(),
       ...(actor ? { startedBy: actor } : {}),
       ...(currentOwner() ? { owner: currentOwner() } : {}),
       inputHash: input.hash,
@@ -126,7 +136,7 @@ export class MilestoneReviewService {
     const job: LocalJob = { mid, abort, done: Promise.resolve() };
     this.local.set(run.id, job);
     this.emit(run);
-    job.done = this.execute(run, input, { instructions, prompt }, reviewer, abort).finally(() => this.local.delete(run.id));
+    job.done = this.execute(run, input, { instructions, prompt, refs }, reviewer, abort).finally(() => this.local.delete(run.id));
     return run;
   }
 
@@ -134,7 +144,13 @@ export class MilestoneReviewService {
     this.ws.emit({ type: "milestone-review", id: r.id, milestone: r.milestone, status: r.status });
   }
 
-  private async execute(run: ReviewRun, input: ReviewInput, ask: { instructions: string; prompt: string }, reviewer: Summarizer, abort: AbortController): Promise<void> {
+  private async execute(
+    run: ReviewRun,
+    input: ReviewInput,
+    ask: { instructions: string; prompt: string; refs: readonly ResolvedRef[] },
+    reviewer: Summarizer,
+    abort: AbortController,
+  ): Promise<void> {
     const { milestone: mid, id } = run;
     const log: PreflightLogEntry[] = [];
     const push = (e: Omit<PreflightLogEntry, "at">) => log.push({ at: new Date().toISOString(), ...e });
@@ -160,10 +176,19 @@ export class MilestoneReviewService {
     let end: Partial<ReviewRun> & { status: Exclude<ReviewRun["status"], "running"> };
     let result: ReviewResult | undefined;
     try {
-      push({ kind: "info", text: `材料: 比較単位 ${input.units.length} 件・要望 ${input.requests.length} 件・タスク ${input.requests.reduce((n, r) => n + r.tasks.length, 0)} 件` });
-      const r = await reviewer.ask({ ...ask, label: "マイルストーンのレビュー" }, push, signal);
+      const code = (input.code ?? []).filter((c) => c.status === "ok");
+      push({
+        kind: "info",
+        text: `材料: 比較単位 ${input.units.length} 件・要望 ${input.requests.length} 件・タスク ${input.requests.reduce((n, r) => n + r.tasks.length, 0)} 件・参照先 ${
+          code.length ? code.map((c) => `${c.name}${c.head ? `@${c.head.slice(0, 7)}` : ""}`).join(", ") : "なし（記録だけの点検）"
+        }`,
+      });
+      // マウントするのは、材料を取り出したときに読めた参照先だけ
+      const readable = ask.refs.filter((r) => r.status === "ok" && r.local && code.some((c) => c.name === r.name));
+      const r = await reviewer.ask({ instructions: ask.instructions, prompt: ask.prompt, refs: readable, label: "マイルストーンのレビュー" }, push, signal);
       if (signal.aborted) throw signal.reason;
-      result = parseReview(r.message, input, r.model);
+      const locals: ReviewLocals = Object.fromEntries(readable.map((x) => [x.name, x.local!]));
+      result = parseReview(r.message, input, r.model, locals);
       end = { status: "completed" };
     } catch (e) {
       if (abort.signal.aborted) end = { status: "cancelled", error: "取り消しました" };

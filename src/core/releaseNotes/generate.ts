@@ -7,6 +7,7 @@ import type {
   ReleaseSummaryItem,
   ReleaseWarning,
 } from "../../shared/types.ts";
+import type { ResolvedRef } from "../repoRefs.ts";
 import type { AskResult } from "../preflight/codexEngine.ts";
 import { CodexUnavailableError, CodexUsageLimitError } from "../preflight/codexEngine.ts";
 import { ChatGptAuthError } from "../chatgpt.ts";
@@ -32,9 +33,13 @@ export const SUMMARY_OUTPUT_LIMITS = { chars: 20_000, items: 100, itemChars: 600
 /** 1回の生成の時間の上限（既定） */
 export const SUMMARY_TIMEOUT_MS = 15 * 60_000;
 
-/** 頼む先（CodexWorkspaceEngine の ask。テストでは偽物） */
+/** 頼む先（CodexWorkspaceEngine の ask。テストでは偽物）。refs を渡すと、その参照先を読むだけでマウントする（マイルストーンのレビュー） */
 export interface Summarizer {
-  ask(input: { instructions: string; prompt: string; label: string }, log: (e: Omit<PreflightLogEntry, "at">) => void, signal: AbortSignal): Promise<AskResult>;
+  ask(
+    input: { instructions: string; prompt: string; label: string; refs?: readonly ResolvedRef[] },
+    log: (e: Omit<PreflightLogEntry, "at">) => void,
+    signal: AbortSignal,
+  ): Promise<AskResult>;
 }
 
 /** 始められない（Codex は呼んでいない）。no_material: 材料が無い / too_large: 入力が上限を超える / running: 同じマイルストーンで実行中 / unavailable: 頼む先が無い */

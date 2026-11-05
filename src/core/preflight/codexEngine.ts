@@ -21,6 +21,7 @@ import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./di
 import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
 import { CONTAINER_DATA, containerEnv, developerInstructions, entryMissing, preflightPrompt } from "./instructions.ts";
+import type { ResolvedRef } from "../repoRefs.ts";
 import { type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
 const run = promisify(execFile);
@@ -249,17 +250,34 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   }
 
   /**
-   * Preflight 以外の1回の頼みごと（リリースノートの要約など）。設定・認証・イメージ・起動の診断は Preflight と同じものを使い、
-   * 参照先もデータのフォルダもマウントしない（/workspace は空の tmpfs で、終われば消える）。渡すのは依頼文だけで、
-   * 結果は最後の応答の文。評価やタスク化はしない。結果を確かめて取り込むのは呼ぶ側
+   * Preflight 以外の1回の頼みごと（リリースノートの要約・マイルストーンのレビュー）。設定・認証・イメージ・起動の診断は Preflight と
+   * 同じものを使い、データのフォルダはマウントしない（/workspace は tmpfs で、終われば消える）。refs を渡したときだけ、その参照先を
+   * Preflight と同じく /workspace/<名前> に読むだけでマウントする（コードと git の履歴を読ませる）。結果は最後の応答の文。
+   * 評価やタスク化はしない。結果を確かめて取り込むのは呼ぶ側
    */
-  async ask(input: { instructions: string; prompt: string; label: string }, log: Log, signal: AbortSignal): Promise<AskResult> {
+  async ask(
+    input: { instructions: string; prompt: string; label: string; refs?: readonly ResolvedRef[] },
+    log: Log,
+    signal: AbortSignal,
+  ): Promise<AskResult> {
     return this.authorized(input.label, log, async ({ cfg, auth, env, log }) => {
+      const readable = (input.refs ?? []).filter((r) => r.status === "ok" && r.local);
+      const mappings: PathMapping[] = readable.map((r) => ({
+        label: `参照先 ${r.name}`,
+        local: r.local!,
+        ...mapPath(cfg.pathMap, r.local!),
+        container: `${CONTAINER_WORKSPACE}/${r.mount}`,
+      }));
+      const repos: HostMount[] = readable.map((r, i) => ({ name: r.name, host: mappings[i].host, container: mappings[i].container }));
+      if (mappings.length) {
+        log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap。読むだけでマウントします）:" });
+        for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
+      }
       await this.prepareImage(cfg, log, signal);
       const command =
-        cfg.command?.({ repos: [], data: null, auth: auth.mode }) ??
-        withMounts(dockerCommand(PLACEHOLDER, auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: cfg.authVolume, authFile: cfg.authFile }), [], null);
-      return this.launched("ask", cfg, command, [], log, signal, (launch, onError) =>
+        cfg.command?.({ repos, data: null, auth: auth.mode }) ??
+        withMounts(dockerCommand(PLACEHOLDER, auth.mode === "chatgpt" ? { accessTokenEnv: ACCESS_TOKEN_ENV } : { authVolume: cfg.authVolume, authFile: cfg.authFile }), repos, null);
+      return this.launched("ask", cfg, command, mappings, log, signal, (launch, onError) =>
         this.session(cfg, launch, env, log, onError, async (session) => {
           await checkUsage(session, auth, log);
           await session.startThread(input.instructions);

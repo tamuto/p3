@@ -1,7 +1,8 @@
 // テスト用の偽 codex app-server（マイルストーンのレビュー）。依頼文の資料（<material> の JSON）から、レビューの JSON を最後の応答で返す。
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
-//   FAKE_SCENARIO ok（既定）/ unknown（資料に無い根拠）/ missing（比較単位が欠ける）/ broken（JSON でない）/
-//                 slow（取り消されるまで終わらない）/ usage（使用量の上限で失敗）/ late（取り消されても結果を返す）
+//   FAKE_SCENARIO ok（既定。読める参照先があればコードの場所とコミットを根拠にする）/ unknown（資料に無い根拠）/ missing（比較単位が欠ける）/
+//                 broken（JSON でない）/ slow（取り消されるまで終わらない）/ usage（使用量の上限で失敗）/ late（取り消されても結果を返す）/
+//                 records（記録だけを根拠に「達成」）/ badpath（参照先に無いパスを根拠にする）
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -13,15 +14,19 @@ let pending;
 function result(text) {
   const material = JSON.parse(/<material>\n([\s\S]*?)\n<\/material>/.exec(text)[1]);
   const first = material.requests[0];
+  const code = (material.code ?? []).find((c) => c.path);
+  const commit = code?.commits.find((c) => c.found);
+  const codeEvidence = code ? [`${code.name}:${scenario === "badpath" ? "no/such.ts" : "src/stock.ts:1"}`, ...(commit ? [`${code.name}@${commit.sha.slice(0, 7)}`] : [])] : [];
   const units = material.units.map((u, i) => ({
     unit: u.id,
-    verdict: i === 0 && first ? "partial" : "insufficient",
-    reason: `${u.text} の記録を読んだ`,
-    evidence: scenario === "unknown" ? ["999999-zzzzz"] : first ? [first.id] : [],
+    verdict: scenario === "records" ? "achieved" : i === 0 && first ? (code ? "achieved" : "partial") : "insufficient",
+    reason: `${u.text} の実装を読んだ`,
+    evidence: scenario === "unknown" ? ["999999-zzzzz"] : [...(first ? [first.id] : []), ...(i === 0 && scenario !== "records" ? codeEvidence : [])],
     gaps: ["通知の再送が未完了"],
   }));
   if (scenario === "missing") units.pop();
-  return scenario === "broken" ? "評価しました（JSON ではありません）" : "```json\n" + JSON.stringify({ overall: "目的の一部が果たせている", units }) + "\n```";
+  const unplanned = commit ? [{ text: "一覧の並び順が変わっている", evidence: [`${code.name}@${commit.sha}`] }] : [];
+  return scenario === "broken" ? "評価しました（JSON ではありません）" : "```json\n" + JSON.stringify({ overall: "目的の一部が果たせている", units, unplanned }) + "\n```";
 }
 
 function complete(id, text) {

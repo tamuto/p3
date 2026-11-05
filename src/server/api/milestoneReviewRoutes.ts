@@ -9,7 +9,7 @@ import { checkReviewMilestoneId, ReviewStoreError } from "../../core/milestoneRe
  * マイルストーンレビュー（画面のため）。規則と保存は core/milestoneReview（CLI の p3 milestone review と同じ）。
  *
  *   GET  /milestone-reviews                     履歴のあるマイルストーン（project.yaml に無い孤立も）
- *   GET  /milestones/:mid/review-preview        今の材料（比較単位・目的・要望の件数と状態・範囲・警告・hash）。何も書かない
+ *   GET  /milestones/:mid/review-preview        今の材料（比較単位・目的・要望の件数と状態・参照先のコード・範囲・警告・hash）。何も書かない
  *   GET  /milestones/:mid/reviews               履歴（新しい順。読めない記録も broken で出す）
  *   POST /milestones/:mid/reviews               実行を始める（202。目的も予定機能も無ければ 400 no_goals、実行中なら 409 running）
  *   GET  /milestones/:mid/reviews/:run          1回分（固定した材料・結果。実行中は所有者の状態 owner）
@@ -42,7 +42,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
   app.get("/milestones/:mid/review-preview", async (c) => {
     const mid = c.req.param("mid");
     checkReviewMilestoneId(mid);
-    const i = await extractReviewInput(ctx.ws.dataDir, mid);
+    const i = await extractReviewInput(ctx.ws.dataDir, mid, ctx.ws.refs());
     const statuses: Record<string, number> = {};
     for (const r of i.requests) statuses[r.status] = (statuses[r.status] ?? 0) + 1;
     return c.json({
@@ -51,6 +51,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
       requests: i.requests.length,
       statuses,
       context: i.context.length,
+      code: i.code ?? [],
       warnings: i.warnings,
       scope: i.scope,
       hash: i.hash,

@@ -8,7 +8,7 @@ import { extractReviewInput, reviewUnits } from "../src/core/milestoneReview/mat
 import { MilestoneReviewStore, ReviewStoreError, newReviewRunId } from "../src/core/milestoneReview/store.ts";
 import { archiveRequest, checkMilestoneRemoval } from "../src/core/requestOps.ts";
 import type { ReviewRun } from "../src/shared/milestoneReview.ts";
-import { makeProject, newRequest, newTask } from "./helpers.ts";
+import { git, makeProject, newRequest, newTask } from "./helpers.ts";
 
 const MS = [{ id: "v1", title: "最初", purpose: "在庫の確認を速くする", goals: [{ id: "G1", text: "在庫の一覧" }, { id: "G2", text: "通知" }] }, { id: "v2", title: "次" }];
 
@@ -51,8 +51,10 @@ describe("比較材料", () => {
     expect(i.requests[0].body).toBe("在庫を一覧で見たい");
     expect(i.requests[0].tasks[0]).toMatchObject({ status: "done", body: "表を作る", record: "在庫の一覧を表示できるようにした", outputs: ["https://example.com/pull/1"] });
     expect(i.requests[1].tasks.map((t) => t.status)).toEqual(["doing", "done"]);
-    expect(i.warnings.map((w) => w.code)).toEqual(["missing_record"]);
-    expect(i.scope).toContain("ソースコードの妥当性");
+    // 参照先を渡さなければ記録だけ（警告と範囲で分かる）
+    expect(i.warnings.map((w) => w.code)).toEqual(["missing_record", "no_code"]);
+    expect(i.code).toEqual([]);
+    expect(i.scope).toContain("読める参照先（リポジトリ）が無かった");
   });
 
   it("目的だけなら目的が比較単位。目的も予定機能も無い・要望 0 件・知らないマイルストーンは警告にする", async () => {
@@ -61,7 +63,7 @@ describe("比較材料", () => {
     const { dataDir } = await setup();
     const v2 = await extractReviewInput(dataDir, "v2");
     expect(v2.units).toEqual([]);
-    expect(v2.warnings.map((w) => w.code)).toEqual(["no_goals", "no_requests"]);
+    expect(v2.warnings.map((w) => w.code)).toEqual(["no_goals", "no_requests", "no_code"]);
     expect((await extractReviewInput(dataDir, "nope")).warnings[0].code).toBe("unknown_milestone");
   });
 
@@ -99,6 +101,54 @@ describe("比較材料", () => {
     expect(c.hash).not.toBe(a.hash);
     await ctx.ws.requests.update(done.id, { body: "本文を直した" }, { actor: "test" });
     expect((await extractReviewInput(dataDir, "v1")).hash).not.toBe(c.hash);
+  });
+});
+
+describe("コードの材料", () => {
+  it("参照先ごとの HEAD・ブランチ・未コミットの変更（データのフォルダは除く）と、タスクに残したコミットが見つかるかを固定する。HEAD が変われば hash も変わる", async () => {
+    const { ctx, dataDir, root, done } = await setup();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "src", "stock.ts"), "export const list = () => [];\n");
+    git(root, "add", "src");
+    git(root, "commit", "-q", "-m", "在庫の一覧");
+    const sha = git(root, "rev-parse", "HEAD");
+    await newTask(ctx, done.id, { title: "コミット", status: "done", record: "r", outputs: [`https://github.com/o/r/commit/${sha}`, "0123456789abcdef0123456789abcdef01234567"] });
+    const refs = [...ctx.ws.refs(), { name: "gone", role: "", readFirst: false, writable: false, map: [], mount: "gone", status: "missing" as const, local: "/nope", reason: "登録したパスがありません: /nope" }];
+    const i = await extractReviewInput(dataDir, "v1", refs);
+    expect(i.scope).toContain("参照先のリポジトリのコード");
+    const main = i.code!.find((c) => c.name === "main")!;
+    expect(main).toMatchObject({ status: "ok", history: "ok", head: sha, branch: "main", mount: "main" });
+    expect(main.dirty).toBeUndefined(); // .p3（データのフォルダ）は数えない
+    expect(main.commits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sha, found: true }),
+        expect.objectContaining({ sha: "0123456789abcdef0123456789abcdef01234567", found: false }),
+      ]),
+    );
+    expect(i.code!.find((c) => c.name === "gone")).toMatchObject({ status: "missing", commits: [] });
+    expect(i.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(["code_unavailable", "commit_missing"]));
+    expect(i.warnings.map((w) => w.code)).not.toContain("no_code");
+    // 未コミットの変更は数え、中身・HEAD が変われば材料が変わった
+    writeFileSync(join(root, "src", "stock.ts"), "export const list = () => [1];\n");
+    const dirty = await extractReviewInput(dataDir, "v1", refs);
+    expect(dirty.code!.find((c) => c.name === "main")!.dirty).toBe(1);
+    expect(dirty.warnings.map((w) => w.code)).toContain("dirty_worktree");
+    expect(dirty.hash).not.toBe(i.hash);
+    // 変更の数が同じでも、中身が変われば材料が変わった（追跡していないファイルも）
+    writeFileSync(join(root, "src", "stock.ts"), "export const list = () => [2];\n");
+    const edited = await extractReviewInput(dataDir, "v1", refs);
+    expect(edited.code!.find((c) => c.name === "main")!.dirty).toBe(1);
+    expect(edited.hash).not.toBe(dirty.hash);
+    writeFileSync(join(root, "src", "new.ts"), "a\n");
+    const added = await extractReviewInput(dataDir, "v1", refs);
+    writeFileSync(join(root, "src", "new.ts"), "b\n");
+    expect((await extractReviewInput(dataDir, "v1", refs)).hash).not.toBe(added.hash);
+    expect((await extractReviewInput(dataDir, "v1", refs)).hash).toBe((await extractReviewInput(dataDir, "v1", refs)).hash);
+    git(root, "add", "src");
+    git(root, "commit", "-q", "-m", "変更");
+    const moved = await extractReviewInput(dataDir, "v1", refs);
+    expect(moved.code!.find((c) => c.name === "main")!.head).not.toBe(sha);
+    expect(moved.hash).not.toBe(i.hash);
   });
 });
 

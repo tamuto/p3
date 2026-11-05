@@ -15,7 +15,7 @@ import { optionalString } from "../lib/search.ts";
 const TABS = [
   { id: "notes", label: "リリースノート", hint: "マイルストーンごとのノートの生成・編集" },
   { id: "milestones", label: "マイルストーン", hint: "マイルストーンの追加・変更・リリース済み・目的と予定機能（project.yaml）" },
-  { id: "review", label: "マイルストーンレビュー", hint: "目的・予定機能と要望の記録を比べた達成の度合いと不足（参考の記録）" },
+  { id: "review", label: "マイルストーンレビュー", hint: "目的・予定機能に対して実装のコードと履歴を確かめた達成の度合い・不足・意図しない変更（参考の記録）" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 

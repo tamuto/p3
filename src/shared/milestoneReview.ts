@@ -3,9 +3,10 @@ import type { MilestoneGoal, PreflightLogEntry, RequestStatus, RunOwner, TaskSta
 /**
  * マイルストーンレビューの形（CLI・API・画面で共有する）。保存の規則は core/milestoneReview/。
  *
- * レビューは、保存してあるマイルストーンの目的・予定機能と、所属する要望・タスクの記録（本文・状態・変更の記録・成果物の参照）を
- * 比べて、目的がどこまで果たせているかを読む参考の記録。ソースコードの妥当性・実際の動作・公開されたかは確かめない。
- * 要望の状態・リリースノート・リリース済みは変えず、完了やリリースの条件にもしない。
+ * レビューは、保存してあるマイルストーンの目的・予定機能に対して、参照先のリポジトリのコードと git の履歴を Codex が読み、
+ * 実装が目的を果たしているか・目的に無い変更（意図しない変更）が無いかを確かめる参考の記録。所属する要望・タスクの記録は
+ * 実装した人（AI）の自己申告として、どこを見るかの手がかりにする（それだけを達成の根拠にしない）。
+ * テストやアプリを実際に動かしてはいない。要望の状態・リリースノート・リリース済みは変えず、完了やリリースの条件にもしない。
  */
 
 /** 比較単位ごとの判定 */
@@ -20,8 +21,14 @@ export const REVIEW_VERDICT_LABELS: Record<ReviewVerdict, string> = {
 
 /** 評価の範囲（結果と一緒に保存し、画面・CLI に出す） */
 export const REVIEW_SCOPE =
-  "保存してあるマイルストーンの目的・予定機能と、このマイルストーンに直接属する要望・タスクの記録（本文・状態・変更の記録・成果物の参照の文字列）を比べた結果です。" +
-  "ソースコードの妥当性・実際の動作・公開されたかは確かめていません。成果物の URL や添付の中身は読んでいません。アーカイブした要望は含みません。";
+  "保存してあるマイルストーンの目的・予定機能に対して、参照先のリポジトリのコードと git の履歴（抽出のときの作業ツリー・タスクに残したコミット）を読み、" +
+  "このマイルストーンに直接属する要望・タスクの記録を手がかりに確かめた結果です。テストやアプリを実際に動かしてはいません。公開されたかは確かめていません。" +
+  "成果物の URL や添付の中身は読んでいません。アーカイブした要望は含みません。";
+
+/** 読める参照先が無いときの評価の範囲（記録だけの点検で、実装は確かめていない） */
+export const REVIEW_SCOPE_RECORDS_ONLY =
+  "読める参照先（リポジトリ）が無かったため、保存してあるマイルストーンの目的・予定機能と、直接属する要望・タスクの記録だけを比べた結果です。" +
+  "記録は実装した人の自己申告で、実装・実際の動作・公開されたかは確かめていません。成果物の URL や添付の中身は読んでいません。アーカイブした要望は含みません。";
 
 /** 比較単位: 予定機能（G1 ...）。予定機能が無く目的だけなら目的そのもの（id: purpose） */
 export interface ReviewUnit {
@@ -38,7 +45,11 @@ export type ReviewWarningCode =
   | "broken_task"
   | "no_requests"
   | "missing_record"
-  | "no_goals";
+  | "no_goals"
+  | "no_code"
+  | "code_unavailable"
+  | "dirty_worktree"
+  | "commit_missing";
 
 export interface ReviewWarning {
   code: ReviewWarningCode;
@@ -81,6 +92,37 @@ export interface ReviewContextRequest {
   of: string;
 }
 
+/** タスクの成果物に残したコミット（参照先の履歴で見つかるか） */
+export interface ReviewCodeCommit {
+  sha: string;
+  /** 残したタスク（<要望ID>/T001） */
+  from: string;
+  /** 参照先の履歴にあるか（無ければ Codex は中身を読めない） */
+  found: boolean;
+}
+
+/**
+ * 参照先1つのコードの材料。Codex には /workspace/<mount> に読むだけでマウントする。抽出のときの HEAD・未コミットの変更を固定する
+ * （そのとき作業ツリーにあったコードを読んだ、と後から分かるように。中身そのものは保存しない）
+ */
+export interface ReviewCodeRef {
+  name: string;
+  mount: string;
+  role?: string;
+  /** ok: 読める / それ以外: 読めない（理由は reason） */
+  status: "ok" | "unregistered" | "missing" | "notdir";
+  reason?: string;
+  /** git の履歴（ok / shallow: 途中まで / unavailable: 無い） */
+  history?: "ok" | "shallow" | "unavailable";
+  head?: string;
+  branch?: string;
+  /** 未コミットの変更があるファイルの数（作業ツリーを読むので、コミットとずれる） */
+  dirty?: number;
+  /** 未コミットの変更の中身の識別子（差分と追跡していないファイルの中身の hash。中身は保存しない） */
+  dirtyDigest?: string;
+  commits: ReviewCodeCommit[];
+}
+
 /** 固定した比較材料（input.json） */
 export interface ReviewInput {
   milestone: { id: string; title: string; due?: string; done?: boolean; known: boolean; purpose?: string; goals?: MilestoneGoal[] };
@@ -89,6 +131,8 @@ export interface ReviewInput {
   requests: ReviewInputRequest[];
   context: ReviewContextRequest[];
   warnings: ReviewWarning[];
+  /** 参照先のコードの材料（古い記録には無い） */
+  code?: ReviewCodeRef[];
   scope: string;
   /** 抽出の始めと終わり（複数のファイルを同じ時点で読んだとは保証しない） */
   extractedAt: string;
@@ -131,10 +175,20 @@ export interface ReviewUnitResult {
   unit: string;
   verdict: ReviewVerdict;
   reason: string;
-  /** 根拠（要望 ID・<要望ID>/T001。input にあるものだけ） */
+  /**
+   * 根拠。コード: <参照先>:<パス>（行は :12 や :12-30 を付けてよい）・<参照先>@<コミット>。記録: 要望 ID・<要望ID>/T001。
+   * どれも材料にあるもの・参照先に実在するものだけ
+   */
   evidence: string[];
   /** 不足していること・次に検討すること */
   gaps: string[];
+}
+
+/** 目的・予定機能・要望に無い変更（意図しない変更の候補） */
+export interface ReviewUnplanned {
+  text: string;
+  /** 根拠（コードの場所・コミット） */
+  evidence: string[];
 }
 
 /** 結果（review.json） */
@@ -142,6 +196,8 @@ export interface ReviewResult {
   /** 目的との整合の全体の所見 */
   overall: string;
   units: ReviewUnitResult[];
+  /** 意図しない変更の候補（古い記録には無い） */
+  unplanned?: ReviewUnplanned[];
   scope: string;
   model?: string;
 }

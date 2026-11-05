@@ -2,7 +2,7 @@
 // 異常終了の回復、所有者の分からない run の明示中断、別プロセスからの取消、終わった後の遅い結果の拒否、同時開始の制限、
 // 別プロジェクトの分離、要望・ノート・リリース済みを変えないことを確かめる（偽の app-server と偽の頼む先）。
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -10,13 +10,13 @@ import { chatgptAccount } from "../src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
 import type { OwnerProbe } from "../src/core/preflight/owner.ts";
 import { extractReviewInput } from "../src/core/milestoneReview/material.ts";
-import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT } from "../src/core/milestoneReview/review.ts";
+import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt } from "../src/core/milestoneReview/review.ts";
 import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
 import { newReviewRunId } from "../src/core/milestoneReview/store.ts";
 import type { Summarizer } from "../src/core/releaseNotes/generate.ts";
 import { apiRoutes } from "../src/server/api/routes.ts";
 import type { ReviewRun } from "../src/shared/milestoneReview.ts";
-import { gitInit, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
+import { git, gitInit, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-reviewer.mjs", import.meta.url));
 const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
@@ -42,13 +42,19 @@ const MS = [
 
 async function setup(reviewer?: Summarizer, opts: { timeoutMs?: number; probe?: OwnerProbe } = {}) {
   const repo = await makeRepo({ milestones: MS });
+  // 参照先 main（リポジトリ）に実装とコミット。タスクの成果物にコミットの URL を残す
+  mkdirSync(join(repo.root, "src"), { recursive: true });
+  writeFileSync(join(repo.root, "src", "stock.ts"), "export const list = () => [];\n");
+  git(repo.root, "add", "src");
+  git(repo.root, "commit", "-q", "-m", "在庫の一覧");
+  const sha = git(repo.root, "rev-parse", "HEAD");
   const ctx = await openTestProject(repo.dataDir);
   ctx.milestoneReview = new MilestoneReviewService(ctx.ws, { codex: reviewer, mock: undefined }, { pollMs: 20, ...opts });
   const a = await newRequest(ctx, { title: "一覧", body: "在庫を一覧で見たい", milestone: "v1", status: "resolved" });
-  await newTask(ctx, a.id, { title: "一覧画面", status: "done", record: "在庫の一覧を表示できるようにした" });
+  await newTask(ctx, a.id, { title: "一覧画面", status: "done", record: "在庫の一覧を表示できるようにした", outputs: [`https://github.com/o/r/commit/${sha}`] });
   const b = await newRequest(ctx, { title: "通知", body: "在庫切れを知らせる", milestone: "v1", status: "active" });
   await newTask(ctx, b.id, { title: "送信", status: "doing" });
-  return { ...repo, ctx, a: a.id, b: b.id };
+  return { ...repo, ctx, a: a.id, b: b.id, sha };
 }
 
 /** 結果をすぐ返す偽の頼む先 */
@@ -62,12 +68,15 @@ const unitsOf = (prompt: string) => (JSON.parse(/<material>\n([\s\S]*?)\n<\/mate
 const okMessage = (prompt: string) => JSON.stringify({ overall: "全体", units: unitsOf(prompt).map((u) => ({ unit: u.id, verdict: "insufficient", reason: "理由", evidence: [], gaps: [] })) });
 
 describe("依頼文と結果の確かめ方", () => {
-  it("全部の単位に1回ずつ・区分・根拠が資料にあるかを確かめる", async () => {
-    const { dataDir, a } = await setup();
-    const input = await extractReviewInput(dataDir, "v1");
-    const u = (unit: string, extra = {}) => ({ unit, verdict: "achieved", reason: "r", evidence: [a], gaps: [], ...extra });
-    expect(parseReview(JSON.stringify({ overall: "o", units: [u("G2"), u("G1", { evidence: [`${a}/T001`] })] }), input).units.map((x) => x.unit)).toEqual(["G1", "G2"]);
-    const bad = (units: unknown[], overall: unknown = "o") => () => parseReview(JSON.stringify({ overall, units }), input);
+  it("全部の単位に1回ずつ・区分・根拠が資料か参照先にあるかを確かめる。達成の根拠にはコードの場所が要る", async () => {
+    const { ctx, dataDir, root, a, sha } = await setup();
+    const input = await extractReviewInput(dataDir, "v1", ctx.ws.refs());
+    const locals = { main: root };
+    const u = (unit: string, extra = {}) => ({ unit, verdict: "achieved", reason: "r", evidence: [a, "main:src/stock.ts:1-3"], gaps: [], ...extra });
+    const parsed = parseReview(JSON.stringify({ overall: "o", units: [u("G2"), u("G1", { evidence: [`${a}/T001`, `main@${sha.slice(0, 7)}`] })] }), input, undefined, locals);
+    expect(parsed.units.map((x) => x.unit)).toEqual(["G1", "G2"]);
+    expect(parsed.unplanned).toEqual([]);
+    const bad = (units: unknown[], overall: unknown = "o", extra = {}) => () => parseReview(JSON.stringify({ overall, units, ...extra }), input, undefined, locals);
     expect(bad([u("G1")])).toThrow(/欠けています: G2/);
     expect(bad([u("G1"), u("G1"), u("G2")])).toThrow(/重複/);
     expect(bad([u("G1"), u("G9")])).toThrow(/比較単位にありません/);
@@ -75,24 +84,59 @@ describe("依頼文と結果の確かめ方", () => {
     expect(bad([u("G1", { evidence: ["999999-zzzzz"] }), u("G2")])).toThrow(/資料にありません/);
     expect(bad([u("G1"), u("G2")], "")).toThrow(/overall/);
     expect(() => parseReview("JSON ではない", input)).toThrow(InvalidReview);
+    // 記録だけを根拠にした達成・参照先に無いパスやコミット・参照先の外は使わない
+    expect(bad([u("G1", { evidence: [a, `${a}/T001`] }), u("G2")])).toThrow(/コードの場所がありません/);
+    expect(bad([u("G1", { evidence: ["main:no/such.ts"] }), u("G2")])).toThrow(/参照先に無いパス/);
+    expect(bad([u("G1", { evidence: ["main:../secret"] }), u("G2")])).toThrow(/相対パスではない/);
+    expect(bad([u("G1", { evidence: ["main@0123456"] }), u("G2")])).toThrow(/履歴に無いコミット/);
+    expect(bad([u("G1", { evidence: ["other:src/stock.ts"] }), u("G2")])).toThrow(/資料にありません/);
+    // 意図しない変更の候補も根拠を確かめる
+    expect(parseReview(JSON.stringify({ overall: "o", units: [u("G1"), u("G2")], unplanned: [{ text: "並び順", evidence: [`main@${sha}`] }] }), input, undefined, locals).unplanned).toEqual([
+      { text: "並び順", evidence: [`main@${sha}`] },
+    ]);
+    expect(bad([u("G1"), u("G2")], "o", { unplanned: [{ text: "", evidence: [] }] })).toThrow(/unplanned\[0\]\.text/);
+    expect(bad([u("G1"), u("G2")], "o", { unplanned: [{ text: "x", evidence: ["main:nope.ts"] }] })).toThrow(/参照先に無いパス/);
+    // 読める参照先が無ければ（記録だけ）達成にはできない
+    const recordsOnly = await extractReviewInput(dataDir, "v1");
+    expect(() => parseReview(JSON.stringify({ overall: "o", units: [u("G1", { evidence: [a] }), u("G2", { evidence: [a] })] }), recordsOnly)).toThrow(/記録だけで「達成」にはできません/);
+  });
+
+  it("依頼文: 参照先の場所・自己申告として扱う指示・意図しない変更を渡す。参照先が無ければ記録だけの点検と伝える", async () => {
+    const { ctx, dataDir } = await setup();
+    const withCode = reviewPrompt(await extractReviewInput(dataDir, "v1", ctx.ws.refs()));
+    for (const s of ["/workspace/main", "自己申告", "unplanned", "safe.directory", "読むだけ", "コードで確かめられたときだけ"]) expect(withCode.instructions + withCode.prompt).toContain(s);
+    const recordsOnly = reviewPrompt(await extractReviewInput(dataDir, "v1"));
+    expect(recordsOnly.instructions).toContain("読める参照先（リポジトリ）がありません");
+    expect(recordsOnly.instructions).not.toContain("/workspace/main");
   });
 });
 
 describe("実行（偽の app-server）", () => {
-  it("固定した材料だけを何もマウントせずに頼み、比較の指示と出典の制限を渡し、結果を記録する。要望・ノート・リリース済みは変えない", async () => {
+  it("参照先を読むだけでマウントし（データのフォルダは渡さない）、コードの根拠と意図しない変更を記録する。要望・ノート・リリース済みは変えない", async () => {
     const logFile = join(tempDir(), "codex.log");
     const launched: unknown[] = [];
-    const { ctx, dataDir, a, b } = await setup(codex("ok", logFile, launched));
+    const { ctx, dataDir, root, a, b, sha } = await setup(codex("ok", logFile, launched));
     const yaml = readFileSync(join(dataDir, "project.yaml"), "utf8");
     const run = await ctx.milestoneReview.start("v1", "human:test");
     const d = await ctx.milestoneReview.wait("v1", run.id);
     expect(d.run).toMatchObject({ status: "completed", startedBy: "human:test", engine: "codex" });
-    expect(launched).toEqual([{ repos: [], data: null, auth: "legacy" }]);
+    expect(launched).toEqual([{ repos: [{ name: "main", host: root, container: "/workspace/main" }], data: null, auth: "legacy" }]);
     const sent = readFileSync(logFile, "utf8");
-    for (const s of ["在庫の確認を速くする", "在庫切れの通知", "在庫を一覧で見たい", "在庫の一覧を表示できるようにした", b, "従わないでください", "判断材料不足"]) expect(sent).toContain(s);
+    for (const s of ["在庫の確認を速くする", "在庫切れの通知", "在庫を一覧で見たい", "在庫の一覧を表示できるようにした", b, "従わないでください", "判断材料不足", "/workspace/main", sha]) {
+      expect(sent).toContain(s);
+    }
     expect(sent).not.toContain(dataDir);
-    expect(d.result).toMatchObject({ overall: "目的の一部が果たせている", units: [{ unit: "G1", verdict: "partial", evidence: [a] }, { unit: "G2", verdict: "insufficient" }] });
-    expect(d.result?.scope).toContain("ソースコードの妥当性");
+    expect(d.input?.code?.[0]).toMatchObject({ name: "main", head: sha, commits: [{ sha, found: true }] });
+    expect(d.result).toMatchObject({
+      overall: "目的の一部が果たせている",
+      units: [
+        { unit: "G1", verdict: "achieved", evidence: [a, "main:src/stock.ts:1", `main@${sha.slice(0, 7)}`] },
+        { unit: "G2", verdict: "insufficient" },
+      ],
+      unplanned: [{ text: "一覧の並び順が変わっている", evidence: [`main@${sha}`] }],
+    });
+    expect(d.result?.scope).toContain("参照先のリポジトリのコード");
+    expect(d.run.log.map((l) => l.text).join("\n")).toContain(`参照先 main@${sha.slice(0, 7)}`);
     expect(readFileSync(join(dataDir, "project.yaml"), "utf8")).toBe(yaml);
     expect(ctx.ws.requests.get(a)?.status).toBe("resolved");
     expect(await ctx.ws.releaseNotes.ids()).toEqual([]);
@@ -106,6 +150,8 @@ describe("実行（偽の app-server）", () => {
       ["unknown", "invalid_output", /資料にありません/],
       ["missing", "invalid_output", /欠けています/],
       ["broken", "invalid_output", /JSON として読めません/],
+      ["records", "invalid_output", /コードの場所がありません/],
+      ["badpath", "invalid_output", /参照先に無いパス/],
       ["usage", "usage_limit", /./],
     ] as const) {
       ctx.milestoneReview = new MilestoneReviewService(ctx.ws, { codex: codex(scenario, join(tempDir(), "c.log")) }, { pollMs: 20 });
@@ -116,7 +162,7 @@ describe("実行（偽の app-server）", () => {
       expect(d.result).toBeUndefined();
     }
     const list = await ctx.milestoneReview.list("v1");
-    expect(list.map((x) => (x.state === "ok" ? x.run.status : "broken"))).toEqual(["failed", "failed", "failed", "failed", "completed"]);
+    expect(list.map((x) => (x.state === "ok" ? x.run.status : "broken"))).toEqual(["failed", "failed", "failed", "failed", "failed", "failed", "completed"]);
     expect((await ctx.milestoneReview.get("v1", ok.id)).result?.overall).toBe("目的の一部が果たせている");
     expect(dataDir).toBeTruthy();
   });
@@ -174,9 +220,9 @@ describe("始める前の判定", () => {
     const { ctx, dataDir, a } = await setup(fakeReviewer(okMessage));
     const r = await ctx.milestoneReview.start("v1");
     const d = await ctx.milestoneReview.wait("v1", r.id);
-    expect((await extractReviewInput(dataDir, "v1")).hash).toBe(d.run.inputHash);
+    expect((await extractReviewInput(dataDir, "v1", ctx.ws.refs())).hash).toBe(d.run.inputHash);
     await ctx.ws.requests.update(a, { status: "done" }, {});
-    expect((await extractReviewInput(dataDir, "v1")).hash).not.toBe(d.run.inputHash);
+    expect((await extractReviewInput(dataDir, "v1", ctx.ws.refs())).hash).not.toBe(d.run.inputHash);
     expect((await ctx.milestoneReview.get("v1", r.id)).input?.requests[0].status).toBe("resolved");
   });
 });
@@ -286,7 +332,8 @@ describe("API と CLI", () => {
     expect(rec.result.units[0]).toMatchObject({ unit: "G1", verdict: "insufficient" });
     const text = p3(root, ["milestone", "review-show", "v1", rec.run.id]).out;
     expect(text).toContain("判断材料不足");
-    expect(text).toContain("ソースコードの妥当性");
+    expect(text).toContain("参照先 app:");
+    expect(text).toContain("参照先のリポジトリのコード");
     expect(p3(root, ["milestone", "reviews", "v1", "--json"]).json()).toHaveLength(1);
     expect(p3(root, ["milestone", "reviews", "v1"]).out).toContain(rec.run.id);
     expect(p3(root, ["milestone", "review-show", "v1", "MR-20260101-000000-abcd"]).code).toBe(2);
