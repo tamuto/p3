@@ -28,7 +28,7 @@ describe.skipIf(!inject("chromium").available)("リリースノートを手で�
     const save = page.getByRole("button", { name: "保存", exact: true });
 
     await step("生成の欄に、手で書いて保存できることが出る", async () => {
-      await page.goto("/release-notes?m=v1");
+      await page.goto("/release-notes?tab=notes&m=v1");
       await until.visible(page.getByText(/生成せずに、本文を手で書いて保存することもできます/));
     });
 

@@ -38,13 +38,23 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
     await s?.close();
   });
 
-  it("0 件のときはノートのタブから管理のタブへ進み、最初の 1 件を足して保存できる。旧 ?m= と不正な ?tab= はノートのタブ", async () => {
+  it("タブは レビュー・リリースノート・マイルストーン の順で、?tab が無い・不正ならマイルストーンのタブ。0 件のときはノートのタブから管理のタブへ進み、最初の 1 件を足して保存できる", async () => {
     const { page, step } = s;
-    await step("0 件の案内から管理のタブへ", async () => {
+    await step("タブの順と既定", async () => {
+      await page.goto("/release-notes");
+      await until.visible(tab(page, "マイルストーン"));
+      expect(await page.getByRole("tab").allTextContents()).toEqual([expect.stringMatching(/^レビュー/), expect.stringMatching(/^リリースノート/), expect.stringMatching(/^マイルストーン/)]);
+      expect(await tab(page, "マイルストーン").getAttribute("aria-selected")).toBe("true");
       await page.goto("/release-notes?tab=bogus");
+      await until.visible(tab(page, "マイルストーン"));
+      expect(await tab(page, "マイルストーン").getAttribute("aria-selected")).toBe("true");
+    });
+    await step("0 件の案内から管理のタブへ", async () => {
+      await page.goto("/release-notes?tab=notes");
       expect(await tab(page, "リリースノート").getAttribute("aria-selected")).toBe("true");
       await page.getByRole("link", { name: "「マイルストーン」タブ" }).click();
       await until.url(page, /tab=milestones/);
+      expect(await tab(page, "マイルストーン").getAttribute("aria-selected")).toBe("true");
       await until.visible(panel(page).getByText("マイルストーンがありません"));
     });
     await step("追加して保存する", async () => {
@@ -64,17 +74,19 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
       await page.goto("/release-notes?tab=milestones");
       await until.count(idInputs(page), 1);
       expect(await shownIds(page)).toEqual(["v1"]);
-      await page.goto("/release-notes?m=v1");
+      await page.goto("/release-notes?tab=notes&m=v1");
       expect(await tab(page, "リリースノート").getAttribute("aria-selected")).toBe("true");
       const nav = page.getByRole("navigation", { name: "マイルストーン" });
       await until.visible(nav.locator('[aria-current="page"]').filter({ hasText: "v1" }));
       // キーボードでタブを移る（→ と ←）
       await tab(page, "リリースノート").focus();
+      // マイルストーン（既定）は ?tab を付けない
       await page.keyboard.press("ArrowRight");
-      await until.url(page, /tab=milestones/);
+      await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBeNull();
+      expect(await tab(page, "マイルストーン").getAttribute("aria-selected")).toBe("true");
       expect(new URL(page.url()).searchParams.get("m")).toBe("v1");
       await page.keyboard.press("ArrowLeft");
-      await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBeNull();
+      await until.url(page, /tab=notes/);
       expect(new URL(page.url()).searchParams.get("m")).toBe("v1");
     });
   });
@@ -84,7 +96,7 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
     const rid = (JSON.parse(await s.env.p3(["request", "new", "検索", "--milestone", "v1", "--json"])) as { id: string }).id;
     const body = page.locator("#rn-body");
     await step("ノートを書いて保存する", async () => {
-      await page.goto("/release-notes?m=v1");
+      await page.goto("/release-notes?tab=notes&m=v1");
       await body.fill("## 最初のリリース\n");
       await page.getByRole("button", { name: "保存", exact: true }).click();
       await until.visible(page.getByRole("status").filter({ hasText: "保存しました" }));
@@ -237,7 +249,7 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
       expect(await shownIds(page)).not.toContain("v5");
     });
     await step("ノートのタブ", async () => {
-      await page.goto("/release-notes?m=v5");
+      await page.goto("/release-notes?tab=notes&m=v5");
       await until.visible(page.getByText("⚠ project.yaml にありません"));
       await until.value(page.locator("#rn-body"), "孤立したノート");
     });

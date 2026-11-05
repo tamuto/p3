@@ -50,7 +50,7 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
     // 本文の欄（ラベルが欄を包むので、入力すると名前に本文が入る。id で指す）
     const body = page.locator("textarea#rn-body");
     await step("未完了があればボタンは押せず、理由と要望への導線を出す", async () => {
-      await page.goto("/release-notes?m=v1");
+      await page.goto("/release-notes?tab=notes&m=v1");
       await until.visible(page.getByText("一括で完了済にできません"));
       expect(await openButton(page).isDisabled()).toBe(true);
       await until.visible(page.getByText(/途中の要望（.*）: 未完了（/));
@@ -95,7 +95,7 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
   it("表示したあとで材料が変わったら何も書かずに知らせる。途中で止まったら分けて出し、やり直せる。送っている間は二重に送らない", async () => {
     const { page, step, env } = s;
     await step("確かめている間に外で要望が変わると、実行しても何も書かない（自動で頼み直さない）", async () => {
-      await page.goto("/release-notes?m=v2");
+      await page.goto("/release-notes?tab=notes&m=v2");
       await openButton(page).click();
       await until.visible(confirmGroup(page));
       await env.p3(["request", "set", ids.e, "title=設定（直した）"]);
@@ -154,7 +154,7 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
         async () => {
           // v1 に未完了の要望を足して、理由が出る状態にする
           const extra = (JSON.parse(await s.env.p3(["request", "new", `長い題の未完了の要望 ${width}：領収書の画像の添付・差し戻し・再申請・承認の履歴`, "--milestone", "v1", "--json"])) as { id: string }).id;
-          await page.goto("/release-notes?m=v1");
+          await page.goto("/release-notes?tab=notes&m=v1");
           const region = page.getByRole("region", { name: "要望の一括完了" });
           await until.visible(region.getByText("一括で完了済にできません"));
           await region.scrollIntoViewIfNeeded();
@@ -182,7 +182,7 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
   it("開いているプロジェクトの要望だけを完了済にする", async () => {
     const { page, step, env } = s;
     await step("uitest の v2 を完了済にする", async () => {
-      await page.goto("/projects/uitest/release-notes?m=v2");
+      await page.goto("/projects/uitest/release-notes?tab=notes&m=v2");
       await openButton(page).click();
       await confirmGroup(page).getByRole("button", { name: "2件を完了済にする" }).click();
       await until.visible(page.getByRole("status").filter({ hasText: "2 件を完了済にしました" }));

@@ -1,4 +1,4 @@
-// リリースノートの「マイルストーンレビュー」タブ: 未設定の案内 → 目的・予定機能を書く → 任意実行 → 結果 → 履歴、目的だけ、材料の変更の知らせと再実行、
+// リリースノートの画面の「レビュー」タブ（マイルストーンレビュー）: 未設定の案内 → 目的・予定機能を書く → 任意実行 → 結果 → 履歴、目的だけ、材料の変更の知らせと再実行、
 // 実行中の取消、失敗（壊れた記録）を隠さないこと、URL（?tab=review&m=&run=）で開けること、タブを往復しても入力が残ること、
 // レビューの状態にかかわらずリリースノートの保存ができること、幅 1280 / 375 での収まりを確かめる。Mock で動かす（Codex は使わない）。
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 
 describe.skipIf(!inject("chromium").available)("マイルストーンレビューのタブ", () => {
   let s: Scenario;
-  const panel = (page: Page) => page.getByRole("tabpanel", { name: "マイルストーンレビュー" });
+  const panel = (page: Page) => page.getByRole("tabpanel", { name: "レビュー" });
   const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}(?!レビュー)`) });
   const reload = (page: Page) => page.getByRole("button", { name: "再読み込み" }).click();
 
@@ -33,7 +33,7 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
     const { page, step } = s;
     await step("未設定の案内", async () => {
       await page.goto("/release-notes?tab=review&m=v1");
-      expect(await tab(page, "マイルストーンレビュー").getAttribute("aria-selected")).toBe("true");
+      expect(await tab(page, "レビュー").getAttribute("aria-selected")).toBe("true");
       await until.visible(panel(page).getByText(/目的も予定機能もまだありません/));
       expect(await panel(page).getByRole("button", { name: "レビューを実行" }).isDisabled()).toBe(true);
       await until.visible(panel(page).getByText(/所属する要望 1 件/));
@@ -51,12 +51,12 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
       await row.getByRole("button", { name: "＋ 予定機能を追加" }).click();
       await row.getByLabel("予定機能 G1", { exact: true }).fill("申請の画面");
       // 保存する前は、レビューのタブに書きかけを使わないと出る
-      await tab(page, "マイルストーンレビュー").click();
+      await tab(page, "レビュー").click();
       await until.visible(panel(page).getByText(/保存していない変更があります/));
       await tab(page, "マイルストーン").click();
       await mpanel.getByRole("button", { name: "保存", exact: true }).click();
       await until.visible(mpanel.getByRole("status").filter({ hasText: "保存しました" }));
-      await tab(page, "マイルストーンレビュー").click();
+      await tab(page, "レビュー").click();
       await until.visible(panel(page).getByText("申請の画面").first());
       await until.enabled(panel(page).getByRole("button", { name: "レビューを実行" }));
     });
@@ -118,10 +118,10 @@ describe.skipIf(!inject("chromium").available)("マイルストーンレビュ�
       await until.visible(panel(page).getByText(/読めない記録/));
     });
     await step("ノートを書きかけてレビューのタブと往復しても残り、保存できる", async () => {
-      await page.goto("/release-notes?m=v2");
+      await page.goto("/release-notes?tab=notes&m=v2");
       const body = page.locator("#rn-body");
       await body.fill("## 目的だけ\n");
-      await tab(page, "マイルストーンレビュー").click();
+      await tab(page, "レビュー").click();
       await tab(page, "リリースノート").click();
       await until.value(body, "## 目的だけ\n");
       await page.getByRole("button", { name: "保存", exact: true }).click();

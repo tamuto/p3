@@ -13,23 +13,23 @@ import { latestOnly, STALE } from "../lib/latest.ts";
 import { optionalString } from "../lib/search.ts";
 
 const TABS = [
+  { id: "review", label: "レビュー", hint: "マイルストーンの目的・予定機能に対して実装のコードと履歴を確かめた達成の度合い・不足・意図しない変更（参考の記録）" },
   { id: "notes", label: "リリースノート", hint: "マイルストーンごとのノートの生成・編集" },
   { id: "milestones", label: "マイルストーン", hint: "マイルストーンの追加・変更・リリース済み・目的と予定機能（project.yaml）" },
-  { id: "review", label: "マイルストーンレビュー", hint: "目的・予定機能に対して実装のコードと履歴を確かめた達成の度合い・不足・意図しない変更（参考の記録）" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
 /**
- * リリースノート（マイルストーンごとに1件）とマイルストーンの管理を、タブ（URL の ?tab=。milestones が管理、省略・ほかはノート）で
- * 切り替える。ノートのタブは、左でマイルストーンを選び（URL の ?m=。タブを移っても保つ）、右で対象の要望と警告・機能の要約の生成・
+ * レビュー・リリースノート（マイルストーンごとに1件）・マイルストーンの管理を、タブ（URL の ?tab=。review がレビュー、notes がノート、
+ * 省略・ほかはマイルストーンの管理）で切り替える。ノートのタブは、左でマイルストーンを選び（URL の ?m=。タブを移っても保つ）、右で対象の要望と警告・機能の要約の生成・
  * 本文の編集と保存・ダウンロードを行う。規則（収録・警告・材料）はサーバ（core/releaseNotes）のもので、画面では判定しない。
  * 狭い画面では一覧の下に詳細を並べる。選んでいないタブは隠すだけにして、書きかけの入力を残す。
  * レビューのタブ（?tab=review）も左でマイルストーンを選び（?m= をほかのタブと共有）、選んだ記録は ?run= で開ける。
  */
 export const Route = createFileRoute("/release-notes")({
-  validateSearch: (s: Record<string, unknown>): { m?: string; tab?: "milestones" | "review"; run?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { m?: string; tab?: Tab; run?: string } => ({
     m: optionalString(s.m),
-    tab: s.tab === "milestones" || s.tab === "review" ? s.tab : undefined,
+    tab: s.tab === "notes" || s.tab === "milestones" || s.tab === "review" ? s.tab : undefined,
     run: optionalString(s.run),
   }),
   component: ReleaseNotesPage,
@@ -37,7 +37,7 @@ export const Route = createFileRoute("/release-notes")({
 
 function ReleaseNotesPage() {
   const { tick } = useAppData();
-  const { m, tab = "notes", run } = Route.useSearch();
+  const { m, tab = "milestones", run } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [unsaved, setUnsaved] = useState<Record<Tab, boolean>>({ notes: false, milestones: false, review: false });
   /** レビューの履歴のあるマイルストーン（ID の変更・削除を止める。project.yaml に無いものもレビューのタブで読める） */
@@ -79,7 +79,7 @@ function ReleaseNotesPage() {
     ],
     [list, reviewed],
   );
-  const selectTab = (t: Tab) => void navigate({ search: (prev) => ({ ...prev, tab: t === "notes" ? undefined : t, run: undefined }), replace: true });
+  const selectTab = (t: Tab) => void navigate({ search: (prev) => ({ ...prev, tab: t === "milestones" ? undefined : t, run: undefined }), replace: true });
   return (
     <div className="w-full space-y-6 px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-8">
       <header className="space-y-1">
@@ -147,7 +147,7 @@ function ReleaseNotesPage() {
           </Empty>
         ) : (
           <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
-            <MilestoneList items={list.milestones} warnings={list.warnings} selected={selected} />
+            <MilestoneList items={list.milestones} warnings={list.warnings} selected={selected} tab="notes" />
             {selected && <ReleaseNotePanel key={selected} milestone={selected} onDirtyChange={onNoteDirty} />}
           </div>
         )}
@@ -166,8 +166,8 @@ function MilestoneList({
   items: ReleaseNoteSummary[];
   warnings: ReleaseWarning[];
   selected?: string;
-  /** 選んだときに開くタブ（省くとノートのタブ） */
-  tab?: "review";
+  /** 選んだときに開くタブ */
+  tab: "notes" | "review";
   label?: string;
 }) {
   return (
@@ -178,7 +178,7 @@ function MilestoneList({
           <li key={m.milestone}>
             <Link
               to="/release-notes"
-              search={{ m: m.milestone, ...(tab ? { tab } : {}) }}
+              search={{ m: m.milestone, tab }}
               aria-current={m.milestone === selected ? "page" : undefined}
               className={cx(
                 "block rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none",
@@ -189,7 +189,7 @@ function MilestoneList({
                 {m.title} <span className="font-mono text-sm text-slate-500">{m.milestone}</span>
               </span>
               <span className="block text-sm text-slate-500 dark:text-slate-400">
-                {tab ? "" : `${noteLabel(m)}・`}要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
+                {tab === "review" ? "" : `${noteLabel(m)}・`}要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
               </span>
               {!m.known && <span className="block text-sm text-amber-700 dark:text-amber-300">⚠ project.yaml にありません</span>}
             </Link>
