@@ -71,6 +71,13 @@ export const AI_MANIFEST = {
     },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える）" },
+    {
+      method: "GET",
+      path: "/api/requests/:rid/archived-tasks[/:tid]",
+      desc:
+        "アーカイブしたタスク（読むだけ。各タスクに archived: true）。一覧は {request, tasks, errors}（ID の数値順。壊れたファイルは errors）、" +
+        "1件は {task}。無い → 404、読めない → 500 code: archive_unreadable。通常の tasks・進捗・対応済の判定には入らない。DELETE /tasks/:tid がアーカイブする",
+    },
     { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
     {

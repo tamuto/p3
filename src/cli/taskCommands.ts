@@ -1,6 +1,8 @@
-import { relative } from "node:path";
-import type { Task } from "../shared/types.ts";
-import { listTasks, resolve, resolveRef } from "../core/ops.ts";
+import { join, relative } from "node:path";
+import { relationRole, type ArchivedTask, type Task } from "../shared/types.ts";
+import { normalizeTaskId } from "../shared/refs.ts";
+import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.ts";
+import { listTasks, resolve, resolveRef, resolveRequestId } from "../core/ops.ts";
 import { archiveTask, createTask, updateTask } from "../core/requestOps.ts";
 import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
@@ -8,8 +10,9 @@ import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
 import { briefTask, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
+import { NotFoundError } from "../core/store/collection.ts";
 import { parseTaskAssignments, checkStatus, readBody, type CommandEnv } from "./args.ts";
-import { dependentsOf, formatEntity, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
+import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
 
 /** タスクのコマンド（ls / show / find / impact / new / set / move / check / link / unlink / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
@@ -24,6 +27,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
     // --- タスク -------------------------------------------------------------
     case "ls":
     case "list": {
+      if (o.archived) return listArchived(env);
       if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
         throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
       }
@@ -47,6 +51,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
     }
 
     case "show": {
+      if (o.archived) return showArchived(env);
       const query = args.join(" ");
       const ref = resolveRef(ctx, query, current) ?? resolve(ctx, query, current).match;
       if (!ref) return ambiguous(out, ctx, query, current);
@@ -166,3 +171,60 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
   return undefined;
 }
 
+// --- アーカイブしたタスク（--archived を付けたときだけ。読むだけ） ------------------------------------
+
+/** ls --archived: 今の要望（--req）のアーカイブの一覧。通常の絞り込み・--all とは混ぜない */
+async function listArchived({ ctx, out, o, requestArg }: CommandEnv): Promise<number> {
+  const mixed = (["all", "status", "area", "q", "repo"] as const).filter((k) => o[k] !== undefined && o[k] !== false);
+  if (mixed.length) throw new UsageError(`--archived では ${mixed.map((k) => `--${k}`).join(" ")} を使えません（要望は --req で1つ指定）`);
+  const list = await listArchivedTasks(ctx.ws, requestArg(undefined));
+  return out.result(list, () =>
+    [
+      table(list.tasks.map((t) => [t.id, t.status, t.updatedAt.slice(0, 10), t.title])) || "アーカイブしたタスクはありません",
+      ...list.errors.map((e) => `読めない: ${e.id}  ${e.error}`),
+      list.tasks.length || list.errors.length ? "（状態・日付はアーカイブする前の最後の値。進捗・対応済の判定には数えない）" : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+/** show <T003|要望/T003> --archived: アーカイブの1件。通常のタスクは探さない（同じ ID が通常にあってもアーカイブを読む） */
+async function showArchived({ ctx, out, args, current, cwd }: CommandEnv): Promise<number> {
+  const raw = args.join(" ").trim();
+  if (!raw) throw new UsageError("タスクを指定してください（T003 / <要望>/T003）");
+  const [head, tail] = raw.split("/", 2);
+  const rid = tail !== undefined ? resolveRequestId(ctx, head) : current;
+  if (tail === undefined && !current) throw new UsageError(`${raw}: 要望を --req で指定してください`);
+  if (!rid) throw new NotFoundError(head);
+  const tid = normalizeTaskId(tail ?? head);
+  if (!tid) throw new UsageError(`${raw}: タスクの ID（T003）を指定してください`);
+  const item = await getArchivedTask(ctx.ws, rid, tid);
+  const file = relative(cwd, join(ctx.ws.requestsDir, rid, "tasks", ".archive", `${tid}.md`));
+  return out.result({ item, file }, () => formatArchived(item, file));
+}
+
+function formatArchived(t: ArchivedTask, file: string): string {
+  const lines = [`${t.ref}  ${t.title}`, "  [アーカイブ・閲覧専用] 状態・最終更新はアーカイブする前の最後の値（アーカイブの日時ではない）", ""];
+  const fields: [string, unknown][] = [
+    ["status", t.status],
+    ["repo", t.repo ?? "（なし）"],
+    ["labels", t.labels.join(", ")],
+    ["areas", t.areas.join(", ")],
+    ["outputs", t.outputs.join(" / ")],
+    ["repoOutputs", t.repoOutputs?.map((r) => `${r.repo}=${r.output}`).join(" / ")],
+    ["createdAt", t.createdAt],
+    ["startedAt", t.startedAt],
+    ["doneAt", t.doneAt],
+    ["checkedAt", t.checkedAt],
+    ["updatedAt", t.updatedAt],
+    ["updatedBy", t.updatedBy],
+  ];
+  for (const [k, v] of fields) if (v) lines.push(`  ${k.padEnd(13)} ${String(v)}`);
+  if (t.body.trim()) lines.push("", indent(t.body.trim()));
+  if (t.record) lines.push("", "変更の記録:", indent(t.record));
+  // 保存された関係をそのまま出す（相手が今の通常のタスクかは解かない）
+  if (t.relations.length) lines.push("", "保存された関係:", ...t.relations.map((r) => `  → ${relationRole(r.type, "out")} ${r.target}`));
+  lines.push("", `ファイル: ${file}`);
+  return lines.join("\n");
+}

@@ -89,7 +89,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                --repo-output <参照先>=<URL>  リポジトリごとの成果物（最後のタスクに全リポジトリの PR を残す）
                                --record 本文|-  変更の記録（何を変えたか・なぜ・入れた決まり・やめたもの。AI が完了にするときは必須。set でも直せる）
   check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
-  archive <T003>               .archive/ へ移す
+  archive <T003>               .archive/ へ移す（消さない。ID は再利用しない）
+  ls --archived                アーカイブしたタスクの一覧（今の要望。読むだけ。壊れたファイルは「読めない」に出す）
+  show <T003> --archived       アーカイブしたタスクの詳細（本文・変更の記録・成果物）。通常の ls / show / 進捗には出ない
   find <語句>                    参照・タイトルで探す
 
 Preflight

@@ -58,6 +58,7 @@ const OPTIONS = {
   complete: { type: "boolean" },
   cancel: { type: "boolean" },
   "archive-superseded": { type: "boolean" },
+  archived: { type: "boolean" },
   paste: { type: "boolean" },
   "no-browser": { type: "boolean" },
   forget: { type: "boolean" },
