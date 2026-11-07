@@ -8,7 +8,7 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
+import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -82,6 +82,22 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     if (task) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.tick]);
+
+  // 関係の相手が通常のタスクに無ければ、アーカイブにあるかを確かめる（表示だけ。依存の完了扱い・着手の判断には使わない）
+  const missingTargets = (task?.relations ?? []).map((r) => r.target).filter((t) => !data.tasks.some((x) => x.id === t));
+  const missingKey = missingTargets.join(",");
+  const [archivedIds, setArchivedIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!missingKey) return setArchivedIds(null);
+    let live = true;
+    api.archivedTasks(rid).then(
+      (l) => live && setArchivedIds(new Set(l.tasks.map((t) => t.id))),
+      () => live && setArchivedIds(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [rid, missingKey, ctx.tick]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -278,13 +294,25 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               <Empty>関係はありません</Empty>
             ) : (
               <ul className="space-y-1">
-                {relations.map((r) => (
-                  <li key={r.key} className="flex min-w-0 items-center gap-2">
-                    <span className="w-14 shrink-0 text-sm text-slate-500">{r.role}</span>
-                    <Id id={r.target} onClick={() => open(`${rid}/${r.target}`)} />
-                    <span className="min-w-0 truncate">{title(r.target)}</span>
-                  </li>
-                ))}
+                {relations.map((r) => {
+                  const live = data.tasks.some((t) => t.id === r.target);
+                  const archived = !live && !!archivedIds?.has(r.target);
+                  return (
+                    <li key={r.key} className="flex min-w-0 items-center gap-2">
+                      <span className="w-14 shrink-0 text-sm text-slate-500">{r.role}</span>
+                      <Id id={r.target} onClick={() => (archived ? ctx.openArchived(`${rid}/${r.target}`) : open(`${rid}/${r.target}`))} />
+                      {live ? (
+                        <span className="min-w-0 truncate">{title(r.target)}</span>
+                      ) : archived ? (
+                        <button type="button" className="min-w-0 truncate text-left text-sm text-slate-500 hover:text-indigo-600" onClick={() => ctx.openArchived(`${rid}/${r.target}`)}>
+                          <Badge tone="violet">アーカイブ</Badge> 閲覧専用の詳細を開く
+                        </button>
+                      ) : (
+                        <span className="min-w-0 truncate text-sm text-slate-400">{archivedIds ? "（通常のタスクにもアーカイブにも見つかりません）" : "（通常のタスクにありません）"}</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Section>

@@ -121,6 +121,25 @@ export interface Task {
  * 要望のステータス。resolved（対応済）は AI など作業する側が「全タスクを終えた」と示すもので、人の確認待ち。
  * done（完了済）・rejected（見送り）は人が決める。
  */
+/**
+ * アーカイブしたタスク（tasks/.archive/<ID>.md）。閲覧専用で、通常のタスクの一覧・集計には混ぜない（core/store/archivedTasks.ts）。
+ * status・updatedAt はアーカイブする前の最後の値で、アーカイブした日時ではない（アーカイブの日時・理由は記録していない）
+ */
+export type ArchivedTask = Task & { archived: true };
+
+/** アーカイブの1件を読めなかった（壊れた frontmatter・読めないファイル） */
+export interface ArchivedTaskError {
+  id: string;
+  error: string;
+}
+
+/** 要望のアーカイブの一覧（ID の数値順）。壊れたものは tasks に入れず errors に出す */
+export interface ArchivedTaskList {
+  request: string;
+  tasks: ArchivedTask[];
+  errors: ArchivedTaskError[];
+}
+
 export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "resolved" | "done" | "rejected";
 export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "resolved", "done", "rejected"];
 

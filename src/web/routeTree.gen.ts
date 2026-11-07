@@ -15,6 +15,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RequestsRequestIdRouteImport } from './routes/requests/$requestId'
 import { Route as RequestsNewRouteImport } from './routes/requests/new'
 import { Route as RequestsRequestIdIndexRouteImport } from './routes/requests/$requestId/index'
+import { Route as RequestsRequestIdArchiveRouteImport } from './routes/requests/$requestId/archive'
 import { Route as RequestsRequestIdBoardRouteImport } from './routes/requests/$requestId/board'
 import { Route as RequestsRequestIdDoneRouteImport } from './routes/requests/$requestId/done'
 
@@ -48,6 +49,12 @@ const RequestsRequestIdIndexRoute = RequestsRequestIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
+const RequestsRequestIdArchiveRoute =
+  RequestsRequestIdArchiveRouteImport.update({
+    id: '/archive',
+    path: '/archive',
+    getParentRoute: () => RequestsRequestIdRoute,
+  } as any)
 const RequestsRequestIdBoardRoute = RequestsRequestIdBoardRouteImport.update({
   id: '/board',
   path: '/board',
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
@@ -74,6 +82,7 @@ export interface FileRoutesByTo {
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
@@ -85,6 +94,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
+  '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/requests/$requestId'
     | '/requests/new'
+    | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/requests/$requestId/'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/release-notes'
     | '/settings'
     | '/requests/new'
+    | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/requests/$requestId'
@@ -116,6 +128,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/requests/$requestId'
     | '/requests/new'
+    | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/requests/$requestId/'
@@ -173,6 +186,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdIndexRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
+    '/requests/$requestId/archive': {
+      id: '/requests/$requestId/archive'
+      path: '/archive'
+      fullPath: '/requests/$requestId/archive'
+      preLoaderRoute: typeof RequestsRequestIdArchiveRouteImport
+      parentRoute: typeof RequestsRequestIdRoute
+    }
     '/requests/$requestId/board': {
       id: '/requests/$requestId/board'
       path: '/board'
@@ -191,12 +211,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface RequestsRequestIdRouteChildren {
+  RequestsRequestIdArchiveRoute: typeof RequestsRequestIdArchiveRoute
   RequestsRequestIdBoardRoute: typeof RequestsRequestIdBoardRoute
   RequestsRequestIdDoneRoute: typeof RequestsRequestIdDoneRoute
   RequestsRequestIdIndexRoute: typeof RequestsRequestIdIndexRoute
 }
 
 const RequestsRequestIdRouteChildren: RequestsRequestIdRouteChildren = {
+  RequestsRequestIdArchiveRoute: RequestsRequestIdArchiveRoute,
   RequestsRequestIdBoardRoute: RequestsRequestIdBoardRoute,
   RequestsRequestIdDoneRoute: RequestsRequestIdDoneRoute,
   RequestsRequestIdIndexRoute: RequestsRequestIdIndexRoute,

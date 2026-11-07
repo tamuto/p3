@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
+import { ArchivedTaskReadError, getArchivedTask, listArchivedTasks } from "../../core/store/archivedTasks.ts";
 import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
 import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
@@ -30,6 +31,7 @@ import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftC
  *   /requests                              要望（進捗つき）
  *   /requests/:rid                         要望の詳細
  *   /requests/:rid/tasks[/:tid]            要望のタスク
+ *   /requests/:rid/archived-tasks[/:tid]   アーカイブしたタスク（読むだけ）
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
@@ -151,6 +153,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     // データのフォルダが読めない（メモリ上の状態は変えていない）
     if (err instanceof ReloadError) return c.json({ error: err.message }, 503);
+    // アーカイブのフォルダ・ファイルが読めない（無いのは 404）
+    if (err instanceof ArchivedTaskReadError) return c.json({ error: err.message, code: err.code }, 500);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });
@@ -266,6 +270,10 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     await archiveTask(ctx, rid(c), tid(c));
     return c.json({ ok: true });
   });
+
+  // --- アーカイブしたタスク（読むだけ。通常のタスクの道はアーカイブを探さない） ------------------------
+  app.get("/requests/:rid/archived-tasks", async (c) => c.json(await listArchivedTasks(ws, c.req.param("rid"))));
+  app.get("/requests/:rid/archived-tasks/:tid", async (c) => c.json({ task: await getArchivedTask(ws, c.req.param("rid"), tid(c)) }));
 
   // --- preflight ----------------------------------------------------------
   app.post("/requests/:rid/preflight", async (c) => {

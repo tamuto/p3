@@ -726,6 +726,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
 | リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
+| アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
@@ -898,6 +899,29 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - **着手の警告**: 置き換えられたタスクが作業中に変わったとき（CLI の `move` / `set`、API の PATCH、画面のボードと詳細）、
   操作は行ったうえで `warnings`（code・対象・置き換えた側・文言）を返す。作業中のままの再指定では出さない。
 - API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
+
+### アーカイブしたタスク
+
+タスクは消さずにアーカイブする（`tasks/<ID>.md` を `tasks/.archive/<ID>.md` へ移す。`p3 archive`・API の DELETE・タスク化の
+`--archive-superseded`）。タスクの題・本文は今も `set`・画面で直せるが、要らなくなった・やり方を大きく変えるときは、アーカイブして
+新しいタスクを作る（経緯がファイルに残る）。新しいステータスは足さない（状態は 未着手 / 作業中 / 完了 のまま）。
+
+アーカイブは専用の読み取り（`core/store/archivedTasks.ts`）だけで見せ、通常のタスクのコレクション・索引・変更通知には入れない。
+読むたびにディスクを読み、ファイル・rev・採番の予約を変えない。各タスクに `archived: true` を付け、通常のタスクの配列とは混ぜない。
+
+| 見える | 見えない（数えない・材料にしない） |
+| --- | --- |
+| `p3 ls --archived` / `p3 show <T> --archived` | 通常の `ls`・`show`・`find`・`--all` |
+| API の `GET /api/requests/:rid/archived-tasks[/:tid]` | API の `/tasks`・`/tasks/:tid`（GET・PATCH・DELETE）はアーカイブを探さない |
+| 画面の要望の中のアーカイブの表示（閲覧専用） | タスクボード・対応済み・要望の見出しの完了数・進捗 |
+| | 対応済の判定（タスク0件の判定も。全部アーカイブして子が無ければ「タスクがありません」） |
+| | 依存の完了扱い（アーカイブした依存先は完了とみなさない） |
+| | 新しく作るマイルストーンレビュー・リリースノートの材料と生成の入力 |
+
+- 一覧は ID の数値順。フォルダが無ければ空。壊れたファイルは一覧の `errors` に出し、詳細は「無い」（404・終了コード 2）と
+  「読めない」（500 `archive_unreadable`・終了コード 1）を分ける。読める範囲は明示した要望の中だけ（要望 ID・タスク ID の形を確かめる）
+- 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
+- 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
   要望の詳細と タスクの GET は印 `superseded` を返す。
 
 ### リリースノートの要約（生成の境界）

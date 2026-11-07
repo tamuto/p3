@@ -5,6 +5,8 @@ import { trackSave } from "./unsaved.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
   AdoptionResult,
+  ArchivedTask,
+  ArchivedTaskList,
   MaterializeResult,
   ProposedChild,
   PreflightNote,
@@ -70,6 +72,9 @@ export function failureOf(e: unknown): ApiFailure {
   if (e.status !== 409) return "other";
   return (e.body as { code?: string } | null)?.code === "stale_input" ? "stale_input" : "rev_conflict";
 }
+
+/** アーカイブのファイルが読めない（無いのではない） */
+export const archiveUnreadable = (e: unknown) => e instanceof ApiError && (e.body as { code?: string } | null)?.code === "archive_unreadable";
 
 /** 登録が変わった（プロジェクトを跨ぐ serve で、外した・付け直した・データのフォルダを変えた）。画面は選び直しを案内する */
 export const PROJECT_CHANGED_EVENT = "p3:project-changed";
@@ -243,6 +248,10 @@ export const api = {
 
   task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
+  /** アーカイブしたタスク（読むだけ。壊れたファイルは errors） */
+  archivedTasks: (rid: string) => call<ArchivedTaskList>("GET", `/requests/${rid}/archived-tasks`),
+  /** アーカイブの1件。無い → 404、読めない → 500 code: archive_unreadable（archiveUnreadable で見分ける） */
+  archivedTask: (rid: string, tid: string) => call<{ task: ArchivedTask }>("GET", `/requests/${rid}/archived-tasks/${tid}`),
   /** checked: 完了したタスクに人が「済み」を付ける / 外す */
   patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) =>
     call<WithWarnings<Task>>("PATCH", taskPath(ref), patch),
