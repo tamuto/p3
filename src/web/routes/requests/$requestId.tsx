@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { RequestIdCopy } from "../../components/RequestIdCopy.tsx";
+import { ArchivedTaskDrawer } from "../../components/ArchivedTaskDrawer.tsx";
 import { TaskDrawer } from "../../components/TaskDrawer.tsx";
 import { Empty } from "../../components/ui.tsx";
 import { useAppCtx } from "../../lib/appCtx.ts";
@@ -7,12 +8,13 @@ import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
 
 /**
- * 要望の枠: 見出し（祖先へのリンク・要望 ID とコピー・タイトル・タスクの完了数。状態は概要・Preflight の管理情報に出す）・タブ（概要と Preflight / タスクボード / 対応済み）・タスク詳細（?task=T003）。
+ * 要望の枠: 見出し（祖先へのリンク・要望 ID とコピー・タイトル・タスクの完了数。状態は概要・Preflight の管理情報に出す）・タブ（概要と Preflight / タスクボード / 対応済み / アーカイブ）・
+ * タスク詳細（?task=T003）・アーカイブしたタスクの閲覧専用の詳細（?archived=T003。通常の詳細とは URL も部品も分ける）。
  * 見出しとタブは本文のスクロールの外に置く（本文を下へ送っても ID をコピーできる）。
  * 要望は作業の単位で、ここから下はすべてこの要望の中だけを扱う。
  */
 export const Route = createFileRoute("/requests/$requestId")({
-  validateSearch: (s: Record<string, unknown>): { task?: string } => ({ task: optionalString(s.task) }),
+  validateSearch: (s: Record<string, unknown>): { task?: string; archived?: string } => ({ task: optionalString(s.task), archived: optionalString(s.archived) }),
   component: RequestLayout,
 });
 
@@ -37,13 +39,14 @@ const TABS = [
   { to: "/requests/$requestId", label: "概要・Preflight", exact: true },
   { to: "/requests/$requestId/board", label: "タスクボード", exact: false },
   { to: "/requests/$requestId/done", label: "対応済み", exact: false, hint: "人が「済み」にしたタスクの一覧（要望のステータスの「対応済」とは別）" },
+  { to: "/requests/$requestId/archive", label: "アーカイブ", exact: false, hint: "アーカイブしたタスク（閲覧専用。進捗・対応済の判定には数えない）" },
 ] as const;
 
 function RequestFrame() {
   const ctx = useAppCtx();
   const data = useRequestData();
   const { request, tasks } = data;
-  const { task } = Route.useSearch();
+  const { task, archived } = Route.useSearch();
   const navigate = useNavigate();
   const finished = tasks.filter((t) => t.status === "done").length;
 
@@ -122,6 +125,15 @@ function RequestFrame() {
           data={data}
           id={task}
           onClose={() => void navigate({ to: ".", search: (prev) => ({ ...prev, task: undefined }) })}
+        />
+      )}
+      {archived && !task && (
+        <ArchivedTaskDrawer
+          key={archived}
+          ctx={ctx}
+          rid={request.id}
+          id={archived}
+          onClose={() => void navigate({ to: ".", search: (prev) => ({ ...prev, archived: undefined }) })}
         />
       )}
     </div>
