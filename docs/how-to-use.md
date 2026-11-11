@@ -489,6 +489,44 @@ p3 show T003 --archived --req <要望>  # 本文・変更の記録・成果物�
 - **変更の記録**（`record`）: 何を変えたか・なぜ・入れた決まり・やめたもの（Markdown）。`move <T> done --record 本文|-`、後から直すなら
   `set <T> --record ...`、画面のタスク詳細。`P3_ACTOR=ai:...` で完了にするときは必須（人は無くてもよい）
 
+### 受け入れ基準と証拠
+
+タスクに **受け入れ基準**（何を満たせば完了か）を付けると、作業した側は完了するときに基準ごとの **証拠** を残し、人は「済み」に
+する前に基準と証拠を並べて確かめられる。基準は任意で、無いタスクは今までどおり（「受け入れ基準なし」と出る）。
+
+```bash
+p3 new "通知設定画面" --criterion "設定を保存して再読み込みしても残る" --criterion "幅 375 で横にはみ出さない"
+p3 criteria T004                       # 基準と証拠・不足
+p3 criteria T004 add "キーボードだけで保存できる"   # ID は A1, A2, ... を振る（消した ID は使い直さない）
+p3 criteria T004 edit A2 "幅 375 / 1280 で横にはみ出さない"
+p3 criteria T004 rm A3                 # 証拠は「対応する基準のない証拠」として残る
+p3 criteria T004 order A2 A1           # 今の ID を全部
+
+# 完了と同時に証拠を残す（--record と標準入力を取り合わないよう、証拠はファイルか --evidence で）
+p3 move T004 done --record - --evidence-file evidence.md < record.md
+p3 move T004 done --evidence "A1=met:test/settings.test.ts" --evidence "A2=unverified:375 の端末が無い" --record ...
+p3 evidence T004 A2 met --file a2.md   # 1項目ずつ（再記録は置き換え）。evidence T004 rm A2 で消す
+```
+
+証拠のファイルは、見出し `## <基準の ID> <結果>` ごとに次の見出しまでを本文として読む:
+
+```markdown
+## A1 met
+- `pnpm -s check` が通った（test/settings.test.ts の「再読み込みしても残る」）
+
+## A2 unverified
+幅 1280 は確かめた。375 は端末が無く確かめていない
+```
+
+- 結果は `met`（満たした。本文が要る）/ `unmet`（満たせなかった）/ `unverified`（確かめていない）。証拠は作業した側の申告で、
+  レビューの判定ではない
+- 基準の文を変えると、その基準の証拠は「再確認が必要」になり、満たした数に入らない（記録し直す）
+- 証拠なし・未達・未検証があっても完了・済み・対応済は拒まない。不足は `show` / `criteria` の「不足」、`--json` の
+  `acceptance.shortfalls`、`move ... done` の stderr に出る
+- 済みのタスクの基準・証拠の中身を変えると、済みが外れる（同じ値の再保存・成果物の URL の追加では外れない）
+- ファイルを直接編集して読めない値になったら、`show` に「読めない」と出て、直すまで基準・証拠の操作はできない（ほかの更新では元の値が残る）
+- 規則の詳細: [architecture.md の受け入れ基準と証拠](architecture.md#受け入れ基準と証拠)
+
 ### タグ・期限・マイルストーン
 
 - **期限**（`due`）: 要望の期限（`--due YYYY-MM-DD`）。進捗のスケジュールに ⚑ で出る
@@ -870,6 +908,16 @@ checkedAt: 2026-10-10T09:00:00.000Z         # 人が確認して「済み」に�
 record: |                                    # 変更の記録
   - 外部の編集をファイル監視で取り込むようにした
   - 理由: CLI で直したタスクが画面に出なかった
+acceptanceCriteria:                          # 受け入れ基準（任意。ID は P3 が振る）
+  - { id: A1, text: CLI で直したタスクが画面に出る }
+acceptanceEvidence:                          # 基準ごとの証拠（作業した側の申告）
+  - criterionId: A1
+    criterionText: CLI で直したタスクが画面に出る
+    result: met
+    evidence: test/watch.test.ts の「外部の編集を取り込む」
+    recordedAt: 2026-10-09T15:39:00.000Z
+    recordedBy: ai:claude
+acceptanceSeq: 1                             # 振った最後の番号（消した ID を使い直さない）
 relations:
   - { type: depends_on, target: T002, origin: preflight }
 rev: 3
@@ -937,6 +985,7 @@ AI にも CLI を使わせる（認証を持たせずに済む）。`p3 init --a
 | `p3 request new\|ls\|show\|set\|archive` | 要望 |
 | `p3 ls` / `p3 show` / `p3 find` | タスクの一覧（`--all` で全要望）/ 詳細（`--brief`）/ 参照・タイトルで探す |
 | `p3 new` / `p3 set` / `p3 move` / `p3 check` / `p3 archive` | タスクを足す / 直す / 状態を変える / 済みにする / アーカイブ |
+| `p3 criteria <T>` / `p3 evidence <T>` | 受け入れ基準を見る・足す・直す・消す・並べ替える / 基準ごとの証拠を残す・消す（[受け入れ基準と証拠](#受け入れ基準と証拠)） |
 | `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`。手元のエージェントなら `--prepare` / `--complete`。中断は `--cancel --run`）/ メモ / 評価とタスク案 / タスク化 |
 | `p3 attach` / `p3 render` | 添付 / 画面イメージの描画 |
 | `p3 chatgpt` / `p3 codex update` / `p3 serve` | ChatGPT の接続 / Codex のイメージ / 画面（`--all-projects` で登録したプロジェクトを跨ぐ） |

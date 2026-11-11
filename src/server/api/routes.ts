@@ -6,6 +6,7 @@ import { REQUEST_STATUSES, type Request, type ServerEvent, type Task, TASK_STATU
 import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
+import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../../shared/acceptance.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
@@ -52,8 +53,19 @@ const taskInput = z.object({
   /** 変更の記録（Markdown。完了にするときに書く） */
   record: z.string().nullable().optional(),
 });
-/** checked: 完了したタスクに人が「済み」を付ける / 外す */
-const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional() });
+/** 受け入れ基準・証拠への操作（規則は shared/acceptance.ts。CLI の criteria / evidence と同じ） */
+const acceptanceOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("add"), text: z.string() }),
+  z.object({ op: z.literal("edit"), id: z.string(), text: z.string() }),
+  z.object({ op: z.literal("remove"), id: z.string() }),
+  z.object({ op: z.literal("order"), ids: z.array(z.string()) }),
+  z.object({ op: z.literal("record"), id: z.string(), result: z.enum(ACCEPTANCE_RESULTS), evidence: z.string().default("") }),
+  z.object({ op: z.literal("unrecord"), id: z.string() }),
+]);
+/** 作るとき: 受け入れ基準は文の並び（ID は p3 が振る） */
+const taskCreate = taskInput.extend({ criteria: z.array(z.string()).optional() });
+/** checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 基準・証拠への操作（順に当て、1つでも合わなければ何も書かない） */
+const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional(), acceptance: z.array(acceptanceOp).optional() });
 const requestInput = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
@@ -149,6 +161,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     // マイルストーンの版が違う（編集を始めた後に他で変わった。何も書いていない）
     if (err instanceof MilestonesConflictError) return c.json({ error: err.message, code: err.code, milestonesVersion: err.current }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
+    // 受け入れ基準・証拠の操作が規則に合わない（何も書いていない）
+    if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     // データのフォルダが読めない（メモリ上の状態は変えていない）
@@ -248,7 +262,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q }));
   });
   app.post("/requests/:rid/tasks", async (c) => {
-    const raw = taskInput.parse(await c.req.json());
+    const raw = taskCreate.parse(await c.req.json());
     const { repo, ...b } = unnull(raw);
     // 作業先は null（作業先なし）を残す。書かなければ既定（requestOps.createTask）
     const input = { ...b, ...("repo" in raw ? { repo: raw.repo ?? null } : {}) } as Partial<Task> & { title: string };
@@ -257,14 +271,19 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
-    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [] });
+    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [], acceptance: acceptanceStatus(task) ?? null });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
-    const { rev, checked, ...patch } = taskPatch.parse(await c.req.json());
-    const next = { ...(unnull(patch) as Partial<Task>), ...("repo" in patch ? { repo: patch.repo ?? null } : {}), ...(checked !== undefined ? { checked } : {}) };
-    // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）
-    const { task, warnings, reopened, reopenedAncestors } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}) });
+    const { rev, checked, acceptance, ...patch } = taskPatch.parse(await c.req.json());
+    const next = {
+      ...(unnull(patch) as Partial<Task>),
+      ...("repo" in patch ? { repo: patch.repo ?? null } : {}),
+      ...(checked !== undefined ? { checked } : {}),
+      ...(acceptance?.length ? { acceptance } : {}),
+    };
+    // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
+    const { task, warnings, reopened, reopenedAncestors, checkCleared } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(checkCleared ? { checkCleared } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     await archiveTask(ctx, rid(c), tid(c));

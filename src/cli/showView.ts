@@ -1,5 +1,6 @@
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
+import { acceptanceStatus, type CriterionState } from "../shared/acceptance.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
@@ -11,8 +12,8 @@ import type { hierarchyView } from "../core/hierarchy.ts";
  * show の短い出力（--brief）と、通常の出力と共通の項目。
  *
  * 短い出力は、AI がタスクを進めるのに要るものだけにする（本文は切り詰めない）:
- *   タスク: id・ref・request・title・status・body・rev・outputs・repoOutputs・依存（relations の depends_on）
- *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・superseded・warnings
+ *   タスク: id・ref・request・title・status・body・rev・outputs・repoOutputs・依存（relations の depends_on）・受け入れ基準と証拠
+ *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・superseded・warnings・acceptance（基準があるときだけ）
  *   要望:   id・title・status・body・rev・workstreams + branches（作業先ごとのブランチ）+
  *          タスクの一覧（id・ref・title・status・repo）・issue + 親子（parent・ancestors・children・hierarchyIssues）
  * 省くもの: 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・関係しそう（暗黙の近さ）・影響範囲。
@@ -46,14 +47,40 @@ export function taskExtras(ctx: P3Context, task: Task, marks: Map<string, Supers
 
 const BRIEF_TASK_KEYS = ["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"] as const;
 
+const STATE_MARK: Record<CriterionState, string> = { met: "✓ 満たした", unmet: "✗ 満たせなかった", unverified: "? 未検証", missing: "・ 証拠なし", stale: "! 再確認が必要（基準を変えた後）" };
+
+/**
+ * 受け入れ基準と証拠・不足の行（show・criteria で共通）。基準が無いタスクは「受け入れ基準なし」の1行（emptyLine: false なら出さない）。
+ * 証拠は作業した側の申告で、人が「済み」にする前に読むもの
+ */
+export function formatAcceptance(task: Task, { emptyLine = true } = {}): string[] {
+  const acc = acceptanceStatus(task);
+  if (!acc) return emptyLine ? ["受け入れ基準なし"] : [];
+  const lines = [`受け入れ基準（${acc.met}/${acc.total} を満たした・作業した側の申告）:`];
+  for (const i of acc.items) {
+    lines.push(`  ${i.id}  ${i.text}`, `      ${STATE_MARK[i.state]}`);
+    if (i.evidence?.evidence) lines.push(...i.evidence.evidence.split("\n").map((l) => `      ${l}`));
+    if (i.state === "stale" && i.evidence) lines.push(`      （記録したときの基準: ${i.evidence.criterionText}）`);
+  }
+  for (const e of acc.orphans) lines.push(`  ${e.criterionId}  （基準は消されています: ${e.criterionText}）`, `      ${STATE_MARK[e.result]}`, ...(e.evidence ? e.evidence.split("\n").map((l) => `      ${l}`) : []));
+  if (acc.shortfalls.length) lines.push("不足:", ...acc.shortfalls.map((s) => `  - ${s}`));
+  return lines;
+}
+
 export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
-  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record">;
+  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceProblems">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
   // 変更の記録（完了したタスク）。経緯を知るために読む
   if (task.record) item.record = task.record;
+  // 受け入れ基準と証拠（着手時に読み、完了時に項目ごとの証拠を残す）
+  if (task.acceptanceCriteria?.length) item.acceptanceCriteria = task.acceptanceCriteria;
+  if (task.acceptanceEvidence?.length) item.acceptanceEvidence = task.acceptanceEvidence;
+  if (task.acceptanceProblems?.length) item.acceptanceProblems = task.acceptanceProblems;
   // 着手先: 作業先のリポジトリとそのブランチ（作業先なしは repo: null）
-  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks) };
+  // 基準・証拠の状態（基準なしのタスクでは省く）
+  const acceptance = acceptanceStatus(task);
+  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks), ...(acceptance ? { acceptance } : {}) };
 }
 
 export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
@@ -71,6 +98,7 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   for (const w of warnings) lines.push(`※ ${w.message}`);
   if (item.body.trim()) lines.push("", item.body.trim());
   if (item.record) lines.push("", "## 変更の記録", item.record);
+  lines.push("", ...formatAcceptance(item as Task));
   return lines.join("\n");
 }
 

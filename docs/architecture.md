@@ -727,6 +727,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
+| タスクの受け入れ基準と証拠（ID の振り方・操作・失効・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
@@ -923,6 +924,30 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
 - 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### 受け入れ基準と証拠
+
+タスクは任意で **受け入れ基準**（`acceptanceCriteria: [{id, text}]`。何を満たせば完了か）を持ち、作業した側は基準ごとに
+**証拠**（`acceptanceEvidence: [{criterionId, criterionText, result, evidence, recordedAt, recordedBy}]`）を残す。規則は
+`shared/acceptance.ts` の1か所で、CLI（`new --criterion`・`criteria`・`evidence`・`set` / `move` の `--evidence`）と API
+（POST の `criteria`、PATCH の `acceptance` の操作）は同じ操作を `core/requestOps.ts` に渡すだけ。
+
+- **ID**: 足すときに `A1, A2, ...` を振る。並べ替え・文言の変更で振り直さず、消した ID も使い直さない（振った最後の番号を
+  `acceptanceSeq` に残す）。基準・証拠は操作でだけ変え、PATCH の `acceptanceCriteria` などをそのまま書く道は持たない
+- **証拠は申告**: 結果は `met` / `unmet` / `unverified`。`met` は本文が要る（空は入力の誤り）。未記録（証拠なし）と未検証は分ける。
+  これは作業した側の申告で、レビューの判定ではない
+- **失効と消した基準**: 証拠は記録したときの基準の文言を写して持つ。文言を変えた基準の証拠は「再確認が必要」として達成に数えない。
+  基準を消しても証拠は「対応する基準のない証拠」として残す。再記録はその ID の証拠を置き換える（同じ値なら記録の日時も変えない）。
+  履歴は持たない
+- **完了を拒まない**: 基準なし・証拠なし・未達・未検証でも、完了・済み・対応済は今までどおり（状態も要望の判定も増やさない）。
+  不足は `acceptance.shortfalls`（show・API の GET）と `move ... done` の stderr で読めるようにするだけ。AI の完了に変更の記録が要る
+  CLI の決まりは変えず、API には広げない
+- **済みの解除**: 済みのタスクの基準・証拠の中身（並び・文言・結果・証拠）が変わったら済みを外し、`checkCleared` に理由を返す。
+  同じ値の再保存・成果物の追加・同じ操作で済みを付け直すときは外さない。未完了へ戻すと外れるのは今までどおり
+- **今の値に当てる**: 操作は書く直前に読み直したファイルの値に当て、1つでも規則に合わなければ何も書かない（`rev` を渡せば競合も分かる）
+- **壊れた直接編集**: 読めない項目（重複した ID・空の文・知らない結果など）は除いて読み、理由を `acceptanceProblems`（ファイルには
+  書かない）に出す。問題のあるタスクの基準・証拠は操作で変えず（直すよう知らせる）、関係のない更新ではファイルの元の値をそのまま
+  書き戻す（`core/store/collection.ts` の `keepRaw`）。黙って消さない
 
 ### リリースノートの要約（生成の境界）
 

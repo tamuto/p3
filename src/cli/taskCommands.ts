@@ -1,4 +1,5 @@
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative, resolve as resolvePath } from "node:path";
 import { relationRole, type ArchivedTask, type Task } from "../shared/types.ts";
 import { normalizeTaskId } from "../shared/refs.ts";
 import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.ts";
@@ -8,14 +9,15 @@ import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
-import { briefTask, formatBriefTask, taskExtras } from "./showView.ts";
+import { briefTask, formatAcceptance, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
 import { NotFoundError } from "../core/store/collection.ts";
-import { parseTaskAssignments, checkStatus, readBody, type CommandEnv } from "./args.ts";
+import { parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
+import { ACCEPTANCE_RESULTS, acceptanceStatus, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";
 import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
 
-/** タスクのコマンド（ls / show / find / impact / new / set / move / check / link / unlink / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
+/** タスクのコマンド（ls / show / find / impact / new / set / move / check / criteria / evidence / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
 
 const RECORD_REQUIRED =
   "AI が完了にするときは --record で変更の記録を残してください（何を変えたか・なぜ・入れた決まり・やめたもの。Markdown。- で標準入力）\n" +
@@ -65,7 +67,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const file = relative(cwd, split(ref).col.path(item.id));
       const { superseded, dependencies, warnings } = taskExtras(ctx, item, marks);
       const dependents = dependentsOf(ctx, item).map((t) => ({ ref: t.ref, title: t.title, status: t.status }));
-      return out.result({ item, file, superseded, dependencies, dependents, warnings }, () =>
+      const acceptance = acceptanceStatus(item) ?? null;
+      return out.result({ item, file, superseded, dependencies, dependents, warnings, acceptance }, () =>
         [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, file)].join(""),
       );
     }
@@ -99,6 +102,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
           areas: o.area ?? [],
           outputs: o.output ?? [],
           ...(repoOutputs.length ? { repoOutputs: addRepoOutputs([], repoOutputs) } : {}),
+          ...(o.criterion?.length ? { criteria: o.criterion } : {}),
           body: readBody(o.body),
         },
         actor,
@@ -120,13 +124,17 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
         const add = o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x));
         patch.repoOutputs = addRepoOutputs(patch.repoOutputs ?? col.require(tid).repoOutputs ?? [], add);
       }
-      if (!Object.keys(patch).length) throw new UsageError("キー=値 を指定してください");
-      const r = await updateTask(ctx, ref.split("/")[0], tid, patch, { expectedRev, actor });
+      // 受け入れ基準を足す（--criterion）・証拠を残す（--evidence / --evidence-file）
+      const acceptance: AcceptanceOp[] = [...(o.criterion ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...evidenceOps(o)];
+      if (!Object.keys(patch).length && !acceptance.length) throw new UsageError("キー=値 を指定してください（受け入れ基準は --criterion、証拠は --evidence / --evidence-file）");
+      const r = await updateTask(ctx, ref.split("/")[0], tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
+      checkClearedNote(r.checkCleared);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}) }, () =>
-        [`更新: ${next.ref} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
+      const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
+        [`更新: ${next.ref} (rev ${next.rev})  ${keys.join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
     }
 
@@ -144,11 +152,16 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
       // リポジトリごとの成果物（最後のタスクに、関係するリポジトリの PR を全部残せる）
       if (o["repo-output"]?.length) patch.repoOutputs = addRepoOutputs(cur.repoOutputs ?? [], o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x)));
-      const r = await updateTask(ctx, cur.request, tid, patch, { expectedRev, actor });
+      // 完了と同時に項目ごとの証拠を残す（--evidence / --evidence-file。不足があっても完了は拒まない）
+      const acceptance = evidenceOps(o);
+      const r = await updateTask(ctx, cur.request, tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
+      checkClearedNote(r.checkCleared);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}) }, () =>
+      const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
+      if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
         `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
     }
@@ -160,6 +173,12 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
+    case "criteria":
+      return criteriaCommand(env);
+
+    case "evidence":
+      return evidenceCommand(env);
+
     case "archive": {
       const ref = taskArg(args[0]);
       const { tid } = split(ref);
@@ -169,6 +188,93 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
 
   }
   return undefined;
+}
+
+// --- 受け入れ基準と証拠 -------------------------------------------------------------
+
+function checkClearedNote(msg: string | undefined) {
+  if (msg) process.stderr.write(`${msg}\n`);
+}
+
+/** 基準・証拠の操作を当てて、今の基準と不足を出す */
+async function applyAcceptance({ ctx, out, actor, expectedRev, split }: CommandEnv, ref: string, acceptance: AcceptanceOp[]): Promise<number> {
+  const { tid } = split(ref);
+  const r = await updateTask(ctx, ref.split("/")[0], tid, { acceptance }, { expectedRev, actor });
+  checkClearedNote(r.checkCleared);
+  const acc = acceptanceStatus(r.task);
+  return out.result({ ...r.task, acceptance: acc ?? null, ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
+    [`更新: ${r.task.ref} (rev ${r.task.rev})`, ...formatAcceptance(r.task)].join("\n"),
+  );
+}
+
+/**
+ * criteria <タスク>                     基準と証拠・不足を出す
+ * criteria <タスク> add <文> [<文> ...]  足す（ID は A1, A2, ... を振る）
+ * criteria <タスク> edit <ID> <文>       文を変える（記録済みの証拠は再確認が必要になる）
+ * criteria <タスク> rm <ID> [...]        消す（証拠は対応する基準のない証拠として残る）
+ * criteria <タスク> order <ID> ...       並べ替える（今の ID を全部）
+ */
+async function criteriaCommand(env: CommandEnv): Promise<number> {
+  const { ctx, out, args, taskArg } = env;
+  const ref = taskArg(args[0]);
+  const [sub, ...rest] = args.slice(1);
+  if (sub === undefined || sub === "ls" || sub === "show") {
+    const task = ctx.ws.requireTask(ref);
+    const acc = acceptanceStatus(task);
+    return out.result({ ref: task.ref, rev: task.rev, criteria: task.acceptanceCriteria ?? [], evidence: task.acceptanceEvidence ?? [], acceptance: acc ?? null }, () => formatAcceptance(task).join("\n"));
+  }
+  const need = (n: number, usage: string) => {
+    if (rest.length < n) throw new UsageError(`使い方: p3 criteria <タスク> ${usage}`);
+  };
+  switch (sub) {
+    case "add":
+      need(1, "add <文> [<文> ...]");
+      return applyAcceptance(env, ref, rest.map((text) => ({ op: "add", text })));
+    case "edit":
+    case "set":
+      need(2, "edit <ID> <文>");
+      return applyAcceptance(env, ref, [{ op: "edit", id: rest[0], text: rest.slice(1).join(" ") }]);
+    case "rm":
+    case "remove":
+      need(1, "rm <ID> [<ID> ...]");
+      return applyAcceptance(env, ref, rest.map((id) => ({ op: "remove", id })));
+    case "order":
+      need(1, "order <ID> <ID> ...（今の ID を全部）");
+      return applyAcceptance(env, ref, [{ op: "order", ids: rest }]);
+  }
+  throw new UsageError(`criteria の操作は add / edit / rm / order です: ${sub}`);
+}
+
+/**
+ * evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md]  1項目の証拠を残す（再記録は置き換え）
+ * evidence <タスク> --file 証拠.md|-                            見出し「## <ID> <結果>」ごとにまとめて残す
+ * evidence <タスク> rm <ID> [...]                              証拠を消す
+ */
+async function evidenceCommand(env: CommandEnv): Promise<number> {
+  const { args, o, taskArg } = env;
+  const ref = taskArg(args[0]);
+  const [first, ...rest] = args.slice(1);
+  if (first === "rm" || first === "remove") {
+    if (!rest.length) throw new UsageError("使い方: p3 evidence <タスク> rm <ID> [<ID> ...]");
+    return applyAcceptance(env, ref, rest.map((id) => ({ op: "unrecord", id })));
+  }
+  if (first === undefined) {
+    if (o.file === undefined) throw new UsageError("使い方: p3 evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md]（まとめてなら --file 証拠.md）");
+    return applyAcceptance(env, ref, evidenceOps({ "evidence-file": o.file }));
+  }
+  const result = rest[0];
+  if (!isAcceptanceResult(result)) throw new UsageError(`結果は ${ACCEPTANCE_RESULTS.join(" / ")} のどれかです: p3 evidence <タスク> ${first} <結果>`);
+  if (o.body !== undefined && o.file !== undefined) throw new UsageError("--body と --file はどちらか一方です");
+  let evidence = rest.slice(1).join(" ");
+  if (o.body !== undefined) evidence = readBody(o.body);
+  else if (o.file !== undefined) {
+    try {
+      evidence = readFileSync(resolvePath(process.cwd(), o.file), "utf8");
+    } catch {
+      throw new UsageError(`証拠のファイルが読めません: ${o.file}`);
+    }
+  }
+  return applyAcceptance(env, ref, [{ op: "record", id: first, result, evidence }]);
 }
 
 // --- アーカイブしたタスク（--archived を付けたときだけ。読むだけ） ------------------------------------
@@ -223,6 +329,8 @@ function formatArchived(t: ArchivedTask, file: string): string {
   for (const [k, v] of fields) if (v) lines.push(`  ${k.padEnd(13)} ${String(v)}`);
   if (t.body.trim()) lines.push("", indent(t.body.trim()));
   if (t.record) lines.push("", "変更の記録:", indent(t.record));
+  const acc = formatAcceptance(t, { emptyLine: false });
+  if (acc.length) lines.push("", ...acc);
   // 保存された関係をそのまま出す（相手が今の通常のタスクかは解かない）
   if (t.relations.length) lines.push("", "保存された関係:", ...t.relations.map((r) => `  → ${relationRole(r.type, "out")} ${r.target}`));
   lines.push("", `ファイル: ${file}`);

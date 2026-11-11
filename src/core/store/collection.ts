@@ -51,6 +51,11 @@ export interface CollectionOptions<T extends Entity> {
   derived?: (keyof T)[];
   /** 書く直前の加工（ステータスを変えた日時の記録など）。prev は作成時 undefined */
   beforeWrite?: (prev: T | undefined, next: T) => T;
+  /**
+   * 読めた値ではなくファイルの元の値のまま書き戻すキー（直接編集で壊れた項目を、関係のない更新で黙って消さない）。
+   * 更新の patch に含めたキーは patch の値を書く
+   */
+  keepRaw?: (item: T) => readonly string[];
 }
 
 /** 全件の読み込みの準備（prepareLoad）。commit で読んだ結果を公開し、abort で捨てる */
@@ -138,6 +143,7 @@ export class MarkdownCollection<T extends Entity> {
       const item = this.opts.normalize(data, body, id);
       const known = new Set<string>(["body", ...(this.opts.keyOrder as string[]), ...((this.opts.derived ?? []) as string[]), ...Object.keys(item)]);
       const extra = Object.fromEntries(Object.entries(data).filter(([k]) => !known.has(k)));
+      for (const k of this.opts.keepRaw?.(item) ?? []) if (k in data) extra[k] = data[k];
       return { item, extra };
     } catch (e) {
       return (e as NodeJS.ErrnoException).code === "ENOENT" ? { missing: true } : { error: String(e) };
@@ -192,7 +198,8 @@ export class MarkdownCollection<T extends Entity> {
     const { body, ...rest } = item;
     const skip = new Set<string>(["body", ...((this.opts.derived ?? []) as string[])]);
     const ordered: Record<string, unknown> = {};
-    for (const k of this.opts.keyOrder) if (!skip.has(k as string)) ordered[k as string] = (rest as Record<string, unknown>)[k as string];
+    // extra に知っているキーがあるのは keepRaw のとき（元の値のまま書く）
+    for (const k of this.opts.keyOrder) if (!skip.has(k as string)) ordered[k as string] = k in extra ? extra[k as string] : (rest as Record<string, unknown>)[k as string];
     for (const [k, v] of Object.entries(rest)) if (!(k in ordered) && !skip.has(k)) ordered[k] = v;
     for (const [k, v] of Object.entries(extra)) if (!(k in ordered) && !skip.has(k)) ordered[k] = v;
     return stringifyFrontmatter(ordered, body);
@@ -233,17 +240,21 @@ export class MarkdownCollection<T extends Entity> {
 
   /**
    * 部分更新。expectedRev を渡すと楽観ロック（AI が古い状態を元に上書きするのを防ぐ）。
+   * patch に関数を渡すと、直前に読み直した今の値から patch を作る（基準の操作のように、今の値に当てる変更）。関数が投げたら書かない
    */
-  async update(id: string, patch: Partial<T>, opts: { expectedRev?: number; actor?: string } = {}): Promise<T> {
+  async update(id: string, patch: Partial<T> | ((cur: T) => Partial<T>), opts: { expectedRev?: number; actor?: string } = {}): Promise<T> {
     // 外部での編集を取りこぼさないよう、更新の直前にディスクから読み直す。
     // この版が知らない項目（新しい版の p3 が書いた項目）は消さずに書き戻す（古い版の更新で親子などが消えないように）
     const r = await this.read(id);
     this.apply(id, r);
-    const extra = "item" in r ? r.extra : {};
+    const extra = "item" in r ? { ...r.extra } : {};
     const cur = this.require(id);
     if (opts.expectedRev !== undefined && opts.expectedRev !== cur.rev) {
       throw new ConflictError(id, opts.expectedRev, cur.rev);
     }
+    if (typeof patch === "function") patch = patch(cur);
+    // patch で書き換えるキーは、元の値を残す対象（keepRaw・知らない項目）から外す
+    for (const k of Object.keys(patch)) delete extra[k];
     const merged = {
       ...cur,
       ...patch,

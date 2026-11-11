@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { basename, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
 import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment } from "../core/store/attachments.ts";
+import { parseEvidenceArg, parseEvidenceFile, type AcceptanceOp } from "../shared/acceptance.ts";
 import { type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { repoArg } from "../core/workTargets.ts";
@@ -39,6 +40,9 @@ const OPTIONS = {
   off: { type: "boolean" },
   body: { type: "string" },
   record: { type: "string" },
+  criterion: { type: "string", multiple: true },
+  evidence: { type: "string", multiple: true },
+  "evidence-file": { type: "string" },
   note: { type: "string" },
   engine: { type: "string" },
   run: { type: "string" },
@@ -149,6 +153,28 @@ export function num(v: string, name: string) {
 export function date(v: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new UsageError(`日付は YYYY-MM-DD: ${v}`);
   return v;
+}
+
+/**
+ * set / move の証拠の入力（--evidence <ID>=<結果>[:本文] を繰り返す / --evidence-file <Markdown>|-）を操作にする。
+ * --evidence-file - と --record - は同じ標準入力を取り合うので一緒には使えない
+ */
+export function evidenceOps(o: { evidence?: string[]; "evidence-file"?: string; record?: string; body?: string }): AcceptanceOp[] {
+  const ops: AcceptanceOp[] = (o.evidence ?? []).map(parseEvidenceArg);
+  const file = o["evidence-file"];
+  if (file !== undefined) {
+    if (file === "-" && (o.record === "-" || o.body === "-")) throw new UsageError("標準入力（-）は --evidence-file と --record / --body のどちらか一方だけに使えます（もう一方はファイルか文字で渡してください）");
+    let src: string;
+    try {
+      src = file === "-" ? readFileSync(0, "utf8") : readFileSync(resolvePath(process.cwd(), file), "utf8");
+    } catch {
+      throw new UsageError(`証拠のファイルが読めません: ${file}`);
+    }
+    ops.push(...parseEvidenceFile(src));
+  }
+  const dup = ops.map((x) => (x.op === "record" ? x.id : "")).find((id, i, a) => id && a.indexOf(id) !== i);
+  if (dup) throw new UsageError(`${dup} の証拠が2回指定されています`);
+  return ops;
 }
 
 export function readBody(v: string | undefined): string {

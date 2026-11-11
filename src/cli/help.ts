@@ -83,12 +83,23 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
                                --repo <参照先>|none 作業先（作業先にできる参照先だけ。足りないブランチは割り当てる）
+                               --criterion 文  受け入れ基準（繰り返し可。ID は A1, A2, ... を振る）
   set <T003> キー=値 ...         title status labels areas outputs repo（空で消す。outputs= はカンマ区切りで置き換える。repo=none は作業先なし）
                                --repo-output <参照先>=<成果物>  リポジトリごとの成果物を足す（repoOutputs= で全部外す）
+                               --criterion 文  受け入れ基準を足す / --evidence・--evidence-file  証拠を残す（move と同じ）
   move <T003> <ステータス>        --output URL・文章・パス（成果物を足す。繰り返し可。カンマで分けない）
                                --repo-output <参照先>=<URL>  リポジトリごとの成果物（最後のタスクに全リポジトリの PR を残す）
                                --record 本文|-  変更の記録（何を変えたか・なぜ・入れた決まり・やめたもの。AI が完了にするときは必須。set でも直せる）
+                               --evidence <ID>=met|unmet|unverified[:本文]  受け入れ基準ごとの証拠（繰り返し可。met は本文が要る）
+                               --evidence-file 証拠.md|-  見出し「## A1 met」ごとの証拠をまとめて（- は --record - と一緒に使えない）
+                               不足（証拠なし・未達・未検証・基準を変えた後）があっても完了は拒まず、stderr に出す
   check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
+  criteria <T003>              受け入れ基準と証拠・不足（作業した側の申告。人が済みにする前に読む）
+                               add <文>...  足す / edit <ID> <文>  文を変える（記録済みの証拠は再確認が必要になる）
+                               rm <ID>...  消す（証拠は残る。ID は使い直さない） / order <ID>...  並べ替える（今の ID を全部）
+  evidence <T003> <ID> <結果>   証拠を残す（再記録は置き換え）。本文は続けて書くか --body 本文|- / --file 本文.md
+                               evidence <T003> --file 証拠.md|-  まとめて / evidence <T003> rm <ID>...  消す
+                               済みのタスクの基準・証拠の中身を変えると済みが外れる（同じ値の再保存・成果物の追加では外れない）
   archive <T003>               .archive/ へ移す（消さない。ID は再利用しない）
   ls --archived                アーカイブしたタスクの一覧（今の要望。読むだけ。壊れたファイルは「読めない」に出す）
   show <T003> --archived       アーカイブしたタスクの詳細（本文・変更の記録・成果物）。通常の ls / show / 進捗には出ない

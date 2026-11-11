@@ -1,3 +1,4 @@
+import type { AcceptanceCriterion, AcceptanceEvidence } from "./acceptance.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
@@ -102,6 +103,14 @@ export interface Task {
    * 後の Preflight が経緯を調べるとき、タスク解析・リリースノートの材料に読む。AI が完了にするときは必須
    */
   record?: string;
+  /** 受け入れ基準（何を満たせば完了か）。無いタスクは「受け入れ基準なし」。規則は shared/acceptance.ts */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /** 基準ごとに作業した側が残した証拠（申告。レビューの判定ではない） */
+  acceptanceEvidence?: AcceptanceEvidence[];
+  /** 基準に振った最後の番号（消した ID を使い直さない） */
+  acceptanceSeq?: number;
+  /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
+  acceptanceProblems?: string[];
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
