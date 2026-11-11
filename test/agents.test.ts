@@ -128,6 +128,24 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     }
   });
 
+  it("受け入れ基準: 着手する前に読み、完了と同時に基準ごとの証拠をファイルで残し、未達・未検証は正直に書いて人に伝えると、どちらも書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet]) {
+      expect(text).toContain("acceptanceCriteria");
+      expect(text).toContain("--evidence-file evidence.md");
+      expect(text).toContain("## A1 met");
+      expect(text).toContain("`unmet`");
+      expect(text).toContain("`unverified`");
+      expect(text).toContain("推測で `met` にしない");
+      expect(text).toContain("人に伝える");
+      expect(text).toMatch(/基準を自分で消す・書き換え/);
+    }
+    // 証拠は申告で、済みは人。変更の記録とは役割が違う
+    expect(skill).toContain("証拠は自分の申告で、レビューの判定ではない");
+    expect(skill).toContain("役割が違う");
+    expect(skill).toContain("`--record -` と標準入力を取り合う");
+  });
+
   it("開発用のスキルは原本を参照する", () => {
     expect(devSkill).toContain("skills/p3/SKILL.md");
     expect(devSkill).toContain("pnpm -s check");
