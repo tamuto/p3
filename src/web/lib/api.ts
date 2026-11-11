@@ -2,6 +2,7 @@ import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
+import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
   AdoptionResult,
@@ -247,14 +248,18 @@ export const api = {
   orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
 
   task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
-  createTask: (rid: string, t: Partial<Task>) => call<Task>("POST", `/requests/${rid}/tasks`, t),
+  /** criteria: 受け入れ基準の文の並び（ID はサーバが振る） */
+  createTask: (rid: string, t: Partial<Task> & { criteria?: string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** アーカイブしたタスク（読むだけ。壊れたファイルは errors） */
   archivedTasks: (rid: string) => call<ArchivedTaskList>("GET", `/requests/${rid}/archived-tasks`),
   /** アーカイブの1件。無い → 404、読めない → 500 code: archive_unreadable（archiveUnreadable で見分ける） */
   archivedTask: (rid: string, tid: string) => call<{ task: ArchivedTask }>("GET", `/requests/${rid}/archived-tasks/${tid}`),
-  /** checked: 完了したタスクに人が「済み」を付ける / 外す */
-  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean }) =>
-    call<WithWarnings<Task>>("PATCH", taskPath(ref), patch),
+  /**
+   * checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 受け入れ基準・証拠への操作（順に当て、合わなければ 400 acceptance_invalid）。
+   * 済みのタスクの基準・証拠の中身が変わると済みを外し、応答に checkCleared（理由）
+   */
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean; acceptance?: AcceptanceOp[] }) =>
+    call<WithWarnings<Task> & { checkCleared?: string }>("PATCH", taskPath(ref), patch),
 
   /** note: メモを書き足してから実行する。始められなければ ApiError の body.note に保存したメモが入る */
   startPreflight: (rid: string, opts: { engine?: string; note?: string } = {}) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, opts),
@@ -304,8 +309,16 @@ export const api = {
   startReview: (mid: string) => call<ReviewRun>("POST", `/milestones/${encodeURIComponent(mid)}/reviews`, {}),
   cancelReview: (mid: string, run: string, acknowledgeStopped = false) =>
     call<{ run: ReviewRun; requested: boolean }>("POST", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}/cancel`, { acknowledgeStopped }),
-  /** expectedTitle: 編集を始めたときの題（題を変えるときは必ず渡す。今の題と違えば 409 rev_conflict、body.current に今の案） */
-  patchDraft: (rid: string, runId: string, key: string, patch: Partial<ProposedTask> & { expectedTitle?: string }) =>
+  /**
+   * expectedTitle: 編集を始めたときの題（題を変えるときは必ず渡す。今の題と違えば 409 rev_conflict、body.current に今の案）。
+   * acceptanceCriteria: 受け入れ基準の並び全体（id の無い項目にはサーバが振る）。expectedCriteria（編集を始めたときの基準）が要る
+   */
+  patchDraft: (
+    rid: string,
+    runId: string,
+    key: string,
+    patch: Partial<Omit<ProposedTask, "acceptanceCriteria">> & { acceptanceCriteria?: { id?: string; text: string }[]; expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[] },
+  ) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない。分割の run は mode: children と案の版・問題・途中経過 */
   previewMaterialize: (rid: string, runId: string) =>

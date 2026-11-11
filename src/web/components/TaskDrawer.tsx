@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { acceptanceStatus } from "../../shared/acceptance.ts";
+import { AcceptancePanel, shortfallSummary } from "./Acceptance.tsx";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -44,7 +46,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const [msg, setMsg] = useState<string | null>(null);
   const latest = useRef(latestOnly());
   const dirty = !!draft && isDirty(draft, shallowEqual);
-  useUnsaved(dirty);
+  // 受け入れ基準・証拠の編集中（保存していない入力）
+  const [accDirty, setAccDirty] = useState(false);
+  const onAccDirty = useCallback((d: boolean) => setAccDirty(d), []);
+  useUnsaved(dirty || accDirty);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。
@@ -107,6 +112,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
   if (!task || !draft) return null;
   const fields = draft.value;
+  const acc = acceptanceStatus(task);
   // 共有の参照先があるときだけ、作業先とリポジトリごとの成果物を扱う
   const multi = ctx.info.project.repos.length > 0;
 
@@ -150,6 +156,8 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   }
 
   async function toggleChecked() {
+    // 保存していない入力がある間は済みを変えない（保存した内容で確かめる）
+    if (dirty || accDirty) return;
     try {
       await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
       await load(false, true);
@@ -254,14 +262,35 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </Field>
           </div>
           {task.doneAt && (
-            <div className="flex items-center gap-3 rounded-lg bg-emerald-50 px-4 py-2.5 dark:bg-emerald-950/40">
-              <DoneMark checked={!!task.checkedAt} />
-              <span className="flex-1">{task.checkedAt ? `済み（${fmtTime(task.checkedAt)} に確認）` : "完了しています。成果物を確認したら済みにしてください"}</span>
-              <Button variant={task.checkedAt ? "ghost" : "primary"} onClick={() => void toggleChecked()}>
-                {task.checkedAt ? "済みを外す" : "済みにする"}
-              </Button>
+            <div className="space-y-2 rounded-lg bg-emerald-50 px-4 py-2.5 dark:bg-emerald-950/40">
+              <div className="flex flex-wrap items-center gap-3">
+                <DoneMark checked={!!task.checkedAt} />
+                <span className="min-w-0 flex-1">{task.checkedAt ? `済み（${fmtTime(task.checkedAt)} に確認）` : "完了しています。成果物と受け入れ基準の証拠を確認したら済みにしてください"}</span>
+                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty} onClick={() => void toggleChecked()}>
+                  {task.checkedAt ? "済みを外す" : "済みにする"}
+                </Button>
+              </div>
+              {acc ? (
+                <p className={acc.shortfalls.length ? "text-sm text-amber-800 dark:text-amber-300" : "text-sm text-emerald-800 dark:text-emerald-300"}>受け入れ基準: {shortfallSummary(acc)}</p>
+              ) : (
+                <p className="text-sm text-slate-500">受け入れ基準なし</p>
+              )}
+              {(dirty || accDirty) && <p className="text-sm text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
+          <Section title="受け入れ基準と作業した側の証拠">
+            <AcceptancePanel
+              task={task}
+              disabled={gone}
+              onDirty={onAccDirty}
+              onSaved={(cleared) => {
+                setMsg(cleared ?? null);
+                void load(false, true);
+                data.reload();
+                ctx.reload();
+              }}
+            />
+          </Section>
 
           {multi && <WorkTarget ctx={ctx} data={data} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           <Section title="成果物">

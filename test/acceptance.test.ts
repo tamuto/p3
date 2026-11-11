@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AcceptanceInputError, acceptanceStatus, applyAcceptanceOps, parseEvidenceArg, parseEvidenceFile, type AcceptanceState } from "../src/shared/acceptance.ts";
+import { AcceptanceInputError, acceptanceStatus, applyAcceptanceOps, criteriaEditOps, parseEvidenceArg, parseEvidenceFile, type AcceptanceState } from "../src/shared/acceptance.ts";
 import { CHECK_CLEARED_BY_ACCEPTANCE, createTask, updateTask } from "../src/core/requestOps.ts";
 import { checkStatusChange } from "../src/core/requestStatus.ts";
 import { ConflictError } from "../src/core/store/collection.ts";
@@ -65,6 +65,23 @@ describe("基準と証拠の規則（shared）", () => {
     s = applyAcceptanceOps(s, [{ op: "record", id: "A2", result: "met", evidence: "テスト B2" }], at);
     expect(acceptanceStatus(s)!.met).toBe(2);
     expect(acceptanceStatus({})).toBeUndefined();
+  });
+
+  it("画面で並び全体を直した結果を操作にする（消す・直す・足す・並べる。足した ID は採番の続き）", () => {
+    let s: AcceptanceState = applyAcceptanceOps({}, [{ op: "add", text: "一" }, { op: "add", text: "二" }, { op: "add", text: "三" }, { op: "remove", id: "A3" }], at);
+    expect(criteriaEditOps(s, [{ id: "A1", text: "一" }, { id: "A2", text: "二" }])).toEqual([]);
+    const rows = [{ text: "新" }, { id: "A2", text: "二（直した）" }];
+    const ops = criteriaEditOps(s, rows);
+    expect(ops).toEqual([
+      { op: "remove", id: "A1" },
+      { op: "edit", id: "A2", text: "二（直した）" },
+      { op: "add", text: "新" },
+      { op: "order", ids: ["A4", "A2"] },
+    ]);
+    s = applyAcceptanceOps(s, ops, at);
+    expect(s.acceptanceCriteria).toEqual([{ id: "A4", text: "新" }, { id: "A2", text: "二（直した）" }]);
+    // 末尾に足すだけなら並べ替えない
+    expect(criteriaEditOps(s, [...s.acceptanceCriteria!, { text: "五" }])).toEqual([{ op: "add", text: "五" }]);
   });
 
   it("証拠の入力（--evidence と Markdown のファイル）", () => {

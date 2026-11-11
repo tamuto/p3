@@ -373,3 +373,26 @@ export function criteriaForTask(criteria: readonly AcceptanceCriterion[] | undef
   if (!criteria?.length) return {};
   return { acceptanceCriteria: criteria.map((c) => ({ ...c })), acceptanceSeq: lastSeq({ acceptanceCriteria: [...criteria] }) || undefined };
 }
+
+// --- 画面の基準の編集 ---------------------------------------------------------------
+
+/**
+ * 画面で並び全体を直した結果（rows。id の無い行は新しい基準）を、今の基準（state）への操作にする:
+ * 消す → 文を変える → 足す → 並べる（足した基準の id は今の採番の続きになる。rev を添えて送れば、他で変わっていれば 409 で当たらない）。
+ * 変わっていなければ空。id が今の基準に無い行は新しい基準として足す
+ */
+export function criteriaEditOps(state: AcceptanceState, rows: readonly { id?: string; text: string }[]): AcceptanceOp[] {
+  const cur = state.acceptanceCriteria ?? [];
+  const known = new Set(cur.map((c) => c.id));
+  const kept = rows.filter((r) => r.id !== undefined && known.has(r.id));
+  const keptIds = new Set(kept.map((r) => r.id!));
+  const ops: AcceptanceOp[] = [];
+  for (const c of cur) if (!keptIds.has(c.id)) ops.push({ op: "remove", id: c.id });
+  for (const r of kept) if (cur.find((c) => c.id === r.id)!.text !== r.text.trim()) ops.push({ op: "edit", id: r.id!, text: r.text });
+  let seq = lastSeq(state);
+  const finalIds = rows.map((r) => (r.id !== undefined && keptIds.has(r.id) ? r.id : `A${++seq}`));
+  for (const r of rows) if (!(r.id !== undefined && keptIds.has(r.id))) ops.push({ op: "add", text: r.text });
+  const afterIds = [...cur.filter((c) => keptIds.has(c.id)).map((c) => c.id), ...finalIds.filter((id) => !keptIds.has(id))];
+  if (afterIds.join(",") !== finalIds.join(",")) ops.push({ op: "order", ids: finalIds });
+  return ops;
+}

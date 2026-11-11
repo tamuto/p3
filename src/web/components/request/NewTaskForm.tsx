@@ -5,6 +5,7 @@ import { defaultRepo, NO_REPO, repoChoices } from "../../../shared/workTarget.ts
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import { Button, Field, inputCls } from "../ui.tsx";
+import { CriteriaRowsEditor, rowsInvalid, type CriterionRow } from "../Acceptance.tsx";
 
 /** タスクを足しても状態が変わらず、作業を始めるなら手で進行中にする要望 */
 const BEFORE_ACTIVE: Request["status"][] = ["draft", "preflight", "reviewed"];
@@ -35,10 +36,12 @@ export function NewTaskForm({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [repo, setRepo] = useState(initialRepo);
+  // 受け入れ基準（任意。ID はサーバが振る）
+  const [criteria, setCriteria] = useState<CriterionRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
-  useUnsaved(!!(title.trim() || body.trim()));
+  useUnsaved(!!(title.trim() || body.trim() || criteria.some((c) => c.text.trim())));
 
   // 開くたびに空にする（取消・作成のあとに前の入力を残さない。失敗したときは閉じないので入力は残る）
   useEffect(() => {
@@ -49,6 +52,7 @@ export function NewTaskForm({
       setTitle("");
       setBody("");
       setRepo(initialRepo);
+      setCriteria([]);
       setError(null);
     };
     d.addEventListener("close", reset);
@@ -63,11 +67,16 @@ export function NewTaskForm({
       setError("題を入れてください（空白だけの題では作れません）");
       return;
     }
+    if (rowsInvalid(criteria)) {
+      setError("受け入れ基準に空の項目があります。文を書くか削除してください");
+      return;
+    }
     busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const input: Partial<Task> = { title: title.trim(), body, status: "todo" };
+      const input: Partial<Task> & { criteria?: string[] } = { title: title.trim(), body, status: "todo" };
+      if (criteria.length) input.criteria = criteria.map((c) => c.text);
       if (project.repos.length) input.repo = repo === NO_REPO ? null : repo;
       const created = (await api.createTask(request.id, input)) as Task & { reopened?: string };
       onCreated(created, !!created.reopened);
@@ -118,6 +127,11 @@ export function NewTaskForm({
               </select>
             </Field>
           )}
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-slate-500 dark:text-slate-400">受け入れ基準（任意）</legend>
+            <CriteriaRowsEditor rows={criteria} disabled={busy} idPrefix="new-task-criterion" onChange={setCriteria} />
+            <p className="text-sm text-slate-400">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
+          </fieldset>
           {BEFORE_ACTIVE.includes(request.status) && (
             <p className="text-sm text-slate-500">
               タスクを足しても要望のステータスは変わりません。作業を始めるときは、概要のタブでステータスを「進行中」にしてください。

@@ -5,6 +5,7 @@ import type { AppCtx } from "../lib/appCtx.ts";
 import { api, archiveUnreadable, failureOf } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
+import { AcceptanceView } from "./Acceptance.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { Outputs } from "./Outputs.tsx";
 import { Badge, Button, Empty, Id, Section } from "./ui.tsx";
@@ -133,6 +134,9 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
       </dl>
       <Section title="本文">{task.body.trim() ? <Markdown text={task.body} /> : <p className="text-sm text-slate-400">ありません</p>}</Section>
       <Section title="変更の記録">{task.record?.trim() ? <Markdown text={task.record} /> : <p className="text-sm text-slate-400">ありません</p>}</Section>
+      <Section title="受け入れ基準と作業した側の証拠">
+        <AcceptanceView task={task} />
+      </Section>
       <Section title="成果物">
         {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-sm text-slate-400">ありません</p>}
       </Section>
