@@ -21,6 +21,7 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
+import { AcceptanceInputError, criteriaForTask, sameCriteria, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -54,10 +55,13 @@ const failing = (name: PreflightEngine["name"], message: string): PreflightEngin
 /** 同じ要望の Preflight が実行中（エンジンを使えないのとは別） */
 export class PreflightBusyError extends Error {}
 
-/** タスク案の題が、編集を始めたあとに外で変わった（409 code: rev_conflict。current に今の案） */
+/** タスク案の題か受け入れ基準が、編集を始めたあとに外で変わった（409 code: rev_conflict。current に今の案） */
 export class DraftConflictError extends Error {
-  constructor(readonly current: ProposedTask) {
-    super(`${current.key} の題が他で変わりました（今の題: ${current.title}）`);
+  constructor(
+    readonly current: ProposedTask,
+    what: "title" | "criteria" = "title",
+  ) {
+    super(what === "title" ? `${current.key} の題が他で変わりました（今の題: ${current.title}）` : `${current.key} の受け入れ基準が他で変わりました（読み直してから直してください）`);
   }
 }
 
@@ -637,6 +641,8 @@ export class PreflightService {
   private async ingest(run: PreflightRun, runDir: string, refs: ResolvedRef[]) {
     run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
     run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
+    // 読めない受け入れ基準は案に残し（その案はタスク化できない）、人が直せるよう知らせる
+    for (const d of run.drafts) for (const p of d.acceptanceProblems ?? []) this.log(run, { kind: "error", text: `${d.key} の受け入れ基準を読めません（案の詳細で直してください）: ${p}` });
     // 子の案（分割の run）: 確かめて、問題があれば残す（採用しない）
     const children = await this.ws.preflight.loadChildren(run.requestId, run.id);
     if (children) {
@@ -792,14 +798,30 @@ export class PreflightService {
    * 変わった）DraftConflictError で書かない。画面から題を変えるときは必ず渡す。CLI・内部の呼び出しは渡さなくてよい
    * （その場合は確かめない）。期待値はファイルに書かない。読んでから書くまでの間に外のプロセスが書くことまでは防げない
    */
-  async updateDraft(requestId: string, runId: string, key: string, patch: Partial<ProposedTask>, opts: { expectedTitle?: string } = {}) {
+  async updateDraft(
+    requestId: string,
+    runId: string,
+    key: string,
+    patch: Partial<Omit<ProposedTask, "acceptanceCriteria">> & { acceptanceCriteria?: { id?: string | null; text: string }[] },
+    opts: { expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[] } = {},
+  ) {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
     if (!run || !draft) throw new Error(`${runId}/${key} not found`);
     if (opts.expectedTitle !== undefined && draft.title !== opts.expectedTitle) throw new DraftConflictError(draft);
+    // 基準を変えるときは、編集を始めたときの基準と今の基準を比べる（同じ題のまま他で基準が変わっても上書きしない）
+    if (opts.expectedCriteria !== undefined && !sameCriteria(draft.acceptanceCriteria, opts.expectedCriteria)) throw new DraftConflictError(draft, "criteria");
     // 作業先は作業先にできる参照先だけ（変える前に断る）
     if ("repo" in patch) checkRepoTarget(this.ws, patch.repo);
-    const next = { ...draft, ...patch, key };
+    // 基準は並び全体の置き換え（id は残し、無い項目に振る。空の並びは基準なし）。直せば読めなかった理由も消える
+    const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, ...rest } = patch;
+    const criteria = rawCriteria !== undefined ? tidyDraftCriteria(rawCriteria) : undefined;
+    const next: ProposedTask = {
+      ...draft,
+      ...rest,
+      key,
+      ...(rawCriteria !== undefined ? { acceptanceCriteria: criteria!.length ? criteria : undefined, acceptanceProblems: undefined } : {}),
+    };
     await this.ws.preflight.saveDraft(requestId, runId, next);
     return next;
   }
@@ -1009,6 +1031,14 @@ export class PreflightService {
     const drafts = resuming ? run.drafts.filter((d) => d.key in run.materialization!.created || d.include) : run.drafts.filter((d) => d.include);
     if (!drafts.length) throw new Error("採用したタスク案がありません");
 
+    // 基準が読めない案はタスク化しない（まだ作っていない案だけ。直してからやり直す）
+    const unreadable = drafts.filter((d) => d.acceptanceProblems?.length && !(resuming && d.key in run.materialization!.created));
+    if (unreadable.length) {
+      throw new AcceptanceInputError(
+        `受け入れ基準が読めないタスク案があります。直してからタスク化してください（p3 criteria <D> --req ${requestId} --run ${runId}、画面の案の詳細）: ` +
+          unreadable.map((d) => `${d.key}: ${d.acceptanceProblems!.join(" / ")}`).join("; "),
+      );
+    }
     // 作業先: 手で直した案も、変える前に確かめる。割り当てるブランチもここで決めて run に残す（やり直しでも同じ）
     for (const d of drafts) checkRepoTarget(this.ws, d.repo);
     const draftRepo = (d: ProposedTask) => d.repo ?? null;
@@ -1059,6 +1089,8 @@ export class PreflightService {
             areas: d.areas,
             outputs: [],
             relations: supersedes(d),
+            // 案の受け入れ基準を ID ごと写す（採用した案だけ。やり直しで作ったタスクは上書きしない）
+            ...criteriaForTask(d.acceptanceCriteria),
             body: `${d.description}\n\n${marker}`,
           },
           actor,
@@ -1193,6 +1225,7 @@ async function localProblems(ws: Workspace, run: PreflightRun, runDir: string): 
     }
     const repo = repoTargetProblem(d.repo, ws.project);
     if (repo) problems.push(`${d.key}: ${repo}`);
+    for (const p of d.acceptanceProblems ?? []) problems.push(`${d.key}: ${p}`);
   }
   return problems;
 }

@@ -267,6 +267,10 @@ export interface ProposedTask {
   include: boolean;
   /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
   repo?: string | null;
+  /** 受け入れ基準（タスク化するとタスクに ID ごと写す。無い古い案は基準なし）。人がタスク化の前に直せる */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /** 案の基準が読めない理由（案のファイルには書かない。あればその案はタスク化できない。基準を直すと消える） */
+  acceptanceProblems?: string[];
 }
 
 export interface PreflightAssessment {

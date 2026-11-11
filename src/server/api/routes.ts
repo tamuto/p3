@@ -408,11 +408,24 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   });
   app.patch("/requests/:rid/preflight/:run/drafts/:key", async (c) => {
     // expectedTitle: 編集を始めたときの題（制御用。案には書かない）。今の題と違えば 409 で書かない
-    const { expectedTitle, ...patch } = z
-      .object({ title: z.string(), description: z.string(), include: z.boolean(), repo: z.string().nullable(), expectedTitle: z.string() })
+    // acceptanceCriteria: 受け入れ基準の並び全体（id は残し、無い項目に振る）。expectedCriteria: 編集を始めたときの基準（違えば 409）
+    const criterion = z.object({ id: z.string().nullish(), text: z.string() });
+    const { expectedTitle, expectedCriteria, ...patch } = z
+      .object({
+        title: z.string(),
+        description: z.string(),
+        include: z.boolean(),
+        repo: z.string().nullable(),
+        acceptanceCriteria: z.array(criterion),
+        expectedTitle: z.string(),
+        expectedCriteria: z.array(z.object({ id: z.string(), text: z.string() })),
+      })
       .partial()
       .parse(await c.req.json());
-    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle }));
+    if (patch.acceptanceCriteria !== undefined && expectedCriteria === undefined) {
+      return c.json({ error: "受け入れ基準を直すときは expectedCriteria（編集を始めたときの基準）を渡してください", code: "acceptance_invalid" }, 400);
+    }
+    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle, expectedCriteria }));
   });
   /** 子の要望の案（分割の run）を直す。expectedTitle は上と同じ */
   app.patch("/requests/:rid/preflight/:run/children/:key", async (c) => {

@@ -313,3 +313,63 @@ export function parseEvidenceFile(src: string): Extract<AcceptanceOp, { op: "rec
   if (dup) throw new AcceptanceInputError(`証拠のファイルに ${dup} が2回あります`);
   return out;
 }
+
+// --- Preflight のタスク案の基準 ----------------------------------------------------
+
+/**
+ * タスク案の基準（drafts/D1.md の acceptanceCriteria）を読む。Codex・手元のエージェントが書いた文の並び（["…"]）も、
+ * { id, text } の並びも受け付け、id の無い項目には A<番号> を振る。読めない項目は除いて problems に理由を足す（無いのは基準なし）
+ */
+export function readDraftCriteria(raw: unknown): { criteria?: AcceptanceCriterion[]; problems?: string[] } {
+  if (raw === undefined || raw === null) return {};
+  if (!Array.isArray(raw)) return { criteria: [], problems: ["acceptanceCriteria が並びになっていません（文の並びで書いてください）"] };
+  const problems: string[] = [];
+  const items: { id?: string; text: string }[] = [];
+  for (const [i, x] of (raw as unknown[]).entries()) {
+    const at = `受け入れ基準 ${i + 1} 件目`;
+    const o = typeof x === "string" ? { text: x } : x && typeof x === "object" ? (x as Record<string, unknown>) : undefined;
+    const t = o && (typeof o.text === "string" || typeof o.text === "number") ? String(o.text).trim() : "";
+    const id = o && (typeof o.id === "string" || typeof o.id === "number") ? String(o.id).trim() : undefined;
+    if (!o) problems.push(`${at} が文になっていません`);
+    else if (!t) problems.push(`${at} が空です`);
+    else if (t.length > ACCEPTANCE_LIMITS.text) problems.push(`${at} は ${ACCEPTANCE_LIMITS.text} 文字までです（${t.length} 文字）`);
+    else if (id !== undefined && !CRITERION_ID_RE.test(id)) problems.push(`${at} の id が使えません: ${id}`);
+    else if (id !== undefined && items.some((c) => c.id === id)) problems.push(`受け入れ基準の id が重複しています: ${id}`);
+    else items.push({ ...(id !== undefined ? { id } : {}), text: t });
+  }
+  if (items.length > ACCEPTANCE_LIMITS.criteria) problems.push(`受け入れ基準は ${ACCEPTANCE_LIMITS.criteria} 件までです（${items.length} 件）`);
+  return { criteria: withIds(items), ...(problems.length ? { problems } : {}) };
+}
+
+/** id の無い項目に、今ある A<番号> の次から振る */
+function withIds(items: readonly { id?: string; text: string }[]): AcceptanceCriterion[] {
+  let n = items.reduce((m, c) => Math.max(m, c.id && /^A(\d+)$/.exec(c.id) ? Number(c.id.slice(1)) : 0), 0);
+  return items.map((c) => ({ id: c.id ?? `A${++n}`, text: c.text }));
+}
+
+/**
+ * 人が直したタスク案の基準（並び全体の置き換え）を確かめて保存する形にする。id は残し、無い項目に振る。
+ * 空・長すぎる・件数・重複した id は AcceptanceInputError（何も書かない）
+ */
+export function tidyDraftCriteria(items: readonly { id?: string | null; text: string }[]): AcceptanceCriterion[] {
+  if (items.length > ACCEPTANCE_LIMITS.criteria) throw new AcceptanceInputError(`受け入れ基準は ${ACCEPTANCE_LIMITS.criteria} 件までです（${items.length} 件）`);
+  const seen = new Set<string>();
+  const out = items.map((c, i) => {
+    const id = c.id?.trim() || undefined;
+    if (id !== undefined && !CRITERION_ID_RE.test(id)) throw new AcceptanceInputError(`受け入れ基準 ${i + 1} 件目の id が使えません: ${id}`);
+    if (id !== undefined && seen.has(id)) throw new AcceptanceInputError(`受け入れ基準の id が重複しています: ${id}`);
+    if (id !== undefined) seen.add(id);
+    return { ...(id !== undefined ? { id } : {}), text: cleanText(c.text, `受け入れ基準 ${i + 1} 件目`) };
+  });
+  return withIds(out);
+}
+
+/** 基準の並びが同じか（id と文。タスク案の編集の競合を見る） */
+export const sameCriteria = (a: readonly AcceptanceCriterion[] | undefined, b: readonly AcceptanceCriterion[] | undefined): boolean =>
+  JSON.stringify((a ?? []).map((c) => [c.id, c.text])) === JSON.stringify((b ?? []).map((c) => [c.id, c.text]));
+
+/** タスク案の基準からタスクの基準を作る（案の ID を残し、振った最後の番号を引き継ぐ） */
+export function criteriaForTask(criteria: readonly AcceptanceCriterion[] | undefined): AcceptanceState {
+  if (!criteria?.length) return {};
+  return { acceptanceCriteria: criteria.map((c) => ({ ...c })), acceptanceSeq: lastSeq({ acceptanceCriteria: [...criteria] }) || undefined };
+}

@@ -123,7 +123,9 @@ export const AI_MANIFEST = {
       method: "PATCH",
       path: "/api/requests/:rid/preflight/:run/drafts/:key",
       desc:
-        "タスク案を直す {title?, description?, include?, repo?, expectedTitle?}。expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
+        "タスク案を直す {title?, description?, include?, repo?, acceptanceCriteria?, expectedTitle?, expectedCriteria?}。" +
+        "acceptanceCriteria は受け入れ基準の並び全体 [{id?, text}]（id は残し、無い項目に振る。空で基準なし）で、expectedCriteria（編集を始めたときの基準）が要る。違えば 409 rev_conflict。" +
+        "expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
         "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
     },
     {

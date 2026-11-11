@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
-import { relationRole, type ArchivedTask, type Task } from "../shared/types.ts";
+import { relationRole, type ArchivedTask, type ProposedTask, type Task } from "../shared/types.ts";
 import { normalizeTaskId } from "../shared/refs.ts";
 import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.ts";
 import { listTasks, resolve, resolveRef, resolveRequestId } from "../core/ops.ts";
@@ -13,9 +13,10 @@ import { briefTask, formatAcceptance, formatBriefTask, taskExtras } from "./show
 import { UsageError } from "./project.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
-import { ACCEPTANCE_RESULTS, acceptanceStatus, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";
+import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";
 import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
+import { pickRun } from "./preflightCommands.ts";
 
 /** タスクのコマンド（ls / show / find / impact / new / set / move / check / criteria / evidence / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
 
@@ -216,6 +217,9 @@ async function applyAcceptance({ ctx, out, actor, expectedRev, split }: CommandE
  */
 async function criteriaCommand(env: CommandEnv): Promise<number> {
   const { ctx, out, args, taskArg } = env;
+  // タスク案（D1。--run で run、省くと最新）の基準はタスク化の前に直す
+  const draft = /^(?:([^/]+)\/)?(D\d+)$/i.exec(args[0] ?? "");
+  if (draft) return draftCriteriaCommand(env, draft[1], draft[2].toUpperCase());
   const ref = taskArg(args[0]);
   const [sub, ...rest] = args.slice(1);
   if (sub === undefined || sub === "ls" || sub === "show") {
@@ -243,6 +247,38 @@ async function criteriaCommand(env: CommandEnv): Promise<number> {
       return applyAcceptance(env, ref, [{ op: "order", ids: rest }]);
   }
   throw new UsageError(`criteria の操作は add / edit / rm / order です: ${sub}`);
+}
+
+/**
+ * criteria <D1> [add|edit|rm|order] --req <要望> [--run <run>]: タスク案の基準（タスク化すると ID ごとタスクに写る）。
+ * 案のファイルを読み直し、読んだときの基準と比べてから書く（他で変わっていれば競合）。読めなかった項目は、直すと消える
+ */
+async function draftCriteriaCommand({ ctx, out, args, o, requestArg }: CommandEnv, head: string | undefined, key: string): Promise<number> {
+  const rid = head ? resolveRequestId(ctx, head) : requestArg(undefined);
+  if (!rid) throw new NotFoundError(head ?? "要望");
+  const run = await pickRun(ctx, rid, o.run);
+  const d = run.drafts.find((x) => x.key === key);
+  if (!d) throw new NotFoundError(`${run.id}/${key}`);
+  const [sub, ...rest] = args.slice(1);
+  const show = (x: ProposedTask) =>
+    [
+      `${rid} / ${run.id} / ${x.key}  ${x.title}`,
+      ...(x.acceptanceCriteria?.length ? x.acceptanceCriteria.map((c) => `  ${c.id}  ${c.text}`) : ["  受け入れ基準なし"]),
+      ...(x.acceptanceProblems ?? []).map((p) => `  ※読めない: ${p}（直すと消えます）`),
+    ].join("\n");
+  if (sub === undefined || sub === "ls" || sub === "show") return out.result({ request: rid, run: run.id, key, criteria: d.acceptanceCriteria ?? [], problems: d.acceptanceProblems ?? [] }, () => show(d));
+  if (run.materialized?.length || run.children) throw new UsageError(`${run.id} はタスク化済みか子の要望の案の run です（タスクの基準は p3 criteria <T>）`);
+  const ops: AcceptanceOp[] =
+    sub === "add" ? rest.map((text) => ({ op: "add", text }))
+    : sub === "edit" || sub === "set" ? [{ op: "edit", id: rest[0] ?? "", text: rest.slice(1).join(" ") }]
+    : sub === "rm" || sub === "remove" ? rest.map((id) => ({ op: "remove", id }))
+    : sub === "order" ? [{ op: "order", ids: rest }]
+    : [];
+  if (!ops.length) throw new UsageError("使い方: p3 criteria <D1> add <文>... / edit <ID> <文> / rm <ID>... / order <ID>... --req <要望> [--run <run>]");
+  // 案は採番を持たないので、操作は今の基準だけに当てる（読めなかった項目は除いたまま書き直す）
+  const next = applyAcceptanceOps({ acceptanceCriteria: d.acceptanceCriteria }, ops, { now: new Date().toISOString() });
+  const saved = await ctx.preflight.updateDraft(rid, run.id, key, { acceptanceCriteria: next.acceptanceCriteria ?? [] }, { expectedCriteria: d.acceptanceCriteria ?? [] });
+  return out.result({ request: rid, run: run.id, key, criteria: saved.acceptanceCriteria ?? [], problems: [] }, () => show(saved));
 }
 
 /**
