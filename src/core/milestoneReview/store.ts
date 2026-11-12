@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import {
   REVIEW_STATUSES,
@@ -11,7 +11,10 @@ import {
   type ReviewRun,
   type ReviewVerdict,
 } from "../../shared/milestoneReview.ts";
-import { withFileLock, writeFileAtomic } from "../store/fsutil.ts";
+import { dirs, finishRunFile, readJson, ReviewStoreError, runStamp, updateRunFile, writeJson, type RunEnd, type RunStore } from "../reviewRuns.ts";
+import { withFileLock } from "../store/fsutil.ts";
+
+export { ReviewStoreError };
 
 /**
  * マイルストーンレビューの履歴。
@@ -31,16 +34,6 @@ export const MILESTONE_REVIEWS_DIR = "milestone-reviews";
 const MILESTONE_ID = /^[A-Za-z0-9._-]+$/;
 const RUN_ID = /^MR-\d{8}-\d{6}-[0-9a-f]{4}$/;
 
-/** 履歴の操作の失敗。not_found: 無い / broken: 読めない / bad_id: ID が使えない / exists: 既にある / finished: 終わった run */
-export class ReviewStoreError extends Error {
-  constructor(
-    readonly code: "not_found" | "broken" | "bad_id" | "exists" | "finished",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 export function checkReviewMilestoneId(id: string): void {
   if (!MILESTONE_ID.test(id) || id === "." || id === "..") throw new ReviewStoreError("bad_id", `マイルストーンの ID に使えません: ${JSON.stringify(id)}（英数字と . _ -）`);
 }
@@ -50,13 +43,11 @@ export function checkRunId(id: string): void {
 }
 
 export function newReviewRunId(now = new Date()): string {
-  const s = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-  return `MR-${s}-${randomBytes(2).toString("hex")}`;
+  return `MR-${runStamp(now)}-${randomBytes(2).toString("hex")}`;
 }
 
-const isTerminal = (r: ReviewRun) => r.status !== "running";
-
-export class MilestoneReviewStore {
+/** 保存と実行中の run の規則は reviewRuns.ts と共通（キーはマイルストーンの ID） */
+export class MilestoneReviewStore implements RunStore<ReviewRun, ReviewResult> {
   constructor(readonly dataDir: string) {}
 
   get dir() {
@@ -177,27 +168,19 @@ export class MilestoneReviewStore {
 
   /** run.json を書き換える（呼ぶ側がロックの中で呼ぶ）。終わった run は finished で断る */
   async updateRunning(mid: string, run: string, fn: (r: ReviewRun) => ReviewRun): Promise<ReviewRun> {
-    const cur = await this.readRun(mid, run);
-    if (isTerminal(cur)) throw new ReviewStoreError("finished", `${mid}/${run} は既に終わっています（${cur.status}）`);
-    const next = fn(cur);
-    await writeJson(join(this.runDir(mid, run), "run.json"), next);
-    return next;
+    return updateRunFile(`${mid}/${run}`, await this.readRun(mid, run), fn, (r) => writeJson(join(this.runDir(mid, run), "run.json"), r));
   }
 
   /**
    * 終わりにする（呼ぶ側がロックの中で呼ぶ）。completed は結果を書き終えてから run.json を completed にする。
    * 既に終わっていれば finished で断り、何も書かない
    */
-  async finish(mid: string, run: string, patch: Partial<ReviewRun> & { status: Exclude<ReviewRun["status"], "running"> }, result?: ReviewResult): Promise<ReviewRun> {
-    const cur = await this.readRun(mid, run);
-    if (isTerminal(cur)) throw new ReviewStoreError("finished", `${mid}/${run} は既に終わっています（${cur.status}）`);
-    if (patch.status === "completed") {
-      if (!result) throw new Error("completed には結果が要ります");
-      await writeJson(join(this.runDir(mid, run), "review.json"), result);
-    }
-    const next: ReviewRun = { ...cur, ...patch, finishedAt: patch.finishedAt ?? new Date().toISOString() };
-    await writeJson(join(this.runDir(mid, run), "run.json"), next);
-    return next;
+  async finish(mid: string, run: string, patch: RunEnd<ReviewRun>, result?: ReviewResult): Promise<ReviewRun> {
+    const dir = this.runDir(mid, run);
+    return finishRunFile(`${mid}/${run}`, await this.readRun(mid, run), patch, result, {
+      writeRun: (r) => writeJson(join(dir, "run.json"), r),
+      writeResult: (r) => writeJson(join(dir, "review.json"), r),
+    });
   }
 }
 
@@ -209,33 +192,3 @@ function checkRunShape(x: unknown) {
 
 /** 判定の区分か */
 export const isVerdict = (v: unknown): v is ReviewVerdict => REVIEW_VERDICTS.includes(v as ReviewVerdict);
-
-async function dirs(path: string): Promise<string[]> {
-  try {
-    return (await readdir(path, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw e;
-  }
-}
-
-async function writeJson(path: string, v: unknown) {
-  await writeFileAtomic(path, `${JSON.stringify(v, null, 2)}\n`);
-}
-
-async function readJson<T>(path: string, label: string, check: (x: unknown) => void): Promise<T> {
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") throw new ReviewStoreError("not_found", `レビューの記録がありません: ${label}`);
-    throw e;
-  }
-  try {
-    const v = JSON.parse(text) as unknown;
-    check(v);
-    return v as T;
-  } catch (e) {
-    throw new ReviewStoreError("broken", `レビューの記録を読めません: ${label}（${(e as Error).message}）`);
-  }
-}

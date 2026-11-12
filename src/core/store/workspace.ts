@@ -16,6 +16,7 @@ import { writeProjectFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
 import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
+import { TaskReviewStore } from "../taskReview/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -115,6 +116,8 @@ export class Workspace {
   readonly releaseNotes: ReleaseNoteStore;
   /** マイルストーンレビューの履歴（milestoneReview/store.ts） */
   readonly milestoneReviews: MilestoneReviewStore;
+  /** タスクの AI レビューの履歴（requests/<要望ID>/task-reviews/） */
+  readonly taskReviews: TaskReviewStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private watcher: DataWatcher | undefined;
@@ -135,6 +138,7 @@ export class Workspace {
     this.attachments = new AttachmentStore(this.requestsDir);
     this.releaseNotes = new ReleaseNoteStore(dataDir);
     this.milestoneReviews = new MilestoneReviewStore(dataDir);
+    this.taskReviews = new TaskReviewStore(this.requestsDir);
   }
 
   get requestsDir() {

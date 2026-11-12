@@ -19,6 +19,9 @@ import { commitsInOutput } from "../milestoneReview/code.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import { NotFoundError } from "../store/collection.ts";
 import { Workspace } from "../store/workspace.ts";
+import { safeRelPath } from "./paths.ts";
+
+export { safeRelPath };
 
 /**
  * タスクの AI レビューの材料を固定する（何も書かない。取り出したファイルの中身は files で返し、保存は store.ts）。
@@ -103,20 +106,6 @@ function gitBuf(local: string, args: string[], maxBuffer = 64 * 1024 * 1024): Pr
 }
 const git = async (local: string, args: string[]) => (await gitBuf(local, args)).toString("utf8");
 const tryGit = (local: string, args: string[]) => git(local, args).then((s) => s.trim(), () => undefined);
-
-function hasControl(p: string): boolean {
-  for (let i = 0; i < p.length; i++) {
-    const c = p.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return true;
-  }
-  return false;
-}
-
-/** 材料のフォルダの中に置けるパスか（参照先の中の相対パス。.. ・絶対パス・制御文字は使わない） */
-export function safeRelPath(p: string): boolean {
-  if (!p || p.startsWith("/") || /^[A-Za-z]:/.test(p) || p.includes("\\") || hasControl(p)) return false;
-  return !p.split("/").some((s) => s === ".." || s === "." || s === "");
-}
 
 /** 本文から比較項目を取り出す: 「完了条件」の見出しの下の箇条書き → 箇条書き全部 → 段落 */
 export function bodyItems(body: string): TaskReviewItem[] {

@@ -727,6 +727,8 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
+| レビューの実行の記録の共通部分（保存・終わり・回復・取消・遅れた結果の拒否） | `core/reviewRuns.ts` |
+| タスクの AI レビュー（材料・履歴） | `core/taskReview/`（`material.ts`・`store.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
@@ -988,6 +990,27 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   - 選んだ文面・出典・SHA・hash を材料に残す。資料の中の指示は実行しない
 - **hash**: 要望・タスクの材料・比較項目・比較対象（SHA）・観点・注意・取り出したファイルの中身の hash から作り、抽出の日時は
   入れない（同じなら同じ。どれかが変われば変わる）
+
+### タスクの AI レビュー（履歴と実行）
+
+履歴は要望のフォルダの中に置く（`core/taskReview/store.ts`）。要望をアーカイブすれば一緒に動き、タスクをアーカイブしても残って読める。
+
+```text
+requests/<要望ID>/task-reviews/<タスクID>/<run>/input.json   固定した材料（作ったら変えない）
+requests/<要望ID>/task-reviews/<タスクID>/<run>/material/    材料のファイル（差分・前後のコード。作ったら変えない）
+requests/<要望ID>/task-reviews/<タスクID>/<run>/run.json     実行の記録（状態・実行者・エンジン・所有者・失敗の理由・取消の要求）
+requests/<要望ID>/task-reviews/<タスクID>/<run>/review.json  結果（completed のときだけ。書き終えてから completed にする）
+requests/<要望ID>/task-reviews/.locks/<タスクID>.lock        状態を変えるときのロック（タスクごと）
+```
+
+- run の ID は `TR-YYYYMMDD-HHMMSS-xxxx`。要望・タスク・run の ID の形を確かめ、保存先の外を指すもの・材料のパスの `..`・
+  シンボリックリンクは断る。材料のファイルは新しいファイルとしてだけ作り、途中で断ったら作りかけの run を消す
+- 同じタスクで実行中の run は1つだけ（プロセスの間もロックの中で確かめる）。別のタスク・別のプロジェクトは独立
+- 状態は running → completed / failed / cancelled の一方向。終わった run の材料・結果は通常の操作で書き換えない（結果を直す口は
+  作らない。直すなら材料を直して別の run でレビューし直す）。同じ OS の権限でファイルを直接書き換えることは防がない
+- 保存・終わり・回復・取消の規則はマイルストーンレビューと共通（`core/reviewRuns.ts` の `RunControl` とファイルの書き方）。
+  比較材料と結果の形は各レビューに残す（タスクにマイルストーンの ID を割り当てない）
+- 結果はタスクのファイル（本文・`acceptanceEvidence`）に書かず、タスクの状態・済み・基準・証拠・要望の状態も変えない
 
 ### リリースノートの要約（生成の境界）
 

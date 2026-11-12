@@ -2,13 +2,16 @@ import type { ReviewFailure, ReviewInput, ReviewRecord, ReviewResult, ReviewRun 
 import type { PreflightLogEntry } from "../../shared/types.ts";
 import { ChatGptAuthError } from "../chatgpt.ts";
 import { CodexUnavailableError, CodexUsageLimitError } from "../preflight/codexEngine.ts";
-import { currentOwner, ownerState, systemProbe, type OwnerProbe, type OwnerState } from "../preflight/owner.ts";
+import { currentOwner, type OwnerProbe, type OwnerState } from "../preflight/owner.ts";
+import { ReviewCancelRefused, RunControl, startedNow } from "../reviewRuns.ts";
 import type { Summarizer } from "../releaseNotes/generate.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { extractReviewInput } from "./material.ts";
 import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt, type ReviewLocals } from "./review.ts";
-import { checkReviewMilestoneId, newReviewRunId, ReviewStoreError } from "./store.ts";
+import { checkReviewMilestoneId, newReviewRunId } from "./store.ts";
+
+export { ReviewCancelRefused };
 
 /**
  * マイルストーンレビューを任意のときに実行して記録する（CLI・API はここを呼ぶ）。材料の規則は material.ts、依頼文と結果の
@@ -42,16 +45,6 @@ export class ReviewRejected extends Error {
   }
 }
 
-/** 取消・中断を受け付けない（終わっている・動いている所有者がいる） */
-export class ReviewCancelRefused extends Error {
-  constructor(
-    readonly code: "finished" | "owner_alive",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 /** 取得の結果。running の run には所有者の状態（local: このプロセス）を添える */
 export interface ReviewDetail extends ReviewRecord {
   owner?: { state: "local" } | OwnerState;
@@ -63,29 +56,25 @@ interface LocalJob {
   done: Promise<void>;
 }
 
-/** 開始の日時（このプロセスでは前より必ず後にする。一覧を開始の順に並べるので、同じミリ秒の開始でも順が分かるように） */
-let lastStart = 0;
-function startedNow(): string {
-  lastStart = Math.max(Date.now(), lastStart + 1);
-  return new Date(lastStart).toISOString();
-}
-
 export class MilestoneReviewService {
   private local = new Map<string, LocalJob>();
+  /** 実行中の run の扱い（回復・取消・取消の要求の見つけ方・終わり）は reviewRuns.ts と共通 */
+  private control: RunControl<ReviewRun, ReviewResult>;
 
   constructor(
     private ws: Workspace,
     private reviewers: Partial<Record<ReviewEngine, Summarizer>>,
     private opts: { timeoutMs?: number; engine?: () => Promise<ReviewEngine>; probe?: OwnerProbe; pollMs?: number } = {},
-  ) {}
+  ) {
+    this.control = new RunControl(ws.milestoneReviews, this.local, opts.probe, (_k, r) => this.emit(r));
+  }
 
   private get store() {
     return this.ws.milestoneReviews;
   }
 
   private ownerOf(r: ReviewRun): { state: "local" } | OwnerState {
-    if (this.local.has(r.id)) return { state: "local" };
-    return ownerState(r.owner, this.opts.probe ?? systemProbe);
+    return this.control.ownerOf(r);
   }
 
   /** 始める（終わるのは wait で待つ）。材料はここで固定する */
@@ -119,11 +108,9 @@ export class MilestoneReviewService {
       log: [],
     };
     await this.store.withLock(mid, async () => {
-      await this.recoverLocked(mid);
-      for (const id of await this.store.runIds(mid)) {
-        const r = await this.store.readRun(mid, id).catch(() => undefined);
-        if (r?.status !== "running") continue;
-        const o = this.ownerOf(r);
+      const busy = await this.control.runningLocked(mid);
+      if (busy) {
+        const { run: r, owner: o } = busy;
         const hint =
           o.state === "unknown"
             ? `。実行しているプロセスを確かめられません（${o.reason}）。止まっていると確かめたら p3 milestone review-cancel ${mid} ${r.id} --acknowledge-stopped で中断できます`
@@ -157,22 +144,8 @@ export class MilestoneReviewService {
     const timeoutMs = this.opts.timeoutMs ?? REVIEW_TIMEOUT_MS;
     const timeout = AbortSignal.timeout(timeoutMs);
     const signal = AbortSignal.any([abort.signal, timeout]);
-    let flushed = 0;
     // ほかのプロセスからの取消の要求を見つけ、ログを run.json に書き足す
-    const poll = setInterval(() => {
-      void this.store
-        .withLock(mid, async () => {
-          const cur = await this.store.readRun(mid, id);
-          if (cur.status !== "running") return abort.abort(new Error("ended"));
-          if (cur.cancelRequested) abort.abort(new Error("cancelled"));
-          if (log.length !== flushed) {
-            flushed = log.length;
-            await this.store.updateRunning(mid, id, (r) => ({ ...r, log: [...log] }));
-          }
-        })
-        .catch(() => undefined);
-    }, this.opts.pollMs ?? 1000);
-    poll.unref?.();
+    const stopWatch = this.control.watch(mid, id, log, abort, this.opts.pollMs ?? 1000);
     let end: Partial<ReviewRun> & { status: Exclude<ReviewRun["status"], "running"> };
     let result: ReviewResult | undefined;
     try {
@@ -199,35 +172,17 @@ export class MilestoneReviewService {
       }
       push({ kind: "error", text: end.error! });
     } finally {
-      clearInterval(poll);
+      stopWatch();
     }
-    try {
-      const fin = await this.store.withLock(mid, () => this.store.finish(mid, id, { ...end, log: [...log] }, end.status === "completed" ? result : undefined));
-      this.emit(fin);
-    } catch (e) {
-      // 既に終わっていた（人が中断した・回復した）: 遅れて届いた結果は取り込まない
-      if (!(e instanceof ReviewStoreError && e.code === "finished")) throw e;
-      this.emit({ id, milestone: mid, status: (await this.store.readRun(mid, id).catch(() => run)).status });
-    }
-  }
-
-  /** 死んだと確かめられた所有者の run を失敗（crashed）にする（ロックの中で呼ぶ） */
-  private async recoverLocked(mid: string): Promise<void> {
-    for (const id of await this.store.runIds(mid)) {
-      const r = await this.store.readRun(mid, id).catch(() => undefined);
-      if (r?.status !== "running" || this.local.has(r.id)) continue;
-      const o = this.ownerOf(r);
-      if (o.state !== "dead") continue;
-      const fin = await this.store.finish(mid, id, { status: "failed", failure: "crashed", error: `実行していたプロセスが途中で終わりました（${o.reason}）` });
-      this.emit(fin);
-    }
+    // 既に終わっていた（人が中断した・回復した）なら、遅れて届いた結果は取り込まない
+    await this.control.end(mid, id, { ...end, log: [...log] }, result);
   }
 
   /** 死んだ所有者の run を回復する（一覧・取得の前に） */
   async recover(mid: string): Promise<void> {
     checkReviewMilestoneId(mid);
     if (!(await this.store.hasHistory(mid))) return;
-    await this.store.withLock(mid, () => this.recoverLocked(mid));
+    await this.store.withLock(mid, () => this.control.recoverLocked(mid));
   }
 
   async list(mid: string) {
@@ -249,30 +204,7 @@ export class MilestoneReviewService {
   async cancel(mid: string, run: string, by?: string, opts: { acknowledgeStopped?: boolean } = {}): Promise<{ run: ReviewRun; requested: boolean }> {
     checkReviewMilestoneId(mid);
     const local = this.local.get(run);
-    const out = await this.store.withLock(mid, async () => {
-      const cur = await this.store.readRun(mid, run);
-      if (cur.status !== "running") throw new ReviewCancelRefused("finished", `${mid}/${run} は既に終わっています（${cur.status}）`);
-      const o = this.ownerOf(cur);
-      if (opts.acknowledgeStopped && !local) {
-        if (o.state === "alive") throw new ReviewCancelRefused("owner_alive", `${mid}/${run} を実行しているプロセスは動いています。--acknowledge-stopped ではなく取消を使ってください`);
-        const at = new Date().toISOString();
-        const fin = await this.store.finish(mid, run, {
-          status: "cancelled",
-          abandoned: { at, ...(by ? { by } : {}) },
-          error: "人が中断しました（ほかの環境で動いているプロセスを止めたとは限りません）",
-        });
-        return { run: fin, requested: false };
-      }
-      if (o.state === "dead") {
-        const fin = await this.store.finish(mid, run, { status: "failed", failure: "crashed", error: `実行していたプロセスが途中で終わりました（${o.reason}）` });
-        return { run: fin, requested: false };
-      }
-      const next = await this.store.updateRunning(mid, run, (r) => ({ ...r, cancelRequested: { at: new Date().toISOString(), ...(by ? { by } : {}) } }));
-      return { run: next, requested: true };
-    });
-    local?.abort.abort(new Error("cancelled"));
-    this.emit(out.run);
-    return out;
+    return this.control.cancel(mid, run, by, { ...opts, label: `${mid}/${run}`, abortLocal: () => local?.abort.abort(new Error("cancelled")) });
   }
 
   /** 終わるまで待つ（このプロセスの run だけ） */
