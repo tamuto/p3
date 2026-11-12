@@ -35,6 +35,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                add --text 文 [--repo 名前] (--command コマンド --success 成功の条件 | --reference 確かめ方)
                                set <Q1> [--text] [--repo 名前|all] [...] / rm <Q1> / exempt <Q1> --reason 理由 / unexempt <Q1>
                                --version <版> で、他で変わっていれば競合（終了コード 3）。P3 はコマンドを実行しない
+                               improve [task <要望>/<T> <run> | milestone <ID> <run>]  品質の不足の診断と改善要望の原稿（読むだけ）
+                                 --key <不足の鍵>... で選ぶ / --register --hash <診断の版> [--title] [--body] [--reopen] で明示して登録する
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   milestone show <id>          目的・予定している機能と版（--json の milestonesVersion）

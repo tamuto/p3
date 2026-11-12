@@ -3,6 +3,7 @@ import { checkLine, QUALITY_LIMITS, type QualityCheck, type QualityStandard, typ
 import { api, ApiError, saveErrorText, type QualityViewData } from "../lib/api.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { Badge, Button, cx, Field, inputCls, Section } from "./ui.tsx";
+import { ImprovementButton } from "./ImprovementDialog.tsx";
 
 /**
  * 設定の「品質基準」（project.yaml の quality。CLI の p3 quality と同じ core の操作）。未設定なら案内し、テンプレートを採用する前に中身を
@@ -130,11 +131,16 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
         {q?.state === "unset" && !draft && (
           <div role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
             品質基準は未設定です（初めて作ったときの状態に任せています）。未設定のまま作業を続けることもできます。テンプレートの中身を確かめて採用するか、空のまま設定できます。
+            決めるのを要望にするなら、改善要望の案を確かめて登録できます。
+            <div className="mt-2">
+              <ImprovementButton source={{ type: "project" }} />
+            </div>
           </div>
         )}
         {q?.state === "invalid" && (
           <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
             <p>project.yaml の quality が読めません（未設定として扱い、保存しても消しません）。ファイルを直してください:</p>
+            <ImprovementButton source={{ type: "project" }} />
             <ul className="list-disc pl-5">
               {q.problems.map((p) => (
                 <li key={p} className="break-words">
@@ -227,9 +233,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                 </li>
               ))}
             </ul>
-            <Button className="text-sm" onClick={startEdit}>
-              品質基準を編集
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button className="text-sm" onClick={startEdit}>
+                品質基準を編集
+              </Button>
+              {saved.some((x) => x.exempt) && <ImprovementButton source={{ type: "project" }} label="除外を見直す要望の案を確認" />}
+            </div>
           </div>
         )}
         {draft && (

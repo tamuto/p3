@@ -7,6 +7,7 @@ import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { useServerEvents } from "../lib/live.ts";
 import { Badge, Button, Field, inputCls, type Tone } from "./ui.tsx";
+import { ImprovementButton } from "./ImprovementDialog.tsx";
 
 /**
  * タスク詳細の「タスクの AI レビュー」（作業した側の証拠とは別の欄）。開始の前に材料（比較項目・比較対象の固定した SHA・観点の出典・
@@ -310,8 +311,10 @@ function PreviewView({ p }: { p: TaskReviewPreview }) {
 const QUALITY_TONE: Record<QualityVerdict, Tone> = { satisfied: "emerald", violated: "rose", undetermined: "amber", not_applicable: "slate" };
 
 /** 品質（タスクの比較項目とは別の欄）。評価した最新の版・タスクに取り込んだ版・差・基準ごとの判定・違反の指摘。古い記録は品質を評価していない */
-function QualityView({ input, result }: { input: TaskReviewDetailView["input"]; result: NonNullable<TaskReviewDetailView["result"]> }) {
+function QualityView({ input, result, run }: { input: TaskReviewDetailView["input"]; result: NonNullable<TaskReviewDetailView["result"]>; run: TaskReviewDetailView["run"] }) {
   const q = input.quality;
+  const source = { type: "task-review" as const, request: run.request, task: run.task, run: run.id };
+  const canImprove = !!q && (q.latest.state !== "set" || (result.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || q.exempt.length > 0);
   return (
     <section aria-label="品質" className="space-y-2">
       <h4 className="font-semibold">品質（最新のプロジェクトの品質基準への適合）</h4>
@@ -355,6 +358,7 @@ function QualityView({ input, result }: { input: TaskReviewDetailView["input"]; 
           </ul>
         </>
       )}
+      {canImprove && <ImprovementButton source={source} />}
     </section>
   );
 }
@@ -490,7 +494,7 @@ function RunView({
               </ul>
             </section>
           )}
-          <QualityView input={input} result={result} />
+          <QualityView input={input} result={result} run={run} />
           <p className="text-sm break-words text-slate-500">読めた範囲: {result.coverage.read}</p>
           <p className="text-sm break-words text-slate-500">読めなかった範囲: {result.coverage.unread || "なし"}</p>
           <p className="text-sm text-slate-400">{TASK_REVIEW_SCOPE}</p>

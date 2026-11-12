@@ -15,6 +15,7 @@ import { fmtTime } from "../../lib/format.ts";
 import { latestOnly, STALE } from "../../lib/latest.ts";
 import { useServerEvents } from "../../lib/live.ts";
 import { Badge, Button, cx } from "../ui.tsx";
+import { ImprovementButton } from "../ImprovementDialog.tsx";
 import { QUALITY_VERDICT_LABELS } from "../../../shared/taskReview.ts";
 
 /**
@@ -357,6 +358,7 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
   const { info } = useAppData();
   const latest = info.project.qualityVersion;
   const q = input?.quality;
+  const canImprove = !!q && detail.run.status === "completed" && (q.state !== "set" || (result?.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || (q.standards ?? []).some((x) => x.exempt));
   return (
     <section aria-label="品質" className="space-y-2">
       <p className="text-sm font-medium">品質（プロジェクトの品質基準への適合。目的の達成とは別）</p>
@@ -408,6 +410,7 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
           </ul>
         </>
       )}
+      {canImprove && <ImprovementButton source={{ type: "milestone-review", milestone: detail.run.milestone, run: detail.run.id }} />}
     </section>
   );
 }

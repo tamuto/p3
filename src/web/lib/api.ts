@@ -4,6 +4,7 @@ import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
+import type { ImprovementDiagnosis, ImprovementSource } from "../../shared/qualityImprovement.ts";
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
@@ -335,6 +336,11 @@ export const api = {
   quality: () => call<QualityViewData>("GET", "/quality"),
   qualityTemplate: (id: string) => call<QualityTemplate>("GET", `/quality/templates/${encodeURIComponent(id)}`),
   updateQuality: (ops: QualityOp[], version?: string) => call<QualityViewData>("POST", "/quality", { ops, version }),
+  /** 品質の不足の診断と改善要望の原稿（読むだけ）・明示の登録（登録先があれば 409 existing） */
+  improvementPreview: (source: ImprovementSource, keys?: string[]) =>
+    call<ImprovementDiagnosis & { picked: string[]; draft?: { title: string; body: string } }>("POST", "/quality/improvements/preview", { source, ...(keys ? { keys } : {}) }),
+  registerImprovement: (body: { source: ImprovementSource; keys: string[]; title: string; body: string; hash: string; reopenClosed?: boolean }) =>
+    call<{ request: Request; keys: string[] }>("POST", "/quality/improvements", body),
   /** タスクの AI レビュー（読むだけ・始める・取消。結果を直す口は無い） */
   taskReviewPreview: (rid: string, tid: string, spec: TaskReviewSpec = {}) => call<TaskReviewPreview>("POST", `/requests/${rid}/tasks/${tid}/review-preview`, spec),
   taskReviews: (rid: string, tid: string) => call<{ items: TaskReviewListItem[] }>("GET", `/requests/${rid}/tasks/${tid}/reviews`),

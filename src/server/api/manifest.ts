@@ -39,6 +39,20 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/tasks/:tid/quality-import",
       desc: "差分を明示して受け入れ基準に取り込む {keys?: [\"<kind>:<品質 ID>\"], rev?}（add は足す、change は文と出典を直す（証拠は再確認が必要になる）、remove・exempt は消す）。POST tasks の quality: auto | none | [ID] で作るときにも取り込む",
     },
+    {
+      method: "POST",
+      path: "/api/quality/improvements/preview",
+      desc:
+        "品質の不足の診断と改善要望の原稿 {source: {type: project} | {type: task-review, request, task, run} | {type: milestone-review, milestone, run}, keys?}。" +
+        "{findings: [{key, kind: unset | invalid | violated | undetermined | exempt, ...}], hash, registered, picked, draft?}（読むだけ。除外は既定で選ばない）",
+    },
+    {
+      method: "POST",
+      path: "/api/quality/improvements",
+      desc:
+        "改善要望を明示して登録する {source, keys, title, body, hash, reopenClosed?}（201 {request, keys}）。診断が変わっていれば 409 diagnosis_changed、開いている登録先があれば 409 existing（existing.request）、" +
+        "閉じた要望で扱った不足は reopenClosed が無ければ 409 closed_existing。不足ごとの登録先は quality-improvements.json に残す",
+    },
     { method: "GET", path: "/api/quality/templates/:id[?version=]", desc: "同梱の品質基準のテンプレートの中身（版つきの例。業界の標準への認証ではない）" },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
     {

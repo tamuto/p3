@@ -10,6 +10,7 @@ import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../.
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
+import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement } from "../../core/qualityImprovement.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
@@ -200,6 +201,11 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
     if (err instanceof QualityInputError) return c.json({ error: err.message, code: err.code }, err.code === "quality_conflict" ? 409 : 400);
+    // 改善要望（診断が変わった・登録先がある → 409。作っていない）
+    if (err instanceof ImprovementError) {
+      const status = err.code === "not_found" ? 404 : err.code === "diagnosis_changed" || err.code === "existing" || err.code === "closed_existing" ? 409 : 400;
+      return c.json({ error: err.message, code: err.code, ...(err.existing ? { existing: err.existing } : {}) }, status);
+    }
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     // データのフォルダが読めない（メモリ上の状態は変えていない）
@@ -304,6 +310,25 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.post("/quality", async (c) => {
     const { ops, version } = z.object({ ops: z.array(qualityOp).min(1).max(200), version: z.string().optional() }).parse(await c.req.json());
     return c.json(await updateQuality(ws, ops as QualityOp[], { expectedVersion: version }));
+  });
+
+  // --- 品質の改善要望（core/qualityImprovement.ts。診断と原稿は読むだけ、登録は明示したときだけ） ------------
+  const improvementSource = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("project") }),
+    z.object({ type: z.literal("task-review"), request: z.string(), task: z.string(), run: z.string() }),
+    z.object({ type: z.literal("milestone-review"), milestone: z.string(), run: z.string() }),
+  ]);
+  app.post("/quality/improvements/preview", async (c) => {
+    const { source, keys } = z.object({ source: improvementSource, keys: z.array(z.string()).optional() }).parse(await c.req.json());
+    const d = await diagnoseQuality(ctx, source);
+    const picked = keys ?? d.findings.filter((f) => f.suggested).map((f) => f.key);
+    return c.json({ ...d, picked, ...(picked.length ? { draft: improvementDraft(d, picked) } : {}) });
+  });
+  app.post("/quality/improvements", async (c) => {
+    const body = z
+      .object({ source: improvementSource, keys: z.array(z.string()).min(1), title: z.string(), body: z.string(), hash: z.string(), reopenClosed: z.boolean().optional() })
+      .parse(await c.req.json());
+    return c.json(await registerImprovement(ctx, body, actorOf(c)), 201);
   });
 
   // --- tasks（要望の中） --------------------------------------------------------
