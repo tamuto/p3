@@ -200,3 +200,26 @@ export type TaskReviewListItem =
 export const TASK_REVIEW_SCOPE =
   "完了したタスクの本文・受け入れ基準に対して、固定したコミットの差分とその前後のコード（抽出した材料）を読んで確かめた参考の記録です。" +
   "作業した AI の能力や成績の評価ではありません。テストやアプリは動かしていません。作業した側の証拠は申告として読み、判定には変えていません。";
+
+/** プレビューで返す材料の要約（材料のファイルの中身は返さない） */
+export function previewOf(input: TaskReviewInput) {
+  return {
+    task: { ref: input.task.ref, title: input.task.title, status: input.task.status, record: !!input.task.record, outputs: input.task.outputs },
+    items: input.items,
+    evidenceStates: input.task.evidenceStates ?? [],
+    acceptanceProblems: input.task.acceptanceProblems ?? [],
+    targets: input.targets.map((t) => ({
+      repo: t.repo,
+      kind: t.kind,
+      sources: t.sources,
+      commits: t.commits.map((c) => ({ sha: c.sha, subject: c.subject, otherTasks: c.otherTasks })),
+      ...(t.range ? { range: t.range } : {}),
+      changes: t.diffs.reduce((n, d) => n + d.changes.length, 0),
+    })),
+    viewpoint: { source: input.viewpoint.source, ...(input.viewpoint.repo ? { repo: input.viewpoint.repo, sha: input.viewpoint.sha, path: input.viewpoint.path } : {}), hash: input.viewpoint.hash },
+    notes: input.notes,
+    files: input.files.length,
+    hash: input.hash,
+    extractedAt: input.extractedAt,
+  };
+}

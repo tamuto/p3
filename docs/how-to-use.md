@@ -535,6 +535,29 @@ p3 evidence T004 A2 met --file a2.md   # 1項目ずつ（再記録は置き換�
   `p3 agents <claude|codex|both>` で違いを確かめ、`--force` で同梱の版にする
 - 規則の詳細: [architecture.md の受け入れ基準と証拠](architecture.md#受け入れ基準と証拠)
 
+### タスクの AI レビュー
+
+完了したタスクについて、本文・受け入れ基準が成果物（コミットの差分）で満たされているかを、作業したのとは別の Codex のスレッドに
+確かめさせる。人が「済み」にする前の材料で、作業した AI の能力・成績の評価ではない。結果はタスクの状態・済み・基準・証拠を変えず、
+レビューだけでは済みにならない（不足があっても人は済みにできる）。
+
+```bash
+p3 review T004 --preview                                  # 今の材料（比較項目・比較対象・観点・注意・hash）を見るだけ
+p3 review T004                                             # 成果物のコミットと比べる（終わるまで待つ。Ctrl-C で取り消す）
+p3 review T004 --target app:1a2b3c4d                       # 比較対象を指定（カンマで複数。範囲は app:main..req/261009-k7m3x）
+p3 review T004 --viewpoint app@1a2b3c4d:docs/REVIEW.md     # 観点を固定した SHA のファイルから（project で project.yaml の taskReview.viewpoints）
+p3 reviews T004                                            # 履歴（アーカイブしたタスクも読める）
+p3 review-show T004 TR-20261112-101500-ab12                # 1回分（項目ごとの判定・理由・根拠・不足・意図しない変更の候補・確かめる点・読めた範囲）
+p3 review-cancel T004 TR-20261112-101500-ab12              # 取り消す（所有者を確かめられない run は --acknowledge-stopped）
+```
+
+- 判定は 満たしている / 不足 / 判断できない。「満たしている」はコード・差分の根拠があるときだけ（記録だけでは付かない）
+- Codex には、固定した材料（差分と前後のコード）だけを読むだけで渡す。リポジトリやデータのフォルダはマウントしない。テストや
+  アプリは動かさない。毎回新しいスレッドで、作業したスレッドは再開しない
+- Preflight の担当が `agent` のプロジェクトでは、Codex で実行するなら `--engine codex`（画面では「Codex で実行する」）の明示が要る
+- 材料が変わった（本文・基準・証拠・比較対象・観点）ら、新しい run としてレビューし直す。結果を直す操作は無い
+- 規則の詳細（比較対象・観点・上限・保存先）: [architecture.md のタスクの AI レビュー](architecture.md#タスクの-ai-レビュー材料)
+
 ### タグ・期限・マイルストーン
 
 - **期限**（`due`）: 要望の期限（`--due YYYY-MM-DD`）。進捗のスケジュールに ⚑ で出る
@@ -1000,6 +1023,7 @@ AI にも CLI を使わせる（認証を持たせずに済む）。`p3 init --a
 | `p3 request new\|ls\|show\|set\|archive` | 要望 |
 | `p3 ls` / `p3 show` / `p3 find` | タスクの一覧（`--all` で全要望）/ 詳細（`--brief`）/ 参照・タイトルで探す |
 | `p3 new` / `p3 set` / `p3 move` / `p3 check` / `p3 archive` | タスクを足す / 直す / 状態を変える / 済みにする / アーカイブ |
+| `p3 review <T>` / `p3 reviews <T>` / `p3 review-show <T> <run>` / `p3 review-cancel <T> <run>` | 完了したタスクの AI レビュー（[タスクの AI レビュー](#タスクの-ai-レビュー)） |
 | `p3 criteria <T>` / `p3 evidence <T>` | 受け入れ基準を見る・足す・直す・消す・並べ替える / 基準ごとの証拠を残す・消す（[受け入れ基準と証拠](#受け入れ基準と証拠)） |
 | `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`。手元のエージェントなら `--prepare` / `--complete`。中断は `--cancel --run`）/ メモ / 評価とタスク案 / タスク化 |
 | `p3 attach` / `p3 render` | 添付 / 画面イメージの描画 |

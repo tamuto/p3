@@ -16,7 +16,7 @@ import { writeProjectFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
 import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
-import { TaskReviewStore } from "../taskReview/store.ts";
+import { TASK_REVIEWS_DIR, TaskReviewStore } from "../taskReview/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -392,6 +392,11 @@ export class Workspace {
       return;
     }
     if (top !== "requests" || !rid || !REQUEST_ID.test(rid)) return;
+    if (kind === TASK_REVIEWS_DIR) {
+      // タスクのレビューの履歴（ほかのプロセスの実行・取消）。ロックのフォルダ .locks は除く
+      if (file && !file.startsWith(".")) this.emit({ type: "task-review", request: rid, task: file });
+      return;
+    }
     if (kind === undefined || kind === "request.md") {
       // 要望の作成・削除（git pull でフォルダごと増減することもある）
       const known = !!this.requests.get(rid);

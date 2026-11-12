@@ -70,7 +70,9 @@ export class TaskReviewRejected extends Error {
       | "too_large"
       | "bad_viewpoint"
       | "running"
-      | "unavailable",
+      | "unavailable"
+      | "engine_required"
+      | "changed",
     message: string,
     readonly running?: string,
   ) {

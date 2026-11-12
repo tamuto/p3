@@ -5,6 +5,8 @@ import { machineSettingsSource, resolveMachineSettings, SettingsError } from "..
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
+import { taskReviewCommand } from "./taskReviewCommands.ts";
+import { TaskReviewRejected } from "../core/taskReview/material.ts";
 import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
 import { ReviewCancelRefused, ReviewRejected } from "../core/milestoneReview/service.ts";
 import { ReviewStoreError } from "../core/milestoneReview/store.ts";
@@ -227,7 +229,7 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await preflightCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
@@ -351,6 +353,11 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`${e.message}\n`);
       const code = e.code;
       process.exit(code === "not_found" || code === "unknown_milestone" ? 2 : code === "running" || code === "finished" || code === "owner_alive" || code === "exists" ? 3 : 1);
+    }
+    // タスクのレビュー: 実行中・材料が変わった → 3、ほか（未完了・比較対象・観点・上限・担当）→ 1
+    if (e instanceof TaskReviewRejected) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(e.code === "running" || e.code === "changed" ? 3 : 1);
     }
     // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
     if (e instanceof MilestonesConflictError) {

@@ -100,6 +100,13 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   evidence <T003> <ID> <結果>   証拠を残す（再記録は置き換え）。本文は続けて書くか --body 本文|- / --file 本文.md
                                evidence <T003> --file 証拠.md|-  まとめて / evidence <T003> rm <ID>...  消す
                                済みのタスクの基準・証拠の中身を変えると済みが外れる（同じ値の再保存・成果物の追加では外れない）
+  review <T003>                完了したタスクの AI レビュー（別の Codex のスレッドが、固定した差分と前後のコードを読むだけで基準と比べる。
+                               終わるまで待つ。Ctrl-C で取り消す。結果はタスクの状態・済み・基準・証拠を変えない）
+                               --target <参照先>:<コミット>[,<コミット>] | <参照先>:<base>..<head>  比較対象（繰り返し可。省くと成果物のコミット）
+                               --viewpoint builtin|project|<参照先>@<SHA>:<パス>  観点（省くと既定。project は project.yaml の taskReview.viewpoints）
+                               --engine codex|mock（Preflight の担当が agent なら Codex には --engine codex の明示が要る）--preview 材料を見るだけ
+  reviews <T003>               レビューの履歴 / review-show <T003> <run> 1回分 / review-cancel <T003> <run> 取消
+                               （所有者を確かめられない run は --acknowledge-stopped で中断。無い → 2、実行中・終わっている・材料が変わった → 3）
   archive <T003>               .archive/ へ移す（消さない。ID は再利用しない）
   ls --archived                アーカイブしたタスクの一覧（今の要望。読むだけ。壊れたファイルは「読めない」に出す）
   show <T003> --archived       アーカイブしたタスクの詳細（本文・変更の記録・成果物）。通常の ls / show / 進捗には出ない
