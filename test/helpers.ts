@@ -16,6 +16,8 @@ import { ReleaseGenerator, type Summarizer } from "../src/core/releaseNotes/gene
 import { MockSummarizer } from "../src/core/releaseNotes/mockSummarizer.ts";
 import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
 import { MockReviewer } from "../src/core/milestoneReview/mockReviewer.ts";
+import { TaskReviewService } from "../src/core/taskReview/service.ts";
+import { MockTaskReviewer } from "../src/core/taskReview/mockReviewer.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする
@@ -82,6 +84,7 @@ export async function openTestProject(
     preflight,
     releaseGenerator: new ReleaseGenerator(ws, { codex: opts.summarizer, mock: new MockSummarizer({ delayMs: 0 }) }),
     milestoneReview: new MilestoneReviewService(ws, { mock: new MockReviewer({ delayMs: 0 }) }),
+    taskReview: new TaskReviewService(ws, { mock: new MockTaskReviewer({ delayMs: 0 }) }, { engine: async () => "mock" }),
   };
 }
 

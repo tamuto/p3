@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
 import { AcceptancePanel, shortfallSummary } from "./Acceptance.tsx";
+import { TaskReviewPanel } from "./TaskReview.tsx";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -292,6 +293,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             />
           </Section>
 
+          <Section title="タスクの AI レビュー">
+            <TaskReviewPanel task={task} unsaved={dirty || accDirty} />
+          </Section>
           {multi && <WorkTarget ctx={ctx} data={data} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           <Section title="成果物">
             {task.outputs.length || task.repoOutputs?.length ? (

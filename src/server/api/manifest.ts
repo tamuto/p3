@@ -178,6 +178,20 @@ export const AI_MANIFEST = {
       path: "/api/release-generations/:id[/cancel]",
       desc: "生成1件 {status: running|completed|failed|cancelled, failure?, items（文と出典）, markdown（本文の案）, warnings, materialChanged, log} / 取り消し",
     },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/tasks/:tid/review-preview",
+      desc: "タスクの AI レビューの今の材料の要約と hash {targets?, viewpoint?}（比較項目・作業した側の証拠の状態・比較対象・観点の出典・注意・engineRequired。何も書かない）",
+    },
+    {
+      method: "GET|POST",
+      path: "/api/requests/:rid/tasks/:tid/reviews",
+      desc:
+        "タスクの AI レビューの履歴（新しい順。読めない記録も broken）/ 始める（202。{targets?, viewpoint?, engine?, expectedHash?}。完了したタスクだけ。" +
+        "材料が変わっていれば 409 changed、実行中なら 409 running、Preflight の担当が agent で engine を明示していなければ 400 engine_required）。結果はタスクの状態・済み・基準・証拠を変えない",
+    },
+    { method: "GET", path: "/api/requests/:rid/tasks/:tid/reviews/:run", desc: "タスクの AI レビューの1回分（固定した材料・結果。実行中は所有者の状態 owner）。結果を直す口は無い" },
+    { method: "POST", path: "/api/requests/:rid/tasks/:tid/reviews/:run/cancel", desc: "タスクの AI レビューを取り消す {acknowledgeStopped?}（マイルストーンレビューと同じ規則）" },
     { method: "GET", path: "/api/milestone-reviews", desc: "レビューの履歴のあるマイルストーン {milestones}（project.yaml に無い孤立も。履歴のあるマイルストーンは消せず ID も変えられない）" },
     { method: "GET", path: "/api/milestones/:mid/review-preview", desc: "マイルストーンレビューの今の材料（比較単位・目的・要望の件数と状態・参照先のコード・範囲・警告・hash）。何も書かない" },
     {

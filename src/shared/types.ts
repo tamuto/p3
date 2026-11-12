@@ -876,6 +876,8 @@ export type ServerEvent =
   | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "projects" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
   | { type: "changed"; kind: "release-note"; milestone: string }
+  /** タスクの AI レビューの状態が変わった */
+  | { type: "task-review"; id?: string; request: string; task: string; status?: "running" | "completed" | "failed" | "cancelled" }
   /** リリースノートの要約の生成の状態が変わった */
   | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
   /** マイルストーンレビューの実行の状態（このプロセスの実行と、ほかのプロセスが書いた履歴の変化。status は分からなければ無い） */

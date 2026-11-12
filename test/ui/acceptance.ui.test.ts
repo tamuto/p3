@@ -59,7 +59,7 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await panel.getByRole("button", { name: "A3 の証拠を登録" }).click();
       await panel.getByLabel(/証拠（必須）/).fill("375 で確かめた");
       await until.disabled(check);
-      await until.visible(page.getByText(/保存していない入力があります/));
+      await until.visible(page.getByText(/保存していない入力があります。保存するか取り消してから/));
       await panel.getByRole("button", { name: "取消" }).click();
       await until.enabled(check);
     });
