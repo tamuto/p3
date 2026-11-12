@@ -1,6 +1,6 @@
 import type { AcceptanceCriterion, AcceptanceEvidence } from "./acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
-import type { QualityState } from "./quality.ts";
+import type { QualitySnapshot, QualityState } from "./quality.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
@@ -407,6 +407,8 @@ export interface UiMaterials {
 export interface PreflightRun {
   id: string;
   requestId: string;
+  /** 始めたときのプロジェクトの品質基準（状態・版・項目）。評価の資料とタスク化の取り込みに使う（古い run には無い） */
+  quality?: QualitySnapshot;
   /** 評価したもの。local: 手元の対話エージェント（p3 preflight --prepare で準備し、--complete で取り込む。P3 はモデルを呼ばない） */
   engine: "codex" | "mock" | "local";
   /** running の間は、local ならエージェントの評価を待っている（プロセスを跨いで続く） */

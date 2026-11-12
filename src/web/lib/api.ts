@@ -4,7 +4,7 @@ import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
-import type { QualityOp, QualityState, QualityTemplate, TemplateDiff } from "../../shared/quality.ts";
+import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
@@ -272,7 +272,10 @@ export const api = {
 
   task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
   /** criteria: 受け入れ基準の文の並び（ID はサーバが振る） */
-  createTask: (rid: string, t: Partial<Task> & { criteria?: string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
+  createTask: (rid: string, t: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" | string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
+  /** 今の品質基準との差分（読むだけ）と、明示した差分の取り込み */
+  taskQualityDiff: (ref: string) => call<{ quality: string; version?: string; diff: TaskQualityDiffItem[] }>("GET", `${taskPath(ref)}/quality-diff`),
+  importTaskQuality: (ref: string, keys: string[], rev: number) => call<Task & { applied: string[]; checkCleared?: string }>("POST", `${taskPath(ref)}/quality-import`, { keys, rev }),
   /** アーカイブしたタスク（読むだけ。壊れたファイルは errors） */
   archivedTasks: (rid: string) => call<ArchivedTaskList>("GET", `/requests/${rid}/archived-tasks`),
   /** アーカイブの1件。無い → 404、読めない → 500 code: archive_unreadable（archiveUnreadable で見分ける） */

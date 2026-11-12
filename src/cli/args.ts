@@ -49,6 +49,7 @@ const OPTIONS = {
   command: { type: "string" },
   success: { type: "string" },
   reference: { type: "string" },
+  quality: { type: "string" },
   decision: { type: "string" },
   resolution: { type: "string" },
   blocked: { type: "boolean" },

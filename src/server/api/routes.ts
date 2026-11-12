@@ -8,7 +8,7 @@ import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../../shared/acceptance.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
-import { QualityInputError, type QualityOp } from "../../shared/quality.ts";
+import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
@@ -25,7 +25,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { milestoneReviewRoutes } from "./milestoneReviewRoutes.ts";
 import { taskReviewRoutes } from "./taskReviewRoutes.ts";
-import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask } from "../../core/requestOps.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
@@ -89,7 +89,7 @@ const qualityOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("unexempt"), id: z.string() }),
 ]);
 /** 作るとき: 受け入れ基準は文の並び（ID は p3 が振る） */
-const taskCreate = taskInput.extend({ criteria: z.array(z.string()).optional() });
+const taskCreate = taskInput.extend({ criteria: z.array(z.string()).optional(), quality: z.union([z.enum(["auto", "none"]), z.array(z.string())]).optional() });
 /** checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 基準・証拠への操作（順に当て、1つでも合わなければ何も書かない） */
 /** 停止の操作（規則は shared/taskBlock.ts。CLI の block / unblock と同じ。日時・履歴は受け付けない） */
 const blockOp = z.discriminatedUnion("op", [
@@ -335,6 +335,17 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
     const { task, warnings, reopened, reopenedAncestors, checkCleared } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(checkCleared ? { checkCleared } : {}) });
+  });
+  /** 今の品質基準との差分（読むだけ。タスクは書き換えない） */
+  app.get("/requests/:rid/tasks/:tid/quality-diff", (c) => {
+    const task = ws.tasksOf(rid(c)).require(tid(c));
+    return c.json({ quality: ws.project.quality?.state ?? "unset", version: ws.project.qualityVersion, diff: taskQualityDiff(task.acceptanceCriteria ?? [], ws.project.quality, task.repo) });
+  });
+  /** 差分を明示して取り込む（keys: "<kind>:<品質 ID>"。省くと「直した」以外の全部） */
+  app.post("/requests/:rid/tasks/:tid/quality-import", async (c) => {
+    const { keys, rev } = z.object({ keys: z.array(z.string()).optional(), rev: z.number().int().optional() }).parse(await c.req.json().catch(() => ({})));
+    const r = await importQuality(ctx, rid(c), tid(c), keys, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ ...r.task, applied: r.applied, ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) });
   });
   app.delete("/requests/:rid/tasks/:tid", async (c) => {
     await archiveTask(ctx, rid(c), tid(c));

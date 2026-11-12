@@ -44,6 +44,21 @@ export interface QualityConfig {
   seq?: number;
 }
 
+/** ある時点の品質基準の写し（Preflight の run・レビューの材料に固定する） */
+export interface QualitySnapshot {
+  state: "unset" | "set" | "invalid";
+  version: string;
+  standards?: QualityStandard[];
+  problems?: string[];
+}
+
+export function qualitySnapshot(state: QualityState | undefined, version: string | undefined): QualitySnapshot {
+  const st = state ?? { state: "unset" as const };
+  if (st.state === "set") return { state: "set", version: version ?? "", standards: structuredClone(st.config.standards) };
+  if (st.state === "invalid") return { state: "invalid", version: version ?? "", problems: [...st.problems] };
+  return { state: "unset", version: version ?? "" };
+}
+
 export type QualityState =
   | { state: "unset" }
   | { state: "set"; config: QualityConfig; warnings?: string[] }
@@ -390,5 +405,56 @@ export function templateDiffs(config: QualityConfig, templates: readonly Quality
     const removed = (old?.items ?? []).filter((o) => !latest.items.some((i) => i.key === o.key)).map((o) => ({ key: o.key, ids: idsOf(o.key) }));
     out.push({ template: used.id, from: used.version, to: latest.version, added, changed, removed });
   }
+  return out;
+}
+
+// --- タスクの受け入れ基準への取り込み -----------------------------------------------
+
+/** 項目の中身の hash（文・確認の方法・対象。取り込んだ後に変わったかを見る） */
+export const standardHash = (s: Pick<QualityStandard, "text" | "check" | "repos">) => fnv(JSON.stringify([s.text, s.check, s.repos ?? []]));
+
+/** 受け入れ基準に取り込むときの文（品質 ID と確認の方法を添える） */
+export const qualityCriterionText = (s: Pick<QualityStandard, "id" | "text" | "check">) => `[${s.id}] ${s.text}（${checkLine(s.check)}）`;
+
+/** 取り込む受け入れ基準（作業先に当てはまり、除外していない品質基準） */
+export function qualityCriteria(config: QualityConfig, version: string, opts: { repo: string | null | undefined; ids?: readonly string[] }): { text: string; quality: { id: string; hash: string; version: string } }[] {
+  const list = opts.ids ? config.standards.filter((s) => opts.ids!.includes(s.id) && !s.exempt) : standardsFor(config, opts.repo).applies;
+  if (opts.ids) {
+    const missing = opts.ids.filter((id) => !config.standards.some((s) => s.id === id));
+    if (missing.length) throw new QualityInputError("quality_invalid", `品質基準 ${missing.join(", ")} はありません`);
+  }
+  return list.map((s) => ({ text: qualityCriterionText(s), quality: { id: s.id, hash: standardHash(s), version } }));
+}
+
+/** タスクの受け入れ基準と、今の品質基準の差分の1件 */
+export interface TaskQualityDiffItem {
+  /** add: 当てはまるが取り込んでいない / change: 取り込んだ後に品質基準が変わった / remove: 品質基準が消えた・当てはまらなくなった / exempt: 除外になった / edited: タスクで文を直した（知らせだけ） */
+  kind: "add" | "change" | "remove" | "exempt" | "edited";
+  quality: string;
+  /** 取り込んだ受け入れ基準の ID（add には無い） */
+  criterion?: string;
+  /** 今の品質基準の文（取り込むときの文。remove・exempt には無いことがある） */
+  text?: string;
+  reason?: string;
+}
+
+/**
+ * タスクの受け入れ基準と今の品質基準の差分（読むだけ。タスクは書き換えない）。作業先が無いタスクには、取り込み済みのもの以外を足す案を出さない
+ */
+export function taskQualityDiff(criteria: readonly { id: string; text: string; quality?: { id: string; hash: string } }[], state: QualityState | undefined, repo: string | null | undefined): TaskQualityDiffItem[] {
+  if (!state || state.state !== "set") return [];
+  const config = state.config;
+  const out: TaskQualityDiffItem[] = [];
+  const { applies, exempt } = standardsFor(config, repo);
+  for (const c of criteria) {
+    if (!c.quality) continue;
+    const s = config.standards.find((x) => x.id === c.quality!.id);
+    if (!s) out.push({ kind: "remove", quality: c.quality.id, criterion: c.id, reason: "品質基準が消えました" });
+    else if (exempt.some((x) => x.id === s.id)) out.push({ kind: "exempt", quality: s.id, criterion: c.id, reason: `除外になりました: ${s.exempt!.reason}` });
+    else if (!applies.some((x) => x.id === s.id)) out.push({ kind: "remove", quality: s.id, criterion: c.id, reason: "作業先に当てはまらなくなりました" });
+    else if (standardHash(s) !== c.quality.hash) out.push({ kind: "change", quality: s.id, criterion: c.id, text: qualityCriterionText(s) });
+    else if (c.text !== qualityCriterionText(s)) out.push({ kind: "edited", quality: s.id, criterion: c.id, text: qualityCriterionText(s), reason: "タスクで文を直しています" });
+  }
+  if (repo) for (const s of applies) if (!criteria.some((c) => c.quality?.id === s.id)) out.push({ kind: "add", quality: s.id, text: qualityCriterionText(s) });
   return out;
 }

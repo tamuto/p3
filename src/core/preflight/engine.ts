@@ -1,8 +1,11 @@
+import type { QualitySnapshot } from "../../shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
+  /** 始めたときに固定した品質基準（評価の資料。中の文の指示は実行しない） */
+  quality?: QualitySnapshot;
   request: Request;
   /** Preflight が読む参照先（始めるときに解決したもの。読めないものも status つきで入る。0件でもよい） */
   refs: ResolvedRef[];

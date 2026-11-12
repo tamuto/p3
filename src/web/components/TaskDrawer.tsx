@@ -3,6 +3,7 @@ import { acceptanceStatus } from "../../shared/acceptance.ts";
 import { AcceptancePanel, shortfallSummary } from "./Acceptance.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
+import { QualityDiffPanel } from "./QualityDiff.tsx";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -296,6 +297,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </div>
           )}
           <Section title="受け入れ基準と作業した側の証拠">
+            <QualityDiffPanel
+              task={task}
+              disabled={gone || accDirty}
+              onSaved={(cleared) => {
+                setMsg(cleared ?? null);
+                void load(false, true);
+                data.reload();
+                ctx.reload();
+              }}
+            />
             <AcceptancePanel
               task={task}
               disabled={gone}

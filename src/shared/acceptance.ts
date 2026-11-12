@@ -38,6 +38,8 @@ export interface AcceptanceCriterion {
   /** タスクの中で安定した ID（A1, A2, ...） */
   id: string;
   text: string;
+  /** プロジェクトの品質基準から取り込んだ出典（品質 ID・取り込んだときの項目の hash・設定の版。shared/quality.ts） */
+  quality?: { id: string; hash: string; version: string };
 }
 
 /** 基準1項目への証拠（作業した側の申告） */
@@ -90,7 +92,8 @@ export function readAcceptance(d: Record<string, unknown>): AcceptanceState & { 
         if (!CRITERION_ID_RE.test(id)) problems.push(`${at} の id が読めません`);
         else if (criteria.some((c) => c.id === id)) problems.push(`受け入れ基準の id が重複しています: ${id}`);
         else if (!t) problems.push(`${at} の文が空です`);
-        else criteria.push({ id, text: t });
+        else if (o.quality !== undefined && !qualitySourceOf(o.quality)) problems.push(`${at} の品質基準の出典（quality）が読めません（id・hash・version が要ります）`);
+        else criteria.push({ id, text: t, ...(o.quality !== undefined ? { quality: qualitySourceOf(o.quality)! } : {}) });
       }
     out.acceptanceCriteria = criteria;
   }
@@ -128,12 +131,18 @@ export function readAcceptance(d: Record<string, unknown>): AcceptanceState & { 
   return out;
 }
 
+function qualitySourceOf(v: unknown): AcceptanceCriterion["quality"] | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === "string" && typeof o.hash === "string" && typeof o.version === "string" && o.id && o.hash ? { id: o.id, hash: o.hash, version: o.version } : undefined;
+}
+
 // --- 変える -------------------------------------------------------------------
 
 /** 基準・証拠への操作。CLI と API は同じ操作を送る */
 export type AcceptanceOp =
-  | { op: "add"; text: string }
-  | { op: "edit"; id: string; text: string }
+  | { op: "add"; text: string; quality?: AcceptanceCriterion["quality"] }
+  | { op: "edit"; id: string; text: string; quality?: AcceptanceCriterion["quality"] }
   | { op: "remove"; id: string }
   | { op: "order"; ids: string[] }
   | { op: "record"; id: string; result: AcceptanceResult; evidence: string }
@@ -172,14 +181,15 @@ export function applyAcceptanceOps(state: AcceptanceState & { acceptanceProblems
     switch (op.op) {
       case "add": {
         if (criteria.length >= ACCEPTANCE_LIMITS.criteria) throw new AcceptanceInputError(`受け入れ基準は ${ACCEPTANCE_LIMITS.criteria} 件までです`);
+        if (op.quality && criteria.some((c) => c.quality?.id === op.quality!.id)) throw new AcceptanceInputError(`品質基準 ${op.quality.id} は取り込み済みです`);
         seq += 1;
-        criteria.push({ id: `A${seq}`, text: cleanText(op.text, "受け入れ基準") });
+        criteria.push({ id: `A${seq}`, text: cleanText(op.text, "受け入れ基準"), ...(op.quality ? { quality: { ...op.quality } } : {}) });
         break;
       }
       case "edit": {
         const c = find(op.id);
         const t = cleanText(op.text, `受け入れ基準 ${op.id} `);
-        criteria = criteria.map((x) => (x.id === c.id ? { ...x, text: t } : x));
+        criteria = criteria.map((x) => (x.id === c.id ? { ...x, text: t, ...(op.quality ? { quality: { ...op.quality } } : {}) } : x));
         break;
       }
       case "remove": {

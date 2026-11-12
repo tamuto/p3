@@ -33,6 +33,12 @@ export const AI_MANIFEST = {
         "POST {ops: [{op: init | adopt | upgrade | add | replace | edit | remove | exempt | unexempt, ...}], version?} で操作を順に当てて quality だけを書く（version が違えば 409 quality_conflict、" +
         "規則に合わなければ 400 quality_invalid、読めない設定は 400 quality_unreadable。設定の保存 PUT /api/project は quality を書かない）。コマンドは実行しない",
     },
+    { method: "GET", path: "/api/requests/:rid/tasks/:tid/quality-diff", desc: "タスクの受け入れ基準と今の品質基準の差分 {quality, version, diff: [{kind: add | change | remove | exempt | edited, quality, criterion?, text?, reason?}]}（読むだけ）" },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/tasks/:tid/quality-import",
+      desc: "差分を明示して受け入れ基準に取り込む {keys?: [\"<kind>:<品質 ID>\"], rev?}（add は足す、change は文と出典を直す（証拠は再確認が必要になる）、remove・exempt は消す）。POST tasks の quality: auto | none | [ID] で作るときにも取り込む",
+    },
     { method: "GET", path: "/api/quality/templates/:id[?version=]", desc: "同梱の品質基準のテンプレートの中身（版つきの例。業界の標準への認証ではない）" },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
     {

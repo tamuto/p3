@@ -1,5 +1,6 @@
 import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../shared/acceptance.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
+import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
@@ -36,6 +37,43 @@ export interface TaskResult {
   reopenedAncestors?: string[];
   /** 済みのタスクの受け入れ基準・証拠の中身が変わったので、人の「済み」を外した（理由） */
   checkCleared?: string;
+}
+
+/** 品質基準の取り込み方（auto: 作業先に当てはまるもの / none: 取り込まない / ID の並び: 明示したもの） */
+export type QualityChoice = "auto" | "none" | readonly string[];
+
+/** 品質基準を受け入れ基準に取り込む操作（未設定・読めない設定なら無し） */
+export function qualityOpsFor(ctx: P3Context, repo: string | null, choice: QualityChoice): AcceptanceOp[] {
+  const q = ctx.ws.project.quality;
+  if (q?.state !== "set" || choice === "none") return [];
+  if (choice === "auto" && !repo) return [];
+  return qualityCriteria(q.config, ctx.ws.project.qualityVersion ?? "", { repo, ...(choice === "auto" ? {} : { ids: choice }) }).map((c) => ({ op: "add", text: c.text, quality: c.quality }));
+}
+
+/**
+ * 今の品質基準との差分から、明示して選んだものを受け入れ基準に取り込む（add は足す、change は文と出典を直す、remove・exempt は消す）。
+ * keys: "<kind>:<品質 ID>"（省くと edited 以外の全部）。書く直前に読み直した値に当てる。プロジェクトの設定を変えただけではタスクは変わらない
+ */
+export async function importQuality(ctx: P3Context, rid: string, tid: string, keys: readonly string[] | undefined, opts: WriteOpts = {}): Promise<TaskResult & { applied: string[] }> {
+  const t = ctx.ws.tasksOf(rid).require(tid);
+  const diff = taskQualityDiff(t.acceptanceCriteria ?? [], ctx.ws.project.quality, t.repo).filter((d) => d.kind !== "edited");
+  const chosen = keys ? diff.filter((d) => keys.includes(`${d.kind}:${d.quality}`)) : diff;
+  if (keys) {
+    const unknown = keys.filter((k) => !diff.some((d) => `${d.kind}:${d.quality}` === k));
+    if (unknown.length) throw new OpRuleError(`取り込める差分にありません: ${unknown.join(", ")}（今の差分は p3 criteria ${t.id} quality で見る）`);
+  }
+  if (!chosen.length) throw new OpRuleError(`${t.ref} に取り込む品質基準の差分はありません`);
+  const q = ctx.ws.project.quality;
+  const version = ctx.ws.project.qualityVersion ?? "";
+  const config = q?.state === "set" ? q.config : { standards: [] };
+  const hashOf = (id: string) => standardHash(config.standards.find((s) => s.id === id)!);
+  const acceptance: AcceptanceOp[] = chosen.map((d): AcceptanceOp => {
+    if (d.kind === "add") return { op: "add", text: d.text!, quality: { id: d.quality, hash: hashOf(d.quality), version } };
+    if (d.kind === "change") return { op: "edit", id: d.criterion!, text: d.text!, quality: { id: d.quality, hash: hashOf(d.quality), version } };
+    return { op: "remove", id: d.criterion! };
+  });
+  const r = await updateTask(ctx, rid, tid, { acceptance }, opts);
+  return { ...r, applied: chosen.map((d) => `${d.kind}:${d.quality}`) };
 }
 
 /** 書く必要が無い（更新の中から抜けるため。外には出さない） */
@@ -111,7 +149,7 @@ async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: str
 export async function createTask(
   ctx: P3Context,
   rid: string,
-  { criteria, ...input }: Partial<Task> & { title: string; criteria?: readonly string[] },
+  { criteria, quality, ...input }: Partial<Task> & { title: string; criteria?: readonly string[]; quality?: QualityChoice },
   actor?: string,
 ): Promise<TaskResult> {
   ctx.ws.requests.require(rid);
@@ -121,7 +159,10 @@ export async function createTask(
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
   const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = input;
-  const acceptance = criteria?.length ? applyAcceptanceOps({}, criteria.map((text) => ({ op: "add", text })), { now: new Date().toISOString(), actor }) : {};
+  // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
+  const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
+  const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
+  const acceptance = ops.length ? applyAcceptanceOps({}, ops, { now: new Date().toISOString(), actor }) : {};
   const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status: input.status ?? "todo" }, actor);
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
   return { task, warnings: ancestorWarnings, ...after };

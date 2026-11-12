@@ -21,7 +21,8 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { AcceptanceInputError, criteriaForTask, sameCriteria, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
+import { AcceptanceInputError, applyAcceptanceOps, criteriaForTask, sameCriteria, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
+import { qualityCriteria, qualitySnapshot } from "../../shared/quality.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -499,6 +500,8 @@ export class PreflightService {
       ui: { status: "generating", targets: [], items: [], problems: [] },
       input,
       before: request.status,
+      // 品質基準も始めるときに固定する（実行中に設定が変わっても、評価とタスク化はこの版を使う）
+      quality: qualitySnapshot(this.ws.project.quality, this.ws.project.qualityVersion),
     };
     // 実行しているプロセスの記録（codex / mock）。手元のエージェントの run はプロセスを跨いで待つので記録しない
     const owner = engine === "local" ? undefined : currentOwner();
@@ -557,6 +560,7 @@ export class PreflightService {
       runDir: o.runDir,
       carryover: o.carried,
       attachments: o.run.attachments ?? [],
+      ...(o.run.quality ? { quality: o.run.quality } : {}),
       ...o.family,
     };
   }
@@ -1089,8 +1093,8 @@ export class PreflightService {
             areas: d.areas,
             outputs: [],
             relations: supersedes(d),
-            // 案の受け入れ基準を ID ごと写す（採用した案だけ。やり直しで作ったタスクは上書きしない）
-            ...criteriaForTask(d.acceptanceCriteria),
+            // 案の受け入れ基準を ID ごと写し、作業先に当てはまる品質基準（始めたときの版）を出典つきで足す（採用した案だけ。やり直しで作ったタスクは上書きしない）
+            ...withQuality(criteriaForTask(d.acceptanceCriteria), run.quality, draftRepo(d)),
             body: `${d.description}\n\n${marker}`,
           },
           actor,
@@ -1228,6 +1232,16 @@ async function localProblems(ws: Workspace, run: PreflightRun, runDir: string): 
     for (const p of d.acceptanceProblems ?? []) problems.push(`${d.key}: ${p}`);
   }
   return problems;
+}
+
+/**
+ * 案の基準に、作業先に当てはまる品質基準を足す（作業先なしの案には足さない。同じ品質 ID は二重に足さない。上限を超えれば断る）
+ */
+function withQuality(state: ReturnType<typeof criteriaForTask>, q: PreflightRun["quality"], repo: string | null) {
+  if (q?.state !== "set" || !repo) return state;
+  const add = qualityCriteria({ standards: q.standards ?? [] }, q.version, { repo }).filter((c) => !(state.acceptanceCriteria ?? []).some((x) => x.quality?.id === c.quality.id));
+  if (!add.length) return state;
+  return applyAcceptanceOps(state, add.map((c) => ({ op: "add" as const, text: c.text, quality: c.quality })), { now: new Date().toISOString() });
 }
 
 /** 固定した添付の画像を、現状（添付）の画面資料として足す（対象のタスク案は無し） */
