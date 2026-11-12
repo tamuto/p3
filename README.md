@@ -61,6 +61,7 @@ DevContainer の中で動かすとき（Docker はホストのもの）は、こ
 | マイルストーンのリリースノート（タスクの変更の記録から機能の要約を作る） | [使い方ガイド: リリースノート](docs/how-to-use.md#リリースノート) |
 | P3 そのものの開発・ソースの構成・配布物 | [開発ガイド](docs/development.md) |
 | 設計の方針と規則（なぜそうするか） | [docs/architecture.md](docs/architecture.md) |
+| 開発の工程ごとに P3 が受け持つこと・意図して持たないこと | [設計: 開発の工程と P3 の受け持ち](docs/architecture.md#開発の工程と-p3-の受け持ち) |
 | ChatGPT のサインインの設計 | [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md) |
 | npm への公開の手順 | [docs/publishing.md](docs/publishing.md) |
 

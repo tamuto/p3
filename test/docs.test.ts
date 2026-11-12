@@ -20,6 +20,12 @@ describe("文書のリンク", () => {
     for (const f of ["docs/installation.md", "docs/how-to-use.md", "docs/development.md"]) expect(targets).toContain(f);
   });
 
+  it("README から開発の工程と P3 の受け持ちの節へ辿れる", () => {
+    const link = links("README.md").find((l) => l.target === "docs/architecture.md" && l.anchor === slug("開発の工程と P3 の受け持ち"));
+    expect(link).toBeDefined();
+    expect(headings("docs/architecture.md").has(link!.anchor!)).toBe(true);
+  });
+
   it("アンカーの作り方は GitHub と同じ", () => {
     expect(slug("タグ・期限・マイルストーン")).toBe("タグ期限マイルストーン");
     expect(slug("5. パスの対応を書く（DevContainer のときだけ）")).toBe("5-パスの対応を書くdevcontainer-のときだけ");
