@@ -16,7 +16,7 @@ export class MockTaskReviewer implements Summarizer {
       signal.addEventListener("abort", () => (clearTimeout(t), rej(new Error("aborted"))), { once: true });
     });
     const json = /<material>\n([\s\S]*?)\n<\/material>/.exec(input.prompt)?.[1];
-    const material = JSON.parse(json ?? "{}") as { items?: { id: string }[] };
+    const material = JSON.parse(json ?? "{}") as { items?: { id: string }[]; quality?: { state: string; standards: { id: string }[] } };
     return {
       message: JSON.stringify({
         overall: "（Mock）評価していません",
@@ -24,6 +24,7 @@ export class MockTaskReviewer implements Summarizer {
         unplanned: [],
         checks: [],
         coverage: { read: "（Mock）読んでいません", unread: "材料の全部" },
+        ...(material.quality?.state === "set" ? { quality: material.quality.standards.map((q) => ({ standard: q.id, verdict: "undetermined", reason: "（Mock）評価していません", evidence: [] })) } : {}),
       }),
       seconds: 0,
     };

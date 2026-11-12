@@ -4,7 +4,8 @@ import { relationRole, type ArchivedTask, type ProposedTask, type Task } from ".
 import { normalizeTaskId } from "../shared/refs.ts";
 import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.ts";
 import { listTasks, resolve, resolveRef, resolveRequestId } from "../core/ops.ts";
-import { archiveTask, createTask, updateTask } from "../core/requestOps.ts";
+import { archiveTask, createTask, importQuality, updateTask } from "../core/requestOps.ts";
+import { taskQualityDiff } from "../shared/quality.ts";
 import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
@@ -105,6 +106,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
           outputs: o.output ?? [],
           ...(repoOutputs.length ? { repoOutputs: addRepoOutputs([], repoOutputs) } : {}),
           ...(o.criterion?.length ? { criteria: o.criterion } : {}),
+          // 品質基準: 省く・all は作業先に当てはまるもの（作業先なしは取り込まない）、none は取り込まない、Q1,Q2 は明示したもの
+          ...(o.quality !== undefined ? { quality: o.quality === "all" ? "auto" : o.quality === "none" ? "none" : o.quality.split(",").map((x) => x.trim()).filter(Boolean) } : {}),
           body: readBody(o.body),
         },
         actor,
@@ -262,6 +265,7 @@ async function criteriaCommand(env: CommandEnv): Promise<number> {
   if (draft) return draftCriteriaCommand(env, draft[1], draft[2].toUpperCase());
   const ref = taskArg(args[0]);
   const [sub, ...rest] = args.slice(1);
+  if (sub === "quality") return qualitySubcommand(env, ref, rest);
   if (sub === undefined || sub === "ls" || sub === "show") {
     const task = ctx.ws.requireTask(ref);
     const acc = acceptanceStatus(task);
@@ -287,6 +291,38 @@ async function criteriaCommand(env: CommandEnv): Promise<number> {
       return applyAcceptance(env, ref, [{ op: "order", ids: rest }]);
   }
   throw new UsageError(`criteria の操作は add / edit / rm / order です: ${sub}`);
+}
+
+/**
+ * criteria <T> quality                     今の品質基準との差分（追加・変更・削除・除外・タスクで直した）。読むだけ
+ * criteria <T> quality import [<kind>:<Q>...]  差分を明示して取り込む（省くと「直した」以外の全部）
+ */
+async function qualitySubcommand({ ctx, out, actor, expectedRev }: CommandEnv, ref: string, rest: string[]): Promise<number> {
+  const t = ctx.ws.requireTask(ref);
+  if (rest[0] === undefined || rest[0] === "diff") {
+    const q = ctx.ws.project.quality;
+    const diff = taskQualityDiff(t.acceptanceCriteria ?? [], q, t.repo);
+    const state = q?.state ?? "unset";
+    const label = { add: "足す", change: "変わった", remove: "消す", exempt: "除外になった", edited: "タスクで直した" } as const;
+    return out.result({ ref: t.ref, quality: state, version: ctx.ws.project.qualityVersion, diff }, () =>
+      state !== "set"
+        ? `品質基準は${state === "unset" ? "未設定" : "読めません"}です（p3 quality）`
+        : diff.length
+          ? [
+              `${t.ref} と今の品質基準の差分（版 ${ctx.ws.project.qualityVersion}）:`,
+              ...diff.map((d) => `  ${d.kind}:${d.quality}  ${label[d.kind]}${d.criterion ? `（${d.criterion}）` : ""}${d.text ? `  ${d.text}` : ""}${d.reason ? `  ${d.reason}` : ""}`),
+              t.repo ? "" : "  ※作業先なしのタスクには、足す案を出しません（p3 new --quality Q1,Q2 のように明示して取り込めます）",
+              `取り込む: p3 criteria ${t.id} quality import [<kind>:<Q>...]`,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : `${t.ref} は今の品質基準と差分がありません`,
+    );
+  }
+  if (rest[0] !== "import") throw new UsageError("使い方: p3 criteria <T> quality [import [<kind>:<Q>...]]");
+  const r = await importQuality(ctx, t.request, t.id, rest.length > 1 ? rest.slice(1) : undefined, { expectedRev, actor });
+  if (r.checkCleared) process.stderr.write(`${r.checkCleared}\n`);
+  return out.result({ ...r.task, applied: r.applied, ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () => [`取り込みました: ${r.applied.join(", ")}`, ...formatAcceptance(r.task)].join("\n"));
 }
 
 /**

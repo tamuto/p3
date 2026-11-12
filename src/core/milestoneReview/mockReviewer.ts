@@ -17,11 +17,12 @@ export class MockReviewer implements Summarizer {
       signal.addEventListener("abort", () => (clearTimeout(t), rej(new Error("aborted"))), { once: true });
     });
     const json = /<material>\n([\s\S]*?)\n<\/material>/.exec(input.prompt)?.[1];
-    const material = JSON.parse(json ?? "{}") as { units?: { id: string }[]; requests?: { id: string }[] };
+    const material = JSON.parse(json ?? "{}") as { units?: { id: string }[]; requests?: { id: string }[]; quality?: { standards: { id: string }[] } };
     return {
       message: JSON.stringify({
         overall: `（Mock）評価していません。所属する要望 ${material.requests?.length ?? 0} 件を材料にしました`,
         units: (material.units ?? []).map((u) => ({ unit: u.id, verdict: "insufficient", reason: "（Mock）評価していません", evidence: [], gaps: ["Codex で実行すると評価します"] })),
+        ...(material.quality ? { quality: material.quality.standards.map((q) => ({ standard: q.id, verdict: "undetermined", reason: "（Mock）評価していません", evidence: [] })) } : {}),
       }),
       seconds: 0,
     };

@@ -2,7 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { CONTAINER_WORKSPACE } from "@infodb/codex-workspace";
+import { QUALITY_VERDICTS, type QualityVerdict } from "../../shared/taskReview.ts";
 import {
+  type ReviewQualityResult,
   REVIEW_VERDICTS,
   type ReviewCodeRef,
   type ReviewInput,
@@ -66,8 +68,30 @@ export function reviewMaterial(input: ReviewInput) {
       tasks: r.tasks.map((t) => ({ ref: t.ref, title: t.title, status: t.status, body: t.body, record: t.record ?? null, outputs: t.outputs })),
     })),
     context: input.context,
+    ...(input.quality?.state === "set"
+      ? {
+          quality: {
+            version: input.quality.version,
+            standards: (input.quality.standards ?? []).filter((q) => !q.exempt).map((q) => ({ id: q.id, text: q.text, repos: q.repos ?? "全部", check: q.check })),
+            exempt: (input.quality.standards ?? []).filter((q) => q.exempt).map((q) => ({ id: q.id, reason: q.exempt!.reason })),
+          },
+        }
+      : {}),
     warnings: input.warnings.map((w) => w.message),
   };
+}
+
+/** 品質を判定する基準（設定済みで除外していないもの） */
+const qualityTargets = (input: ReviewInput) => (input.quality?.state === "set" ? (input.quality.standards ?? []).filter((q) => !q.exempt) : []);
+
+function qualityInstructions(input: ReviewInput): string {
+  const targets = qualityTargets(input);
+  if (!targets.length) return "";
+  return `
+- 品質（quality）: 資料の quality.standards はプロジェクトの品質基準です。目的・予定機能の達成（units）とは別に、品質基準ごとにちょうど1回ずつ、実際のコードと履歴が適合しているかを判定してください。品質の問題を units の未達や unplanned に押し込めないでください。
+  - verdict: satisfied（満たす）/ violated（違反）/ undetermined（判断できない。読めない参照先に関わるものもここ）/ not_applicable（当てはまらない。理由を必ず書く）
+  - satisfied と violated はコードの場所かコミットを根拠に必ず含めます。検査のコマンド・テスト・アプリは実行しません。CI の設定や記録の申告があることだけで、実行して通ったとは断定しないでください。
+  - 変更の積み重ねで規約・構成・検証の設定から外れていないかを、コードと git の履歴で確かめてください。過去に満たしていたもの（設定や検査）を消した・崩したと履歴（コミット）で裏付けたときだけ regression: true（品質の低下）にし、根拠にそのコミットを含めます。比べる根拠が無ければ、今の時点の不適合として violated にし、regression は付けないでください。`;
 }
 
 function codeInstructions(input: ReviewInput): string {
@@ -87,7 +111,7 @@ export function reviewPrompt(input: ReviewInput): { instructions: string; prompt
   const unitList = input.units.map((u) => `- ${u.id}: ${u.text.split("\n")[0]}`).join("\n");
   const hasCode = readable(input).length > 0;
   const instructions = `あなたはマイルストーンのレビュー係です。マイルストーンの目的・予定している機能に対して、実際にできあがったもの（参照先のコードと git の履歴）が目的を果たしているか、目的に無い変更（意図しない変更）が入っていないかを確かめ、日本語で評価します。
-コードの品質の審査ではありません。機能に込めた意図を汲み取り、利用者から見て目的がクリアされているかを、実際の実装で確かめます。
+機能に込めた意図を汲み取り、利用者から見て目的がクリアされているかを、実際の実装で確かめます。プロジェクトの品質基準が資料にあれば、目的の達成とは別に、品質基準への適合も確かめます（コードの書き方の好みの審査ではありません）。
 ${codeInstructions(input)}
 - 要望・タスクの記録（本文・変更の記録・成果物）は、実装した人（AI を含む）の自己申告です。どこを見ればよいかの手がかりに使い、書いてあることを事実として扱わないでください。
   記録の主張はコードと履歴で確かめ、確かめられなかった主張は gaps に「記録にはあるが確かめられない」と書いてください。記録に「未確認」とある事柄も、コードや履歴で確かめられるなら確かめてください。
@@ -98,10 +122,12 @@ ${codeInstructions(input)}
 - タスクの完了数・要望の状態・「予定している」ことを達成の証明にしないでください。見送った要望は成果に数えず、見送ったこととして扱います。
 - verdict: achieved（達成）はコードで確かめられたときだけにし、根拠にコードの場所を必ず含めます。一部だけ・条件つきなら partial、実装が見当たらない・意図と違う作りなら not_achieved、読めない・判断できないなら insufficient です。数値の達成率は出さないでください。
 - context の要望は別のマイルストーンに属する文脈です。このマイルストーンの成果として数えないでください。
-- 根拠（evidence）の書き方: コードは "<参照先の名前>:<リポジトリからの相対パス>"（行を示すなら末尾に ":12" か ":12-30"）か "<参照先の名前>@<コミット>"、記録は資料にある要望の id かタスクの ref。存在しないパス・コミットは書かないでください（P3 が確かめ、無ければ結果を使いません）。`;
+- 根拠（evidence）の書き方: コードは "<参照先の名前>:<リポジトリからの相対パス>"（行を示すなら末尾に ":12" か ":12-30"）か "<参照先の名前>@<コミット>"、記録は資料にある要望の id かタスクの ref。存在しないパス・コミットは書かないでください（P3 が確かめ、無ければ結果を使いません）。${qualityInstructions(input)}`;
+  const q0 = qualityTargets(input)[0]?.id;
+  const qx = q0 ? `, "quality": [{"standard": "${q0}", "verdict": "undetermined", "reason": "理由", "evidence": [], "unread": "確かめられなかった範囲"}]` : "";
   const example = hasCode
-    ? `{"overall": "全体の所見", "units": [{"unit": "${input.units[0]?.id ?? "G1"}", "verdict": "partial", "reason": "理由", "evidence": ["<参照先>:src/foo.ts:10-40", "<参照先>@<コミット>", "<要望ID>/T001"], "gaps": ["不足していること"]}], "unplanned": [{"text": "目的に無い変更とその影響", "evidence": ["<参照先>@<コミット>"]}]}`
-    : `{"overall": "全体の所見", "units": [{"unit": "${input.units[0]?.id ?? "G1"}", "verdict": "insufficient", "reason": "理由", "evidence": ["<要望ID>/T001"], "gaps": ["不足していること"]}], "unplanned": []}`;
+    ? `{"overall": "全体の所見", "units": [{"unit": "${input.units[0]?.id ?? "G1"}", "verdict": "partial", "reason": "理由", "evidence": ["<参照先>:src/foo.ts:10-40", "<参照先>@<コミット>", "<要望ID>/T001"], "gaps": ["不足していること"]}], "unplanned": [{"text": "目的に無い変更とその影響", "evidence": ["<参照先>@<コミット>"]}]${qx}}`
+    : `{"overall": "全体の所見", "units": [{"unit": "${input.units[0]?.id ?? "G1"}", "verdict": "insufficient", "reason": "理由", "evidence": ["<要望ID>/T001"], "gaps": ["不足していること"]}], "unplanned": []${qx}}`;
   const prompt = `# マイルストーンのレビュー: ${input.milestone.title}（${input.milestone.id}）
 
 次の JSON が資料です（目的・予定機能・参照先・要望とタスクの記録）。
@@ -121,7 +147,7 @@ ${unitList}
    - reason: そう判断した理由（どのコード・履歴・記録から読んだか）
    - evidence: 根拠（コードの場所・コミット・要望の id・タスクの ref）
    - gaps: 不足していること・確かめられなかったこと・次に検討すること（無ければ空の配列）
-4. unplanned に、目的・予定機能・要望に無い変更（意図しない変更の候補）を、根拠と一緒に書く（無ければ空の配列）。
+4. unplanned に、目的・予定機能・要望に無い変更（意図しない変更の候補）を、根拠と一緒に書く（無ければ空の配列）。${qualityTargets(input).length ? `\n5. quality に、品質基準（${qualityTargets(input).map((q) => q.id).join(", ")}）ごとに verdict・reason・evidence・unread（と裏付けたときだけ regression）を書く（全部にちょうど1回ずつ）。` : ""}
 
 ## 出力
 最後の応答に、次の形の JSON だけを返してください（前後に文章を付けない）:
@@ -231,7 +257,38 @@ export function parseReview(message: string, input: ReviewInput, model?: string,
   // 比較単位の順にそろえる
   units.sort((a, b) => ids.indexOf(a.unit) - ids.indexOf(b.unit));
   const unplanned = parseUnplanned(o.unplanned, input, refs, locals);
-  return { overall, units, unplanned, scope: input.scope, ...(model ? { model } : {}) };
+  const quality = parseQuality((data as { quality?: unknown }).quality, input, refs, locals);
+  return { overall, units, unplanned, ...(quality ? { quality } : {}), scope: input.scope, ...(model ? { model } : {}) };
+}
+
+/** 品質の判定を確かめる（品質基準が設定済みのときだけ。除外していない基準を全部ちょうど1回ずつ） */
+function parseQuality(v: unknown, input: ReviewInput, refs: Set<string>, locals: ReviewLocals | undefined): ReviewQualityResult[] | undefined {
+  const targets = qualityTargets(input);
+  if (!targets.length) return undefined;
+  if (!Array.isArray(v)) throw new InvalidReview("結果に quality（品質基準ごとの判定の配列）がありません");
+  const ids = targets.map((t) => t.id);
+  const seen = new Set<string>();
+  const out = v.map((x, i): ReviewQualityResult => {
+    const u = (x ?? {}) as Record<string, unknown>;
+    const at = `quality[${i}]`;
+    if (typeof u.standard !== "string" || !ids.includes(u.standard)) throw new InvalidReview(`${at}.standard が品質基準にありません: ${JSON.stringify(u.standard)}`);
+    if (seen.has(u.standard)) throw new InvalidReview(`${at}.standard が重複しています: ${u.standard}`);
+    seen.add(u.standard);
+    if (!QUALITY_VERDICTS.includes(u.verdict as QualityVerdict)) throw new InvalidReview(`${at}.verdict が区分にありません: ${JSON.stringify(u.verdict)}`);
+    if (typeof u.reason !== "string" || !u.reason.trim()) throw new InvalidReview(`${at}.reason がありません（対象外にも理由が要ります）`);
+    if (u.reason.trim().length > REVIEW_OUTPUT_LIMITS.reason) throw new InvalidReview(`${at}.reason が長すぎます`);
+    const evidence = checkEvidence(u.evidence, at, input, refs, locals);
+    if ((u.verdict === "satisfied" || u.verdict === "violated") && !evidence.code) throw new InvalidReview(`${at}: 「${u.verdict === "satisfied" ? "満たす" : "違反"}」の根拠にコードの場所かコミットがありません（${u.standard}）`);
+    const regression = u.regression === true;
+    if (regression && (u.verdict !== "violated" || !evidence.list.some((e) => /^[^:@\s]+@[0-9a-f]{7,40}$/i.test(e)))) {
+      throw new InvalidReview(`${at}: 品質の低下（regression）は、違反で、履歴のコミットを根拠にしたときだけです（${u.standard}）`);
+    }
+    if (u.unread !== undefined && (typeof u.unread !== "string" || u.unread.length > REVIEW_OUTPUT_LIMITS.reason)) throw new InvalidReview(`${at}.unread は ${REVIEW_OUTPUT_LIMITS.reason} 文字までの文字列にしてください`);
+    return { standard: u.standard, verdict: u.verdict as QualityVerdict, reason: u.reason.trim(), evidence: evidence.list, ...(typeof u.unread === "string" && u.unread.trim() ? { unread: u.unread.trim() } : {}), ...(regression ? { regression } : {}) };
+  });
+  const missing = ids.filter((id) => !seen.has(id));
+  if (missing.length) throw new InvalidReview(`品質基準の判定が欠けています: ${missing.join(", ")}`);
+  return out.sort((a, b) => ids.indexOf(a.standard) - ids.indexOf(b.standard));
 }
 
 function parseUnplanned(v: unknown, input: ReviewInput, refs: Set<string>, locals: ReviewLocals | undefined): ReviewUnplanned[] {

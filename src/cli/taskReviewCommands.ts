@@ -2,7 +2,7 @@ import { resolveRequestId } from "../core/ops.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import type { TaskReviewDetail } from "../core/taskReview/service.ts";
 import { normalizeTaskId } from "../shared/refs.ts";
-import { previewOf, TASK_REVIEW_SCOPE, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewVerdict } from "../shared/taskReview.ts";
+import { previewOf, QUALITY_VERDICT_LABELS, TASK_REVIEW_SCOPE, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewVerdict } from "../shared/taskReview.ts";
 import type { CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
 import { UsageError } from "./project.ts";
@@ -110,10 +110,29 @@ function formatPreview(p: ReturnType<typeof previewOf> & { engineRequired: boole
     lines.push(`  ${t.repo}  ${t.kind === "range" ? `${t.range!.baseSpec}..${t.range!.headSpec}（merge-base ${t.range!.mergeBase.slice(0, 12)}）` : "コミット"}  変更 ${t.changes} 件  出典: ${t.sources.join(", ")}`);
     for (const c of t.commits) lines.push(`    ${c.sha.slice(0, 12)}  ${c.subject}${c.otherTasks.length ? `  ※ほかのタスク ${c.otherTasks.join(", ")}` : ""}`);
   }
+  if (p.quality) lines.push("", `品質基準: ${p.quality.state === "set" ? `版 ${p.quality.version}・判定する ${p.quality.applies.map((q) => q.id).join(", ") || "なし"}${p.quality.exempt.length ? `・除外 ${p.quality.exempt.map((q) => q.id).join(", ")}` : ""}` : p.quality.state === "unset" ? "未設定" : "読めません"}`);
   lines.push("", `観点: ${p.viewpoint.source}${p.viewpoint.repo ? `（${p.viewpoint.repo}@${p.viewpoint.sha?.slice(0, 12)}:${p.viewpoint.path}）` : ""}`);
   for (const n of p.notes) lines.push(`  ⚠ ${n.message}`);
   if (p.engineRequired) lines.push("", "※ Preflight の担当が agent なので、Codex で実行するなら --engine codex を付けてください");
   return lines.join("\n");
+}
+
+/** 品質の表示（評価した版・最新との差・基準ごとの判定・違反の指摘）。古い記録は品質を評価していない */
+function qualityLines(input: TaskReviewDetail["input"], result: NonNullable<TaskReviewDetail["result"]>): string[] {
+  const q = input.quality;
+  if (!q) return ["品質: 評価していません（品質基準を材料に入れる前の記録です）"];
+  if (q.latest.state !== "set") return [`品質: 評価していません（品質基準が${q.latest.state === "unset" ? "未設定" : "読めません"}）`];
+  const lines = [`品質（最新の品質基準 版 ${q.latest.version}。タスクに取り込んだ版: ${q.imported.length ? [...new Set(q.imported.map((x) => x.version))].join(", ") : "なし"}）:`];
+  for (const d of q.diff.filter((x) => x.kind !== "edited")) lines.push(`  差: ${d.kind}:${d.quality}${d.reason ? `（${d.reason}）` : ""}`);
+  for (const r of result.quality ?? []) {
+    lines.push(`  ${r.verdict === "violated" ? "✗" : "・"} ${r.standard}  ${QUALITY_VERDICT_LABELS[r.verdict]}  ${r.reason}`);
+    if (r.evidence.length) lines.push(`      根拠: ${r.evidence.join(", ")}`);
+    if (r.unread) lines.push(`      確かめられなかった範囲: ${r.unread}`);
+  }
+  for (const e of q.exempt) lines.push(`  ・ ${e.id}  除外（${e.exempt?.reason ?? ""}）`);
+  const violated = (result.quality ?? []).filter((r) => r.verdict === "violated");
+  if (violated.length) lines.push(`品質の指摘: ${violated.map((r) => r.standard).join(", ")} に違反があります（作業した側の証拠とは別の判定です）`);
+  return lines;
 }
 
 /** review-show の人向けの表示 */
@@ -140,6 +159,7 @@ export function formatTaskReview(d: TaskReviewDetail): string {
     if (!result.unplanned.length) lines.push("  （見つかっていません）");
     for (const u of result.unplanned) lines.push(`  - ${u.text}${u.evidence.length ? `（根拠: ${u.evidence.join(", ")}）` : ""}`);
     if (result.checks.length) lines.push("", "人が確かめる点:", ...result.checks.map((c) => `  - ${c}`));
+    lines.push("", ...qualityLines(input, result));
     lines.push("", `読めた範囲: ${result.coverage.read}`, `読めなかった範囲: ${result.coverage.unread || "（なし）"}`, "", `範囲: ${TASK_REVIEW_SCOPE}`);
   }
   return lines.join("\n");

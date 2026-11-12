@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { rerunSpec, TASK_REVIEW_SCOPE, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewListItem, type TaskReviewVerdict } from "../../shared/taskReview.ts";
+import { QUALITY_VERDICT_LABELS, rerunSpec, TASK_REVIEW_SCOPE, type QualityVerdict, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewListItem, type TaskReviewVerdict } from "../../shared/taskReview.ts";
 import type { Task } from "../../shared/types.ts";
 import { api, ApiError, type TaskReviewDetailView, type TaskReviewPreview, type TaskReviewSpec } from "../lib/api.ts";
 import { useAppData } from "../lib/appData.tsx";
@@ -7,6 +7,7 @@ import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { useServerEvents } from "../lib/live.ts";
 import { Badge, Button, Field, inputCls, type Tone } from "./ui.tsx";
+import { ImprovementButton } from "./ImprovementDialog.tsx";
 
 /**
  * タスク詳細の「タスクの AI レビュー」（作業した側の証拠とは別の欄）。開始の前に材料（比較項目・比較対象の固定した SHA・観点の出典・
@@ -286,6 +287,11 @@ function PreviewView({ p }: { p: TaskReviewPreview }) {
           ))}
         </ul>
       </div>
+      {p.quality && (
+        <p>
+          品質基準: {p.quality.state === "set" ? `版 ${p.quality.version}・判定する ${p.quality.applies.map((q) => q.id).join(", ") || "なし"}${p.quality.exempt.length ? `・除外 ${p.quality.exempt.map((q) => q.id).join(", ")}` : ""}` : p.quality.state === "unset" ? "未設定（品質は評価しません）" : "読めません（品質は評価しません）"}
+        </p>
+      )}
       <p>
         観点: {p.viewpoint.source === "file" ? `${p.viewpoint.repo}@${p.viewpoint.sha?.slice(0, 12)}:${p.viewpoint.path}` : p.viewpoint.source === "project" ? "プロジェクトの設定" : "既定だけ"}
       </p>
@@ -299,6 +305,61 @@ function PreviewView({ p }: { p: TaskReviewPreview }) {
         </ul>
       )}
     </div>
+  );
+}
+
+const QUALITY_TONE: Record<QualityVerdict, Tone> = { satisfied: "emerald", violated: "rose", undetermined: "amber", not_applicable: "slate" };
+
+/** 品質（タスクの比較項目とは別の欄）。評価した最新の版・タスクに取り込んだ版・差・基準ごとの判定・違反の指摘。古い記録は品質を評価していない */
+function QualityView({ input, result, run }: { input: TaskReviewDetailView["input"]; result: NonNullable<TaskReviewDetailView["result"]>; run: TaskReviewDetailView["run"] }) {
+  const q = input.quality;
+  const source = { type: "task-review" as const, request: run.request, task: run.task, run: run.id };
+  const canImprove = !!q && (q.latest.state !== "set" || (result.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || q.exempt.length > 0);
+  return (
+    <section aria-label="品質" className="space-y-2">
+      <h4 className="font-semibold">品質（最新のプロジェクトの品質基準への適合）</h4>
+      {!q ? (
+        <p className="text-sm text-slate-400">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
+      ) : q.latest.state !== "set" ? (
+        <p className="text-sm text-slate-400">品質は評価していません（品質基準が{q.latest.state === "unset" ? "未設定" : "読めません"}）。</p>
+      ) : (
+        <>
+          <p className="text-sm text-slate-500">
+            評価した版 <span className="font-mono">{q.latest.version}</span>・タスクに取り込んだ版 {q.imported.length ? [...new Set(q.imported.map((x) => x.version))].join(", ") : "なし"}
+          </p>
+          {q.diff.filter((d) => d.kind !== "edited").length > 0 && (
+            <p className="text-sm break-words text-amber-800 dark:text-amber-300">
+              タスクに取り込んだ品質基準と最新の差: {q.diff.filter((d) => d.kind !== "edited").map((d) => `${d.kind}:${d.quality}`).join(", ")}（基準の改定による不足とコードの逸脱は理由で分けています）
+            </p>
+          )}
+          {(result.quality ?? []).some((r) => r.verdict === "violated") && (
+            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+              品質の指摘: {(result.quality ?? []).filter((r) => r.verdict === "violated").map((r) => r.standard).join(", ")} に違反があります（作業した側の証拠とは別の判定です）
+            </p>
+          )}
+          <ul className="space-y-2">
+            {(result.quality ?? []).map((r) => (
+              <li key={r.standard} aria-label={`品質 ${r.standard}`} className="min-w-0 space-y-1 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold">{r.standard}</span>
+                  <Badge tone={QUALITY_TONE[r.verdict]}>{QUALITY_VERDICT_LABELS[r.verdict]}</Badge>
+                  <span className="min-w-0 break-words">{q.applies.find((x) => x.id === r.standard)?.text}</span>
+                </p>
+                <p className="break-words">{r.reason}</p>
+                {r.evidence.length > 0 && <p className="font-mono text-sm break-all text-slate-500">根拠: {r.evidence.join(", ")}</p>}
+                {r.unread && <p className="text-sm break-words text-slate-500">確かめられなかった範囲: {r.unread}</p>}
+              </li>
+            ))}
+            {q.exempt.map((e) => (
+              <li key={e.id} className="text-sm text-slate-500">
+                <span className="font-mono">{e.id}</span> 除外（{e.exempt?.reason}）
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {canImprove && <ImprovementButton source={source} />}
+    </section>
   );
 }
 
@@ -433,6 +494,7 @@ function RunView({
               </ul>
             </section>
           )}
+          <QualityView input={input} result={result} run={run} />
           <p className="text-sm break-words text-slate-500">読めた範囲: {result.coverage.read}</p>
           <p className="text-sm break-words text-slate-500">読めなかった範囲: {result.coverage.unread || "なし"}</p>
           <p className="text-sm text-slate-400">{TASK_REVIEW_SCOPE}</p>

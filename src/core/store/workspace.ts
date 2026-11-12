@@ -4,6 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/milestoneGoals.ts";
+import { QualityInputError, qualityPlain, type QualityConfig } from "../../shared/quality.ts";
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "./fsutil.ts";
@@ -12,7 +13,7 @@ import { AttachmentStore } from "./attachments.ts";
 import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";
 import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
-import { writeProjectFile } from "./projectFile.ts";
+import { writeProjectFile, writeQualityFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
 import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
@@ -307,6 +308,25 @@ export class Workspace {
       const milestones = patch.milestones ? keepGoals(patch.milestones, cur.milestones) : cur.milestones;
       return { ...cur, ...patch, milestones, preflight };
     }, opts);
+  }
+
+  /**
+   * 品質基準を、ロックの中で読み直した最新の値から作り直して書く（project.yaml の quality だけ）。expectedVersion が今の版と違えば
+   * QualityInputError（quality_conflict）で何も書かない。make が投げたら何も書かない
+   */
+  async writeQuality(make: (cur: ProjectConfig) => QualityConfig, opts: { expectedVersion?: string } = {}): Promise<ProjectConfig> {
+    const path = join(this.dataDir, "project.yaml");
+    await withFileLock(join(this.dataDir, ".project.yaml.lock"), async () => {
+      await this.loadProject();
+      const now = this.project.qualityVersion;
+      if (opts.expectedVersion !== undefined && opts.expectedVersion !== now) {
+        throw new QualityInputError("quality_conflict", `品質基準が他で変わりました（版 ${opts.expectedVersion} → ${now}）。最新を読み直してからやり直してください`);
+      }
+      await writeQualityFile(path, qualityPlain(make(this.project)));
+      await this.loadProject();
+    });
+    this.emit({ type: "changed", kind: "project" });
+    return this.project;
   }
 
   /**

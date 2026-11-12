@@ -6,6 +6,7 @@ import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import { Button, Field, inputCls } from "../ui.tsx";
 import { CriteriaRowsEditor, rowsInvalid, type CriterionRow } from "../Acceptance.tsx";
+import { standardsFor } from "../../../shared/quality.ts";
 
 /** タスクを足しても状態が変わらず、作業を始めるなら手で進行中にする要望 */
 const BEFORE_ACTIVE: Request["status"][] = ["draft", "preflight", "reviewed"];
@@ -25,7 +26,7 @@ export function NewTaskForm({
 }: {
   dialog: RefObject<HTMLDialogElement | null>;
   request: Pick<Request, "id" | "status">;
-  project: Pick<ProjectConfig, "repos">;
+  project: Pick<ProjectConfig, "repos" | "quality">;
   /** 作った（reopened: 対応済から進行中に戻した） */
   onCreated: (task: Task, reopened: boolean) => void;
   /** 保存に失敗した。保存はできていて後の処理だけが失敗したこともあるので、一覧を読み直す */
@@ -38,6 +39,8 @@ export function NewTaskForm({
   const [repo, setRepo] = useState(initialRepo);
   // 受け入れ基準（任意。ID はサーバが振る）
   const [criteria, setCriteria] = useState<CriterionRow[]>([]);
+  // 品質基準を受け入れ基準に取り込むか（作業先に当てはまるもの）
+  const [withQuality, setWithQuality] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -53,6 +56,7 @@ export function NewTaskForm({
       setBody("");
       setRepo(initialRepo);
       setCriteria([]);
+      setWithQuality(true);
       setError(null);
     };
     d.addEventListener("close", reset);
@@ -75,8 +79,9 @@ export function NewTaskForm({
     setBusy(true);
     setError(null);
     try {
-      const input: Partial<Task> & { criteria?: string[] } = { title: title.trim(), body, status: "todo" };
+      const input: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" } = { title: title.trim(), body, status: "todo" };
       if (criteria.length) input.criteria = criteria.map((c) => c.text);
+      if (project.quality?.state === "set") input.quality = withQuality ? "auto" : "none";
       if (project.repos.length) input.repo = repo === NO_REPO ? null : repo;
       const created = (await api.createTask(request.id, input)) as Task & { reopened?: string };
       onCreated(created, !!created.reopened);
@@ -132,6 +137,18 @@ export function NewTaskForm({
             <CriteriaRowsEditor rows={criteria} disabled={busy} idPrefix="new-task-criterion" onChange={setCriteria} />
             <p className="text-sm text-slate-400">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
           </fieldset>
+          {project.quality?.state === "set" && (() => {
+            const target = project.repos.length ? (repo === NO_REPO ? null : repo) : null;
+            const n = standardsFor(project.quality.config, target).applies.length;
+            return target ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={withQuality} disabled={busy} onChange={(e) => setWithQuality(e.target.checked)} />
+                作業先 {target} に当てはまる品質基準を受け入れ基準に取り込む（{n} 件）
+              </label>
+            ) : (
+              <p className="text-sm text-slate-400">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
+            );
+          })()}
           {BEFORE_ACTIVE.includes(request.status) && (
             <p className="text-sm text-slate-500">
               タスクを足しても要望のステータスは変わりません。作業を始めるときは、概要のタブでステータスを「進行中」にしてください。

@@ -29,7 +29,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
       return c.json({ error: err.message, code: err.code }, status);
     }
     if (err instanceof ReviewRejected) {
-      const status = err.code === "running" ? 409 : err.code === "unknown_milestone" ? 404 : 400;
+      const status = err.code === "running" || err.code === "material_changed" ? 409 : err.code === "unknown_milestone" ? 404 : 400;
       return c.json({ error: err.message, code: err.code, ...(err.running ? { run: err.running } : {}) }, status);
     }
     if (err instanceof ReviewCancelRefused) return c.json({ error: err.message, code: err.code }, 409);
@@ -53,6 +53,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
       context: i.context.length,
       code: i.code ?? [],
       warnings: i.warnings,
+      ...(i.quality ? { quality: { state: i.quality.state, version: i.quality.version, standards: (i.quality.standards ?? []).map((q) => ({ id: q.id, text: q.text, exempt: q.exempt?.reason })) } } : {}),
       scope: i.scope,
       hash: i.hash,
       extractedAt: i.extractedAt,
@@ -60,8 +61,8 @@ export function milestoneReviewRoutes(ctx: P3Context) {
   });
   app.get("/milestones/:mid/reviews", async (c) => c.json({ items: await svc().list(c.req.param("mid")) }));
   app.post("/milestones/:mid/reviews", async (c) => {
-    const { engine } = z.object({ engine: z.enum(["codex", "mock"]).optional() }).parse(await c.req.json().catch(() => ({})));
-    return c.json(await svc().start(c.req.param("mid"), actorOf(c), engine), 202);
+    const { engine, expectedHash } = z.object({ engine: z.enum(["codex", "mock"]).optional(), expectedHash: z.string().optional() }).parse(await c.req.json().catch(() => ({})));
+    return c.json(await svc().start(c.req.param("mid"), actorOf(c), engine, { expectedHash }), 202);
   });
   app.get("/milestones/:mid/reviews/:run", async (c) => c.json(await svc().get(c.req.param("mid"), c.req.param("run"))));
   app.post("/milestones/:mid/reviews/:run/cancel", async (c) => {

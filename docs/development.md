@@ -133,7 +133,7 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 TypeScript 7 の型検査器で tsconfig.json を読む）も動かす。設定は `.oxlintrc.json`。ESLint・Biome・整形の道具は入れていない
 （書式はそろえて書く）。指摘は全部エラーで、警告も使われていない無効化コメントも `pnpm check` を落とす。
 
-- **対象**: tsconfig.json の include と同じ `src`・`scripts`・`test`・`vite.config.ts`・`vitest.config.ts`。この中の `.mjs`
+- **対象**: package.json の `lint` に並べた `src`・`scripts`・`test`・`vite.config.ts`・`vitest.config.ts`・`vitest.ui.config.ts`。この中の `.mjs`
   （起動の補助・偽の app-server など）も、TypeScript の対象ではないが型情報なしの規則で検査する。`bin/` は対象の外
 - **除外**: 生成したルート一覧 `src/web/routeTree.gen.ts`。`dist/`・`node_modules/`・`.p3-demo/` は対象のフォルダの外
 - **規則**: plugin は typescript・unicorn・oxc・react・import・promise・vitest。それぞれの correctness（誤りか無意味なコード）を全部

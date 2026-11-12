@@ -1,5 +1,6 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
+import { qualityVersion, readQuality } from "../../shared/quality.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
@@ -140,7 +141,14 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     preflight: { instructions: str(preflight.instructions) ?? "", ...runnerOf(preflight.runner) },
+    ...qualityOf(d.quality, normalizeRepos(d.repos).map((r) => r.name)),
   };
+}
+
+/** 品質基準（無い・読めない・読めるを分ける。読めない値もそのまま版に入れ、書き換えない） */
+function qualityOf(raw: unknown, repoNames: string[]): Pick<ProjectConfig, "quality" | "qualityVersion"> {
+  const quality = readQuality(raw, repoNames);
+  return { quality, qualityVersion: qualityVersion(quality, raw) };
 }
 
 /**

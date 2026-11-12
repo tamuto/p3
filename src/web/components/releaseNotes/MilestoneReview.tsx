@@ -14,7 +14,9 @@ import { useAppData } from "../../lib/appData.tsx";
 import { fmtTime } from "../../lib/format.ts";
 import { latestOnly, STALE } from "../../lib/latest.ts";
 import { useServerEvents } from "../../lib/live.ts";
-import { Button, cx } from "../ui.tsx";
+import { Badge, Button, cx } from "../ui.tsx";
+import { ImprovementButton } from "../ImprovementDialog.tsx";
+import { QUALITY_VERDICT_LABELS } from "../../../shared/taskReview.ts";
 
 /**
  * 1つのマイルストーンのレビュー（リリースノートの画面の「レビュー」タブ）。規則（材料・判定・排他・回復）はサーバ
@@ -108,7 +110,8 @@ export function MilestoneReviewPanel({
     setBusy(true);
     setMsg(null);
     try {
-      await api.startReview(milestone);
+      // 確かめた材料（品質基準を含む）の hash で始める（変わっていれば断られる）
+      await api.startReview(milestone, preview?.hash);
       onSelectRun(undefined);
       void load();
     } catch (e) {
@@ -186,6 +189,16 @@ export function MilestoneReviewPanel({
                   <li key={`${w.code}:${w.target}`}>⚠ {w.message}</li>
                 ))}
               </ul>
+            )}
+            {preview.quality && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                品質基準:{" "}
+                {preview.quality.state === "set"
+                  ? `版 ${preview.quality.version}・${preview.quality.standards.filter((q) => !q.exempt).length} 件を評価${preview.quality.standards.some((q) => q.exempt) ? `・除外 ${preview.quality.standards.filter((q) => q.exempt).map((q) => q.id).join(", ")}` : ""}`
+                  : preview.quality.state === "unset"
+                    ? "未設定（品質は評価しません）"
+                    : "読めません（品質は評価しません）"}
+              </p>
             )}
             <p className="text-sm text-slate-500 dark:text-slate-400">範囲: {preview.scope}</p>
           </>
@@ -339,6 +352,69 @@ const VERDICT_CLS: Record<ReviewVerdict, string> = {
   insufficient: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
+/** 品質（目的・予定機能の達成とは別の欄）。評価した版・最新の版との差・基準ごとの判定・品質の低下。古い記録は品質を評価していない */
+function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run: ReviewRun }> }) {
+  const { input, result } = detail;
+  const { info } = useAppData();
+  const latest = info.project.qualityVersion;
+  const q = input?.quality;
+  const canImprove = !!q && detail.run.status === "completed" && (q.state !== "set" || (result?.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || (q.standards ?? []).some((x) => x.exempt));
+  return (
+    <section aria-label="品質" className="space-y-2">
+      <p className="text-sm font-medium">品質（プロジェクトの品質基準への適合。目的の達成とは別）</p>
+      {!q ? (
+        <p className="text-sm text-slate-500">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
+      ) : q.state !== "set" ? (
+        <p className="text-sm text-slate-500">
+          品質は評価していません（品質基準が{q.state === "unset" ? "未設定" : "読めません"}）。設定の「品質基準」で設定できます。
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-slate-500">
+            評価した版 <span className="font-mono">{q.version}</span>
+            {latest && latest !== q.version ? <span className="text-amber-700 dark:text-amber-300">（今の品質基準は版 {latest} に変わっています）</span> : null}
+          </p>
+          {(result?.quality ?? []).some((r) => r.verdict === "violated") && (
+            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+              品質の指摘: {(result?.quality ?? []).filter((r) => r.verdict === "violated").map((r) => `${r.standard}${r.regression ? "（品質の低下）" : ""}`).join(", ")}
+            </p>
+          )}
+          <ul className="space-y-2 text-sm">
+            {(result?.quality ?? []).map((r) => (
+              <li key={r.standard} aria-label={`品質 ${r.standard}`} className="space-y-1 rounded-md border border-slate-200 p-2 dark:border-slate-800">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold">{r.standard}</span>
+                  <Badge tone={r.verdict === "violated" ? "rose" : r.verdict === "satisfied" ? "emerald" : r.verdict === "undetermined" ? "amber" : "slate"}>{QUALITY_VERDICT_LABELS[r.verdict]}</Badge>
+                  {r.regression && <Badge tone="rose">品質の低下（履歴で裏付け）</Badge>}
+                  <span className="min-w-0 break-words">{q.standards?.find((x) => x.id === r.standard)?.text}</span>
+                </p>
+                <p className="break-words">{r.reason}</p>
+                {r.evidence.length > 0 && (
+                  <p className="flex flex-wrap gap-x-2">
+                    <span className="text-slate-500">根拠:</span>
+                    {r.evidence.map((e) => (
+                      <RefLink key={e} r={e} />
+                    ))}
+                  </p>
+                )}
+                {r.unread && <p className="break-words text-slate-500">確かめられなかった範囲: {r.unread}</p>}
+              </li>
+            ))}
+            {(q.standards ?? [])
+              .filter((x) => x.exempt)
+              .map((x) => (
+                <li key={x.id} className="text-slate-500">
+                  <span className="font-mono">{x.id}</span> 除外（{x.exempt!.reason}）
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
+      {canImprove && <ImprovementButton source={{ type: "milestone-review", milestone: detail.run.milestone, run: detail.run.id }} />}
+    </section>
+  );
+}
+
 function Purpose({ text }: { text?: string }) {
   return (
     <div>
@@ -484,6 +560,8 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
           )}
         </div>
       )}
+      <ReviewQualityView detail={detail} />
+      {detail.run.inputChanged && <p className="text-sm text-amber-700 dark:text-amber-300">実行中に材料が変わりました（結果は始めたときの材料に対するものです）。</p>}
       <p className="text-sm text-slate-500 dark:text-slate-400">範囲: {result.scope}</p>
       {input && (
         <details className="rounded-md border border-slate-200 p-3 dark:border-slate-800">

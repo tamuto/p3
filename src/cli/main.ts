@@ -7,6 +7,9 @@ import { OpRuleError } from "../core/requestOps.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
 import { BlockInputError } from "../shared/taskBlock.ts";
 import { taskReviewCommand } from "./taskReviewCommands.ts";
+import { qualityCommand } from "./qualityCommands.ts";
+import { QualityInputError } from "../shared/quality.ts";
+import { ImprovementError } from "../core/qualityImprovement.ts";
 import { TaskReviewRejected } from "../core/taskReview/material.ts";
 import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
 import { ReviewCancelRefused, ReviewRejected } from "../core/milestoneReview/service.ts";
@@ -296,6 +299,9 @@ async function main(argv: string[]): Promise<number> {
       });
     }
 
+    case "quality":
+      return qualityCommand(env);
+
     case "milestone":
     case "milestones":
       return milestoneCommand(ctx, out, args, o, actor);
@@ -359,6 +365,16 @@ main(process.argv.slice(2)).then(
     if (e instanceof TaskReviewRejected) {
       process.stderr.write(`${e.message}\n`);
       process.exit(e.code === "running" || e.code === "material_changed" ? 3 : 1);
+    }
+    // 改善要望: 診断が変わった・登録先がある → 3、無い → 2、ほか → 1
+    if (e instanceof ImprovementError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(e.code === "not_found" ? 2 : e.code === "diagnosis_changed" || e.code === "existing" || e.code === "closed_existing" ? 3 : 1);
+    }
+    // 品質基準: 版が違う → 3、規則に合わない・読めない → 1
+    if (e instanceof QualityInputError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(e.code === "quality_conflict" ? 3 : 1);
     }
     // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
     if (e instanceof MilestonesConflictError) {

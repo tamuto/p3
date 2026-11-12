@@ -52,7 +52,7 @@ describe("比較材料", () => {
     expect(i.requests[0].tasks[0]).toMatchObject({ status: "done", body: "表を作る", record: "在庫の一覧を表示できるようにした", outputs: ["https://example.com/pull/1"] });
     expect(i.requests[1].tasks.map((t) => t.status)).toEqual(["doing", "done"]);
     // 参照先を渡さなければ記録だけ（警告と範囲で分かる）
-    expect(i.warnings.map((w) => w.code)).toEqual(["missing_record", "no_code"]);
+    expect(i.warnings.map((w) => w.code)).toEqual(["missing_record", "quality_unset", "no_code"]);
     expect(i.code).toEqual([]);
     expect(i.scope).toContain("読める参照先（リポジトリ）が無かった");
   });
@@ -63,7 +63,7 @@ describe("比較材料", () => {
     const { dataDir } = await setup();
     const v2 = await extractReviewInput(dataDir, "v2");
     expect(v2.units).toEqual([]);
-    expect(v2.warnings.map((w) => w.code)).toEqual(["no_goals", "no_requests", "no_code"]);
+    expect(v2.warnings.map((w) => w.code)).toEqual(["no_goals", "no_requests", "quality_unset", "no_code"]);
     expect((await extractReviewInput(dataDir, "nope")).warnings[0].code).toBe("unknown_milestone");
   });
 

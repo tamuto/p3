@@ -25,6 +25,35 @@ export const AI_MANIFEST = {
         "ここに無い API は /api/projects/:project/... の下に置く（通常の serve の /api/... と同じ）。変える操作には x-p3-project-generation が要る（無ければ 428、違えば 409 code: changed）。" +
         "プロジェクトを書かないデータの API は 404 code: project_required。/api/chatgpt（engine は null）・/api/user-theme・/api/events（一覧・テーマ・接続の変更）はプロジェクトを選ばずに使える",
     },
+    {
+      method: "GET|POST",
+      path: "/api/quality",
+      desc:
+        "品質基準（project.yaml の quality）。GET は {quality: {state: unset | set | invalid, ...}, version, diffs（採用したテンプレートの改版の差分）, templates}。" +
+        "POST {ops: [{op: init | adopt | upgrade | add | replace | edit | remove | exempt | unexempt, ...}], version?} で操作を順に当てて quality だけを書く（version が違えば 409 quality_conflict、" +
+        "規則に合わなければ 400 quality_invalid、読めない設定は 400 quality_unreadable。設定の保存 PUT /api/project は quality を書かない）。コマンドは実行しない",
+    },
+    { method: "GET", path: "/api/requests/:rid/tasks/:tid/quality-diff", desc: "タスクの受け入れ基準と今の品質基準の差分 {quality, version, diff: [{kind: add | change | remove | exempt | edited, quality, criterion?, text?, reason?}]}（読むだけ）" },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/tasks/:tid/quality-import",
+      desc: "差分を明示して受け入れ基準に取り込む {keys?: [\"<kind>:<品質 ID>\"], rev?}（add は足す、change は文と出典を直す（証拠は再確認が必要になる）、remove・exempt は消す）。POST tasks の quality: auto | none | [ID] で作るときにも取り込む",
+    },
+    {
+      method: "POST",
+      path: "/api/quality/improvements/preview",
+      desc:
+        "品質の不足の診断と改善要望の原稿 {source: {type: project} | {type: task-review, request, task, run} | {type: milestone-review, milestone, run}, keys?}。" +
+        "{findings: [{key, kind: unset | invalid | violated | undetermined | exempt, ...}], hash, registered, picked, draft?}（読むだけ。除外は既定で選ばない）",
+    },
+    {
+      method: "POST",
+      path: "/api/quality/improvements",
+      desc:
+        "改善要望を明示して登録する {source, keys, title, body, hash, reopenClosed?}（201 {request, keys}）。診断が変わっていれば 409 diagnosis_changed、開いている登録先があれば 409 existing（existing.request）、" +
+        "閉じた要望で扱った不足は reopenClosed が無ければ 409 closed_existing。不足ごとの登録先は quality-improvements.json に残す",
+    },
+    { method: "GET", path: "/api/quality/templates/:id[?version=]", desc: "同梱の品質基準のテンプレートの中身（版つきの例。業界の標準への認証ではない）" },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
     {
       method: "PUT",

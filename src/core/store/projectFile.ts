@@ -118,3 +118,14 @@ export async function writeRepoEntry(path: string, name: string, entry: RepoRef 
   sortKeys(doc);
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
 }
+
+/**
+ * project.yaml の quality だけを書き換える（ほかの項目・コメントは残す）。plain は qualityPlain の形。
+ * ロックと版の照合は呼ぶ側（Workspace.writeQuality）
+ */
+export async function writeQualityFile(path: string, plain: Record<string, unknown>): Promise<void> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  const doc = text.trim() ? YAML.parseDocument(text) : new YAML.Document({});
+  doc.set("quality", doc.createNode(plain));
+  await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
+}

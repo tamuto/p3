@@ -3,7 +3,8 @@
 //   FAKE_SCENARIO ok（既定。最初の項目は差分の後の側のファイルを根拠に満たしている、ほかは不足）/ unknown（材料に無いパス）/
 //                 badsha（比較対象に無い SHA）/ missing（項目が欠ける）/ duplicate（項目が重なる）/ unknownitem（無い項目）/
 //                 broken（JSON でない）/ records（記録だけを根拠に満たしている）/ deleted（削除したファイルを前の側で根拠にする）/
-//                 slow（取り消されるまで終わらない）/ usage（使用量の上限で失敗）
+//                 slow（取り消されるまで終わらない）/ usage（使用量の上限で失敗）/ qmissing（品質の判定が欠ける）/
+//                 qnoevidence（品質の違反に根拠が無い）
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -32,7 +33,16 @@ function result(text) {
   }));
   if (scenario === "missing") items.pop();
   if (scenario === "duplicate") items.push(items[0]);
-  const body = { overall: "一部が満たされている", items, unplanned: [{ text: "依頼に無い設定の変更", evidence: [`${t.repo}@${d.head}`] }], checks: ["A1 と本文の完了条件が食い違う"], coverage: { read: "差分と前後のコード", unread: "なし" } };
+  const qs = material.quality?.state === "set" ? material.quality.standards : [];
+  const quality = qs.map((q, i) => ({
+    standard: q.id,
+    verdict: i === 0 ? "violated" : "undetermined",
+    reason: i === 0 ? "lint の設定を消している（取り込んだ版にも反する）" : "材料に無いので判断できない",
+    evidence: i === 0 && scenario !== "qnoevidence" ? [code] : [],
+    ...(i === 0 ? {} : { unread: "全体の設定" }),
+  }));
+  if (scenario === "qmissing") quality.pop();
+  const body = { overall: "一部が満たされている", items, ...(qs.length ? { quality } : {}), unplanned: [{ text: "依頼に無い設定の変更", evidence: [`${t.repo}@${d.head}`] }], checks: ["A1 と本文の完了条件が食い違う"], coverage: { read: "差分と前後のコード", unread: "なし" } };
   return scenario === "broken" ? "評価しました（JSON ではありません）" : "```json\n" + JSON.stringify(body) + "\n```";
 }
 
