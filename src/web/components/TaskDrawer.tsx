@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
 import { AcceptancePanel, shortfallSummary } from "./Acceptance.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
+import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -50,7 +51,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   // 受け入れ基準・証拠の編集中（保存していない入力）
   const [accDirty, setAccDirty] = useState(false);
   const onAccDirty = useCallback((d: boolean) => setAccDirty(d), []);
-  useUnsaved(dirty || accDirty);
+  // 停止の入力中（保存していない入力）
+  const [blockDirty, setBlockDirty] = useState(false);
+  const onBlockDirty = useCallback((d: boolean) => setBlockDirty(d), []);
+  useUnsaved(dirty || accDirty || blockDirty);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。
@@ -152,13 +156,13 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         setMsg("競合: 他で更新されています。入力は残してあります。「破棄」で最新を表示します。");
         void load();
       } else if (failureOf(e) === "not_found") setGone(true);
-      else setMsg(String((e as Error).message));
+      else setMsg(`${(e as Error).message}（入力は残してあります）`);
     }
   }
 
   async function toggleChecked() {
     // 保存していない入力がある間は済みを変えない（保存した内容で確かめる）
-    if (dirty || accDirty) return;
+    if (dirty || accDirty || blockDirty) return;
     try {
       await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
       await load(false, true);
@@ -229,6 +233,18 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           <input className={`${inputCls} text-lg font-semibold`} value={fields.title} onChange={(e) => set("title", e.target.value)} />
 
+          <TaskBlockPanel
+            task={task}
+            disabled={gone}
+            onDirty={onBlockDirty}
+            onSaved={() => {
+              setMsg(null);
+              void load(false, true);
+              data.reload();
+              ctx.reload();
+            }}
+          />
+
           <div className="grid grid-cols-[1fr_2fr] items-end gap-3">
             <Field label="ステータス">
               <select className={inputCls} value={fields.status} onChange={(e) => set("status", e.target.value as TaskStatus)}>
@@ -267,7 +283,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               <div className="flex flex-wrap items-center gap-3">
                 <DoneMark checked={!!task.checkedAt} />
                 <span className="min-w-0 flex-1">{task.checkedAt ? `済み（${fmtTime(task.checkedAt)} に確認）` : "完了しています。成果物と受け入れ基準の証拠を確認したら済みにしてください"}</span>
-                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty} onClick={() => void toggleChecked()}>
+                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty || blockDirty} onClick={() => void toggleChecked()}>
                   {task.checkedAt ? "済みを外す" : "済みにする"}
                 </Button>
               </div>
@@ -276,7 +292,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               ) : (
                 <p className="text-sm text-slate-500">受け入れ基準なし</p>
               )}
-              {(dirty || accDirty) && <p className="text-sm text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
+              {(dirty || accDirty || blockDirty) && <p className="text-sm text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
           <Section title="受け入れ基準と作業した側の証拠">
@@ -294,7 +310,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </Section>
 
           <Section title="タスクの AI レビュー">
-            <TaskReviewPanel task={task} unsaved={dirty || accDirty} />
+            <TaskReviewPanel task={task} unsaved={dirty || accDirty || blockDirty} />
           </Section>
           {multi && <WorkTarget ctx={ctx} data={data} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           <Section title="成果物">

@@ -1064,7 +1064,7 @@ requests/<要望ID>/task-reviews/.locks/<タスクID>.lock        状態を変�
   形が違う・偽の根拠は失敗（`invalid_output`）
 - **担当が agent のとき**: `preflight.runner=agent` を Codex を使う同意とみなさない。engine を明示しない開始は `engine_required` で断る
   （Codex は呼ばない）。画面・CLI は明示の選び方を案内する
-- **確かめ直し**: プレビューで見た材料の hash（`expectedHash`）を渡すと、始めるときに材料が変わっていれば `changed`（409・終了コード 3）
+- **確かめ直し**: プレビューで見た材料の hash（`expectedHash`）を渡すと、始めるときに材料が変わっていれば `material_changed`（409・終了コード 3。画面の登録の変化の `changed` とは別の code）
 - **手元のエージェント（今は持たない）**: Preflight の `--prepare` / `--complete` と同じ形で、手元のエージェントの別のセッションに材料の
   フォルダを読ませて結果を書かせる道も考えられる（利点: Codex を使えない環境でも使える・利用者の手元のエージェントの課金で済む）。
   その場合も、入力は P3 が固定した材料（input.json・material/）だけにし、結果は同じ `parseTaskReview` で確かめてから取り込む契約にする。

@@ -358,7 +358,7 @@ main(process.argv.slice(2)).then(
     // タスクのレビュー: 実行中・材料が変わった → 3、ほか（未完了・比較対象・観点・上限・担当）→ 1
     if (e instanceof TaskReviewRejected) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(e.code === "running" || e.code === "changed" ? 3 : 1);
+      process.exit(e.code === "running" || e.code === "material_changed" ? 3 : 1);
     }
     // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
     if (e instanceof MilestonesConflictError) {

@@ -190,7 +190,7 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/tasks/:tid/reviews",
       desc:
         "タスクの AI レビューの履歴（新しい順。読めない記録も broken）/ 始める（202。{targets?, viewpoint?, engine?, expectedHash?}。完了したタスクだけ。" +
-        "材料が変わっていれば 409 changed、実行中なら 409 running、Preflight の担当が agent で engine を明示していなければ 400 engine_required）。結果はタスクの状態・済み・基準・証拠を変えない",
+        "材料が変わっていれば 409 material_changed、実行中なら 409 running、Preflight の担当が agent で engine を明示していなければ 400 engine_required）。結果はタスクの状態・済み・基準・証拠を変えない",
     },
     { method: "GET", path: "/api/requests/:rid/tasks/:tid/reviews/:run", desc: "タスクの AI レビューの1回分（固定した材料・結果。実行中は所有者の状態 owner）。結果を直す口は無い" },
     { method: "POST", path: "/api/requests/:rid/tasks/:tid/reviews/:run/cancel", desc: "タスクの AI レビューを取り消す {acknowledgeStopped?}（マイルストーンレビューと同じ規則）" },

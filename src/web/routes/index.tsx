@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { localToday } from "../../shared/dates.ts";
 import type { RequestProgress, TaskMark } from "../../shared/types.ts";
 import { Hint, Picker } from "../components/Hint.tsx";
-import { DoingMark, DoneMark, Flag, TodoMark } from "../components/Marks.tsx";
+import { BlockedMark, DoingMark, DoneMark, Flag, TodoMark } from "../components/Marks.tsx";
 import { TagFilter } from "../components/TagFilter.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
 import { TaskDrawer } from "../components/TaskDrawer.tsx";
@@ -41,13 +41,15 @@ import {
  * 狭い画面（スマートフォン）では左の一覧を縮め（lib/timeline.ts の leftWidth）、ステータスとタイトルを2段で出す。
  */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom; blocked?: boolean } => ({
     show: parseShow(s.show),
     /** 選んだタグ（JSON の配列）。以前の ?tag= も読む（lib/requestFilter.ts の parseTagsSearch） */
     tags: parseTagsSearch(s.tags, s.tag),
     /** 詳細を開いているタスク（<要望ID>/T003） */
     task: optionalString(s.task),
     zoom: s.zoom === "week" || s.zoom === "month" ? s.zoom : undefined,
+    /** 止まっているタスクのある要望だけ（表示範囲・タグと AND） */
+    blocked: s.blocked === true || s.blocked === 1 || s.blocked === "1" || s.blocked === "true" ? true : undefined,
   }),
   component: ProgressPage,
 });
@@ -61,7 +63,7 @@ const ZOOM_LABEL: Record<Zoom, string> = { day: "日", week: "週", month: "月"
 /** ISO 日時 → ローカルの日付 */
 const dateOf = (iso: string) => localToday(new Date(iso));
 
-type MarkKind = "checked" | "done" | "doing";
+type MarkKind = "checked" | "done" | "doing" | "blocked";
 
 /** URL に残っている以前の ?tag= を外す */
 const withoutLegacyTag = <T extends object>(search: T): T => {
@@ -71,7 +73,7 @@ const withoutLegacyTag = <T extends object>(search: T): T => {
 
 function ProgressPage() {
   const ctx = useAppCtx();
-  const { show = "open", tags, task, zoom = "day" } = Route.useSearch();
+  const { show = "open", tags, task, zoom = "day", blocked: onlyBlocked } = Route.useSearch();
   // URL から読むたびに別の配列になるので、中身で決める
   const tagsKey = JSON.stringify(tags ?? []);
   const selectedTags = useMemo<string[]>(() => JSON.parse(tagsKey), [tagsKey]);
@@ -88,8 +90,12 @@ function ProgressPage() {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
-    return filterRequests(ctx.requests, show, selectedTags).sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
-  }, [ctx.requests, milestones, show, selectedTags]);
+    const base = filterRequests(ctx.requests, show, selectedTags);
+    // 停止中のみ: 止まっている自分のタスクがある要望だけ（祖先は文脈として木が出す）。印は止まっているタスクだけを描き、完了率は絞る前のまま
+    const hit = onlyBlocked ? base.filter((p) => p.blocked > 0).map((p) => ({ ...p, tasks: p.tasks.filter((t) => t.block) })) : base;
+    return hit.sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
+  }, [ctx.requests, milestones, show, selectedTags, onlyBlocked]);
+  const blockedTotal = matched.reduce((n, p) => n + p.blocked, 0);
   // 親子の木: 子は親の下に並べ、絞り込みに合う子の祖先は文脈として出す（数えない）。畳んだ親はこの画面の間だけ覚える
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const tree = useMemo(() => progressTree(ctx.requests, matched, collapsed), [ctx.requests, matched, collapsed]);
@@ -204,6 +210,15 @@ function ProgressPage() {
             </Link>
           ))}
         </nav>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={!!onlyBlocked} onChange={(e) => void navigate({ search: (prev) => ({ ...prev, blocked: e.target.checked || undefined }), replace: true })} />
+          停止中のみ
+        </label>
+        {onlyBlocked && (
+          <span className="text-sm text-slate-500" title="止まっている自分のタスクの合計（配下を二重に数えない）">
+            停止中 {blockedTotal} 件・{matched.length} 要望
+          </span>
+        )}
         <TagFilter
           requests={ctx.requests}
           selected={selectedTags}
@@ -230,7 +245,16 @@ function ProgressPage() {
         <Legend />
       </div>
 
-      {!hasRows ? (
+      {!hasRows && onlyBlocked ? (
+        <div className="p-10">
+          <Empty>
+            停止中のタスクはありません。
+            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, blocked: undefined }), replace: true })} className={buttonCls("ghost", "ml-2 underline")}>
+              絞り込みを解除
+            </button>
+          </Empty>
+        </div>
+      ) : !hasRows ? (
         <div className="p-10">
           <Empty>
             {show === "open" ? "未完了の要望はありません。" : "該当する要望はありません。"}
@@ -346,6 +370,7 @@ function Legend() {
       {item(<DoneMark checked={false} />, "完了")}
       {item(<DoneMark checked />, "済み")}
       {item(<DoingMark />, "作業中")}
+      {item(<BlockedMark />, "停止中")}
       {item(<TodoMark />, "未着手")}
       {item(<span className="text-violet-500">◆</span>, "マイルストーン")}
       {item(<Flag overdue={false} />, "期限")}
@@ -393,6 +418,16 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
               配下 {p.subtree.done}/{p.subtree.total}
             </span>
           )}
+          {p.blocked > 0 && (
+            <span className="shrink-0 rounded bg-amber-100 px-1 text-xs whitespace-nowrap text-amber-900 dark:bg-amber-900 dark:text-amber-100" title="止まっている自分のタスクの数">
+              ⏸停止 {p.blocked}
+            </span>
+          )}
+          {p.subtree.blocked > p.blocked && (
+            <span className="shrink-0 text-xs whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望で止まっているタスクの数">
+              配下の停止 {p.subtree.blocked - p.blocked}
+            </span>
+          )}
           {p.hierarchyIssues.length > 0 && (
             <span className="shrink-0 text-xs text-amber-700 dark:text-amber-400" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
               ※親子
@@ -437,14 +472,14 @@ function RequestLane({
     const marks: { date: string; kind: MarkKind; item: TaskMark }[] = [];
     for (const task of p.tasks) {
       if (task.status === "done" && task.doneAt) marks.push({ date: dateOf(task.doneAt), kind: task.checkedAt ? "checked" : "done", item: task });
-      else if (task.status === "doing") marks.push({ date: task.startedAt ? dateOf(task.startedAt) : today, kind: "doing", item: task });
+      else if (task.status === "doing") marks.push({ date: task.startedAt ? dateOf(task.startedAt) : today, kind: task.block ? "blocked" : "doing", item: task });
     }
     return groupMarks(marks, zoom);
   }, [p.tasks, zoom, today]);
   const todo = p.tasks.filter((m) => m.status === "todo");
   const overdue = !closed && !!r.due && r.due < today && p.tasks.some((m) => m.status !== "done");
   const cy = top + ROW_H / 2;
-  const icon = (kind: string) => (kind === "doing" ? <DoingMark /> : <DoneMark checked={kind === "checked"} />);
+  const icon = (kind: string) => (kind === "blocked" ? <BlockedMark /> : kind === "doing" ? <DoingMark /> : <DoneMark checked={kind === "checked"} />);
 
   // 同じまとまりに種類の違う印が並ぶときは横にずらす（件数の丸が付くぶん広めに）
   const slot = new Map<string, number>();
@@ -473,8 +508,9 @@ function RequestLane({
         if (!inView(left, 40)) return null;
         return (
           <span key={`${g.start}|${g.kind}`} className="absolute z-[5]" style={{ left, top: cy - 7 }}>
-            <Hint content={g.items.map((m) => `${m.id} ${m.title}`).join("\n")}>
+            <Hint content={g.items.map((m) => `${m.id} ${m.title}${m.block ? `\n⏸ 停止中（${m.block.reason.split("\n")[0]}）` : ""}`).join("\n")}>
               <button
+                aria-label={g.items.map((m) => `${m.id} ${m.block ? "停止中" : ""}`.trim()).join("、")}
                 className="relative block transition hover:scale-125"
                 onClick={(e) =>
                   g.items.length === 1
@@ -512,7 +548,7 @@ function RequestLane({
             key: m.ref,
             label: (
               <>
-                {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : "doing")}
+                {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : m.block ? "blocked" : "doing")}
                 <span className="font-mono text-sm text-slate-500">{m.id}</span>
                 <span className="truncate">{m.title}</span>
               </>

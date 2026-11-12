@@ -181,7 +181,7 @@ describe("実行（偽の app-server）", () => {
     const { ctx, rid, tid } = await setup(codex("ok", join(tempDir(), "c.log")));
     const p = await ctx.taskReview.preview(rid, tid);
     await updateTask(ctx, rid, tid, { body: "本文を直した" });
-    await expect(ctx.taskReview.start(rid, tid, undefined, { expectedHash: p.input.hash })).rejects.toMatchObject({ code: "changed" });
+    await expect(ctx.taskReview.start(rid, tid, undefined, { expectedHash: p.input.hash })).rejects.toMatchObject({ code: "material_changed" });
     const fresh = await ctx.taskReview.preview(rid, tid);
     const r = await ctx.taskReview.start(rid, tid, undefined, { expectedHash: fresh.input.hash });
     expect((await ctx.taskReview.wait(rid, tid, r.id)).run.inputHash).toBe(fresh.input.hash);
@@ -209,7 +209,7 @@ describe("API と CLI", () => {
     expect((await call("GET", `${base}/reviews/${run}`)).body).toMatchObject({ run: { status: "completed" }, result: { items: expect.any(Array) } });
     expect((await call("POST", `${base}/reviews/${run}/cancel`, {})).status).toBe(409);
     expect((await call("PATCH", `${base}/reviews/${run}`, { result: {} })).status).toBe(404);
-    expect((await call("POST", `${base}/reviews`, { expectedHash: "x" })).body).toMatchObject({ code: "changed" });
+    expect((await call("POST", `${base}/reviews`, { expectedHash: "x" })).body).toMatchObject({ code: "material_changed" });
     const { task } = await createTask(ctx, rid, { title: "途中" });
     expect((await call("POST", `/requests/${rid}/tasks/${task.id}/reviews`, {})).body).toMatchObject({ code: "not_done" });
     expect((await call("GET", `/requests/${rid}/tasks/T099/reviews/TR-20260101-000000-abcd`)).status).toBe(404);

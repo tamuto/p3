@@ -118,6 +118,8 @@ describe("API の失敗の種類（画面はこれで分ける）", () => {
     expect(failureOf(new ApiError(409, "", { code: "rev_conflict" }))).toBe("rev_conflict");
     expect(failureOf(new ApiError(409, "", {}))).toBe("rev_conflict");
     expect(failureOf(new ApiError(409, "", null))).toBe("rev_conflict");
+    // 止まったままの移動は rev の競合ではない（解除してから動かす）
+    expect(failureOf(new ApiError(409, "", { code: "blocked" }))).toBe("other");
     expect(failureOf(new ApiError(404, "", {}))).toBe("not_found");
     expect(failureOf(new ApiError(400, "", {}))).toBe("other");
     expect(failureOf(new Error("x"))).toBe("other");

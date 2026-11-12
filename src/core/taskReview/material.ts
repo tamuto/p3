@@ -72,7 +72,7 @@ export class TaskReviewRejected extends Error {
       | "running"
       | "unavailable"
       | "engine_required"
-      | "changed",
+      | "material_changed",
     message: string,
     readonly running?: string,
   ) {
