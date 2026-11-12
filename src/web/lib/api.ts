@@ -134,6 +134,8 @@ export interface ReviewPreview {
   /** 確かめる参照先のコード */
   code: ReviewCodeRef[];
   warnings: ReviewWarning[];
+  /** 品質基準（版。古い serve には無い） */
+  quality?: { state: "unset" | "set" | "invalid"; version: string; standards: { id: string; text: string; exempt?: string }[] };
   scope: string;
   hash: string;
 }
@@ -344,7 +346,7 @@ export const api = {
   reviewPreview: (mid: string) => call<ReviewPreview>("GET", `/milestones/${encodeURIComponent(mid)}/review-preview`),
   reviews: (mid: string) => call<{ items: ReviewListItem[] }>("GET", `/milestones/${encodeURIComponent(mid)}/reviews`),
   review: (mid: string, run: string) => call<ReviewDetailView>("GET", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}`),
-  startReview: (mid: string) => call<ReviewRun>("POST", `/milestones/${encodeURIComponent(mid)}/reviews`, {}),
+  startReview: (mid: string, expectedHash?: string) => call<ReviewRun>("POST", `/milestones/${encodeURIComponent(mid)}/reviews`, expectedHash ? { expectedHash } : {}),
   cancelReview: (mid: string, run: string, acknowledgeStopped = false) =>
     call<{ run: ReviewRun; requested: boolean }>("POST", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}/cancel`, { acknowledgeStopped }),
   /**

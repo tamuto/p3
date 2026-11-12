@@ -208,7 +208,7 @@ describe("始める前の判定", () => {
     const r = await ctx.milestoneReview.start("v2");
     const d = await ctx.milestoneReview.wait("v2", r.id);
     expect(d.result?.units.map((u) => u.unit)).toEqual(["purpose"]);
-    expect(d.input?.warnings.map((w) => w.code)).toEqual(["no_requests"]);
+    expect(d.input?.warnings.map((w) => w.code)).toEqual(["no_requests", "quality_unset"]);
     await expect(ctx.milestoneReview.start("v3")).rejects.toThrow(/目的も予定機能もありません.*milestone purpose/);
     await expect(ctx.milestoneReview.start("nope")).rejects.toMatchObject({ code: "unknown_milestone" });
     await ctx.ws.requests.update(a, { body: "あ".repeat(REVIEW_INPUT_LIMIT + 1) }, {});

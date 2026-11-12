@@ -1,4 +1,6 @@
 import type { MilestoneGoal, PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "./types.ts";
+import type { QualitySnapshot } from "./quality.ts";
+import type { QualityVerdict } from "./taskReview.ts";
 
 /**
  * マイルストーンレビューの形（CLI・API・画面で共有する）。保存の規則は core/milestoneReview/。
@@ -22,7 +24,8 @@ export const REVIEW_VERDICT_LABELS: Record<ReviewVerdict, string> = {
 /** 評価の範囲（結果と一緒に保存し、画面・CLI に出す） */
 export const REVIEW_SCOPE =
   "保存してあるマイルストーンの目的・予定機能に対して、参照先のリポジトリのコードと git の履歴（抽出のときの作業ツリー・タスクに残したコミット）を読み、" +
-  "このマイルストーンに直接属する要望・タスクの記録を手がかりに確かめた結果です。テストやアプリを実際に動かしてはいません。公開されたかは確かめていません。" +
+  "このマイルストーンに直接属する要望・タスクの記録を手がかりに確かめた結果です。品質基準が設定してあれば、目的の達成とは別に品質基準への適合も確かめています（検査のコマンドは実行していません）。" +
+  "テストやアプリを実際に動かしてはいません。公開されたかは確かめていません。" +
   "成果物の URL や添付の中身は読んでいません。アーカイブした要望は含みません。";
 
 /** 読める参照先が無いときの評価の範囲（記録だけの点検で、実装は確かめていない） */
@@ -49,7 +52,9 @@ export type ReviewWarningCode =
   | "no_code"
   | "code_unavailable"
   | "dirty_worktree"
-  | "commit_missing";
+  | "commit_missing"
+  | "quality_unset"
+  | "quality_invalid";
 
 export interface ReviewWarning {
   code: ReviewWarningCode;
@@ -139,6 +144,8 @@ export interface ReviewInput {
   extractedUntil: string;
   /** 材料の識別子（抽出の日時は含めない） */
   hash: string;
+  /** 抽出したときのプロジェクトの品質基準（版つき。古い記録には無い＝品質は評価していない） */
+  quality?: QualitySnapshot;
 }
 
 export const REVIEW_STATUSES = ["running", "completed", "failed", "cancelled"] as const;
@@ -167,6 +174,8 @@ export interface ReviewRun {
   abandoned?: { at: string; by?: string };
   /** input.json の hash */
   inputHash: string;
+  /** 終わったときに材料を取り出し直したら、始めたときと違っていた（実行中に要望・タスク・コード・品質基準が変わった） */
+  inputChanged?: boolean;
   log: PreflightLogEntry[];
 }
 
@@ -191,11 +200,25 @@ export interface ReviewUnplanned {
   evidence: string[];
 }
 
+/** 品質の判定（品質基準ごと。目的・予定機能の達成とは別） */
+export interface ReviewQualityResult {
+  standard: string;
+  verdict: QualityVerdict;
+  reason: string;
+  evidence: string[];
+  /** 確かめられなかった範囲 */
+  unread?: string;
+  /** 品質の低下（過去に満たしていたものを崩した）。履歴（コミット）で裏付けたときだけ */
+  regression?: boolean;
+}
+
 /** 結果（review.json） */
 export interface ReviewResult {
   /** 目的との整合の全体の所見 */
   overall: string;
   units: ReviewUnitResult[];
+  /** 品質基準への適合（品質の材料がある run だけ。古い結果には無い＝品質は評価していない） */
+  quality?: ReviewQualityResult[];
   /** 意図しない変更の候補（古い記録には無い） */
   unplanned?: ReviewUnplanned[];
   scope: string;

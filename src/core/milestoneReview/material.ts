@@ -11,6 +11,7 @@ import {
   type ReviewWarning,
 } from "../../shared/milestoneReview.ts";
 import type { Milestone } from "../../shared/types.ts";
+import { qualitySnapshot } from "../../shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import { hierarchyNow } from "../requestStatus.ts";
 import { Workspace } from "../store/workspace.ts";
@@ -51,6 +52,7 @@ export function withCode(i: ReviewInput, code: ReviewCodeRef[], warnings: Review
     context: i.context,
     warnings: [...i.warnings, ...warnings],
     code,
+    ...(i.quality ? { quality: i.quality } : {}),
     scope: code.some((c) => c.status === "ok") ? REVIEW_SCOPE : REVIEW_SCOPE_RECORDS_ONLY,
   };
   return { ...body, extractedAt: i.extractedAt, extractedUntil: new Date().toISOString(), hash: reviewInputHash(body) };
@@ -129,12 +131,16 @@ export function reviewInputOf(ws: Workspace, mid: string, extractedAt = new Date
     ...(m?.goals?.length ? { goals: m.goals.map((g) => ({ id: g.id, text: g.text })) } : {}),
   };
   const units = reviewUnits(m);
-  const body = { milestone, units, requests, context, warnings, scope: REVIEW_SCOPE_RECORDS_ONLY };
+  // 品質基準（版つき）。未設定・読めないは警告にして、設定や改善の要望へ案内する
+  const quality = qualitySnapshot(ws.project.quality, ws.project.qualityVersion);
+  if (quality.state === "unset") warnings.push({ code: "quality_unset", target: "project.yaml", message: "プロジェクトの品質基準は未設定です（品質は評価しません。p3 quality で設定するか、設定する要望を登録できます）" });
+  if (quality.state === "invalid") warnings.push({ code: "quality_invalid", target: "project.yaml", message: `プロジェクトの品質基準が読めません（品質は評価しません。project.yaml を直してください）: ${(quality.problems ?? []).join(" / ")}` });
+  const body = { milestone, units, requests, context, warnings, scope: REVIEW_SCOPE_RECORDS_ONLY, quality };
   return { ...body, extractedAt, extractedUntil: new Date().toISOString(), hash: reviewInputHash(body) };
 }
 
 /** 材料の識別子（抽出の日時・警告の文言は含めない） */
-export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "requests" | "context" | "warnings" | "code">): string {
+export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "requests" | "context" | "warnings" | "code" | "quality">): string {
   const key = {
     milestone: [i.milestone.id, i.milestone.title, i.milestone.known, i.milestone.purpose ?? null, (i.milestone.goals ?? []).map((g) => [g.id, g.text])],
     requests: i.requests,
@@ -144,6 +150,8 @@ export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "re
     ...(i.code
       ? { code: i.code.map((c) => [c.name, c.status, c.head ?? null, c.branch ?? null, c.dirty ?? 0, c.dirtyDigest ?? null, c.commits.map((x) => [x.sha, x.from, x.found])]) }
       : {}),
+    // 品質基準（状態と版。変われば材料が変わった）
+    ...(i.quality ? { quality: [i.quality.state, i.quality.version] } : {}),
   };
   return createHash("sha256").update(JSON.stringify(key)).digest("hex");
 }

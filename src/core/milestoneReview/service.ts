@@ -37,7 +37,7 @@ export type ReviewEngine = "codex" | "mock";
 export class ReviewRejected extends Error {
   constructor(
     /** unknown_milestone: 無い / no_goals: 目的も予定機能も無い / too_large: 入力が上限を超える / running: 実行中 / unavailable: 頼む先が無い */
-    readonly code: "unknown_milestone" | "no_goals" | "too_large" | "running" | "unavailable",
+    readonly code: "unknown_milestone" | "no_goals" | "too_large" | "running" | "unavailable" | "material_changed",
     message: string,
     readonly running?: string,
   ) {
@@ -78,10 +78,14 @@ export class MilestoneReviewService {
   }
 
   /** 始める（終わるのは wait で待つ）。材料はここで固定する */
-  async start(mid: string, actor?: string, engine?: ReviewEngine): Promise<ReviewRun> {
+  async start(mid: string, actor?: string, engine?: ReviewEngine, opts: { expectedHash?: string } = {}): Promise<ReviewRun> {
     checkReviewMilestoneId(mid);
     const refs = this.ws.refs();
     const input = await extractReviewInput(this.ws.dataDir, mid, refs);
+    // 画面で確かめた材料（品質基準を含む）から変わっていれば始めない
+    if (opts.expectedHash !== undefined && opts.expectedHash !== input.hash) {
+      throw new ReviewRejected("material_changed", "確かめた後で材料（目的・要望・タスク・コード・品質基準）が変わりました。もう一度確かめてから始めてください");
+    }
     if (!input.milestone.known) throw new ReviewRejected("unknown_milestone", `マイルストーンがありません: ${mid}`);
     if (!input.units.length) {
       throw new ReviewRejected(
@@ -173,6 +177,14 @@ export class MilestoneReviewService {
       push({ kind: "error", text: end.error! });
     } finally {
       stopWatch();
+    }
+    // 実行中に材料が変わったか（要望・タスク・コード・品質基準）。結果は始めたときの材料に対するもの
+    if (end.status === "completed") {
+      const now = await extractReviewInput(this.ws.dataDir, mid, ask.refs).catch(() => undefined);
+      if (now && now.hash !== input.hash) {
+        end = { ...end, inputChanged: true };
+        push({ kind: "info", text: "実行中に材料が変わりました（結果は始めたときの材料に対するものです）" });
+      }
     }
     // 既に終わっていた（人が中断した・回復した）なら、遅れて届いた結果は取り込まない
     await this.control.end(mid, id, { ...end, log: [...log] }, result);

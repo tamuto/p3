@@ -2,7 +2,8 @@
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
 //   FAKE_SCENARIO ok（既定。読める参照先があればコードの場所とコミットを根拠にする）/ unknown（資料に無い根拠）/ missing（比較単位が欠ける）/
 //                 broken（JSON でない）/ slow（取り消されるまで終わらない）/ usage（使用量の上限で失敗）/ late（取り消されても結果を返す）/
-//                 records（記録だけを根拠に「達成」）/ badpath（参照先に無いパスを根拠にする）
+//                 records（記録だけを根拠に「達成」）/ badpath（参照先に無いパスを根拠にする）/
+//                 qregression（品質の低下をコミットで裏付ける）/ qbadregression（コミット無しで品質の低下）/ qmissing（品質の判定が欠ける）
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -26,7 +27,16 @@ function result(text) {
   }));
   if (scenario === "missing") units.pop();
   const unplanned = commit ? [{ text: "一覧の並び順が変わっている", evidence: [`${code.name}@${commit.sha}`] }] : [];
-  return scenario === "broken" ? "評価しました（JSON ではありません）" : "```json\n" + JSON.stringify({ overall: "目的の一部が果たせている", units, unplanned }) + "\n```";
+  const qs = material.quality?.standards ?? [];
+  const quality = qs.map((q, i) => ({
+    standard: q.id,
+    verdict: i === 0 ? "violated" : "undetermined",
+    reason: i === 0 ? "lint の設定を消している" : "読めない",
+    evidence: i === 0 ? (scenario === "qbadregression" ? [codeEvidence[0]] : [...codeEvidence]) : [],
+    ...(i === 0 && (scenario === "qregression" || scenario === "qbadregression") ? { regression: true } : {}),
+  }));
+  if (scenario === "qmissing") quality.pop();
+  return scenario === "broken" ? "評価しました（JSON ではありません）" : "```json\n" + JSON.stringify({ overall: "目的の一部が果たせている", units, unplanned, ...(qs.length ? { quality } : {}) }) + "\n```";
 }
 
 function complete(id, text) {

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, relative, resolve as resolvePath } from "node:path";
 import { REQUEST_STATUSES, type Attachment, type Milestone, type Request } from "../shared/types.ts";
 import { nextGoalId } from "../shared/milestoneGoals.ts";
+import { QUALITY_VERDICT_LABELS } from "../shared/taskReview.ts";
 import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../shared/milestoneReview.ts";
 import type { ReviewDetail } from "../core/milestoneReview/service.ts";
 import { type P3Context } from "../core/context.ts";
@@ -379,6 +380,14 @@ function formatReview(d: ReviewDetail): string {
       if (!result.unplanned.length) lines.push("  （見つかっていません）");
       for (const u of result.unplanned) lines.push(`  - ${u.text}${u.evidence.length ? `（根拠: ${u.evidence.join(", ")}）` : ""}`);
     }
+    const q = input?.quality;
+    lines.push("", !q ? "品質: 評価していません（品質基準を材料に入れる前の記録です）" : q.state !== "set" ? `品質: 評価していません（品質基準が${q.state === "unset" ? "未設定" : "読めません"}）` : `品質（品質基準 版 ${q.version}。目的の達成とは別）:`);
+    for (const r of result.quality ?? []) {
+      lines.push(`  ${r.verdict === "violated" ? "✗" : "・"} ${r.standard}  ${QUALITY_VERDICT_LABELS[r.verdict]}${r.regression ? "（品質の低下）" : ""}  ${r.reason}`);
+      if (r.evidence.length) lines.push(`      根拠: ${r.evidence.join(", ")}`);
+      if (r.unread) lines.push(`      確かめられなかった範囲: ${r.unread}`);
+    }
+    if (d.run.inputChanged) lines.push("※ 実行中に材料が変わりました（結果は始めたときの材料に対するものです）");
     lines.push("", `範囲: ${result.scope}`);
   }
   return lines.join("\n");
