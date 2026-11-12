@@ -199,4 +199,27 @@ describe("CLI と API", () => {
     const shape = (x: typeof a) => x.blockHistory?.map((h) => [h.action, h.after?.reason ?? h.before?.reason, h.after?.decision ?? h.before?.decision, h.resolution]);
     expect(shape(a)).toEqual(shape(c));
   });
+
+  it("統合: 作業中 → 止める → 一覧・進捗で見つける → 解除まで完了できない → 回答を記録して解除 → 再開 → 完了しても履歴は残る", async () => {
+    const { rid, tid, dataDir } = await setup();
+    const req = ["--req", rid];
+    const blocked = JSON.parse(p3(dataDir, ["block", tid, ...req, "--reason", "テストが通らず先に進めない", "--decision", "API の形を変えてよいか", "--json"]).out) as { block: { since: string } };
+    expect(blocked.block.since).toBeTruthy();
+    // 人が見つける
+    expect(p3(dataDir, ["ls", "--all", "--blocked"]).out).toContain("テストが通らず先に進めない");
+    expect((JSON.parse(p3(dataDir, ["progress", "--json"]).out) as { request: { id: string }; blocked: number }[]).find((x) => x.request.id === rid)!.blocked).toBe(1);
+    // 止まったままは完了できない
+    expect(p3(dataDir, ["move", tid, "done", ...req, "--record", "r"]).code).toBe(1);
+    // 人が回答を記録して解除する（状態は作業中のまま）
+    const resumed = JSON.parse(p3(dataDir, ["unblock", tid, ...req, "--resolution", "形を変えてよい", "--json"]).out) as { status: string; block?: unknown };
+    expect(resumed.status).toBe("doing");
+    expect(resumed.block).toBeUndefined();
+    // AI が履歴の回答を読んで再開し、通常どおり完了する
+    const shown = JSON.parse(p3(dataDir, ["show", tid, ...req, "--json"]).out) as { item: { blockHistory: { action: string; resolution?: string }[] } };
+    expect(shown.item.blockHistory.at(-1)).toMatchObject({ action: "clear", resolution: "形を変えてよい" });
+    expect(p3(dataDir, ["move", tid, "done", ...req, "--record", "API の形を変えた", "--evidence", "A1=met:test"]).code).toBe(0);
+    const done = JSON.parse(p3(dataDir, ["show", tid, ...req, "--json"]).out) as { item: { status: string; record: string; blockHistory: unknown[] } };
+    expect(done.item).toMatchObject({ status: "done", record: "API の形を変えた" });
+    expect(done.item.blockHistory).toHaveLength(2);
+  });
 });
