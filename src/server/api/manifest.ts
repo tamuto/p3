@@ -25,6 +25,15 @@ export const AI_MANIFEST = {
         "ここに無い API は /api/projects/:project/... の下に置く（通常の serve の /api/... と同じ）。変える操作には x-p3-project-generation が要る（無ければ 428、違えば 409 code: changed）。" +
         "プロジェクトを書かないデータの API は 404 code: project_required。/api/chatgpt（engine は null）・/api/user-theme・/api/events（一覧・テーマ・接続の変更）はプロジェクトを選ばずに使える",
     },
+    {
+      method: "GET|POST",
+      path: "/api/quality",
+      desc:
+        "品質基準（project.yaml の quality）。GET は {quality: {state: unset | set | invalid, ...}, version, diffs（採用したテンプレートの改版の差分）, templates}。" +
+        "POST {ops: [{op: init | adopt | upgrade | add | replace | edit | remove | exempt | unexempt, ...}], version?} で操作を順に当てて quality だけを書く（version が違えば 409 quality_conflict、" +
+        "規則に合わなければ 400 quality_invalid、読めない設定は 400 quality_unreadable。設定の保存 PUT /api/project は quality を書かない）。コマンドは実行しない",
+    },
+    { method: "GET", path: "/api/quality/templates/:id[?version=]", desc: "同梱の品質基準のテンプレートの中身（版つきの例。業界の標準への認証ではない）" },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
     {
       method: "PUT",

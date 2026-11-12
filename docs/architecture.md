@@ -729,6 +729,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
 | レビューの実行の記録の共通部分（保存・終わり・回復・取消・遅れた結果の拒否） | `core/reviewRuns.ts` |
 | タスクの AI レビュー（材料・履歴） | `core/taskReview/`（`material.ts`・`store.ts`） |
+| プロジェクトの品質基準（状態・ID の振り方・操作・テンプレートと改版の差分・版） | `shared/quality.ts`・`shared/qualityTemplates.ts`（保存は `core/quality.ts` と `Workspace.writeQuality`） |
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
@@ -958,6 +959,40 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - **壊れた直接編集**: 読めない項目（重複した ID・空の文・知らない結果など）は除いて読み、理由を `acceptanceProblems`（ファイルには
   書かない）に出す。問題のあるタスクの基準・証拠は操作で変えず（直すよう知らせる）、関係のない更新ではファイルの元の値をそのまま
   書き戻す（`core/store/collection.ts` の `keepRaw`）。黙って消さない
+
+### 品質基準
+
+プロジェクトとして守る最低限の水準（コーディング規約・構成と依存の向き・検証・文書の更新・lint など）を project.yaml の `quality` に
+持つ。初めて作ったときの状態に任せず、明記するため。Preflight の観点（`preflight.instructions`）・タスクのレビューの観点
+（`taskReview.viewpoints`）とは別の項目で、どちらもそのまま残る。
+
+```yaml
+quality:
+  templates: [{ id: basic, version: 1 }]       # 採用したテンプレート（版）
+  standards:
+    - id: Q1                                    # 安定した ID（消した ID は使い直さない）
+      text: プロジェクトのコーディング規約に従う
+      check: { kind: manual, reference: docs/development.md と照らす }   # 人の確認
+      source: { template: basic, version: 1, key: conventions }
+    - id: Q5
+      text: lint が警告なしで通る
+      repos: [app]                              # 対象の参照先（無ければ全部）
+      check: { kind: machine, command: pnpm lint, success: 終了コード 0 }  # 機械の検査（作業する側が実行する）
+      exempt: { reason: ... }                   # 適用の除外（理由が要る）
+  seq: 5                                        # 振った最後の番号
+```
+
+- **状態**: `quality` が無ければ未設定、あれば設定済み（意図して空でもよい）、読めない値（重複した ID・理由の無い除外・確認の方法の
+  欠け）があれば invalid。invalid は未設定として扱い、ファイルの値は消さず、操作は断って直し方を示す。知らない参照先は警告だけ
+- **上限**: 100 件、文 1000・コマンド 500・成功の条件 500・確かめ方 1000・除外の理由 500 文字
+- **書き方**: `core/quality.ts` の操作（init・adopt・upgrade・add・replace・edit・remove・exempt・unexempt）を `Workspace.writeQuality` が
+  project.yaml のロックの中で、読み直した最新の値に当て、`quality` の項目だけを書く（コメント・ほかの項目は残す）。設定の保存
+  （PUT /api/project・`p3 config`）・参照先の保存・マイルストーンの保存は `quality` を書かないので、無関係な保存で品質基準は消えない
+- **版**: 品質だけの中身の hash（`qualityVersion`）。操作に版を渡すと、違えば `quality_conflict`（API 409・CLI 終了コード 3）で何も書かない
+- **テンプレート**（`shared/qualityTemplates.ts`）: 版つきの例（共通の基本・TypeScript の例）で、業界の標準への認証ではない。採用すると
+  編集できる実体として写し、出典（`source`）を残す。テンプレートが改版しても採用済みの内容は変わらず、差分（足す・変わる・消える）
+  を見て `upgrade` で明示して当てる
+- P3 はコマンドを実行しない・依存を入れない。確認の方法は CI・手元の作業・外の自動化のどれでもよく、特定の製品・フォルダを必須にしない
 
 ### 止まっている理由（停止）
 

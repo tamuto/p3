@@ -8,6 +8,8 @@ import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../../shared/acceptance.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
+import { QualityInputError, type QualityOp } from "../../shared/quality.ts";
+import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
@@ -64,6 +66,27 @@ const acceptanceOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("order"), ids: z.array(z.string()) }),
   z.object({ op: z.literal("record"), id: z.string(), result: z.enum(ACCEPTANCE_RESULTS), evidence: z.string().default("") }),
   z.object({ op: z.literal("unrecord"), id: z.string() }),
+]);
+/** 品質基準の操作（規則は shared/quality.ts。CLI の p3 quality と同じ） */
+const qualityCheck = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("machine"), command: z.string(), success: z.string() }),
+  z.object({ kind: z.literal("manual"), reference: z.string() }),
+]);
+const qualityInput = z.object({ text: z.string(), repos: z.array(z.string()).optional(), check: qualityCheck });
+const qualityOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("init") }),
+  z.object({ op: z.literal("adopt"), template: z.string(), version: z.number().int().optional() }),
+  z.object({ op: z.literal("upgrade"), template: z.string() }),
+  z.object({ op: z.literal("add"), standard: qualityInput }),
+  z.object({
+    op: z.literal("replace"),
+    standards: z.array(qualityInput.extend({ id: z.string().optional(), exemptReason: z.string().optional(), source: z.object({ template: z.string(), version: z.number().int(), key: z.string() }).optional() })).max(200),
+    templates: z.array(z.object({ id: z.string(), version: z.number().int() })).optional(),
+  }),
+  z.object({ op: z.literal("edit"), id: z.string(), standard: qualityInput.partial() }),
+  z.object({ op: z.literal("remove"), id: z.string() }),
+  z.object({ op: z.literal("exempt"), id: z.string(), reason: z.string() }),
+  z.object({ op: z.literal("unexempt"), id: z.string() }),
 ]);
 /** 作るとき: 受け入れ基準は文の並び（ID は p3 が振る） */
 const taskCreate = taskInput.extend({ criteria: z.array(z.string()).optional() });
@@ -175,6 +198,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
+    // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
+    if (err instanceof QualityInputError) return c.json({ error: err.message, code: err.code }, err.code === "quality_conflict" ? 409 : 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     // データのフォルダが読めない（メモリ上の状態は変えていない）
@@ -267,6 +292,18 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const id = rid(c);
     const r = await orderChildren(ctx, id, children, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({ request: r, children: hierarchyNow(ws).children(id).map((k) => k.id) });
+  });
+
+  // --- 品質基準（project.yaml の quality。core/quality.ts） ----------------------------
+  app.get("/quality", (c) => c.json(qualityView(ws)));
+  app.get("/quality/templates/:id", (c) => {
+    const v = c.req.query("version");
+    const t = qualityTemplate(c.req.param("id"), v ? Number(v) : undefined);
+    return t ? c.json(t) : c.json({ error: `テンプレートがありません: ${c.req.param("id")}`, code: "not_found" }, 404);
+  });
+  app.post("/quality", async (c) => {
+    const { ops, version } = z.object({ ops: z.array(qualityOp).min(1).max(200), version: z.string().optional() }).parse(await c.req.json());
+    return c.json(await updateQuality(ws, ops as QualityOp[], { expectedVersion: version }));
   });
 
   // --- tasks（要望の中） --------------------------------------------------------

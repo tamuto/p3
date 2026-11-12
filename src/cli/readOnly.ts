@@ -19,6 +19,8 @@ export function readsOnly(cmd: string, args: string[]): boolean {
     case "request":
     case "req":
       return sub === "ls" || sub === "list" || sub === "show";
+    case "quality":
+      return sub === undefined || sub === "show" || sub === "templates" || sub === "template";
     case "milestone":
     case "milestones":
       return sub === undefined || sub === "ls" || sub === "list";

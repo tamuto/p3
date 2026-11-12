@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ProjectConfig } from "../../shared/types.ts";
 import { ChatGptPanel } from "../components/ChatGptPanel.tsx";
 import { ReposPanel } from "../components/ReposPanel.tsx";
+import { QualityPanel } from "../components/QualityPanel.tsx";
 import { TabPanel, Tabs } from "../components/Tabs.tsx";
 import { ThemePanel } from "../components/ThemePanel.tsx";
 import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
@@ -15,6 +16,7 @@ export const SETTINGS_TABS = [
   { id: "personal", label: "個人", hint: "このマシン・この人。全プロジェクト共通" },
   { id: "project", label: "プロジェクトの基本", hint: "project.yaml。チームで共有" },
   { id: "repos", label: "参照先", hint: "リポジトリ・フォルダと、このマシンのパス" },
+  { id: "quality", label: "品質基準", hint: "project.yaml の quality。チームで共有" },
 ] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 const isTab = (v: unknown): v is SettingsTab => SETTINGS_TABS.some((t) => t.id === v);
@@ -42,6 +44,7 @@ function SettingsPage() {
   const { tab = "personal" } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [reposDirty, setReposDirty] = useState(false);
+  const [qualityDirty, setQualityDirty] = useState(false);
   const [draft, setDraft] = useState<BasicConfig>(() => basicOf(ctx.info.project));
   const [dirty, setDirty] = useState(false);
   /** 編集を始めたときの基本の項目（編集中に外で変わったかを見る。マイルストーン・参照先の変更は見ない） */
@@ -72,8 +75,8 @@ function SettingsPage() {
     }
   }
 
-  const unsaved: Record<SettingsTab, boolean> = { personal: false, project: dirty, repos: reposDirty };
-  useUnsaved(dirty || reposDirty);
+  const unsaved: Record<SettingsTab, boolean> = { personal: false, project: dirty, repos: reposDirty, quality: qualityDirty };
+  useUnsaved(dirty || reposDirty || qualityDirty);
   return (
     // ブラウザの幅をそのまま使う（ほかの画面と同じ）。狭い画面では左右の余白を縮める
     <div className={cx("w-full space-y-6 px-4 pt-6 sm:px-6 lg:px-8 lg:pt-8", tab === "project" ? "pb-24" : "pb-10")}>
@@ -89,6 +92,10 @@ function SettingsPage() {
 
       <TabPanel id="repos" tab={tab} prefix="settings" className="space-y-10">
         <ReposPanel tick={ctx.tick} onChanged={ctx.reload} onDirtyChange={setReposDirty} />
+      </TabPanel>
+
+      <TabPanel id="quality" tab={tab} prefix="settings" className="space-y-10">
+        <QualityPanel tick={ctx.tick} repoNames={ctx.info.project.repos.map((r) => r.name)} onDirtyChange={setQualityDirty} />
       </TabPanel>
 
       <TabPanel id="project" tab={tab} prefix="settings" className="space-y-10">

@@ -29,6 +29,12 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                    codex.effort / codex.ensureImage / preflight.engine / serve.host / serve.port（キー= で消す）
                                set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>  パスの対応を足す
                                set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
+  quality                      品質基準（project.yaml の quality。未設定・設定済み・読めない）とテンプレートの改版の差分
+                               templates / template <id>  同梱のテンプレート（版つきの例。業界の標準への認証ではない）
+                               init 空で設定する / adopt <テンプレート> 写して採用する / upgrade <テンプレート> 改版の差分を当てる
+                               add --text 文 [--repo 名前] (--command コマンド --success 成功の条件 | --reference 確かめ方)
+                               set <Q1> [--text] [--repo 名前|all] [...] / rm <Q1> / exempt <Q1> --reason 理由 / unexempt <Q1>
+                               --version <版> で、他で変わっていれば競合（終了コード 3）。P3 はコマンドを実行しない
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   milestone show <id>          目的・予定している機能と版（--json の milestonesVersion）

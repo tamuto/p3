@@ -493,6 +493,28 @@ p3 show T003 --archived --req <要望>  # 本文・変更の記録・成果物�
 - **変更の記録**（`record`）: 何を変えたか・なぜ・入れた決まり・やめたもの（Markdown）。`move <T> done --record 本文|-`、後から直すなら
   `set <T> --record ...`、画面のタスク詳細。`P3_ACTOR=ai:...` で完了にするときは必須（人は無くてもよい）
 
+### 品質基準
+
+プロジェクトとして守る最低限の水準（規約・構成・検証・文書・lint など）を、ID の付いた項目として project.yaml に書いておける。
+未設定でも作業は続けられる。
+
+```bash
+p3 quality                          # 今の設定（未設定・設定済み・読めない）
+p3 quality templates                # 同梱のテンプレート（basic@1 共通の基本 / typescript@1 TypeScript の例）
+p3 quality template typescript      # 中身を見る
+p3 quality adopt basic              # 写して採用する（編集できる実体になる）。空のまま設定するなら p3 quality init
+p3 quality add --text "lint が警告なしで通る" --repo app --command "pnpm lint" --success "終了コード 0"   # 機械の検査
+p3 quality add --text "画面の文言は用語集に従う" --reference "docs/glossary.md と照らす"                   # 人の確認
+p3 quality exempt Q2 --reason "小さい CLI なので層が無い"   # 適用の除外（理由は必須）。unexempt で戻す
+p3 quality set Q5 --repo all        # 対象を全部の参照先に戻す / rm Q4 で消す（ID は使い直さない）
+```
+
+- 画面では設定の「品質基準」のタブで、テンプレートの中身を確かめて編集中の一覧へ足し、対象・確認の方法・除外の理由を直して
+  「品質基準を保存」。編集中に他で変わったら入力は残し、保存はさせない（「元に戻す」で最新を読む）
+- P3 はコマンドを実行しない。確認は作業する側（人・AI・CI）が行う。テンプレートは例で、業界の標準への認証ではない
+- テンプレートに新しい版が出ても採用済みの内容は変わらない。差分は `p3 quality` に出て、`p3 quality upgrade <テンプレート>` で当てる
+- 規則の詳細: [architecture.md の品質基準](architecture.md#品質基準)
+
 ### 止まっている理由
 
 作業中のタスクが進められなくなったら（人の判断・権限が要る、前提が崩れた、テストが通らず先に進めない）、止まっている理由を付ける。
@@ -1056,6 +1078,7 @@ AI にも CLI を使わせる（認証を持たせずに済む）。`p3 init --a
 | `p3 ls` / `p3 show` / `p3 find` | タスクの一覧（`--all` で全要望）/ 詳細（`--brief`）/ 参照・タイトルで探す |
 | `p3 new` / `p3 set` / `p3 move` / `p3 check` / `p3 archive` | タスクを足す / 直す / 状態を変える / 済みにする / アーカイブ |
 | `p3 review <T>` / `p3 reviews <T>` / `p3 review-show <T> <run>` / `p3 review-cancel <T> <run>` | 完了したタスクの AI レビュー（[タスクの AI レビュー](#タスクの-ai-レビュー)） |
+| `p3 quality` | 品質基準（テンプレート・採用・追加・変更・除外。[品質基準](#品質基準)） |
 | `p3 block <T>` / `p3 unblock <T>` | 作業中のタスクに止まっている理由を付ける・直す / 解除する（[止まっている理由](#止まっている理由)） |
 | `p3 criteria <T>` / `p3 evidence <T>` | 受け入れ基準を見る・足す・直す・消す・並べ替える / 基準ごとの証拠を残す・消す（[受け入れ基準と証拠](#受け入れ基準と証拠)） |
 | `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`。手元のエージェントなら `--prepare` / `--complete`。中断は `--cancel --run`）/ メモ / 評価とタスク案 / タスク化 |

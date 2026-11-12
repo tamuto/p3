@@ -1,5 +1,6 @@
 import type { AcceptanceCriterion, AcceptanceEvidence } from "./acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
+import type { QualityState } from "./quality.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
@@ -878,6 +879,13 @@ export interface ProjectConfig {
     /** preflight.runner に読めない値が書いてあるとき、その値（担当は決めない。保存しても消さない） */
     invalidRunner?: string;
   };
+  /**
+   * 品質基準（project.yaml の quality。読むときに決まる。設定の保存では書かず、core/quality.ts の操作だけが書く）。
+   * 無ければ未設定として扱う。規則は shared/quality.ts
+   */
+  quality?: QualityState;
+  /** 品質基準の版（品質だけの中身の hash。保存の前に比べる） */
+  qualityVersion?: string;
 }
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */

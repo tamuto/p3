@@ -4,6 +4,7 @@ import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
+import type { QualityOp, QualityState, QualityTemplate, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
@@ -104,6 +105,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
   return data as T;
+}
+
+/** 品質基準の表示（GET /quality） */
+export interface QualityViewData {
+  quality: QualityState;
+  version: string;
+  diffs: TemplateDiff[];
+  templates: { id: string; version: number; title: string; description: string; items: number }[];
 }
 
 /** タスクの AI レビューの材料のプレビュー（POST .../review-preview） */
@@ -317,6 +326,10 @@ export const api = {
   cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
   /** レビューの履歴のあるマイルストーン（project.yaml に無い孤立も） */
   reviewedMilestones: () => call<{ milestones: string[] }>("GET", "/milestone-reviews"),
+  /** 品質基準（project.yaml の quality。版が違えば 409 quality_conflict） */
+  quality: () => call<QualityViewData>("GET", "/quality"),
+  qualityTemplate: (id: string) => call<QualityTemplate>("GET", `/quality/templates/${encodeURIComponent(id)}`),
+  updateQuality: (ops: QualityOp[], version?: string) => call<QualityViewData>("POST", "/quality", { ops, version }),
   /** タスクの AI レビュー（読むだけ・始める・取消。結果を直す口は無い） */
   taskReviewPreview: (rid: string, tid: string, spec: TaskReviewSpec = {}) => call<TaskReviewPreview>("POST", `/requests/${rid}/tasks/${tid}/review-preview`, spec),
   taskReviews: (rid: string, tid: string) => call<{ items: TaskReviewListItem[] }>("GET", `/requests/${rid}/tasks/${tid}/reviews`),
