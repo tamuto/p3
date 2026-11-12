@@ -1,4 +1,5 @@
 import type { AcceptanceCriterion, AcceptanceEvidence } from "./acceptance.ts";
+import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
@@ -111,6 +112,12 @@ export interface Task {
   acceptanceSeq?: number;
   /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
   acceptanceProblems?: string[];
+  /** 止まっている理由（作業中のタスクの属性。状態ではない）。規則は shared/taskBlock.ts */
+  block?: TaskBlock;
+  /** 停止の履歴（付けた・直した・解除した。追記だけ） */
+  blockHistory?: BlockHistoryEntry[];
+  /** 直接編集で読めなかった停止の値の理由（ファイルには書かない） */
+  blockProblems?: string[];
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -199,7 +206,7 @@ import type { HierarchyIssue } from "./hierarchy.ts";
 
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
-export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt">;
+export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block">;
 
 export interface RequestProgress {
   request: Request;
@@ -210,13 +217,15 @@ export interface RequestProgress {
   done: number;
   /** 最後に変更された日時（要望かタスク。子のある要望は配下も見る） */
   updatedAt: string;
-  /** 直下の子の要望の ID（作成日時の古い順） */
+  /** 止まっている自分のタスクの数（作業中にも数える） */
+  blocked: number;
+  /** 直下の子の要望の ID（親の childOrder の順。無い子は作成日時の古い順。shared/hierarchy.ts） */
   children: string[];
   /**
    * 配下の集計（自分と子孫のタスク。見送りの子とその下も含めて数え、状態は rejected に出す）。counts・total・done は自分の値と別。
    * 全体の合計は各要望の自分の値（total・done）を足す（配下を足すと二重に数える）
    */
-  subtree: { counts: Record<TaskStatus, number>; total: number; done: number; requests: Record<RequestStatus, number> };
+  subtree: { counts: Record<TaskStatus, number>; total: number; done: number; blocked: number; requests: Record<RequestStatus, number> };
   /** 親子の問題（自分・祖先・子孫） */
   hierarchyIssues: HierarchyIssue[];
 }

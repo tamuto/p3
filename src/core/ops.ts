@@ -15,6 +15,8 @@ export interface TaskFilter {
   q?: string;
   /** 作業先（参照先の名前。none は作業先なし） */
   repo?: string;
+  /** 止まっているタスクだけ（ほかの条件と AND） */
+  blocked?: boolean;
 }
 
 export function listTasks({ ws }: P3Context, f: TaskFilter = {}): Task[] {
@@ -23,6 +25,7 @@ export function listTasks({ ws }: P3Context, f: TaskFilter = {}): Task[] {
   if (f.area) tasks = tasks.filter((t) => t.areas.some((a) => a.startsWith(f.area!)));
   // 作業先で絞る（none は作業先なし）
   if (f.repo !== undefined) tasks = tasks.filter((t) => (t.repo ?? null) === (f.repo === "none" ? null : f.repo));
+  if (f.blocked) tasks = tasks.filter((t) => !!t.block);
   if (f.q) {
     const q = f.q.toLowerCase();
     tasks = tasks.filter((t) => `${t.ref} ${t.title} ${t.body}`.toLowerCase().includes(q));
@@ -101,9 +104,11 @@ export function progress(ctx: P3Context): RequestProgress[] {
       const counts = zero();
       for (const t of tasks) counts[t.status]++;
       const done = tasks.filter((t) => t.status === "done");
+      // 止まっているタスク（作業中にも数える。完了率・完了の判定は変えない）
+      const blocked = tasks.filter((t) => !!t.block).length;
       // 配下: 自分と子孫（循環しても1回ずつ）
       const below = h.descendants(request.id);
-      const sub = { counts: zero(), total: 0, done: 0, requests: Object.fromEntries(REQUEST_STATUSES.map((s) => [s, 0])) as Record<RequestStatus, number> };
+      const sub = { counts: zero(), total: 0, done: 0, blocked: 0, requests: Object.fromEntries(REQUEST_STATUSES.map((s) => [s, 0])) as Record<RequestStatus, number> };
       const stamps = [request.updatedAt, ...tasks.map((t) => t.updatedAt)];
       for (const r of [request, ...below]) {
         if (r !== request) {
@@ -114,15 +119,17 @@ export function progress(ctx: P3Context): RequestProgress[] {
           sub.counts[t.status]++;
           sub.total++;
           if (t.status === "done") sub.done++;
+          if (t.block) sub.blocked++;
           if (r !== request) stamps.push(t.updatedAt);
         }
       }
       return {
         request,
-        tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt })),
+        tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, block }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, ...(block ? { block } : {}) })),
         counts,
         total: tasks.length,
         done: done.length,
+        blocked,
         updatedAt: stamps.sort().at(-1)!,
         children: h.children(request.id).map((c) => c.id),
         subtree: sub,

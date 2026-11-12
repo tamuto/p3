@@ -5,6 +5,7 @@ import { machineSettingsSource, resolveMachineSettings, SettingsError } from "..
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
+import { BlockInputError } from "../shared/taskBlock.ts";
 import { taskReviewCommand } from "./taskReviewCommands.ts";
 import { TaskReviewRejected } from "../core/taskReview/material.ts";
 import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
@@ -286,7 +287,7 @@ async function main(argv: string[]): Promise<number> {
                   : "",
                 p.request.tags.map((t) => `#${t}`).join(" "),
                 // 子のある要望は配下の集計（自分の値とは別）、子は親を添える
-                `${p.request.title}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
+                `${p.request.title}${p.blocked ? `  ⏸停止 ${p.blocked}` : ""}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}${p.subtree.blocked > p.blocked ? `・配下の停止 ${p.subtree.blocked - p.blocked}` : ""}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
               ]);
               return `${head}\n${table(rows)}`;
             })
@@ -368,7 +369,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );

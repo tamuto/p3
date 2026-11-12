@@ -7,6 +7,7 @@ import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../../shared/acceptance.ts";
+import { BlockInputError } from "../../shared/taskBlock.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
 import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
@@ -67,7 +68,14 @@ const acceptanceOp = z.discriminatedUnion("op", [
 /** 作るとき: 受け入れ基準は文の並び（ID は p3 が振る） */
 const taskCreate = taskInput.extend({ criteria: z.array(z.string()).optional() });
 /** checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 基準・証拠への操作（順に当て、1つでも合わなければ何も書かない） */
-const taskPatch = taskInput.partial().extend({ rev: z.number().int().optional(), checked: z.boolean().optional(), acceptance: z.array(acceptanceOp).optional() });
+/** 停止の操作（規則は shared/taskBlock.ts。CLI の block / unblock と同じ。日時・履歴は受け付けない） */
+const blockOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("set"), reason: z.string(), decision: z.string().optional() }),
+  z.object({ op: z.literal("clear"), resolution: z.string() }),
+]);
+const taskPatch = taskInput
+  .partial()
+  .extend({ rev: z.number().int().optional(), checked: z.boolean().optional(), acceptance: z.array(acceptanceOp).optional(), blockOp: blockOp.optional() });
 const requestInput = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
@@ -165,6 +173,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 受け入れ基準・証拠の操作が規則に合わない（何も書いていない）
     if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
+    // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
+    if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
     if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
     // データのフォルダが読めない（メモリ上の状態は変えていない）
@@ -261,8 +271,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   // --- tasks（要望の中） --------------------------------------------------------
   app.get("/requests/:rid/tasks", (c) => {
-    const { status, area, q } = c.req.query();
-    return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q }));
+    const { status, area, q, blocked } = c.req.query();
+    return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q, blocked: blocked === "true" }));
   });
   app.post("/requests/:rid/tasks", async (c) => {
     const raw = taskCreate.parse(await c.req.json());
@@ -277,8 +287,9 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [], acceptance: acceptanceStatus(task) ?? null });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
-    const { rev, checked, acceptance, ...patch } = taskPatch.parse(await c.req.json());
+    const { rev, checked, acceptance, blockOp: bop, ...patch } = taskPatch.parse(await c.req.json());
     const next = {
+      ...(bop ? { blockOp: bop } : {}),
       ...(unnull(patch) as Partial<Task>),
       ...("repo" in patch ? { repo: patch.repo ?? null } : {}),
       ...(checked !== undefined ? { checked } : {}),
@@ -454,8 +465,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   // --- 横断 --------------------------------------------------------------
   app.get("/tasks", (c) => {
-    const { status, area, q } = c.req.query();
-    return c.json(listTasks(ctx, { status: status?.split(","), area, q }));
+    const { status, area, q, blocked } = c.req.query();
+    return c.json(listTasks(ctx, { status: status?.split(","), area, q, blocked: blocked === "true" }));
   });
   /** 参照・タイトルから対象を特定する（?request= で今の要望を優先） */
   app.get("/resolve", (c) => c.json(resolve(ctx, c.req.query("q") ?? "", c.req.query("request"))));

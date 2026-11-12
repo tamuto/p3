@@ -9,11 +9,12 @@ import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
-import { briefTask, formatAcceptance, formatBriefTask, taskExtras } from "./showView.ts";
+import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
 import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";
+import type { BlockOp } from "../shared/taskBlock.ts";
 import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
 import { pickRun } from "./preflightCommands.ts";
@@ -34,7 +35,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
         throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
       }
-      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo };
+      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       const marks = supersededMarks(ctx.ws);
       const items = tasks.map((t) => (marks.has(t.ref) ? { ...t, superseded: marks.get(t.ref) } : t));
@@ -47,9 +48,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
             t.status,
             ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
             t.title,
-            [deps(t), replacedBy(t, marks)].filter(Boolean).join("  "),
+            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), replacedBy(t, marks)].filter(Boolean).join("  "),
           ]),
-        ) || "タスクはありません",
+        ) || (o.blocked ? "止まっているタスクはありません" : "タスクはありません"),
       );
     }
 
@@ -174,6 +175,10 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
+    case "block":
+    case "unblock":
+      return blockCommand(cmd, env);
+
     case "criteria":
       return criteriaCommand(env);
 
@@ -189,6 +194,41 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
 
   }
   return undefined;
+}
+
+// --- 止まっている理由（停止） ---------------------------------------------------------
+
+/**
+ * block <T> --reason 理由|- [--decision 決めてほしいこと|-]   作業中のタスクに停止を付ける・内容を直す（止まった時刻は変えない）
+ * unblock <T> --resolution 回答・解決の内容|-                 解除する（状態は変えない。自動では再開しない）
+ * - は標準入力（どれか1つだけ）
+ */
+async function blockCommand(cmd: "block" | "unblock", { ctx, out, args, o, actor, expectedRev, taskArg, split }: CommandEnv): Promise<number> {
+  const ref = taskArg(args[0]);
+  const stdin = [o.reason, o.decision, o.resolution].filter((v) => v === "-").length;
+  if (stdin > 1) throw new UsageError("標準入力（-）は --reason / --decision / --resolution のどれか1つだけに使えます");
+  let op: BlockOp;
+  if (cmd === "block") {
+    if (o.reason === undefined) throw new UsageError(`使い方: p3 block ${args[0] ?? "<T>"} --reason "止まっている理由" [--decision "決めてほしいこと"]`);
+    op = { op: "set", reason: readBody(o.reason), ...(o.decision !== undefined ? { decision: readBody(o.decision) } : {}) };
+  } else {
+    if (o.resolution === undefined) throw new UsageError(`使い方: p3 unblock ${args[0] ?? "<T>"} --resolution "回答・解決の内容"`);
+    op = { op: "clear", resolution: readBody(o.resolution) };
+  }
+  const { tid } = split(ref);
+  const before = ctx.ws.requireTask(ref);
+  const r = await updateTask(ctx, ref.split("/")[0], tid, { blockOp: op }, { expectedRev, actor });
+  const t = r.task;
+  const changed = t.rev !== before.rev;
+  return out.result({ ...t, changed }, () =>
+    !changed
+      ? cmd === "block"
+        ? `${t.ref} は同じ内容で止まっています（変えていません）`
+        : `${t.ref} は止まっていません（変えていません）`
+      : t.block
+        ? `${t.ref} を止めました（${t.block.since} から）: ${t.block.reason}${t.block.decision ? `\n  決めてほしいこと: ${t.block.decision}` : ""}`
+        : `${t.ref} の停止を解除しました（状態は ${t.status} のまま。自動では再開しません）`,
+  );
 }
 
 // --- 受け入れ基準と証拠 -------------------------------------------------------------
@@ -317,7 +357,7 @@ async function evidenceCommand(env: CommandEnv): Promise<number> {
 
 /** ls --archived: 今の要望（--req）のアーカイブの一覧。通常の絞り込み・--all とは混ぜない */
 async function listArchived({ ctx, out, o, requestArg }: CommandEnv): Promise<number> {
-  const mixed = (["all", "status", "area", "q", "repo"] as const).filter((k) => o[k] !== undefined && o[k] !== false);
+  const mixed = (["all", "status", "area", "q", "repo", "blocked"] as const).filter((k) => o[k] !== undefined && o[k] !== false);
   if (mixed.length) throw new UsageError(`--archived では ${mixed.map((k) => `--${k}`).join(" ")} を使えません（要望は --req で1つ指定）`);
   const list = await listArchivedTasks(ctx.ws, requestArg(undefined));
   return out.result(list, () =>
@@ -367,6 +407,8 @@ function formatArchived(t: ArchivedTask, file: string): string {
   if (t.record) lines.push("", "変更の記録:", indent(t.record));
   const acc = formatAcceptance(t, { emptyLine: false });
   if (acc.length) lines.push("", ...acc);
+  const blk = formatBlock(t, { history: true });
+  if (blk.length) lines.push("", ...blk);
   // 保存された関係をそのまま出す（相手が今の通常のタスクかは解かない）
   if (t.relations.length) lines.push("", "保存された関係:", ...t.relations.map((r) => `  → ${relationRole(r.type, "out")} ${r.target}`));
   lines.push("", `ファイル: ${file}`);

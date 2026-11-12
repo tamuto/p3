@@ -729,6 +729,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
 | レビューの実行の記録の共通部分（保存・終わり・回復・取消・遅れた結果の拒否） | `core/reviewRuns.ts` |
 | タスクの AI レビュー（材料・履歴） | `core/taskReview/`（`material.ts`・`store.ts`） |
+| 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
@@ -957,6 +958,41 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - **壊れた直接編集**: 読めない項目（重複した ID・空の文・知らない結果など）は除いて読み、理由を `acceptanceProblems`（ファイルには
   書かない）に出す。問題のあるタスクの基準・証拠は操作で変えず（直すよう知らせる）、関係のない更新ではファイルの元の値をそのまま
   書き戻す（`core/store/collection.ts` の `keepRaw`）。黙って消さない
+
+### 止まっている理由（停止）
+
+作業中のタスクが進められなくなった（人の判断・権限が要る、前提が崩れた、テストが通らず先に進めない）ことを、状態ではなく
+作業中のタスクの属性として持つ。状態は 未着手 / 作業中 / 完了 のまま。規則は `shared/taskBlock.ts` の1か所で、CLI
+（`block` / `unblock`）と API（PATCH の `blockOp`）は同じ操作を `core/requestOps.ts` の `updateTask` に渡すだけ。
+
+```yaml
+block:                      # 今の値（止まっていなければ無い）
+  reason: テストが通らず先に進めない   # 何で止まったか（空白だけは不可。2000 文字まで）
+  decision: API の形を変えてよいか     # 人に決めてほしいこと（任意。2000 文字まで）
+  since: 2026-11-12T01:00:00.000Z     # 止まった時刻（内容を直しても変えない。解除して付け直すと新しくなる）
+  updatedAt: 2026-11-12T01:30:00.000Z
+  updatedBy: ai:claude
+blockHistory:               # 履歴（追記だけ。before / after はそのときの今の値の写し）
+  - { action: set, at: ..., by: ai:claude, after: { reason: ..., since: ... } }
+  - { action: update, at: ..., by: ai:claude, before: {...}, after: {...} }
+  - { action: clear, at: ..., by: human:me, before: {...}, resolution: 形を変えてよい }   # 回答・解決の内容は必須（4000 文字まで）
+```
+
+- **付ける・直す**は作業中のタスクだけ（`block_not_doing`）。時刻は P3 が付け、変更者は actor。値・履歴をそのまま書く入力の道は
+  持たない（PATCH の `block`・`blockHistory` は捨てる）。同じ内容の付け直し・付いていない解除は何も書かない（履歴も rev も増やさない）
+- **止まったままの移動**: 作業中から未着手・完了へ動かす更新は断る（`blocked`。API は 409）。解除と移動を同じ更新に書けば、確かめてから
+  1つのファイルに一緒に保存する。付与と作業中でない状態への移動を一緒に書けば断る。解除は状態・作業中にした日時・完了の日時・済み・
+  要望の状態を変えない（自動では再開しない）。既に作業中でないのに停止が付いている（直接編集）タスクは警告だけにし、関係のない
+  更新は断らない（解除で直す）
+- **今の値に当てる**: 操作は書く直前に読み直したファイルの値と、更新した後の状態で確かめ、今の値と履歴を同じ1回の書き込みに入れる。
+  rev を渡せば競合で何も書かない。同じ OS の権限での直接の書き換え・ほかのプロセスとの完全な排他は保証しない（完全な監査ログではない）
+- **壊れた直接編集**: 読めない値は除いて読み、理由を `blockProblems`（ファイルには書かない）に出す。問題があれば停止の操作は断り
+  （ファイルの `block` / `blockHistory` を直すよう知らせる）、関係のない更新ではファイルの元の値をそのまま書き戻す（`keepRaw`）
+- **読む**: `ls --blocked`・GET tasks の `?blocked=true`（ほかの条件と AND。アーカイブの一覧では使えない）。通常の一覧に停止の印・
+  止まった日・理由、show に今の値・履歴・問題、`--brief` に今の値と問題（履歴は省く）。アーカイブしたタスクは今の値・履歴を読むだけ
+- **集計**: 進捗（`RequestProgress`）に自分の停止の数 `blocked`・配下の数 `subtree.blocked`、タスクの印（`TaskMark`）に今の値。
+  止まっていても作業中に数え、完了率と要望の完了の判定は変えない。全体の合計は自分の数だけを足す（配下を足すと二重に数える）
+- 変更の記録（`record`）は完了したときに書くもので、停止の履歴とは別
 
 ### タスクの AI レビュー（材料）
 
