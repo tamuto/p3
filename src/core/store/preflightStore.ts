@@ -1,7 +1,14 @@
 import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
+import { readDraftCriteria } from "../../shared/acceptance.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
+
+/** 案の受け入れ基準（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
+function draftCriteriaOf(raw: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems"> {
+  const { criteria, problems } = readDraftCriteria(raw);
+  return { ...(criteria ? { acceptanceCriteria: criteria } : {}), ...(problems ? { acceptanceProblems: problems } : {}) };
+}
 import { writeFileAtomic } from "./fsutil.ts";
 
 /**
@@ -35,7 +42,8 @@ export class PreflightStore {
   }
 
   async saveDraft(requestId: string, runId: string, d: ProposedTask): Promise<void> {
-    const { description, ...meta } = d;
+    // 基準が読めない理由は書かない（読むたびに決まる）
+    const { description, acceptanceProblems: _p, ...meta } = d;
     await writeFileAtomic(
       join(this.runDir(requestId, runId), "drafts", `${d.key}.md`),
       stringifyFrontmatter({ ...meta, include: d.include }, description),
@@ -57,6 +65,7 @@ export class PreflightStore {
         supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
         include: data.include !== false,
         ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
+        ...draftCriteriaOf(data.acceptanceCriteria),
       });
     }
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));

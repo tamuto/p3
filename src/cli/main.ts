@@ -4,6 +4,7 @@ import { openProject } from "../core/context.ts";
 import { machineSettingsSource, resolveMachineSettings, SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
+import { AcceptanceInputError } from "../shared/acceptance.ts";
 import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
 import { ReviewCancelRefused, ReviewRejected } from "../core/milestoneReview/service.ts";
 import { ReviewStoreError } from "../core/milestoneReview/store.ts";
@@ -360,7 +361,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );

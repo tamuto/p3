@@ -7,7 +7,7 @@ import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/mileston
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "./fsutil.ts";
-import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_KEY_ORDER } from "./normalize.ts";
+import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_DERIVED, TASK_KEY_ORDER, taskKeepRaw } from "./normalize.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";
 import { NoteStore } from "./noteStore.ts";
@@ -239,7 +239,8 @@ export class Workspace {
         layout: fileLayout(join(this.requestsDir, requestId, "tasks"), TASK_ID, taskId),
         normalize: normalizeTaskIn(requestId),
         keyOrder: TASK_KEY_ORDER,
-        derived: ["request", "ref"],
+        derived: TASK_DERIVED,
+        keepRaw: taskKeepRaw,
         beforeWrite: (prev, next) => stampStatus(prev, next),
       });
       this.taskCollections.set(requestId, col);

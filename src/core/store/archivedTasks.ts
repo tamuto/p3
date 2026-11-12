@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import type { ArchivedTask, ArchivedTaskError, ArchivedTaskList, Task } from "../../shared/types.ts";
 import { fileLayout, MarkdownCollection, NotFoundError } from "./collection.ts";
-import { normalizeTaskIn, TASK_KEY_ORDER } from "./normalize.ts";
+import { normalizeTaskIn, TASK_DERIVED, TASK_KEY_ORDER } from "./normalize.ts";
 import type { Workspace } from "./workspace.ts";
 
 /**
@@ -31,7 +31,7 @@ function reader(ws: Workspace, rid: string) {
     layout: fileLayout(requestDir(ws, rid), TASK_ID, taskId),
     normalize: normalizeTaskIn(rid),
     keyOrder: TASK_KEY_ORDER,
-    derived: ["request", "ref"],
+    derived: TASK_DERIVED,
   });
 }
 

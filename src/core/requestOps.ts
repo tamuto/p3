@@ -1,3 +1,4 @@
+import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../shared/acceptance.ts";
 import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
@@ -32,7 +33,12 @@ export interface TaskResult {
   warnings: (Warning | AncestorWarning)[];
   reopened?: string;
   reopenedAncestors?: string[];
+  /** 済みのタスクの受け入れ基準・証拠の中身が変わったので、人の「済み」を外した（理由） */
+  checkCleared?: string;
 }
+
+/** 済みを外した理由（基準・証拠の中身が変わった） */
+export const CHECK_CLEARED_BY_ACCEPTANCE = "受け入れ基準か証拠の中身が変わったため、人の「済み」を外しました（もう一度確かめてください）";
 
 /** 要望を作った・変えた結果に添える、祖先を戻した結果（無ければ何も足さない） */
 export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[] };
@@ -98,31 +104,43 @@ async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: str
  * タスクを作る。repo: 省くと作業先にできる参照先が1つならそれ（ほかは作業先なし）、null は作業先なし。
  * 作業先とリポジトリごとの成果物の参照先は、作業先にできるものだけ（書く前に断る）
  */
-export async function createTask(ctx: P3Context, rid: string, input: Partial<Task> & { title: string }, actor?: string): Promise<TaskResult> {
+export async function createTask(
+  ctx: P3Context,
+  rid: string,
+  { criteria, ...input }: Partial<Task> & { title: string; criteria?: readonly string[] },
+  actor?: string,
+): Promise<TaskResult> {
   ctx.ws.requests.require(rid);
   const repo = "repo" in input ? (input.repo ?? null) : defaultRepo(ctx.ws.project);
   checkRepoTarget(ctx.ws, repo);
   for (const o of input.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
-  const task = await ctx.ws.tasksOf(rid).create({ ...input, repo, status: input.status ?? "todo" }, actor);
+  // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, ...plain } = input;
+  const acceptance = criteria?.length ? applyAcceptanceOps({}, criteria.map((text) => ({ op: "add", text })), { now: new Date().toISOString(), actor }) : {};
+  const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status: input.status ?? "todo" }, actor);
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
   return { task, warnings: ancestorWarnings, ...after };
 }
 
 /**
  * タスクを変える。checked: 人の「済み」を付ける / 外す（付けられるのは完了したタスクだけ）。
+ * acceptance: 受け入れ基準・証拠への操作（shared/acceptance.ts。書く直前に読み直した今の値に当て、規則に合わなければ何も書かない）。
+ * 済みのタスクの基準・証拠の中身が変わったら済みを外し、checkCleared に理由を返す（同じ値の再保存・成果物だけの追加では外さない）。
  * 置き換えられたタスクを作業中にすると warnings を返す（変更はする）
  */
 export async function updateTask(
   ctx: P3Context,
   rid: string,
   tid: string,
-  patch: Partial<Task> & { checked?: boolean },
+  patch: Partial<Task> & { checked?: boolean; acceptance?: readonly AcceptanceOp[] },
   opts: WriteOpts = {},
 ): Promise<TaskResult> {
   const col = ctx.ws.tasksOf(rid);
   const cur = col.require(tid);
-  const { checked, ...rest } = patch;
-  const next: Partial<Task> = { ...rest };
+  const { checked, acceptance, ...rest } = patch;
+  // 基準・証拠は操作（acceptance）でだけ変える
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, ...plain } = rest;
+  const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
     next.repo = patch.repo ?? null;
@@ -133,9 +151,22 @@ export async function updateTask(
     next.checkedAt = checked ? new Date().toISOString() : undefined;
   }
   const warnings = startWarnings(ctx.ws, cur.ref, cur.status, next.status);
-  const task = await col.update(tid, next, opts);
+  let checkCleared: string | undefined;
+  const task = await col.update(
+    tid,
+    (fresh) => {
+      if (!acceptance?.length) return next;
+      const changedTo = applyAcceptanceOps(fresh, acceptance, { now: new Date().toISOString(), actor: opts.actor });
+      if (!acceptanceChanged(fresh, changedTo)) return next;
+      // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
+      const clear = !!fresh.checkedAt && !("checkedAt" in next);
+      if (clear) checkCleared = CHECK_CLEARED_BY_ACCEPTANCE;
+      return { ...next, ...changedTo, ...(clear ? { checkedAt: undefined } : {}) };
+    },
+    opts,
+  );
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
-  return { task, warnings: [...warnings, ...ancestorWarnings], ...after };
+  return { task, warnings: [...warnings, ...ancestorWarnings], ...after, ...(checkCleared ? { checkCleared } : {}) };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */

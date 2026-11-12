@@ -10,7 +10,9 @@ import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { materializeErrorText } from "../../lib/requestEdit.ts";
 import { selectedDraft, type DraftSelection } from "../../lib/markdown.ts";
-import { DraftDetail } from "./DraftDetail.tsx";
+import { criteriaEditDirty, DraftDetail, type CriteriaEdit } from "./DraftDetail.tsx";
+import { rowsOf } from "../Acceptance.tsx";
+import { useUnsaved } from "../../lib/unsaved.ts";
 import {
   canSaveTitle,
   discardTitle,
@@ -82,11 +84,28 @@ export function Drafts({
   const titleOf = (d: ProposedTask) => titles[titleKey(request.id, run.id, d.key)] ?? titleDraftOf(d.title);
   const setTitle = (k: string, f: (t: TitleDraft) => TitleDraft) => setTitles((prev) => (prev[k] ? { ...prev, [k]: f(prev[k]) } : prev));
   const titlesPending = !done && run.drafts.some((d) => titlePending(titles[titleKey(request.id, run.id, d.key)]));
+  // 受け入れ基準の編集（要望 / run / 案のキーごと。詳細を閉じても入力は残す）
+  const [criteriaEdits, setCriteriaEdits] = useState<Record<string, CriteriaEdit>>({});
+  const criteriaEditsRef = useRef(criteriaEdits);
+  criteriaEditsRef.current = criteriaEdits;
+  const criteriaPending = !done && run.drafts.some((d) => {
+    const e = criteriaEdits[titleKey(request.id, run.id, d.key)];
+    return !!e && (criteriaEditDirty(e) || e.saving);
+  });
+  useUnsaved(criteriaPending);
+  const unreadable = done ? [] : run.drafts.filter((d) => d.include && d.acceptanceProblems?.length).map((d) => d.key);
   // 評価のあとでタイトル・本文が変わった（か確かめられない）run からはタスク化しない。評価・案は読める
   const stale = !!run.inputMatch && run.inputMatch.status !== "same";
   const stopped = stale
     ? "この評価は今の要望と違うので、タスク化できません。もう一度 Preflight を実行してください"
-    : (blocked ?? (titlesPending ? "保存していない題があります。欄から離れて保存するか、入力を捨ててからタスク化してください" : null));
+    : (blocked ??
+      (titlesPending
+        ? "保存していない題があります。欄から離れて保存するか、入力を捨ててからタスク化してください"
+        : criteriaPending
+          ? "保存していない受け入れ基準があります。案の詳細で保存するか取り消してからタスク化してください"
+          : unreadable.length
+            ? `受け入れ基準が読めない案があります（${unreadable.join(", ")}）。案の詳細で直してからタスク化してください`
+            : null));
   const included = run.drafts.filter((d) => d.include);
   // 置き換えられる既存タスク。採否を変えたら・外で変わったら読み直す。アーカイブは選んだものだけ（既定は残す）
   const [candidates, setCandidates] = useState<SupersedeCandidate[]>([]);
@@ -144,9 +163,42 @@ export function Drafts({
     if (!detail && d.open) d.close();
   }, [detail]);
 
+  /** 案の基準の編集の操作（詳細から呼ぶ） */
+  const criteriaOps = (d: ProposedTask) => {
+    const k = titleKey(request.id, run.id, d.key);
+    const put = (f: (e: CriteriaEdit | undefined) => CriteriaEdit | undefined) =>
+      setCriteriaEdits((prev) => {
+        const next = f(prev[k]);
+        const { [k]: _old, ...rest } = prev;
+        return next ? { ...rest, [k]: next } : rest;
+      });
+    return {
+      start: () => put(() => ({ base: d.acceptanceCriteria ?? [], rows: rowsOf(d.acceptanceCriteria), saving: false, error: null, conflict: null })),
+      change: (rows: CriteriaEdit["rows"]) => put((e) => e && { ...e, rows, error: null }),
+      cancel: () => put(() => undefined),
+      rebase: () => put((e) => e && { ...e, base: e.conflict ?? e.base, conflict: null, error: null }),
+      save: async () => {
+        const runId = run.id;
+        const e = criteriaEditsRef.current[k];
+        if (!e || e.saving) return;
+        put((x) => x && { ...x, saving: true, error: null });
+        try {
+          const next = await api.patchDraft(request.id, runId, d.key, { acceptanceCriteria: e.rows.map((r) => ({ ...(r.id ? { id: r.id } : {}), text: r.text })), expectedCriteria: e.base });
+          put(() => undefined);
+          putDraft(runId, next);
+        } catch (err) {
+          const current = err instanceof ApiError && err.status === 409 ? (err.body as { current?: ProposedTask } | null)?.current : undefined;
+          put((x) => x && { ...x, saving: false, conflict: current ? (current.acceptanceCriteria ?? []) : null, error: current ? null : `保存できませんでした: ${(err as Error).message}` });
+          if (current) putDraft(runId, current);
+        }
+      },
+    };
+  };
+
   async function materialize() {
     // 見えている題と違う題でタスクを作らない（欄から離れた保存が終わる前に押された場合も）
     if (run.drafts.some((d) => titlePending(titlesRef.current[titleKey(request.id, run.id, d.key)]))) return;
+    if (criteriaPending) return;
     setBusy(true);
     setError(null);
     try {
@@ -224,6 +276,13 @@ export function Drafts({
                 >
                   内容を見る
                 </Button>
+                {(d.acceptanceCriteria?.length || d.acceptanceProblems?.length) && (
+                  <p className="text-sm text-slate-500">
+                    受け入れ基準 {d.acceptanceCriteria?.length ?? 0} 件
+                    {d.acceptanceProblems?.length ? <span className="ml-1 text-rose-600">（読めない値あり）</span> : null}
+                    {criteriaEditDirty(criteriaEdits[titleKey(request.id, run.id, d.key)]) && <span className="ml-1 text-amber-700 dark:text-amber-400">（保存していない変更）</span>}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-1">
                   {d.areas.map((a) => (
                     <Badge key={a} className="max-w-full font-mono" title={a}>
@@ -304,6 +363,9 @@ export function Drafts({
         dialog={dialog}
         draft={detail}
         project={ctx.info.project}
+        done={done}
+        edit={detail ? criteriaEdits[titleKey(request.id, run.id, detail.key)] : undefined}
+        onEdit={detail ? criteriaOps(detail) : undefined}
         onClose={() => {
           setSelection(null);
           opener.current?.focus();

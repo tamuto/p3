@@ -64,6 +64,10 @@ export class MockEngine implements PreflightEngine {
       dependsOn: i === 0 ? [] : [`D${i}`],
       supersedes: [],
       include: !rejected.has(title),
+      acceptanceCriteria: [
+        { id: "A1", text: `${title} が動作することをテストで確かめられる` },
+        { id: "A2", text: "既存のテストがすべて通る" },
+      ],
       // 作業先は作業先にできる参照先の先頭（Mock は読まないので推定しない。無ければ作業先なし）
       repo: writableRepos(job.project)[0] ?? null,
     }));

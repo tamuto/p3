@@ -78,4 +78,43 @@ describe("完了の記録を実装と同じコミットに入れる", () => {
     expect(at(root, last, `${dir}/tasks/T002.md`).outputs).toEqual(["settings.ts（設定）"]);
     expect(git(root, "show", "--name-only", "--format=", append)).toBe(`${dir}/tasks/T002.md`);
   });
+
+  it("受け入れ基準のあるタスク: 着手前に基準を読み、完了と同時に基準ごとの証拠を残してコミットし、URL の追記で証拠を保つ", () => {
+    const root = tempDir("p3-same-commit-acc-");
+    gitInit(root);
+    writeFileSync(join(root, "README.md"), "# app\n");
+    p3(root, ["init", "--yes", "--description", "在庫管理", "--repo-name", "app"]);
+    const rid = (JSON.parse(p3(root, ["request", "new", "通知", "--body", "- 送る", "--json"])) as { id: string }).id;
+    p3(root, ["new", "送る", "--req", rid, "--criterion", "送信できる", "--criterion", "失敗を記録する"]);
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "要望とタスク");
+    const dir = `.p3/requests/${rid}`;
+
+    // 着手する前に基準を読む（--brief --json の item.acceptanceCriteria）
+    const brief = JSON.parse(p3(root, ["show", "T1", "--req", rid, "--brief", "--json"])) as { item: { acceptanceCriteria: { id: string }[] } };
+    expect(brief.item.acceptanceCriteria.map((c) => c.id)).toEqual(["A1", "A2"]);
+    p3(root, ["move", "T1", "doing", "--req", rid], AI);
+    writeFileSync(join(root, "notify.ts"), "export const send = () => true;\n");
+    // 証拠はファイルで（--record - が標準入力を使う）。確かめていない項目は unverified と理由
+    const ev = join(tempDir("p3-evidence-"), "evidence.md");
+    writeFileSync(ev, "## A1 met\n- notify.test.ts が通った\n\n## A2 unverified\n失敗の記録は手元で再現できず確かめていない\n");
+    p3(root, ["move", "T1", "done", "--req", rid, "--output", "notify.ts", "--record", "-", "--evidence-file", ev], AI, "- 送る処理を足した");
+    p3(root, ["request", "set", rid, "status=resolved"], AI);
+    git(root, "add", "notify.ts", dir);
+    git(root, "commit", "-q", "-m", "送る");
+    const last = git(root, "rev-parse", "HEAD");
+    const done = at(root, last, `${dir}/tasks/T001.md`);
+    expect(done).toMatchObject({ status: "done", record: "- 送る処理を足した" });
+    expect((done.acceptanceEvidence as { criterionId: string; result: string }[]).map((e) => [e.criterionId, e.result])).toEqual([
+      ["A1", "met"],
+      ["A2", "unverified"],
+    ]);
+
+    // URL を後から足しても基準・証拠・完了の日時を保つ
+    p3(root, ["move", "T1", "done", "--req", rid, "--output", `https://example.com/app/commit/${last}`], AI);
+    git(root, "add", dir);
+    git(root, "commit", "-q", "-m", "成果物の URL");
+    const after = at(root, git(root, "rev-parse", "HEAD"), `${dir}/tasks/T001.md`);
+    expect(after).toMatchObject({ doneAt: done.doneAt, acceptanceCriteria: done.acceptanceCriteria, acceptanceEvidence: done.acceptanceEvidence, record: done.record });
+  });
 });

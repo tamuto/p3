@@ -302,7 +302,7 @@ function inputMatchLine(rid: string, run: PreflightRun, m: InputMatch): string {
   return `\n※ ${staleMessage(rid, run.id, m)}`;
 }
 
-async function pickRun(ctx: P3Context, rid: string, runId?: string) {
+export async function pickRun(ctx: P3Context, rid: string, runId?: string) {
   const runs = await ctx.preflight.list(rid);
   const run = runId ? runs.find((r) => r.id === runId) : runs[0];
   if (!run) throw new NotFoundError(runId ?? `${rid} の preflight`);
@@ -344,6 +344,11 @@ function formatRun(ctx: P3Context, rid: string, run: Awaited<ReturnType<typeof p
         ]),
       ),
     );
+    // 受け入れ基準（タスク化の前に p3 criteria <D> で直せる）
+    for (const d of run.drafts) {
+      if (!d.acceptanceCriteria?.length && !d.acceptanceProblems?.length) continue;
+      lines.push(`  ${d.key} の受け入れ基準:`, ...(d.acceptanceCriteria ?? []).map((c) => `    ${c.id}  ${c.text}`), ...(d.acceptanceProblems ?? []).map((p) => `    ※読めない: ${p}`));
+    }
     lines.push("", `ファイル: ${relative(process.cwd(), join(ctx.ws.preflight.runDir(rid, run.id), "drafts"))}/`);
   }
   if (a?.split) {
