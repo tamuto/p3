@@ -3,6 +3,7 @@ import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
+import type { BlockOp } from "../../shared/taskBlock.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
@@ -64,7 +65,7 @@ export function saveErrorText(e: unknown): string {
  *   rev_conflict: 編集を始めた後に他で更新された（読み直してやり直す。入力は残す）
  *   stale_input:  評価のあとで要望のタイトル・本文が変わった（タスク化しない。再評価する）
  *   not_found:    対象が無い（消された）
- * 409 は API の code で分け、code の無い 409 は rev の競合とする
+ * 409 は API の code で分け、code の無い 409 は rev の競合とする（停止の blocked は other）
  */
 export type ApiFailure = "rev_conflict" | "stale_input" | "not_found" | "other";
 
@@ -72,7 +73,10 @@ export function failureOf(e: unknown): ApiFailure {
   if (!(e instanceof ApiError)) return "other";
   if (e.status === 404) return "not_found";
   if (e.status !== 409) return "other";
-  return (e.body as { code?: string } | null)?.code === "stale_input" ? "stale_input" : "rev_conflict";
+  const code = (e.body as { code?: string } | null)?.code;
+  // 止まったままの移動（解除してから動かす）は rev の競合ではない
+  if (code === "blocked") return "other";
+  return code === "stale_input" ? "stale_input" : "rev_conflict";
 }
 
 /** アーカイブのファイルが読めない（無いのではない） */
@@ -268,7 +272,7 @@ export const api = {
    * checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 受け入れ基準・証拠への操作（順に当て、合わなければ 400 acceptance_invalid）。
    * 済みのタスクの基準・証拠の中身が変わると済みを外し、応答に checkCleared（理由）
    */
-  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean; acceptance?: AcceptanceOp[] }) =>
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean; acceptance?: AcceptanceOp[]; blockOp?: BlockOp }) =>
     call<WithWarnings<Task> & { checkCleared?: string }>("PATCH", taskPath(ref), patch),
 
   /** note: メモを書き足してから実行する。始められなければ ApiError の body.note に保存したメモが入る */

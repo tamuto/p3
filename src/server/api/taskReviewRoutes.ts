@@ -12,7 +12,7 @@ import { previewOf } from "../../shared/taskReview.ts";
  *   POST /requests/:rid/tasks/:tid/review-preview       今の材料の要約と hash（{targets?, viewpoint?}。何も書かない）
  *   GET  /requests/:rid/tasks/:tid/reviews              履歴（新しい順。読めない記録も broken で出す。アーカイブしたタスクも読める）
  *   POST /requests/:rid/tasks/:tid/reviews              始める（202。{targets?, viewpoint?, engine?, expectedHash?}）。
- *                                                       材料が変わっていれば 409 changed、実行中なら 409 running、Preflight の担当が agent で
+ *                                                       材料が変わっていれば 409 material_changed、実行中なら 409 running、Preflight の担当が agent で
  *                                                       engine を明示していなければ 400 engine_required
  *   GET  /requests/:rid/tasks/:tid/reviews/:run         1回分（固定した材料・結果。実行中は所有者の状態 owner）
  *   POST /requests/:rid/tasks/:tid/reviews/:run/cancel  取り消す（{acknowledgeStopped?}。マイルストーンレビューと同じ）
@@ -40,7 +40,7 @@ export function taskReviewRoutes(ctx: P3Context) {
       return c.json({ error: err.message, code: err.code }, status);
     }
     if (err instanceof TaskReviewRejected) {
-      const status = err.code === "running" || err.code === "changed" ? 409 : 400;
+      const status = err.code === "running" || err.code === "material_changed" ? 409 : 400;
       return c.json({ error: err.message, code: err.code, ...(err.running ? { run: err.running } : {}) }, status);
     }
     if (err instanceof ReviewCancelRefused) return c.json({ error: err.message, code: err.code }, 409);

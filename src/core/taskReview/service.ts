@@ -104,7 +104,7 @@ export class TaskReviewService {
     const refs = this.ws.refs();
     const { input, files } = await extractTaskReview(this.ws.dataDir, rid, t, refs, opts);
     if (opts.expectedHash !== undefined && opts.expectedHash !== input.hash) {
-      throw new TaskReviewRejected("changed", `確かめた後で材料が変わりました（本文・基準・証拠・比較対象・観点のどれか）。もう一度確かめてから始めてください`);
+      throw new TaskReviewRejected("material_changed", `確かめた後で材料が変わりました（本文・基準・証拠・比較対象・観点のどれか）。もう一度確かめてから始めてください`);
     }
     const { instructions, prompt, size } = taskReviewPrompt(input);
     if (size > TASK_REVIEW_INPUT_LIMIT) throw new TaskReviewRejected("too_large", `材料が上限を超えています（${size} 文字 / 上限 ${TASK_REVIEW_INPUT_LIMIT} 文字）。切り詰めずに断ります。比較対象を絞ってください`);

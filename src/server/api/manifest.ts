@@ -46,7 +46,7 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block" },
     { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
     {
       method: "GET",
@@ -69,10 +69,12 @@ export const AI_MANIFEST = {
         "重複・無い要望・直下の子でない・足りないは 409 code: child_order_invalid（reason・ids・今の並び children。子が変わっていれば読み直す）、rev が違えば 409 code: rev_conflict。" +
         "表示の順で、実行の順・着手できるかは表さない",
     },
-    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
+    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded と受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える。" +
         "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord, ...}] で順に当て、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
-        "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す）" },
+        "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
+        "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
+        "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },
     {
       method: "GET",
       path: "/api/requests/:rid/archived-tasks[/:tid]",
@@ -188,7 +190,7 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/tasks/:tid/reviews",
       desc:
         "タスクの AI レビューの履歴（新しい順。読めない記録も broken）/ 始める（202。{targets?, viewpoint?, engine?, expectedHash?}。完了したタスクだけ。" +
-        "材料が変わっていれば 409 changed、実行中なら 409 running、Preflight の担当が agent で engine を明示していなければ 400 engine_required）。結果はタスクの状態・済み・基準・証拠を変えない",
+        "材料が変わっていれば 409 material_changed、実行中なら 409 running、Preflight の担当が agent で engine を明示していなければ 400 engine_required）。結果はタスクの状態・済み・基準・証拠を変えない",
     },
     { method: "GET", path: "/api/requests/:rid/tasks/:tid/reviews/:run", desc: "タスクの AI レビューの1回分（固定した材料・結果。実行中は所有者の状態 owner）。結果を直す口は無い" },
     { method: "POST", path: "/api/requests/:rid/tasks/:tid/reviews/:run/cancel", desc: "タスクの AI レビューを取り消す {acknowledgeStopped?}（マイルストーンレビューと同じ規則）" },

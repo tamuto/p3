@@ -81,9 +81,10 @@ describe("進捗の木の兄弟", () => {
     counts: { todo: 0, doing: 0, done: 0 },
     total: 0,
     done: 0,
+    blocked: 0,
     updatedAt: r.updatedAt,
     children: [],
-    subtree: { counts: { todo: 0, doing: 0, done: 0 }, total: 0, done: 0, requests: { draft: 0, preflight: 0, reviewed: 0, active: 0, resolved: 0, done: 0, rejected: 0 } },
+    subtree: { counts: { todo: 0, doing: 0, done: 0 }, total: 0, done: 0, blocked: 0, requests: { draft: 0, preflight: 0, reviewed: 0, active: 0, resolved: 0, done: 0, rejected: 0 } },
     hierarchyIssues: [],
   });
   const shape = (rows: ReturnType<typeof progressTree>) => rows.map((r) => `${"  ".repeat(r.depth)}${r.p.request.id}${r.context ? "（文脈）" : ""}`);

@@ -24,7 +24,7 @@ const summary = (v: Partial<Record<TaskReviewVerdict, number>> | undefined) =>
 
 function failureText(e: unknown): string {
   const code = e instanceof ApiError ? (e.body as { code?: string } | null)?.code : undefined;
-  if (code === "changed") return "確かめた後で材料が変わりました。もう一度「材料を確かめる」を押してください";
+  if (code === "material_changed") return "確かめた後で材料が変わりました。もう一度「材料を確かめる」を押してください";
   return (e as Error).message;
 }
 
@@ -136,7 +136,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
       setMsg({ ok: true, text: "レビューを始めました（新しい Codex のスレッド）" });
       void load();
     } catch (e) {
-      if (e instanceof ApiError && (e.body as { code?: string } | null)?.code === "changed") setChecked(undefined);
+      if (e instanceof ApiError && (e.body as { code?: string } | null)?.code === "material_changed") setChecked(undefined);
       setMsg({ ok: false, text: `始められません: ${failureText(e)}` });
     } finally {
       setBusy(false);

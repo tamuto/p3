@@ -4,7 +4,7 @@ import { type P3Context } from "../core/context.ts";
 import { resolve, titleOf } from "../core/ops.ts";
 import { type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
-import { formatAcceptance } from "./showView.ts";
+import { formatAcceptance, formatBlock } from "./showView.ts";
 import { taskWork } from "../core/workTargets.ts";
 import { DIRECT_TASK_NOTE, LATER_PREFLIGHT_NOTE } from "../shared/directTask.ts";
 
@@ -29,13 +29,17 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
   const home = "ref" in item ? item.request : item.id;
   const lines = [`${head}  ${item.title}`, ""];
   if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
-  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceProblems"]);
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceProblems", "block", "blockHistory", "blockProblems"]);
   for (const [k, v] of Object.entries(item)) {
     if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
   }
   if (item.body.trim()) lines.push("", indent(item.body.trim()));
   if ("record" in item && item.record) lines.push("", "変更の記録:", indent(item.record));
+  if ("ref" in item) {
+    const blk = formatBlock(item, { history: true });
+    if (blk.length) lines.push("", ...blk);
+  }
   if ("ref" in item) lines.push("", ...formatAcceptance(item));
   if ("ref" in item) {
     const out = item.relations.map((r) => `  → ${pad(relationRole(r.type, "out"))} ${r.target} ${titleOf(ctx, `${home}/${r.target}`)}`);

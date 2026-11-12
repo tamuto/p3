@@ -1,4 +1,5 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
+import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
@@ -44,6 +45,7 @@ export const normalizeTaskIn =
     checkedAt: d.checkedAt ? iso(d.checkedAt) : undefined,
     record: str(d.record)?.trim() || undefined,
     ...readAcceptance(d),
+    ...readBlock(d),
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -53,14 +55,14 @@ export const normalizeTaskIn =
   });
 
 /** タスクのうちファイルに書かないキー（場所から決まるもの・読んだときの問題） */
-export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems"];
+export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems"];
 
 /** 基準・証拠が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/acceptance.ts） */
-export const taskKeepRaw = (t: Task): readonly string[] => (t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []);
+export const taskKeepRaw = (t: Task): readonly string[] => [...(t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []), ...(t.blockProblems?.length ? BLOCK_KEYS : [])];
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {

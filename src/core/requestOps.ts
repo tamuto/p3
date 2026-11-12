@@ -1,4 +1,5 @@
 import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../shared/acceptance.ts";
+import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import type { Request, Task } from "../shared/types.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
@@ -36,6 +37,9 @@ export interface TaskResult {
   /** 済みのタスクの受け入れ基準・証拠の中身が変わったので、人の「済み」を外した（理由） */
   checkCleared?: string;
 }
+
+/** 書く必要が無い（更新の中から抜けるため。外には出さない） */
+class NoChange extends Error {}
 
 /** 済みを外した理由（基準・証拠の中身が変わった） */
 export const CHECK_CLEARED_BY_ACCEPTANCE = "受け入れ基準か証拠の中身が変わったため、人の「済み」を外しました（もう一度確かめてください）";
@@ -115,7 +119,8 @@ export async function createTask(
   checkRepoTarget(ctx.ws, repo);
   for (const o of input.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, ...plain } = input;
+  // 停止は作るときには付けない（作業中にしてから block で付ける）
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = input;
   const acceptance = criteria?.length ? applyAcceptanceOps({}, criteria.map((text) => ({ op: "add", text })), { now: new Date().toISOString(), actor }) : {};
   const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status: input.status ?? "todo" }, actor);
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
@@ -132,14 +137,14 @@ export async function updateTask(
   ctx: P3Context,
   rid: string,
   tid: string,
-  patch: Partial<Task> & { checked?: boolean; acceptance?: readonly AcceptanceOp[] },
+  patch: Partial<Task> & { checked?: boolean; acceptance?: readonly AcceptanceOp[]; blockOp?: BlockOp },
   opts: WriteOpts = {},
 ): Promise<TaskResult> {
   const col = ctx.ws.tasksOf(rid);
   const cur = col.require(tid);
-  const { checked, acceptance, ...rest } = patch;
-  // 基準・証拠は操作（acceptance）でだけ変える
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, ...plain } = rest;
+  const { checked, acceptance, blockOp, ...rest } = patch;
+  // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = rest;
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
@@ -152,19 +157,39 @@ export async function updateTask(
   }
   const warnings = startWarnings(ctx.ws, cur.ref, cur.status, next.status);
   let checkCleared: string | undefined;
-  const task = await col.update(
-    tid,
-    (fresh) => {
-      if (!acceptance?.length) return next;
-      const changedTo = applyAcceptanceOps(fresh, acceptance, { now: new Date().toISOString(), actor: opts.actor });
-      if (!acceptanceChanged(fresh, changedTo)) return next;
-      // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
-      const clear = !!fresh.checkedAt && !("checkedAt" in next);
-      if (clear) checkCleared = CHECK_CLEARED_BY_ACCEPTANCE;
-      return { ...next, ...changedTo, ...(clear ? { checkedAt: undefined } : {}) };
-    },
-    opts,
-  );
+  // 停止の操作だけで何も変わらない（同じ内容の付け直し・付いていない解除）なら書かない（rev を上げない）
+  const onlyBlock = !!blockOp && !acceptance?.length && Object.keys(next).length === 0;
+  let unchanged: Task | undefined;
+  const write = () =>
+    col.update(
+      tid,
+      (fresh) => {
+        const now = new Date().toISOString();
+        let out: Partial<Task> = next;
+        // 停止: 書く直前に読み直した値と、更新した後の状態で確かめる（止まったままの移動・作業中でない付与は断る）
+        const status = next.status ?? fresh.status;
+        const blockTo = blockOp ? applyBlockOp(fresh, blockOp, { now, actor: opts.actor, status }) : undefined;
+        if (onlyBlock && !blockTo) {
+          unchanged = fresh;
+          throw new NoChange();
+        }
+        if (blockTo) out = { ...out, ...blockTo };
+        checkBlockedStatus(fresh.status, status, blockTo ? blockTo.block : fresh.block, fresh.ref);
+        if (!acceptance?.length) return out;
+        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor });
+        if (!acceptanceChanged(fresh, changedTo)) return out;
+        // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
+        const clear = !!fresh.checkedAt && !("checkedAt" in next);
+        if (clear) checkCleared = CHECK_CLEARED_BY_ACCEPTANCE;
+        return { ...out, ...changedTo, ...(clear ? { checkedAt: undefined } : {}) };
+      },
+      opts,
+    );
+  const task = await write().catch((e: unknown) => {
+    if (e instanceof NoChange && unchanged) return unchanged;
+    throw e;
+  });
+  if (unchanged && task === unchanged) return { task, warnings };
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
   return { task, warnings: [...warnings, ...ancestorWarnings], ...after, ...(checkCleared ? { checkCleared } : {}) };
 }

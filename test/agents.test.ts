@@ -146,6 +146,28 @@ describe("AI 向けの指示（同梱のスキルと AGENTS.md への追記）",
     expect(skill).toContain("`--record -` と標準入力を取り合う");
   });
 
+  it("止まっている理由: 続けられないときだけ付け、保存を確かめて人に伝えて終え、回答で解除して再開すると、どちらも書く", () => {
+    const snippet = AGENTS_SNIPPET.replaceAll("\\`", "`");
+    for (const text of [skill, snippet]) {
+      expect(text).toContain("block");
+      expect(text).toContain("--reason");
+      expect(text).toContain("--decision");
+      expect(text).toContain("通常の修正・調査の途中では使わない");
+      expect(text).toMatch(/JSON の `block` で保存できたことを確かめ/);
+      expect(text).toContain("止まったまま完了・済み・");
+      expect(text).toContain("unblock");
+      expect(text).toContain("--resolution");
+      expect(text).toContain("解除だけでは");
+    }
+    // スキルには、質問をタスクにしない代わり・依存待ちに付けない・失敗を偽らない・人が先に解除したとき・新しい理由
+    expect(skill).toContain("人への質問を新しいタスクにする代わりに、今のタスクに付ける");
+    expect(skill).toContain("未着手の依存待ちのタスクを作業中にしてまで付けない");
+    expect(skill).toContain("記録できたと偽らずに伝える");
+    expect(skill).toContain("人が先に解除していたら");
+    expect(skill).toContain("新しい停止として付ける");
+    expect(skill).toContain("回答を受けずに自分で解除しない");
+  });
+
   it("開発用のスキルは原本を参照する", () => {
     expect(devSkill).toContain("skills/p3/SKILL.md");
     expect(devSkill).toContain("pnpm -s check");

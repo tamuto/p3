@@ -1,6 +1,7 @@
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
 import { acceptanceStatus, type CriterionState } from "../shared/acceptance.ts";
+import { blockWarnings } from "../shared/taskBlock.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
@@ -49,6 +50,28 @@ const BRIEF_TASK_KEYS = ["id", "ref", "request", "title", "status", "body", "rev
 
 const STATE_MARK: Record<CriterionState, string> = { met: "✓ 満たした", unmet: "✗ 満たせなかった", unverified: "? 未検証", missing: "・ 証拠なし", stale: "! 再確認が必要（基準を変えた後）" };
 
+/** 停止の行（show・brief・アーカイブで共通。履歴は通常の show だけ）。停止も履歴も問題も無ければ空 */
+export function formatBlock(task: Pick<Task, "status" | "block" | "blockHistory" | "blockProblems">, { history = false } = {}): string[] {
+  const lines: string[] = [];
+  const b = task.block;
+  if (b) {
+    lines.push(`⏸ 止まっています（${b.since} から${b.updatedBy ? `・${b.updatedBy}` : ""}）`, ...b.reason.split("\n").map((l) => `  ${l}`));
+    if (b.decision) lines.push("  決めてほしいこと:", ...b.decision.split("\n").map((l) => `    ${l}`));
+  }
+  for (const w of blockWarnings(task)) lines.push(`※ ${w}`);
+  if (history && task.blockHistory?.length) {
+    lines.push("停止の履歴:");
+    const label = { set: "付けた", update: "直した", clear: "解除した" } as const;
+    for (const h of task.blockHistory) {
+      lines.push(`  ${h.at}  ${label[h.action]}${h.by ? `  ${h.by}` : ""}`);
+      const shown = h.after ?? h.before;
+      if (shown) lines.push(`    理由: ${shown.reason.split("\n")[0]}`);
+      if (h.resolution) lines.push(`    回答・解決: ${h.resolution.split("\n").join(" / ")}`);
+    }
+  }
+  return lines;
+}
+
 /**
  * 受け入れ基準と証拠・不足の行（show・criteria で共通）。基準が無いタスクは「受け入れ基準なし」の1行（emptyLine: false なら出さない）。
  * 証拠は作業した側の申告で、人が「済み」にする前に読むもの
@@ -68,7 +91,7 @@ export function formatAcceptance(task: Task, { emptyLine = true } = {}): string[
 }
 
 export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
-  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceProblems">;
+  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceProblems" | "block" | "blockProblems">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
   // 変更の記録（完了したタスク）。経緯を知るために読む
@@ -77,6 +100,9 @@ export function briefTask(ctx: P3Context, task: Task, marks: Map<string, Superse
   if (task.acceptanceCriteria?.length) item.acceptanceCriteria = task.acceptanceCriteria;
   if (task.acceptanceEvidence?.length) item.acceptanceEvidence = task.acceptanceEvidence;
   if (task.acceptanceProblems?.length) item.acceptanceProblems = task.acceptanceProblems;
+  // 停止の今の値と読み取りの問題（履歴は省く）
+  if (task.block) item.block = task.block;
+  if (task.blockProblems?.length) item.blockProblems = task.blockProblems;
   // 着手先: 作業先のリポジトリとそのブランチ（作業先なしは repo: null）
   // 基準・証拠の状態（基準なしのタスクでは省く）
   const acceptance = acceptanceStatus(task);
@@ -87,6 +113,7 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   const { item, work, dependencies, warnings } = view;
   const short = (ref: string) => (ref.startsWith(`${item.request}/`) ? ref.slice(item.request.length + 1) : ref);
   const lines = [`${item.ref}  ${item.title}`, `  status  ${item.status}  rev ${item.rev}`];
+  lines.push(...formatBlock(item));
   lines.push(
     `  作業先  ${work.repo ? `${work.repo}${work.branch ? `  branch ${work.branch}` : "（ブランチなし）"}${work.registered ? "" : `  ※このマシンのパスが未登録（p3 repo path ${work.repo} <パス>）`}` : "なし"}`,
   );
@@ -116,7 +143,7 @@ export function briefRequest(ctx: P3Context, r: Request, issue: string | undefin
   const tasks = ctx.ws
     .tasksOf(r.id)
     .list()
-    .map((t) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: t.repo }));
+    .map((t) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: t.repo, ...(t.block ? { blocked: true } : {}) }));
   return { item, branches, tasks, ...(issue ? { issue } : {}) };
 }
 
@@ -146,7 +173,7 @@ export function formatBriefRequest(view: ReturnType<typeof briefRequest> & Parti
     item.body.trim() ? `\n${item.body.trim()}` : "",
     "",
     `タスク (${tasks.length}):`,
-    table(tasks.map((t) => [`  ${t.id}`, t.status, t.repo ?? "（作業先なし）", t.title])) || "  （なし）",
+    table(tasks.map((t) => [`  ${t.id}`, t.status, t.repo ?? "（作業先なし）", `${t.title}${t.blocked ? "  ⏸停止" : ""}`])) || "  （なし）",
   ]
     .filter((l, i) => l !== "" || i > 1)
     .join("\n");
