@@ -223,3 +223,14 @@ export function previewOf(input: TaskReviewInput) {
     extractedAt: input.extractedAt,
   };
 }
+
+/**
+ * 過去の run と同じ比較対象・観点の指定（材料が変わったかを今の材料と比べる・同じ指定でレビューし直すため）。
+ * コミットは固定した SHA、範囲は指定したときの base・head の文字列（ブランチが進めば材料が変わる）、観点は固定した SHA のファイル
+ */
+export function rerunSpec(input: Pick<TaskReviewInput, "targets" | "viewpoint">): { targets: string[]; viewpoint: string } {
+  const targets = input.targets.map((t) => (t.kind === "range" && t.range ? `${t.repo}:${t.range.baseSpec}..${t.range.headSpec}` : `${t.repo}:${t.commits.map((c) => c.sha).join(",")}`));
+  const v = input.viewpoint;
+  const viewpoint = v.source === "file" && v.repo && v.sha && v.path ? `${v.repo}@${v.sha}:${v.path}` : v.source;
+  return { targets, viewpoint };
+}

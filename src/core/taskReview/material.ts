@@ -243,9 +243,14 @@ export async function extractTaskReview(dataDir: string, rid: string, tid: strin
   return { input: { ...body, extractedAt, hash: taskReviewInputHash(body) }, files };
 }
 
-/** 材料の識別子（抽出の日時は入れない） */
+/**
+ * 材料の識別子（抽出の日時は入れない）。比較対象の出典（成果物の文字列か、指定した文字列か）も入れない
+ * （同じ SHA を比べていれば、指定の仕方によらず同じ材料）
+ */
 export function taskReviewInputHash(i: Omit<TaskReviewInput, "extractedAt" | "hash">): string {
-  return createHash("sha256").update(JSON.stringify([i.version, i.request, i.task, i.items, i.targets, i.viewpoint, i.notes, i.files])).digest("hex");
+  const targets = i.targets.map(({ sources: _s, ...t }) => t);
+  const notes = i.notes.filter((n) => n.code !== "pr_unresolved");
+  return createHash("sha256").update(JSON.stringify([i.version, i.request, i.task, i.items, targets, i.viewpoint, notes, i.files])).digest("hex");
 }
 
 // --- 比較対象 ---------------------------------------------------------------------

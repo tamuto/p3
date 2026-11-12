@@ -14,6 +14,7 @@ import { extractTaskReview } from "../src/core/taskReview/material.ts";
 import { InvalidTaskReview, parseTaskReview, taskReviewPrompt } from "../src/core/taskReview/review.ts";
 import { TaskReviewService } from "../src/core/taskReview/service.ts";
 import { apiRoutes } from "../src/server/api/routes.ts";
+import { rerunSpec } from "../src/shared/taskReview.ts";
 import { git, makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-task-reviewer.mjs", import.meta.url));
@@ -165,6 +166,15 @@ describe("実行（偽の app-server）", () => {
     await expect(ctx.taskReview.start(rid, tid)).rejects.toMatchObject({ code: "engine_required" });
     expect(calls).toEqual([]);
     expect((await ctx.taskReview.preview(rid, tid)).engineRequired).toBe(true);
+  });
+
+  it("過去の run と同じ指定（固定した SHA・範囲の指定・観点）で今の材料を取り出せ、変わらなければ同じ hash", async () => {
+    const { ctx, rid, tid, sha } = await setup(codex("ok", join(tempDir(), "c.log")));
+    const r = await ctx.taskReview.start(rid, tid);
+    const d = await ctx.taskReview.wait(rid, tid, r.id);
+    expect(rerunSpec(d.input)).toEqual({ targets: [`main:${sha}`], viewpoint: "builtin" });
+    expect((await ctx.taskReview.preview(rid, tid, rerunSpec(d.input))).input.hash).toBe(d.input.hash);
+    expect(rerunSpec({ targets: [{ repo: "app", kind: "range", sources: [], commits: [], diffs: [], range: { base: "b", head: "h", mergeBase: "m", baseSpec: "main", headSpec: "topic" } }], viewpoint: { source: "file", text: "", repo: "app", sha: "s", path: "R.md", hash: "x" } })).toEqual({ targets: ["app:main..topic"], viewpoint: "app@s:R.md" });
   });
 
   it("プレビューの後で材料が変わったら changed で断る（確かめ直す）", async () => {

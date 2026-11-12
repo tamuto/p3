@@ -3,6 +3,7 @@ import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
+import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
 import type {
   AdoptionResult,
@@ -99,6 +100,15 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
   return data as T;
+}
+
+/** タスクの AI レビューの材料のプレビュー（POST .../review-preview） */
+export type TaskReviewPreview = ReturnType<typeof previewOf> & { engineRequired: boolean };
+/** タスクの AI レビューの1回分。実行中は所有者の状態（local: serve 自身） */
+export type TaskReviewDetailView = TaskReviewRecord & { owner?: { state: "local" | "alive" } | { state: "dead" | "unknown"; reason: string } };
+export interface TaskReviewSpec {
+  targets?: string[];
+  viewpoint?: string;
 }
 
 /** レビューの材料のプレビュー（GET /milestones/:mid/review-preview） */
@@ -303,6 +313,14 @@ export const api = {
   cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
   /** レビューの履歴のあるマイルストーン（project.yaml に無い孤立も） */
   reviewedMilestones: () => call<{ milestones: string[] }>("GET", "/milestone-reviews"),
+  /** タスクの AI レビュー（読むだけ・始める・取消。結果を直す口は無い） */
+  taskReviewPreview: (rid: string, tid: string, spec: TaskReviewSpec = {}) => call<TaskReviewPreview>("POST", `/requests/${rid}/tasks/${tid}/review-preview`, spec),
+  taskReviews: (rid: string, tid: string) => call<{ items: TaskReviewListItem[] }>("GET", `/requests/${rid}/tasks/${tid}/reviews`),
+  taskReview: (rid: string, tid: string, run: string) => call<TaskReviewDetailView>("GET", `/requests/${rid}/tasks/${tid}/reviews/${encodeURIComponent(run)}`),
+  startTaskReview: (rid: string, tid: string, body: TaskReviewSpec & { engine?: "codex" | "mock"; expectedHash?: string }) =>
+    call<TaskReviewRun>("POST", `/requests/${rid}/tasks/${tid}/reviews`, body),
+  cancelTaskReview: (rid: string, tid: string, run: string, acknowledgeStopped = false) =>
+    call<{ run: TaskReviewRun; requested: boolean }>("POST", `/requests/${rid}/tasks/${tid}/reviews/${encodeURIComponent(run)}/cancel`, { acknowledgeStopped }),
   reviewPreview: (mid: string) => call<ReviewPreview>("GET", `/milestones/${encodeURIComponent(mid)}/review-preview`),
   reviews: (mid: string) => call<{ items: ReviewListItem[] }>("GET", `/milestones/${encodeURIComponent(mid)}/reviews`),
   review: (mid: string, run: string) => call<ReviewDetailView>("GET", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}`),
