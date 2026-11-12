@@ -56,7 +56,7 @@ describe("タスクと比較項目", () => {
       { id: "A2", kind: "criterion", text: "失敗を記録する" },
     ]);
     expect(input.task.evidenceStates).toEqual([{ id: "A1", state: "met" }, { id: "A2", state: "missing" }]);
-    expect(input.notes.map((n) => n.code)).toEqual(["no_evidence"]);
+    expect(input.notes.map((n) => n.code)).toEqual(["no_evidence", "quality_unset"]);
     // 比較対象: 成果物のコミット。親との差分と前後の中身
     expect(input.targets).toHaveLength(1);
     const t = input.targets[0];
@@ -83,7 +83,7 @@ describe("タスクと比較項目", () => {
     const { input } = await extract({ targets: [`main:${c1}`] }, task.id);
     expect(input.items).toEqual([{ id: "B1", kind: "body", text: "画面に出る", source: "画面に出る" }]);
     // 比べたコミットは T001 のもの（他のタスクの作業が混ざっている注意）
-    expect(input.notes.map((n) => n.code)).toEqual(["no_criteria", "no_record", "no_outputs", "other_tasks"]);
+    expect(input.notes.map((n) => n.code)).toEqual(["no_criteria", "no_record", "no_outputs", "other_tasks", "quality_unset"]);
   });
 
   it("無い・未完了・アーカイブしたタスクは理由つきで断る", async () => {

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
+import { qualitySnapshot, standardsFor, taskQualityDiff } from "../../shared/quality.ts";
 import type {
   TaskReviewChange,
   TaskReviewCommit,
@@ -217,9 +218,24 @@ export async function extractTaskReview(dataDir: string, rid: string, tid: strin
   }
 
   const viewpoint = await readViewpoint(dataDir, refs, opts.viewpoint);
+  // 品質: レビューを始めたときの最新の品質基準と、タスクに取り込んだ版（観点を替えても、この比較は外さない）
+  const latest = qualitySnapshot(snap.project.quality, snap.project.qualityVersion);
+  const cfg = { standards: latest.standards ?? [] };
+  const { applies, exempt } = latest.state === "set" ? standardsFor(cfg, task.repo) : { applies: [], exempt: [] };
+  const quality = {
+    latest,
+    applies,
+    exempt,
+    imported: (task.acceptanceCriteria ?? []).flatMap((c) => (c.quality ? [{ criterion: c.id, quality: c.quality.id, hash: c.quality.hash, version: c.quality.version }] : [])),
+    diff: taskQualityDiff(task.acceptanceCriteria ?? [], snap.project.quality, task.repo),
+  };
+  if (latest.state === "unset") notes.push({ code: "quality_unset", target: "project.yaml", message: "プロジェクトの品質基準は未設定です（品質は評価しません。p3 quality で設定できます）" });
+  if (latest.state === "invalid") notes.push({ code: "quality_invalid", target: "project.yaml", message: `プロジェクトの品質基準が読めません（品質は評価しません）: ${(latest.problems ?? []).join(" / ")}` });
+  if (quality.diff.some((d) => d.kind !== "edited")) notes.push({ code: "quality_changed", target: task.ref, message: `タスクに取り込んだ品質基準と最新の品質基準に差があります（${quality.diff.filter((d) => d.kind !== "edited").map((d) => `${d.kind}:${d.quality}`).join(", ")}）。基準の改定による不足とコードの逸脱を分けて読んでください` });
   const fileList: TaskReviewFile[] = [...files.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([path, data]) => ({ path, bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") }));
   const body = {
     version: 1 as const,
+    quality,
     request: { id: request.id, title: request.title, status: request.status, body: request.body.trim() },
     task: {
       id: task.id,
@@ -250,7 +266,7 @@ export async function extractTaskReview(dataDir: string, rid: string, tid: strin
 export function taskReviewInputHash(i: Omit<TaskReviewInput, "extractedAt" | "hash">): string {
   const targets = i.targets.map(({ sources: _s, ...t }) => t);
   const notes = i.notes.filter((n) => n.code !== "pr_unresolved");
-  return createHash("sha256").update(JSON.stringify([i.version, i.request, i.task, i.items, targets, i.viewpoint, notes, i.files])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([i.version, i.request, i.task, i.items, targets, i.viewpoint, notes, i.files, ...(i.quality ? [i.quality] : [])])).digest("hex");
 }
 
 // --- 比較対象 ---------------------------------------------------------------------

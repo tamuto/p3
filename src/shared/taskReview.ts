@@ -1,4 +1,5 @@
 import type { AcceptanceCriterion, AcceptanceEvidence, CriterionState } from "./acceptance.ts";
+import type { QualitySnapshot, QualityStandard, TaskQualityDiffItem } from "./quality.ts";
 import type { PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "./types.ts";
 
 /**
@@ -97,7 +98,10 @@ export type TaskReviewNoteCode =
   | "pr_unresolved"
   | "other_tasks"
   | "omitted"
-  | "shallow";
+  | "shallow"
+  | "quality_unset"
+  | "quality_invalid"
+  | "quality_changed";
 
 /** 材料の注意（黙って満たしているにしないため、無いもの・読めないもの・取り出していないものを残す） */
 export interface TaskReviewNote {
@@ -114,8 +118,29 @@ export interface TaskReviewFile {
 }
 
 /** 固定した材料（input.json）。作ったら変えない */
+/** 品質の判定（最新のプロジェクトの品質基準ごと） */
+export const QUALITY_VERDICTS = ["satisfied", "violated", "undetermined", "not_applicable"] as const;
+export type QualityVerdict = (typeof QUALITY_VERDICTS)[number];
+export const QUALITY_VERDICT_LABELS: Record<QualityVerdict, string> = { satisfied: "満たす", violated: "違反", undetermined: "判断できない", not_applicable: "対象外（理由つき）" };
+
+/** 品質の材料（タスクに取り込んだ版と、レビューを始めたときの最新。古い記録には無い＝品質は評価していない） */
+export interface TaskReviewQuality {
+  /** レビューを始めたときの最新のプロジェクトの品質基準 */
+  latest: QualitySnapshot;
+  /** 最新のうち、このタスクの作業先に当てはまり除外していないもの（品質の判定はこれを全部1回ずつ） */
+  applies: QualityStandard[];
+  /** 当てはまるが除外したもの（理由つき。判定しない） */
+  exempt: QualityStandard[];
+  /** タスクの受け入れ基準に取り込んだ品質基準（取り込んだときの版と hash） */
+  imported: { criterion: string; quality: string; hash: string; version: string }[];
+  /** 取り込んだ版と最新の差分（基準の改定による不足と、コードの逸脱を分けるため） */
+  diff: TaskQualityDiffItem[];
+}
+
 export interface TaskReviewInput {
   version: 1;
+  /** 品質の材料（古い記録には無い） */
+  quality?: TaskReviewQuality;
   request: { id: string; title: string; status: RequestStatus; body: string };
   task: {
     id: string;
@@ -174,9 +199,20 @@ export interface TaskReviewItemResult {
   gaps: string[];
 }
 
+export interface TaskReviewQualityResult {
+  standard: string;
+  verdict: QualityVerdict;
+  reason: string;
+  evidence: string[];
+  /** 確かめられなかった範囲（材料に無い全体の構成・未変更の設定など） */
+  unread?: string;
+}
+
 export interface TaskReviewResult {
   overall: string;
   items: TaskReviewItemResult[];
+  /** 最新の品質基準への適合（品質の材料がある run だけ。古い結果には無い＝品質は評価していない） */
+  quality?: TaskReviewQualityResult[];
   /** 意図しない変更の候補 */
   unplanned: { text: string; evidence: string[] }[];
   /** 人が確かめる点（基準の矛盾・本文の追加の要件など） */
@@ -218,6 +254,7 @@ export function previewOf(input: TaskReviewInput) {
     })),
     viewpoint: { source: input.viewpoint.source, ...(input.viewpoint.repo ? { repo: input.viewpoint.repo, sha: input.viewpoint.sha, path: input.viewpoint.path } : {}), hash: input.viewpoint.hash },
     notes: input.notes,
+    ...(input.quality ? { quality: { state: input.quality.latest.state, version: input.quality.latest.version, applies: input.quality.applies.map((q) => ({ id: q.id, text: q.text })), exempt: input.quality.exempt.map((q) => ({ id: q.id, reason: q.exempt?.reason ?? "" })), diff: input.quality.diff } } : {}),
     files: input.files.length,
     hash: input.hash,
     extractedAt: input.extractedAt,
