@@ -996,8 +996,10 @@ DB は無く、1タスク = 1 Markdown ファイル。人・AI・Codex が直接
       notes/N-....md                    Preflight へのメモ
       attachments/A-.../                添付
       preflight/PF-.../                 Preflight の記録（評価対象・評価・タスク案・画面資料・ログ）
+      task-reviews/T003/TR-.../         タスクの AI レビューの履歴（「タスクの AI レビュー」）
     .archive/                           アーカイブした要望
   release-notes/v0.2.md                 リリースノート（マイルストーンごとに1件）
+  milestone-reviews/v0.2/<run>/         マイルストーンレビューの履歴（「マイルストーンレビュー」）
 ```
 
 タスクファイルの例（`requests/261009-k7m3x/tasks/T003.md`）:
