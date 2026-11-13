@@ -49,7 +49,7 @@ export function FilePicker({
         </svg>
         {label}
       </label>
-      {chosen !== undefined && <span className="min-w-0 break-all text-sm text-slate-500">{chosen || "選ばれていません"}</span>}
+      {chosen !== undefined && <span className="min-w-0 break-all text-base text-slate-500">{chosen || "選ばれていません"}</span>}
     </span>
   );
 }
@@ -66,7 +66,7 @@ export type Tone = keyof typeof tones;
 
 export function Badge({ tone = "slate", children, className, title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
   return (
-    <span title={title} className={cx("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-sm ring-1 ring-inset whitespace-nowrap", tones[tone], className)}>
+    <span data-aux title={title} className={cx("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-sm ring-1 ring-inset whitespace-nowrap", tones[tone], className)}>
       {children}
     </span>
   );
@@ -89,9 +89,9 @@ export function Id({ id, onClick }: { id: string; onClick?: () => void }) {
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
   return (
     <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</span>
       {children}
-      {hint && <span className="text-sm text-slate-400">{hint}</span>}
+      {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
     </label>
   );
 }
@@ -103,7 +103,7 @@ export function Section({ title, children, aside }: { title: string; children: R
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
         {aside}
       </div>
       {children}

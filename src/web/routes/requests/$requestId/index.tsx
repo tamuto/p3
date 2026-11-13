@@ -279,7 +279,7 @@ function RequestPanel({
         </Button>
         {engine && (
           <span
-            className={cx("text-sm", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
+            className={cx("text-base", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
             title={engine.name === "mock" ? "P3_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
           >
             {engine.ok ? "●" : "✕"} {engine.detail}
@@ -296,12 +296,12 @@ function RequestPanel({
           </Button>
         )}
         {selectedRunning && run && (run.cancelRequested || cancelNote?.runId === run.id) && (
-          <p role="status" className="w-full text-sm text-amber-700 dark:text-amber-400">
+          <p role="status" className="w-full text-base text-amber-700 dark:text-amber-400">
             {cancelNote?.runId === run.id ? cancelNote.text : `中断を頼んでいます（${run.cancelRequested!.at}）。実行しているプロセスが止めるまで実行中のままです`}
           </p>
         )}
         {selectedRunning && run?.liveness && (run.liveness.state === "unknown" || run.liveness.state === "dead") && (
-          <p role="status" className="w-full text-sm text-slate-600 dark:text-slate-400">
+          <p role="status" className="w-full text-base text-slate-600 dark:text-slate-400">
             この run を実行しているプロセスを確かめられません（{run.liveness.reason}）
           </p>
         )}
@@ -322,15 +322,15 @@ function RequestPanel({
         {/* 使えないと分かったときだけ（状態を取れなかったときは、使えるとも使えないとも言わない） */}
         {engine && !engine.ok && !engine.unknown && <DirectTaskLink requestId={request.id} />}
         {pulseError && (
-          <p role="status" className="flex w-full flex-wrap items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <p role="status" className="flex w-full flex-wrap items-center gap-2 text-base text-amber-700 dark:text-amber-400">
             最新の Preflight を確かめられませんでした（{pulseError}）。表示と入力はそのままです
-            <Button variant="ghost" className="text-sm" onClick={() => poller.current?.now()}>
+            <Button variant="ghost" className="text-base" onClick={() => poller.current?.now()}>
               もう一度確かめる
             </Button>
           </p>
         )}
-        {blocked && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{blocked}</p>}
-        {notesState.blockPlainRun && <p className="w-full text-sm text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
+        {blocked && <p className="w-full text-base text-amber-700 dark:text-amber-400">{blocked}</p>}
+        {notesState.blockPlainRun && <p className="w-full text-base text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
         {error && <p className="w-full text-rose-600">{error}</p>}
       </div>
 

@@ -77,7 +77,7 @@ export function TagFilter({
         className={buttonCls(selected.length ? "primary" : "secondary", "py-1 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none")}
       >
         タグ{selected.length ? `: ${selected.length} 件` : ""}
-        <span aria-hidden className="text-xs">
+        <span aria-hidden className="text-sm">
           ▾
         </span>
       </button>
@@ -100,7 +100,7 @@ export function TagFilter({
           />
           {selected.length > 0 && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2 text-sm text-slate-500">
+              <div className="flex items-center justify-between gap-2 text-base text-slate-500">
                 <span>選択中 {selected.length} 件（どれかが付いている要望）</span>
                 <button type="button" className="underline hover:text-slate-800 dark:hover:text-slate-200" onClick={() => onChange([])}>
                   すべて解除
@@ -108,7 +108,7 @@ export function TagFilter({
               </div>
               <ul className="flex max-h-24 flex-wrap gap-1 overflow-y-auto" aria-label="選択中のタグ">
                 {selected.map((t) => (
-                  <li key={t} className="inline-flex max-w-full items-start gap-1 rounded bg-indigo-50 py-0.5 pr-0.5 pl-2 text-sm text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">
+                  <li key={t} className="inline-flex max-w-full items-start gap-1 rounded bg-indigo-50 py-0.5 pr-0.5 pl-2 text-base text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">
                     <span className="min-w-0 break-all">
                       {t}
                       {!known.has(t) && <span className="text-slate-500">（該当なし）</span>}
@@ -132,12 +132,12 @@ export function TagFilter({
                 <label className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 hover:bg-slate-50 dark:hover:bg-slate-800">
                   <input type="checkbox" className="mt-1 shrink-0" checked={selected.includes(c.tag)} onChange={() => onChange(toggleTag(selected, c.tag))} />
                   <span className="min-w-0 flex-1 break-all">{c.tag}</span>
-                  <span className="shrink-0 text-sm text-slate-400">{c.count}</span>
+                  <span className="shrink-0 text-base text-slate-500 dark:text-slate-400">{c.count}</span>
                 </label>
               </li>
             ))}
           </ul>
-          <p className={cx("text-sm text-slate-500", !shown.length || shown.length > MAX_SHOWN ? "" : "sr-only")} role="status">
+          <p className={cx("text-base text-slate-500", !shown.length || shown.length > MAX_SHOWN ? "" : "sr-only")} role="status">
             {!shown.length
               ? query
                 ? "一致するタグはありません"
@@ -146,7 +146,7 @@ export function TagFilter({
                 ? `候補 ${shown.length} 件のうち ${MAX_SHOWN} 件を表示。検索で絞り込んでください`
                 : `候補 ${shown.length} 件`}
           </p>
-          {missing.length > 0 && <p className="text-sm text-slate-500">「該当なし」は今どの要望にも付いていないタグです（選択は残しています）</p>}
+          {missing.length > 0 && <p className="text-base text-slate-500">「該当なし」は今どの要望にも付いていないタグです（選択は残しています）</p>}
         </div>
       )}
     </div>

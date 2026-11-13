@@ -120,10 +120,10 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
   return (
     <>
       <h2 className="text-lg font-semibold break-words">{task.title}</h2>
-      <p className="text-sm text-slate-500">
+      <p className="text-base text-slate-500">
         このタスクはアーカイブされています。進捗・対応済の判定・新しいレビューとリリースノートの材料には入りません。下の状態と最終更新はアーカイブする前の最後の値で、アーカイブした日時ではありません。
       </p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-base sm:grid-cols-3">
         <Item label="アーカイブ前の状態">{TASK_STATUS_LABEL[task.status]}</Item>
         <Item label="作業先">{task.repo ?? "（なし）"}</Item>
         <Item label="最終更新">{`${fmtTime(task.updatedAt)}${task.updatedBy ? ` · ${task.updatedBy}` : ""}`}</Item>
@@ -134,8 +134,8 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         {task.labels.length > 0 && <Item label="ラベル">{task.labels.join(", ")}</Item>}
         {task.areas.length > 0 && <Item label="影響領域">{task.areas.join(", ")}</Item>}
       </dl>
-      <Section title="本文">{task.body.trim() ? <Markdown text={task.body} /> : <p className="text-sm text-slate-400">ありません</p>}</Section>
-      <Section title="変更の記録">{task.record?.trim() ? <Markdown text={task.record} /> : <p className="text-sm text-slate-400">ありません</p>}</Section>
+      <Section title="本文">{task.body.trim() ? <Markdown text={task.body} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}</Section>
+      <Section title="変更の記録">{task.record?.trim() ? <Markdown text={task.record} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}</Section>
       {(task.block || task.blockHistory?.length || task.blockProblems?.length) && (
         <Section title="止まっている理由（アーカイブしたときのまま）">
           <TaskBlockPanel task={task} readOnly />
@@ -148,23 +148,23 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         <TaskReviewPanel task={task} archived />
       </Section>
       <Section title="成果物">
-        {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-sm text-slate-400">ありません</p>}
+        {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}
       </Section>
       <Section title="保存された関係（アーカイブしたときのまま）">
         {task.relations.length === 0 ? (
-          <p className="text-sm text-slate-400">ありません</p>
+          <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>
         ) : (
           <ul className="space-y-1">
             {task.relations.map((r) => (
               <li key={`${r.type}-${r.target}`} className="flex items-center gap-2">
-                <span className="w-14 shrink-0 text-sm text-slate-500">{relationRole(r.type, "out")}</span>
+                <span className="w-14 shrink-0 text-base text-slate-500">{relationRole(r.type, "out")}</span>
                 <span className="font-mono text-sm">{r.target}</span>
               </li>
             ))}
           </ul>
         )}
       </Section>
-      <p className="font-mono text-sm break-all text-slate-400">
+      <p className="font-mono text-sm break-all text-slate-500 dark:text-slate-400">
         {ctx.info.dataDir}/requests/{rid}/tasks/.archive/{task.id}.md
       </p>
     </>

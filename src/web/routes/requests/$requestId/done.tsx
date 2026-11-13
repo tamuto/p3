@@ -40,7 +40,7 @@ function DonePage() {
         </p>
       )}
       <table className="w-full">
-        <thead className="text-left text-sm text-slate-500">
+        <thead className="text-left text-base text-slate-500">
           <tr className="border-b border-slate-200 dark:border-slate-800">
             <th className="w-36 py-2 font-medium">済みにした日</th>
             <th className="py-2 font-medium">タスク</th>
@@ -51,7 +51,7 @@ function DonePage() {
         <tbody>
           {items.map((t) => (
             <tr key={t.id} className="border-b border-slate-100 align-top dark:border-slate-800/60">
-              <td className="py-2.5 text-sm text-slate-500">{fmtTime(t.checkedAt)}</td>
+              <td data-aux className="py-2.5 text-sm text-slate-500">{fmtTime(t.checkedAt)}</td>
               <td className="py-2.5">
                 <button onClick={() => ctx.open(t.ref)} className="flex items-start gap-2 text-left hover:text-indigo-600">
                   <span className="mt-1.5">
@@ -61,7 +61,7 @@ function DonePage() {
                   <span>{t.title}</span>
                 </button>
               </td>
-              <td className="py-1">{t.outputs.length || t.repoOutputs?.length ? <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} /> : <span className="text-sm text-slate-400">—</span>}</td>
+              <td className="py-1">{t.outputs.length || t.repoOutputs?.length ? <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} /> : <span className="text-base text-slate-500 dark:text-slate-400">—</span>}</td>
               <td className="py-2 text-right">
                 <Button
                   variant="ghost"

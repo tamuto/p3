@@ -20,4 +20,4 @@ export const BlockedMark = () => (
   </span>
 );
 export const TodoMark = () => <span className="block h-2.5 w-2.5 rounded-[2px] border-[1.5px] border-slate-400 dark:border-slate-500" />;
-export const Flag = ({ overdue }: { overdue: boolean }) => <span className={cx("text-sm leading-none", overdue ? "text-rose-600" : "text-slate-500")}>⚑</span>;
+export const Flag = ({ overdue }: { overdue: boolean }) => <span className={cx("text-base leading-none", overdue ? "text-rose-600" : "text-slate-500")}>⚑</span>;

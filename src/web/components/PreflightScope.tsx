@@ -12,9 +12,9 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Section title="調べた範囲（参照先）">
         {!scope ? (
-          <p className="text-sm text-slate-500">記録なし（以前の評価）</p>
+          <p className="text-base text-slate-500">記録なし（以前の評価）</p>
         ) : !scope.length ? (
-          <p className="text-sm text-slate-500">参照先なし</p>
+          <p className="text-base text-slate-500">参照先なし</p>
         ) : (
           <ul className="space-y-2">
             {scope.map((s) => {
@@ -23,7 +23,7 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                 <li key={s.name} className="space-y-1 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium break-all">{s.name}</span>
-                    {s.role && <span className="text-sm text-slate-500">{s.role}</span>}
+                    {s.role && <span className="text-base text-slate-500">{s.role}</span>}
                     {s.readFirst && <Badge tone="indigo">最初に読む</Badge>}
                     <Badge tone={s.status === "ok" ? "emerald" : "rose"}>{SCOPE_STATUS_LABEL[s.status]}</Badge>
                     {s.history && (
@@ -32,14 +32,14 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                       </Badge>
                     )}
                   </div>
-                  {s.history && s.history.status !== "ok" && <p className="text-sm break-words text-amber-700 dark:text-amber-400">{historyLabel(s.history)}</p>}
+                  {s.history && s.history.status !== "ok" && <p className="text-base break-words text-amber-700 dark:text-amber-400">{historyLabel(s.history)}</p>}
                   {s.status !== "ok" && (
-                    <p className="text-sm break-words text-rose-700 dark:text-rose-300">
+                    <p className="text-base break-words text-rose-700 dark:text-rose-300">
                       {s.reason ?? SCOPE_STATUS_LABEL[s.status]}。中身は確かめていないので、関わる判断は推測です
                     </p>
                   )}
                   {def && def.map.length > 0 && (
-                    <details className="text-sm">
+                    <details className="text-base">
                       <summary className="cursor-pointer text-slate-500">主なフォルダ（今の設定）</summary>
                       <ul className="mt-1 space-y-0.5 pl-4">
                         {def.map.map((m) => (
@@ -64,9 +64,9 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
       {evidence !== null && (
         <Section title="判断の根拠">
           {evidence === undefined ? (
-            <p className="text-sm text-slate-500">記録なし（以前の評価）</p>
+            <p className="text-base text-slate-500">記録なし（以前の評価）</p>
           ) : !evidence.length ? (
-            <p className="text-sm text-slate-500">なし</p>
+            <p className="text-base text-slate-500">なし</p>
           ) : (
             <ul className="space-y-1.5">
               {evidence.map((e, i) => (
@@ -76,8 +76,8 @@ export function PreflightScope({ scope, repos, evidence }: { scope?: RefScope[];
                   </Badge>
                   <div className="min-w-0 flex-1">
                     <p className="break-words">{e.claim}</p>
-                    {evidenceWhere(e) && <p className={cx("font-mono text-sm break-all", e.kind === "verified" ? "text-slate-500" : "text-slate-400")}>{evidenceWhere(e)}</p>}
-                    {e.note && <p className="text-sm text-amber-700 dark:text-amber-300">※ {e.note}</p>}
+                    {evidenceWhere(e) && <p className={cx("font-mono text-sm break-all", e.kind === "verified" ? "text-slate-500" : "text-slate-500 dark:text-slate-400")}>{evidenceWhere(e)}</p>}
+                    {e.note && <p className="text-base text-amber-700 dark:text-amber-300">※ {e.note}</p>}
                   </div>
                 </li>
               ))}

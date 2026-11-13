@@ -54,11 +54,11 @@ export function ThemePanel({ tick }: { tick: number }) {
             ))}
           </div>
         </fieldset>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+        <p className="text-base text-slate-600 dark:text-slate-400">
           このマシンの個人設定（<code className="font-mono">ui.theme</code>）に保存し、すべてのプロジェクトの画面で使います。
           CLI では <code className="font-mono">p3 user-config set ui.theme=dark</code>。
         </p>
-        <div aria-live="polite" className="text-sm empty:hidden">
+        <div aria-live="polite" className="text-base empty:hidden">
           {state.saving && <span className="text-slate-500">保存しています…</span>}
           {state.error && (
             <span className="flex flex-wrap items-center gap-2 text-rose-600 dark:text-rose-400">

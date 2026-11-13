@@ -101,7 +101,7 @@ function NewRequest() {
         </Field>
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="new-request-tags" className="text-sm font-medium text-slate-500 dark:text-slate-400">
+        <label htmlFor="new-request-tags" className="text-base font-medium text-slate-700 dark:text-slate-300">
           タグ（任意。外部 ID や分類。値ごとに Enter で足す）
         </label>
         <TagInput id="new-request-tags" tags={tags} onChange={setTags} text={tagText} onText={setTagText} />

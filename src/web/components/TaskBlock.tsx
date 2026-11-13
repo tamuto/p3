@@ -95,7 +95,7 @@ export function TaskBlockPanel({
             <span className="font-medium">理由: </span>
             {b.reason}
           </p>
-          <p className="text-sm">
+          <p className="text-base">
             いつから: {fmtTime(b.since)}
             {b.updatedBy ? `・記録: ${b.updatedBy}` : ""}
             {b.updatedAt !== b.since ? `・最終更新 ${fmtTime(b.updatedAt)}` : ""}
@@ -109,21 +109,21 @@ export function TaskBlockPanel({
         </div>
       )}
       {warnings.map((w) => (
-        <p key={w} role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm break-words text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+        <p key={w} role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base break-words text-rose-800 dark:bg-rose-950 dark:text-rose-300">
           {w}
         </p>
       ))}
       {!readOnly && !form && (
         <div className="flex flex-wrap items-center gap-2">
           {task.status === "doing" && !b && (
-            <Button type="button" className="text-sm" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "set", baseRev: task.rev, reason: "", decision: "", baseReason: "", baseDecision: "" }, e.currentTarget)}>
+            <Button type="button" className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "set", baseRev: task.rev, reason: "", decision: "", baseReason: "", baseDecision: "" }, e.currentTarget)}>
               停止理由を付ける
             </Button>
           )}
           {b && task.status === "doing" && (
             <Button
               type="button"
-              className="text-sm"
+              className="text-base"
               disabled={disabled || !!task.blockProblems?.length}
               onClick={(e) => open({ kind: "set", baseRev: task.rev, reason: b.reason, decision: b.decision ?? "", baseReason: b.reason, baseDecision: b.decision ?? "" }, e.currentTarget)}
             >
@@ -131,11 +131,11 @@ export function TaskBlockPanel({
             </Button>
           )}
           {b && (
-            <Button type="button" className="text-sm" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "clear", baseRev: task.rev, resolution: "" }, e.currentTarget)}>
+            <Button type="button" className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "clear", baseRev: task.rev, resolution: "" }, e.currentTarget)}>
               停止を解除
             </Button>
           )}
-          {task.status !== "doing" && !b && <p className="text-sm text-slate-400">停止理由は作業中のタスクだけに付けられます。</p>}
+          {task.status !== "doing" && !b && <p className="text-base text-slate-500 dark:text-slate-400">停止理由は作業中のタスクだけに付けられます。</p>}
         </div>
       )}
       {form && (
@@ -154,15 +154,15 @@ export function TaskBlockPanel({
               <Field label="回答・解決の内容（必須）" hint={`${BLOCK_LIMITS.resolution} 文字まで`}>
                 <textarea ref={first} rows={3} className={inputCls} value={form.resolution} disabled={busy} onChange={(e) => setForm({ ...form, resolution: e.target.value })} />
               </Field>
-              <p className="text-sm text-slate-500">停止を解除しても状態は作業中のままです。作業は自動で再開しません（AI には再開を頼んでください）。</p>
+              <p className="text-base text-slate-500">停止を解除しても状態は作業中のままです。作業は自動で再開しません（AI には再開を頼んでください）。</p>
             </>
           )}
-          {external && !conflict && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">編集中に他で更新されました（rev {task.rev}）。このまま保存すると競合になります。</p>}
+          {external && !conflict && <p role="status" className="text-base text-amber-700 dark:text-amber-400">編集中に他で更新されました（rev {task.rev}）。このまま保存すると競合になります。</p>}
           {error && (
-            <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-rose-600">
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
               <span className="min-w-0 break-words">{error}</span>
               {conflict && (
-                <Button type="button" className="text-sm" onClick={() => (setForm({ ...form, baseRev: task.rev }), setConflict(false), setError(null))}>
+                <Button type="button" className="text-base" onClick={() => (setForm({ ...form, baseRev: task.rev }), setConflict(false), setError(null))}>
                   最新に合わせる
                 </Button>
               )}
@@ -187,7 +187,7 @@ const ACTION = { set: "付けた", update: "直した", clear: "解除した" } 
 
 function BlockHistory({ history }: { history: BlockHistoryEntry[] }) {
   return (
-    <details className="text-sm">
+    <details className="text-base">
       <summary className="cursor-pointer text-slate-600 dark:text-slate-300">停止の履歴（{history.length} 件）</summary>
       <ol className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3 dark:border-slate-700">
         {[...history].reverse().map((h, i) => (

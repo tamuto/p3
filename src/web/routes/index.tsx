@@ -54,7 +54,8 @@ export const Route = createFileRoute("/")({
   component: ProgressPage,
 });
 
-const ROW_H = 52;
+/** 行の高さ。狭い幅ではステータスの段と題の2行（16px・行の高さ 20px）が入る高さにする */
+const ROW_H = 64;
 const HEAD_H = 64;
 /** 見えている範囲の外にも少し余分に描く（スクロールしたとき端が欠けないように） */
 const OVERSCAN_PX = 300;
@@ -195,7 +196,7 @@ function ProgressPage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
         <h1 className="text-lg font-bold">進捗</h1>
-        <span className="text-sm text-slate-500" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
+        <span className="text-base text-slate-500" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
           {matched.length} 件
         </span>
         <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
@@ -210,12 +211,12 @@ function ProgressPage() {
             </Link>
           ))}
         </nav>
-        <label className="flex items-center gap-1.5 text-sm">
+        <label className="flex items-center gap-1.5 text-base">
           <input type="checkbox" checked={!!onlyBlocked} onChange={(e) => void navigate({ search: (prev) => ({ ...prev, blocked: e.target.checked || undefined }), replace: true })} />
           停止中のみ
         </label>
         {onlyBlocked && (
-          <span className="text-sm text-slate-500" title="止まっている自分のタスクの合計（配下を二重に数えない）">
+          <span className="text-base text-slate-500" title="止まっている自分のタスクの合計（配下を二重に数えない）">
             停止中 {blockedTotal} 件・{matched.length} 要望
           </span>
         )}
@@ -282,17 +283,17 @@ function ProgressPage() {
                   .map((m) => (
                     <span key={m.id} className="absolute top-1 -translate-x-1/2" style={{ left: x(m.due!) + px / 2 }}>
                       <Hint content={`${m.title}\n${m.due}${m.done ? "（リリース済み）" : ""}`}>
-                        <span className={cx("text-sm whitespace-nowrap", m.done ? "text-slate-400" : "font-medium text-violet-600 dark:text-violet-400")}>◆ {m.id}</span>
+                        <span className={cx("text-base whitespace-nowrap", m.done ? "text-slate-500" : "font-medium text-violet-600 dark:text-violet-400")}>◆ {m.id}</span>
                       </Hint>
                     </span>
                   ))}
                 {visibleTicks.map((k) => (
-                  <div key={k.start} className="absolute bottom-0 flex flex-col items-center pb-1 text-sm" style={{ left: k.x, width: k.width }}>
-                    <span className="h-4 text-xs whitespace-nowrap text-slate-400">{k.group ?? ""}</span>
+                  <div key={k.start} className="absolute bottom-0 flex flex-col items-center pb-1 text-base" style={{ left: k.x, width: k.width }}>
+                    <span className="h-4 text-sm whitespace-nowrap text-slate-500 dark:text-slate-400">{k.group ?? ""}</span>
                     <span
                       className={cx(
                         "flex h-6 min-w-6 items-center justify-center rounded-full px-1 whitespace-nowrap",
-                        k.today ? "bg-indigo-600 font-bold text-white" : k.weekend ? "text-slate-400" : "text-slate-600 dark:text-slate-300",
+                        k.today ? "bg-indigo-600 font-bold text-white" : k.weekend ? "text-slate-500" : "text-slate-600 dark:text-slate-300",
                       )}
                     >
                       {k.label}
@@ -366,7 +367,7 @@ function Legend() {
     </span>
   );
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-3 text-sm text-slate-500">
+    <div className="ml-auto flex flex-wrap items-center gap-3 text-base text-slate-500">
       {item(<DoneMark checked={false} />, "完了")}
       {item(<DoneMark checked />, "済み")}
       {item(<DoingMark />, "作業中")}
@@ -412,31 +413,31 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
         {/* 広い画面では印を縮めず、題のほうを切る（重ならないように） */}
         <span className={cx("flex items-center gap-1", narrow ? "min-w-0" : "shrink-0")}>
           <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
-          {t.context && <span className="shrink-0 text-xs text-slate-500">文脈</span>}
+          {t.context && <span className="shrink-0 text-sm text-slate-500">文脈</span>}
           {!narrow && p.children.length > 0 && (
-            <span className="shrink-0 text-xs whitespace-nowrap text-slate-500" title="配下全体（自身を含む）の完了したタスク / 全部">
+            <span className="shrink-0 text-sm whitespace-nowrap text-slate-500" title="配下全体（自身を含む）の完了したタスク / 全部">
               配下 {p.subtree.done}/{p.subtree.total}
             </span>
           )}
           {p.blocked > 0 && (
-            <span className="shrink-0 rounded bg-amber-100 px-1 text-xs whitespace-nowrap text-amber-900 dark:bg-amber-900 dark:text-amber-100" title="止まっている自分のタスクの数">
+            <span className="shrink-0 rounded bg-amber-100 px-1 text-sm whitespace-nowrap text-amber-900 dark:bg-amber-900 dark:text-amber-100" title="止まっている自分のタスクの数">
               ⏸停止 {p.blocked}
             </span>
           )}
           {p.subtree.blocked > p.blocked && (
-            <span className="shrink-0 text-xs whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望で止まっているタスクの数">
+            <span className="shrink-0 text-sm whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望で止まっているタスクの数">
               配下の停止 {p.subtree.blocked - p.blocked}
             </span>
           )}
           {p.hierarchyIssues.length > 0 && (
-            <span className="shrink-0 text-xs text-amber-700 dark:text-amber-400" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
+            <span className="shrink-0 text-sm text-amber-700 dark:text-amber-400" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
               ※親子
             </span>
           )}
         </span>
         <Hint content={`${r.title}\n${r.id}`} className="min-w-0">
           {/* 狭い幅は2行で切る（line-clamp は display: -webkit-box が要るので block を付けない）。全文は Hint で見る */}
-          <span className={cx("font-medium", narrow ? "line-clamp-2 text-xs leading-tight break-all" : "block truncate")}>{r.title}</span>
+          <span className={cx("font-medium", narrow ? "line-clamp-2 leading-5 break-all" : "block truncate")}>{r.title}</span>
         </Hint>
       </Link>
     </div>
@@ -520,7 +521,7 @@ function RequestLane({
               >
                 {icon(g.kind)}
                 {g.items.length > 1 && (
-                  <span className="absolute -top-2 -right-2.5 rounded-full bg-slate-700 px-1 text-[10px] leading-4 text-white">{g.items.length}</span>
+                  <span className="absolute -top-2 -right-2.5 rounded-full bg-slate-700 px-1 text-sm leading-4 text-white">{g.items.length}</span>
                 )}
               </button>
             </Hint>

@@ -19,7 +19,7 @@ export function MaterialView({ material }: { material: ReleaseMaterial }) {
       </h3>
       <Warnings items={material.warnings} />
       {material.requests.some((r) => r.warnings.length) && (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
+        <p className="text-base text-amber-700 dark:text-amber-300">
           ⚠ 要望ごとの警告が {material.requests.reduce((n, r) => n + r.warnings.length, 0)} 件あります（未完了は収録せず、変更の記録の無いタスクは要約に入りません）
         </p>
       )}
@@ -45,7 +45,7 @@ export function MaterialView({ material }: { material: ReleaseMaterial }) {
                     // 自分のタスクが無く子だけを持つ親: 収録の判定には入るが、変更の記録は子の要望から入る
                     <Badge title="自分のタスクが無く子だけを持つ要望。収録の判定には入りますが、変更の記録は各子の要望から入ります">構造の要望（子 {r.children?.length ?? 0} 件）</Badge>
                   ) : (
-                    <span className={cx("text-sm", r.tasks.some((t) => !t.hasRecord) ? "text-amber-700 dark:text-amber-300" : "text-slate-500")}>
+                    <span className={cx("text-base", r.tasks.some((t) => !t.hasRecord) ? "text-amber-700 dark:text-amber-300" : "text-slate-500")}>
                       記録 {r.tasks.filter((t) => t.hasRecord).length}/{r.tasks.length}
                       {r.children?.length ? `・子 ${r.children.length} 件` : ""}
                     </span>
@@ -55,14 +55,14 @@ export function MaterialView({ material }: { material: ReleaseMaterial }) {
                       type="button"
                       aria-expanded={expanded}
                       onClick={() => setOpen(expanded ? null : r.id)}
-                      className="ml-auto text-sm text-indigo-700 underline focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none dark:text-indigo-300"
+                      className="ml-auto text-base text-indigo-700 underline focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none dark:text-indigo-300"
                     >
                       {expanded ? "変更の記録を閉じる" : "変更の記録を見る"}
                     </button>
                   )}
                 </div>
                 {r.warnings.length > 0 && (
-                  <ul className="space-y-0.5 text-sm text-amber-700 dark:text-amber-300">
+                  <ul className="space-y-0.5 text-base text-amber-700 dark:text-amber-300">
                     {r.warnings.map((w) => (
                       <li key={`${w.code}:${w.target}`}>⚠ {w.message}</li>
                     ))}
@@ -76,11 +76,11 @@ export function MaterialView({ material }: { material: ReleaseMaterial }) {
                           to="/requests/$requestId"
                           params={{ requestId: r.id }}
                           search={{ task: t.id }}
-                          className="text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300"
+                          className="text-base font-medium text-indigo-700 hover:underline dark:text-indigo-300"
                         >
                           {t.id} {t.title}
                         </Link>
-                        <pre className="text-sm break-words whitespace-pre-wrap text-slate-700 dark:text-slate-300">{t.record}</pre>
+                        <pre className="text-base break-words whitespace-pre-wrap text-slate-700 dark:text-slate-300">{t.record}</pre>
                       </div>
                     ))}
                   </div>
@@ -101,7 +101,7 @@ export function Warnings({ items, tone = "amber" }: { items: ReleaseWarning[]; t
     <ul
       role="status"
       className={cx(
-        "space-y-1 rounded-md px-3 py-2 text-sm",
+        "space-y-1 rounded-md px-3 py-2 text-base",
         tone === "amber" ? "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : "bg-rose-50 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
       )}
     >

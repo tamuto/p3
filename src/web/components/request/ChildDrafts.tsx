@@ -156,7 +156,7 @@ export function ChildDrafts({
   return (
     <Section
       title={`子の要望への分割案 (${children.filter((c) => c.include).length}/${children.length} 件を採用)`}
-      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-400">requests/{request.id}/preflight/{run.id}/children/*.md</span>}
+      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-500 dark:text-slate-400">requests/{request.id}/preflight/{run.id}/children/*.md</span>}
     >
       <div className="space-y-2 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
         <p className="font-medium break-words">
@@ -170,10 +170,10 @@ export function ChildDrafts({
             ))}
           </ul>
         )}
-        <p className="text-sm text-slate-500">
+        <p className="text-base text-slate-500">
           {SPLIT_HINT_TASKS} タスク以上は分けるかを検討する目安です。小さい変更ではフロントエンドとバックエンドを一緒に扱います。
         </p>
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
           親の既存のタスク・履歴・添付は親に残ります（重なりは各案に出ます）。子を作っても、子の Preflight はまだ実行されません。
         </p>
       </div>
@@ -208,21 +208,21 @@ export function ChildDrafts({
               {e ? (
                 <div className="space-y-2">
                   <label className="block space-y-1">
-                    <span className="text-sm text-slate-500">題</span>
+                    <span className="text-base text-slate-500">題</span>
                     <input className={inputCls} aria-label={`${c.key} の題`} value={e.title} onChange={(ev) => setEdits({ ...edits, [c.key]: { ...e, title: ev.target.value } })} />
                   </label>
                   <label className="block space-y-1">
-                    <span className="text-sm text-slate-500">目的・範囲・範囲外・完了条件・分割の理由・前提・出典</span>
+                    <span className="text-base text-slate-500">目的・範囲・範囲外・完了条件・分割の理由・前提・出典</span>
                     <textarea
                       rows={10}
-                      className={`${inputCls} font-mono text-sm`}
+                      className={`${inputCls} font-mono text-base`}
                       aria-label={`${c.key} の本文`}
                       value={e.description}
                       onChange={(ev) => setEdits({ ...edits, [c.key]: { ...e, description: ev.target.value } })}
                     />
                   </label>
                   {conflict && (
-                    <p role="status" className="rounded-md bg-amber-50 px-2 py-1.5 text-sm break-words text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    <p role="status" className="rounded-md bg-amber-50 px-2 py-1.5 text-base break-words text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                       編集中に題が他で変わりました（最新: {c.title}）。入力はそのままです。このままでは保存しません。
                     </p>
                   )}
@@ -237,13 +237,13 @@ export function ChildDrafts({
                 <>
                   <p className="font-medium break-words">{c.title}</p>
                   <details className="group">
-                    <summary className="cursor-pointer text-sm text-indigo-600 underline">目的・範囲・完了条件・前提を見る</summary>
+                    <summary className="cursor-pointer text-base text-indigo-600 underline">目的・範囲・完了条件・前提を見る</summary>
                     <div className="mt-2 min-w-0 break-words">
                       <Markdown text={c.description} />
                     </div>
                   </details>
                   {!locked && (
-                    <Button className="text-sm" onClick={() => setEdits({ ...edits, [c.key]: editOf(c) })}>
+                    <Button className="text-base" onClick={() => setEdits({ ...edits, [c.key]: editOf(c) })}>
                       題・本文を直す
                     </Button>
                   )}
@@ -255,7 +255,7 @@ export function ChildDrafts({
       </ul>
 
       {!!preview?.problems?.length && (
-        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
           <p className="font-medium">子の案に問題があります（採用しません）</p>
           <ul className="list-disc pl-5 break-words">
             {preview.problems.map((p) => (
@@ -310,7 +310,7 @@ export function ChildDrafts({
                   </li>
                 ))}
               </ul>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-base text-slate-600 dark:text-slate-400">
                 親 {request.id} は残します（既存のタスク・履歴もそのまま）。子の要望だけを下書きで作り、期限・マイルストーン・タグを親から写します。子の
                 Preflight はまだ実行しません（子ごとに明示して実行します）。
               </p>

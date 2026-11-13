@@ -70,7 +70,7 @@ export function ChatGptPanel({ tick }: { tick: number }) {
         {notice && (
           <div className="space-y-2 rounded-md bg-sky-50 p-3 dark:bg-sky-950">
             <p className="font-medium">{CHATGPT_UI.firstTitle}</p>
-            <p className="text-sm">Preflight の評価はあなたの ChatGPT プランの使用量を使います。使用量は ChatGPT の設定で確かめられます。</p>
+            <p className="text-base">Preflight の評価はあなたの ChatGPT プランの使用量を使います。使用量は ChatGPT の設定で確かめられます。</p>
             <Button onClick={() => (markFirstNoticeSeen(), setNotice(false))}>{CHATGPT_UI.gotIt}</Button>
           </div>
         )}
@@ -79,7 +79,7 @@ export function ChatGptPanel({ tick }: { tick: number }) {
           <div className="space-y-2">
             <p>
               <span className="font-medium">{s!.email ?? "サインイン済み"}</span>
-              <span className="ml-2 text-sm text-slate-500">トークンは使うときに更新します</span>
+              <span className="ml-2 text-base text-slate-500">トークンは使うときに更新します</span>
             </p>
             <div className="flex flex-wrap gap-2">
               <a className="text-indigo-600 underline" href={CHATGPT_UI.usageUrl} target="_blank" rel="noreferrer">
@@ -119,7 +119,7 @@ export function ChatGptPanel({ tick }: { tick: number }) {
                 取り消す
               </Button>
             </div>
-            <p className="text-sm text-slate-500">
+            <p className="text-base text-slate-500">
               サインインの後に「接続できません」と表示されたら、そのページのアドレスバーの URL（{s!.pending!.redirectUri}?code=…）を貼ってください:
             </p>
             <div className="flex gap-2">
@@ -134,12 +134,12 @@ export function ChatGptPanel({ tick }: { tick: number }) {
         {s?.lastError && !s.pending && <p className="text-rose-600">直前のサインイン: {s.lastError}</p>}
         {error && <p className="text-rose-600">{error}</p>}
         {s?.engine && (
-          <p className="text-sm text-slate-500">
+          <p className="text-base text-slate-500">
             Preflight: {s.engine.ok ? "●" : "✕"} {s.engine.detail}
           </p>
         )}
         {s?.engine && !s.engine.ok && (
-          <p className="text-sm text-slate-500">
+          <p className="text-base text-slate-500">
             Preflight を使えない間も、要望を開いてタスクボードの「＋ タスクを追加」で、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
           </p>
         )}

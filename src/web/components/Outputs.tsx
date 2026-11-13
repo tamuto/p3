@@ -15,7 +15,7 @@ export function Outputs({ outputs, repoOutputs = [], compact = false }: { output
         const href = outputHref(o);
         return (
           // 同じ値が並んでもよい（そのまま並べる）
-          <li key={`${i}:${repo ?? ""}:${o}`} className={cx("min-w-0 text-sm", compact && "line-clamp-2")} title={compact ? `${repo ? `${repo}: ` : ""}${o}` : undefined}>
+          <li key={`${i}:${repo ?? ""}:${o}`} className={cx("min-w-0 text-base", compact && "line-clamp-2")} title={compact ? `${repo ? `${repo}: ` : ""}${o}` : undefined}>
             {repo && <span className="mr-1 rounded bg-slate-100 px-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">{repo}</span>}
             {href ? (
               <a

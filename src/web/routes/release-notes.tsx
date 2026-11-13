@@ -172,7 +172,7 @@ function MilestoneList({
 }) {
   return (
     <nav aria-label={label} className="space-y-2">
-      <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">マイルストーン</h2>
+      <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">マイルストーン</h2>
       <ul className="space-y-1">
         {items.map((m) => (
           <li key={m.milestone}>
@@ -188,16 +188,16 @@ function MilestoneList({
               <span className="block font-medium break-words">
                 {m.title} <span className="font-mono text-sm text-slate-500">{m.milestone}</span>
               </span>
-              <span className="block text-sm text-slate-500 dark:text-slate-400">
+              <span className="block text-base text-slate-500 dark:text-slate-400">
                 {tab === "review" ? "" : `${noteLabel(m)}・`}要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
               </span>
-              {!m.known && <span className="block text-sm text-amber-700 dark:text-amber-300">⚠ project.yaml にありません</span>}
+              {!m.known && <span className="block text-base text-amber-700 dark:text-amber-300">⚠ project.yaml にありません</span>}
             </Link>
           </li>
         ))}
       </ul>
       {warnings.map((w) => (
-        <p key={`${w.code}:${w.target}`} className="text-sm text-amber-700 dark:text-amber-300">
+        <p key={`${w.code}:${w.target}`} className="text-base text-amber-700 dark:text-amber-300">
           ⚠ {w.message}
         </p>
       ))}

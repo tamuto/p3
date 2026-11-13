@@ -19,7 +19,7 @@ export function ExternalChange<V>({
 }) {
   if (!draft.external || !isDirty(draft, eq)) return null;
   return (
-    <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+    <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
       <span className="min-w-0 break-words">
         編集中に{label}が他で変わりました（rev {draft.external.rev}: 「{show(draft.external.value)}」）。このまま保存すると競合になります。
       </span>

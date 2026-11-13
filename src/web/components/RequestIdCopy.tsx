@@ -32,12 +32,12 @@ export function RequestIdCopy({ id, clipboard }: { id: string; clipboard?: Clipb
         aria-label="要望 ID をコピー"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => void copy()}
-        className={buttonCls("secondary", "px-2 py-0.5 text-sm focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none")}
+        className={buttonCls("secondary", "px-2 py-0.5 text-base focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none")}
       >
         {notice?.ok ? <CheckIcon /> : <CopyIcon />}
         コピー
       </button>
-      <span role="status" className={cx("min-w-0 text-sm break-words", notice?.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+      <span role="status" className={cx("min-w-0 text-base break-words", notice?.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
         {notice?.text ?? ""}
       </span>
     </div>

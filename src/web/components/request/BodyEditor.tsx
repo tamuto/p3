@@ -86,7 +86,7 @@ export function BodyEditor({
             要望の本文
           </label>
         ) : (
-          <h2 className="font-semibold">要望の本文</h2>
+          <h2 className="text-xl font-semibold">要望の本文</h2>
         )}
         {editing ? dirty && <Badge tone="amber">未保存</Badge> : <Button onClick={open}>本文を編集</Button>}
       </div>
@@ -102,7 +102,7 @@ export function BodyEditor({
             onKeyDown={(e) => e.key === "Escape" && !dirty && cancel()}
           />
           <ExternalChange label="本文" draft={draft} eq={sameBody} show={(v) => excerpt(v)} onDiscard={() => (setDraft((d) => discardDraft(d)), setMessage(null))} />
-          <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-600 dark:text-slate-400">
+          <ul className="list-disc space-y-0.5 pl-5 text-base text-slate-600 dark:text-slate-400">
             <li>保存すると、この内容が次の Preflight の評価対象になります。</li>
             {running && <li>実行中の評価には、始めたときの内容が使われます。</li>}
             {hasRuns && <li>保存しても既存のタスク・成果物・ステータスは残ります。評価のあとで変えると、その評価からはタスク化できません（もう一度 Preflight）。</li>}
@@ -118,7 +118,7 @@ export function BodyEditor({
           </div>
         </>
       ) : (
-        <p className="break-words whitespace-pre-wrap">{request.body.trim() ? request.body : <span className="text-slate-400">（本文なし）</span>}</p>
+        <p className="break-words whitespace-pre-wrap">{request.body.trim() ? request.body : <span className="text-slate-500 dark:text-slate-400">（本文なし）</span>}</p>
       )}
       {message && (
         <p role={message.error ? "alert" : "status"} className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>

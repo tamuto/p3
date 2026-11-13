@@ -65,7 +65,8 @@ const OPTIONS = {
   only: { type: "string" },
   skip: { type: "string" },
   name: { type: "string" },
-  repo: { type: "string" },
+  // 繰り返せるのは MULTI_REPO_COMMANDS だけ（ほかは checkRepeatedRepo が断る。後勝ちで黙って成功させない）
+  repo: { type: "string", multiple: true },
   description: { type: "string" },
   instructions: { type: "string" },
   "preflight-runner": { type: "string" },
@@ -95,7 +96,25 @@ const OPTIONS = {
   "based-on": { type: "string" },
 } as const;
 
-export const parse = (argv: string[]) => parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });
+/**
+ * 引数を読む。--repo は全部を repos に、1つだけのときは repo にも入れる（繰り返したときの repo は undefined。
+ * 繰り返してよいかは checkRepeatedRepo で確かめる）
+ */
+export function parse(argv: string[]) {
+  const { values, positionals } = parseArgs({ args: joinValues(argv), options: OPTIONS, allowPositionals: true });
+  const { repo: repos, ...rest } = values;
+  return { positionals, values: { ...rest, repos, repo: repos?.length === 1 ? repos[0] : undefined } };
+}
+
+/** --repo を繰り返して複数の参照先を渡せるコマンド（品質基準の対象。ほかは作業先などの1つだけを取る） */
+const MULTI_REPO_COMMANDS = new Set(["quality"]);
+
+/** --repo を繰り返せないコマンドで繰り返したら断る（最後の1つだけで黙って成功させない） */
+export function checkRepeatedRepo(cmd: string, o: { repos?: string[] }) {
+  if ((o.repos?.length ?? 0) > 1 && !MULTI_REPO_COMMANDS.has(cmd)) {
+    throw new UsageError(`p3 ${cmd} の --repo は1つだけ指定できます（指定: ${o.repos!.join(", ")}）。--repo を繰り返して複数の参照先を指定できるのは p3 quality add / set だけです`);
+  }
+}
 
 /** `--body "- 箇条書き"` のように値が - で始まっても受け取れるよう、`--body=...` の形にまとめる */
 function joinValues(argv: string[]): string[] {

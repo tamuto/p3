@@ -47,7 +47,7 @@ export function QualityDiffPanel({ task, disabled, onSaved }: { task: Task; disa
   }
 
   return (
-    <section aria-label="品質基準との差分" className="space-y-2 rounded-lg bg-sky-50 p-3 text-sm dark:bg-sky-950/50">
+    <section aria-label="品質基準との差分" className="space-y-2 rounded-lg bg-sky-50 p-3 text-base dark:bg-sky-950/50">
       <p className="font-medium">品質基準との差分（プロジェクトの品質基準を変えても、タスクは自動では変わりません）</p>
       <ul className="space-y-1">
         {diff.map((d) => {
@@ -78,7 +78,7 @@ export function QualityDiffPanel({ task, disabled, onSaved }: { task: Task; disa
       {!task.repo && <p className="text-slate-500">作業先なしのタスクには、足す案を出しません。</p>}
       {importable.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button className="text-sm" disabled={busy || disabled || !picked.size} onClick={() => void apply()}>
+          <Button className="text-base" disabled={busy || disabled || !picked.size} onClick={() => void apply()}>
             選んだ差分を取り込む
           </Button>
           <span className="text-slate-500">変わった条件の証拠は「再確認が必要」になります。済みの後なら済みが外れます。</span>

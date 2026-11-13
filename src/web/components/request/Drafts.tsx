@@ -220,13 +220,13 @@ export function Drafts({
   return (
     <Section
       title={`タスク案 (${included.length}/${run.drafts.length} 件を採用)`}
-      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
+      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-500 dark:text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
     >
       {/* 段（依存の深さ）ごとの列。広い画面では列を広げ（最大 28rem）、入りきらなければこの中だけ横にスクロールする */}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {levels(run.drafts).map((lv, i) => (
           <div key={i} className="flex max-w-md min-w-72 flex-1 shrink-0 flex-col gap-2">
-            <span className="text-sm text-slate-500">段階 {i + 1}</span>
+            <span className="text-base text-slate-500">段階 {i + 1}</span>
             {lv.map((d) => (
               <div
                 key={d.key}
@@ -239,13 +239,13 @@ export function Drafts({
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={d.include} disabled={done} onChange={(e) => void patch(d, { include: e.target.checked })} />
                   <span className="font-mono text-sm text-slate-500">{d.key}</span>
-                  {d.dependsOn.length > 0 && <span className="text-sm text-slate-400">← {d.dependsOn.join(", ")}</span>}
+                  {d.dependsOn.length > 0 && <span className="text-base text-slate-500 dark:text-slate-400">← {d.dependsOn.join(", ")}</span>}
                 </div>
                 {multi && (
-                  <label className="flex items-center gap-2 text-sm text-slate-500">
+                  <label className="flex items-center gap-2 text-base text-slate-500">
                     作業先
                     <select
-                      className={`${inputCls} !w-auto min-w-0 flex-1 py-0.5 text-sm`}
+                      className={`${inputCls} !w-auto min-w-0 flex-1 py-0.5 text-base`}
                       disabled={done}
                       value={d.repo ?? NO_REPO}
                       onChange={(e) => void patch(d, { repo: e.target.value === NO_REPO ? null : e.target.value })}
@@ -267,7 +267,7 @@ export function Drafts({
                   onDiscard={() => setTitle(titleKey(request.id, run.id, d.key), discardTitle)}
                 />
                 <Button
-                  className="text-sm"
+                  className="text-base"
                   aria-haspopup="dialog"
                   onClick={(e) => {
                     opener.current = e.currentTarget;
@@ -277,7 +277,7 @@ export function Drafts({
                   内容を見る
                 </Button>
                 {(d.acceptanceCriteria?.length || d.acceptanceProblems?.length) && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-base text-slate-500">
                     受け入れ基準 {d.acceptanceCriteria?.length ?? 0} 件
                     {d.acceptanceProblems?.length ? <span className="ml-1 text-rose-600">（読めない値あり）</span> : null}
                     {criteriaEditDirty(criteriaEdits[titleKey(request.id, run.id, d.key)]) && <span className="ml-1 text-amber-700 dark:text-amber-400">（保存していない変更）</span>}
@@ -325,7 +325,7 @@ export function Drafts({
                     作業中
                   </Badge>
                 )}
-                <span className="text-sm text-slate-500">
+                <span className="text-base text-slate-500">
                   {c.reasons.map((r) => `案 ${r.draft}`).join(" · ")}
                 </span>
               </li>
@@ -334,7 +334,7 @@ export function Drafts({
         </div>
       )}
       {!done && uiShortage(run) && (
-        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
+        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
           {uiShortage(run)}
         </p>
       )}
@@ -406,24 +406,24 @@ function TitleField({
         className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
       />
       {!done && conflict && (
-        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-2 py-1.5 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-2 py-1.5 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <p>編集中に題が他で変わりました。入力はそのままです（このままでは保存しません）。</p>
           <p className="break-words">
             最新の題: <span className="font-medium">{draft.external}</span>
           </p>
-          <Button className="text-sm" onClick={onDiscard}>
+          <Button className="text-base" onClick={onDiscard}>
             入力を捨てて最新にする
           </Button>
         </div>
       )}
-      {!done && !conflict && draft.saving !== null && <p className="text-sm text-slate-500">保存中…</p>}
+      {!done && !conflict && draft.saving !== null && <p className="text-base text-slate-500">保存中…</p>}
       {!done && !conflict && draft.error && (
-        <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-rose-600">
+        <p role="status" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
           {draft.error}
-          <Button className="text-sm" onClick={onSave}>
+          <Button className="text-base" onClick={onSave}>
             もう一度保存
           </Button>
-          <Button variant="ghost" className="text-sm" onClick={onDiscard}>
+          <Button variant="ghost" className="text-base" onClick={onDiscard}>
             入力を捨てる
           </Button>
         </p>

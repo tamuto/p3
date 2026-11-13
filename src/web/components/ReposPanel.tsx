@@ -59,18 +59,18 @@ export function ReposPanel({ tick, onChanged, onDirtyChange }: { tick: number; o
 
   return (
     <Section title="参照先（リポジトリ・フォルダ）">
-      <p className="text-sm text-slate-500">
+      <p className="text-base text-slate-500">
         Preflight が読むリポジトリ・フォルダ。数と名前は自由で、git でなくてもよい。「作業先にできる」ものはタスクの作業先になる。
         名前・役割・主なフォルダはチームで共有し（project.yaml）、このマシンのパスは個人設定に置く（共有しない）。
       </p>
       {error && (
-        <p role="alert" className="text-sm break-words text-rose-600">
+        <p role="alert" className="text-base break-words text-rose-600">
           {error}
         </p>
       )}
-      {data && !data.local && <p className="text-sm text-slate-500">このマシンのパスは、P3 を動かしているマシンの画面でだけ見られます。</p>}
+      {data && !data.local && <p className="text-base text-slate-500">このマシンのパスは、P3 を動かしているマシンの画面でだけ見られます。</p>}
       {data && data.local && !data.registered && (
-        <p className="text-sm text-amber-700 dark:text-amber-300">このプロジェクトは個人設定に登録されていないので、このマシンのパスは登録できません（p3 project add）。</p>
+        <p className="text-base text-amber-700 dark:text-amber-300">このプロジェクトは個人設定に登録されていないので、このマシンのパスは登録できません（p3 project add）。</p>
       )}
       <ul className="space-y-3">
         {data?.repos.map((r) => (
@@ -112,12 +112,12 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
     <li className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium break-all">{repo.name}</span>
-        <span className="font-mono text-sm text-slate-400">/workspace/{repo.mount}</span>
+        <span className="font-mono text-sm text-slate-500 dark:text-slate-400">/workspace/{repo.mount}</span>
         <Badge tone={st.tone}>{st.label}</Badge>
         <span className="ml-auto flex gap-2">
           {confirm ? (
             <>
-              <span className="text-sm text-rose-700 dark:text-rose-300">共有の定義を消します（ほかの人も読まなくなる。フォルダは消さない）</span>
+              <span className="text-base text-rose-700 dark:text-rose-300">共有の定義を消します（ほかの人も読まなくなる。フォルダは消さない）</span>
               <Button variant="danger" onClick={() => void act(() => api.removeRepo(repo.name))}>
                 消す
               </Button>
@@ -135,7 +135,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
       <Field label="役割">
         <input className={inputCls} value={draft.role} placeholder="本体 / ドキュメント / 基盤 / 依存しているライブラリ" onChange={(e) => setDraft({ ...draft, role: e.target.value })} />
       </Field>
-      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-base">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={draft.readFirst} onChange={(e) => setDraft({ ...draft, readFirst: e.target.checked })} />
           最初に読む
@@ -146,11 +146,11 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
         </label>
       </div>
       <div className="space-y-2">
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          主なフォルダ <span className="font-normal text-slate-400">— フォルダかファイル。「最初に読む」参照先のものは Preflight が評価の前に読み、ほかは案内。入口は任意（そのフォルダで最初に読むファイル）</span>
+        <p className="text-base font-medium text-slate-700 dark:text-slate-300">
+          主なフォルダ <span className="font-normal text-slate-500 dark:text-slate-400">— フォルダかファイル。「最初に読む」参照先のものは Preflight が評価の前に読み、ほかは案内。入口は任意（そのフォルダで最初に読むファイル）</span>
         </p>
         {draft.map.length > 0 && (
-          <div className="hidden grid-cols-[repeat(3,minmax(0,1fr))_2.5rem] gap-2 text-sm text-slate-500 sm:grid dark:text-slate-400" aria-hidden>
+          <div className="hidden grid-cols-[repeat(3,minmax(0,1fr))_2.5rem] gap-2 text-base text-slate-500 sm:grid dark:text-slate-400" aria-hidden>
             <span>フォルダ</span>
             <span>役割</span>
             <span>入口（任意）</span>
@@ -178,7 +178,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
         <Button variant="ghost" disabled={!dirty} onClick={() => setDraft(saved)}>
           元に戻す
         </Button>
-        {dirty && <span className="text-sm text-slate-500">未保存の変更があります</span>}
+        {dirty && <span className="text-base text-slate-500">未保存の変更があります</span>}
       </div>
       {local && (
         <div className="flex flex-wrap items-start gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
@@ -195,7 +195,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
               外す
             </Button>
           )}
-          {repo.reason && repo.status !== "ok" && <p className="w-full text-sm break-words text-rose-600">{repo.reason}</p>}
+          {repo.reason && repo.status !== "ok" && <p className="w-full text-base break-words text-rose-600">{repo.reason}</p>}
         </div>
       )}
     </li>
@@ -214,7 +214,7 @@ function AddRepo({ local, act, onDirty }: { local: boolean; act: Act; onDirty: O
   }
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
-      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">参照先を足す</p>
+      <p className="text-base font-medium text-slate-700 dark:text-slate-300">参照先を足す</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="名前" hint="空白・コロン・スラッシュは使えない">
           <input className={inputCls} value={f.name} placeholder="docs" onChange={(e) => setF({ ...f, name: e.target.value })} />
@@ -228,7 +228,7 @@ function AddRepo({ local, act, onDirty }: { local: boolean; act: Act; onDirty: O
           </Field>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={f.readFirst} onChange={(e) => setF({ ...f, readFirst: e.target.checked })} />
           最初に読む

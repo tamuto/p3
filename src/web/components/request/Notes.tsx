@@ -87,7 +87,7 @@ export function Notes({
   if (st.mode === "intro" && !info?.notes.length && !info?.invalid.length) return null;
 
   return (
-    <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-400">requests/{request.id}/notes/*.md</span>}>
+    <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-500 dark:text-slate-400">requests/{request.id}/notes/*.md</span>}>
       <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
         {info && (
           <>
@@ -95,7 +95,7 @@ export function Notes({
               <ul className="space-y-2">
                 {info.notes.map((n) => (
                   <li key={n.id} className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 text-base text-slate-500">
                       <Badge tone={n.pending ? "amber" : "slate"}>{n.pending ? "次に渡す" : "渡し済み"}</Badge>
                       <span className="font-mono">{n.id}</span>
                       <span>{n.createdBy ?? "不明"}</span>
@@ -107,14 +107,14 @@ export function Notes({
               </ul>
             )}
             {info.invalid.map((i) => (
-              <p key={i.file} className="text-sm text-rose-600">
+              <p key={i.file} className="text-base text-rose-600">
                 読めないメモ（渡しません）: {i.file} — {i.error}
               </p>
             ))}
-            {st.mode === "input" && <p className="text-sm text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
+            {st.mode === "input" && <p className="text-base text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
           </>
         )}
-        {st.hint && <p className="text-sm text-slate-600 dark:text-slate-400">{st.hint}</p>}
+        {st.hint && <p className="text-base text-slate-600 dark:text-slate-400">{st.hint}</p>}
         {st.mode === "input" && (
           <>
             <textarea

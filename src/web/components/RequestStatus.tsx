@@ -18,7 +18,7 @@ export const REQUEST_STATUS_LABEL = Object.fromEntries(Object.entries(STATUS).ma
 export function RequestStatusBadge({ status, size = "md" }: { status: RequestStatus; size?: "sm" | "md" }) {
   const s = STATUS[status];
   return (
-    <span title={s.hint} className={cx("inline-flex shrink-0 justify-center rounded", size === "sm" ? "w-11 text-xs leading-4" : "w-14 py-0.5 text-sm", s.tone)}>
+    <span data-aux title={s.hint} className={cx("inline-flex shrink-0 justify-center rounded", size === "sm" ? "w-11 text-sm leading-4" : "w-14 py-0.5 text-base", s.tone)}>
       {s.label}
     </span>
   );

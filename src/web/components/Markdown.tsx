@@ -28,7 +28,7 @@ const components: Components = {
   blockquote: ({ children }) => <blockquote className="my-2 border-l-4 border-slate-300 pl-3 text-slate-600 dark:border-slate-600 dark:text-slate-400">{children}</blockquote>,
   hr: () => <hr className="my-4 border-slate-200 dark:border-slate-700" />,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-md bg-slate-100 p-3 text-sm leading-relaxed dark:bg-slate-800">{children}</pre>,
+  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-md bg-slate-100 p-3 text-base leading-relaxed dark:bg-slate-800">{children}</pre>,
   code: ({ children, className }) =>
     // ブロック（pre の中）は言語のクラスが付くか改行を含む。インラインだけ背景を付けて折り返す
     className || String(children).includes("\n") ? (
@@ -38,7 +38,7 @@ const components: Components = {
     ),
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="min-w-full border-collapse text-sm">{children}</table>
+      <table className="min-w-full border-collapse text-base">{children}</table>
     </div>
   ),
   th: ({ children, style }) => <th style={style} className="border border-slate-300 bg-slate-50 px-2 py-1 text-left font-semibold dark:border-slate-700 dark:bg-slate-800">{children}</th>,

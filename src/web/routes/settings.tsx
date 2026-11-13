@@ -99,7 +99,7 @@ function SettingsPage() {
       </TabPanel>
 
       <TabPanel id="project" tab={tab} prefix="settings" className="space-y-10">
-        <p className="min-w-0 truncate font-mono text-sm text-slate-400" title={`${ctx.info.dataDir}/project.yaml`}>
+        <p className="min-w-0 truncate font-mono text-sm text-slate-500 dark:text-slate-400" title={`${ctx.info.dataDir}/project.yaml`}>
           {ctx.info.dataDir}/project.yaml
         </p>
 

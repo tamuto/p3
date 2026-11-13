@@ -178,21 +178,21 @@ export function MilestoneEditor({
                 <input type="checkbox" checked={!!r.m.done} onChange={(e) => update(key, { done: e.target.checked || undefined })} />
                 リリース済み
               </label>
-              <span className="w-16 shrink-0 text-right text-sm text-slate-400">要望 {count}</span>
+              <span className="w-16 shrink-0 text-right text-base text-slate-500 dark:text-slate-400">要望 {count}</span>
               <Button variant="ghost" disabled={!!lock} title={lock ?? undefined} onClick={() => remove(key)}>
                 削除
               </Button>
-              {lock && <p className="w-full text-sm text-slate-500 dark:text-slate-400">{lock}</p>}
+              {lock && <p className="w-full text-base text-slate-500 dark:text-slate-400">{lock}</p>}
               <div className="w-full">
                 <button
                   type="button"
-                  className="text-sm text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
+                  className="text-base text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
                   aria-expanded={open.has(key)}
                   aria-controls={`ms-goals-${key}`}
                   onClick={() => toggle(key)}
                 >
                   {open.has(key) ? "▾" : "▸"} 目的・予定機能
-                  <span className="ml-2 text-slate-400">{goalSummary(r.m)}</span>
+                  <span className="ml-2 text-slate-500 dark:text-slate-400">{goalSummary(r.m)}</span>
                 </button>
                 {open.has(key) && (
                   <GoalsEditor
@@ -209,7 +209,7 @@ export function MilestoneEditor({
       </ul>
       <Button onClick={add}>＋ マイルストーンを追加</Button>
       {unknownNotes.length > 0 && (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
+        <p className="text-base text-amber-700 dark:text-amber-300">
           ⚠ project.yaml に無いマイルストーンのノート: {unknownNotes.join(", ")}（「リリースノート」タブで読めます。同じ ID のマイルストーンを足すと定義に戻ります）
         </p>
       )}
@@ -263,7 +263,7 @@ function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used
   return (
     <div id={id} className="mt-2 space-y-3 rounded-md bg-slate-50 p-3 dark:bg-slate-900">
       <label className="block">
-        <span className="text-sm font-medium">目的</span>
+        <span className="text-base font-medium">目的</span>
         <textarea
           rows={4}
           className={cx(inputCls, "mt-1")}
@@ -274,8 +274,8 @@ function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used
         />
       </label>
       <div role="group" aria-label="予定している機能・目標">
-        <p className="text-sm font-medium">予定している機能・目標</p>
-        {!goals.length && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">まだありません。</p>}
+        <p className="text-base font-medium">予定している機能・目標</p>
+        {!goals.length && <p className="mt-1 text-base text-slate-500 dark:text-slate-400">まだありません。</p>}
         <div className="mt-1 space-y-2">
           {goals.map((g, i) => (
             <div key={g.id} className="flex items-center gap-2">

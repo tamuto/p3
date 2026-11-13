@@ -22,7 +22,7 @@ export function ImprovementButton({ source, label = "改善要望の案を確認
       <Button
         ref={opener}
         type="button"
-        className="text-sm"
+        className="text-base"
         aria-haspopup="dialog"
         onClick={() => {
           setOpen(true);
@@ -107,7 +107,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
   return (
     <div className="flex max-h-[90vh] flex-col">
       <div className="flex items-start gap-3 border-b border-slate-200 p-3 sm:p-4 dark:border-slate-800">
-        <h2 id="improvement-title" className="min-w-0 flex-1 font-semibold">
+        <h2 id="improvement-title" className="min-w-0 flex-1 text-xl font-semibold">
           品質の診断 → 改善要望の原稿の確認・編集 → 明示の登録
         </h2>
         <Button className="shrink-0" onClick={onClose}>
@@ -121,10 +121,10 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
           <>
             <section aria-label="品質の不足" className="space-y-1">
               <p className="font-medium">不足（選んだものだけを原稿にします。除外は既定で選びません）</p>
-              {!p.findings.length && <p className="text-sm text-slate-500">不足はありません。</p>}
+              {!p.findings.length && <p className="text-base text-slate-500">不足はありません。</p>}
               <ul className="space-y-1">
                 {p.findings.map((f) => (
-                  <li key={f.key} className="flex min-w-0 items-start gap-2 text-sm">
+                  <li key={f.key} className="flex min-w-0 items-start gap-2 text-base">
                     <input type="checkbox" aria-label={`${f.key} を選ぶ`} checked={picked.includes(f.key)} disabled={busy} onChange={(e) => toggle(f.key, e.target.checked)} />
                     <span className="min-w-0 break-words">
                       <span className="font-mono">{f.quality ?? "設定"}</span> {KIND[f.kind]}（{f.target}・版 {f.version || "なし"}）: {f.reason}
@@ -138,7 +138,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
                 ))}
               </ul>
               {p.notes.map((n) => (
-                <p key={n} className="text-sm text-slate-500">
+                <p key={n} className="text-base text-slate-500">
                   ※ {n}
                 </p>
               ))}
@@ -149,13 +149,13 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
                   <input className={inputCls} value={title} disabled={busy} onChange={(e) => (setTitle(e.target.value), setEdited(true))} />
                 </Field>
                 <Field label="要望の原稿">
-                  <textarea rows={12} className={`${inputCls} font-mono text-sm`} value={body} disabled={busy} onChange={(e) => (setBody(e.target.value), setEdited(true))} />
+                  <textarea rows={12} className={`${inputCls} font-mono text-base`} value={body} disabled={busy} onChange={(e) => (setBody(e.target.value), setEdited(true))} />
                 </Field>
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 dark:bg-amber-950 dark:text-amber-200">
                   表示・編集だけでは要望を作りません。登録の前に診断の版を照らし、変わっていれば確かめ直してもらいます。P3 は検査を実行していません。
                 </p>
                 {closed.length > 0 && (
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-base">
                     <input type="checkbox" checked={reopen} onChange={(e) => setReopen(e.target.checked)} />
                     閉じた要望（{closed.map(([, r]) => r.request).join(", ")}）で扱った不足から、要望を作り直す
                   </label>
@@ -165,7 +165,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
           </>
         )}
         {msg && (
-          <p role={msg.ok ? "status" : "alert"} className={cx("text-sm break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
+          <p role={msg.ok ? "status" : "alert"} className={cx("text-base break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
             {msg.text}
             {msg.request && (
               <Link to="/requests/$requestId" params={{ requestId: msg.request }} className="ml-2 underline">

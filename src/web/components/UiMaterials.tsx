@@ -28,9 +28,9 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
   return (
     <Section title="画面資料" aside={<Badge tone={view.tone}>{view.label}</Badge>}>
       <div className="space-y-3">
-        {view.message && <p className="break-words text-sm text-slate-600 dark:text-slate-400">{view.message}</p>}
+        {view.message && <p className="break-words text-base text-slate-600 dark:text-slate-400">{view.message}</p>}
         {run.ui?.verdictAdjusted && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
             必要な画面イメージが足りないので、判定を go から clarify にしました
           </p>
         )}
@@ -46,7 +46,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
                 >
                   <img src={materialUrl(requestId, run.id, m.id)} alt={m.title} loading="lazy" className="h-full w-full object-contain object-top" />
                 </button>
-                <div className="flex flex-1 flex-col gap-1.5 p-3 text-sm">
+                <div className="flex flex-1 flex-col gap-1.5 p-3 text-base">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={KIND_TONE[m.kind]}>{kindLabel(m.kind)}</Badge>
                     <span className="min-w-0 break-words font-medium">{m.title}</span>
@@ -74,7 +74,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
                       {m.rendered.clipped ? "。縦に長いので上から切っています" : ""}
                     </p>
                   )}
-                  {m.kind === "proposal" && <p className="text-slate-400">提案のイメージです（今の画面ではありません）</p>}
+                  {m.kind === "proposal" && <p className="text-slate-500 dark:text-slate-400">提案のイメージです（今の画面ではありません）</p>}
                   <div className="mt-auto flex flex-wrap gap-2 pt-1">
                     <Button onClick={() => show(m)}>拡大</Button>
                     <a href={materialUrl(requestId, run.id, m.id)} target="_blank" rel="noreferrer" className={buttonCls("ghost")}>
@@ -89,7 +89,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
           run.ui && run.ui.status !== "generating" && <Empty>画像はありません</Empty>
         )}
         {run.ui && run.ui.problems.length > 0 && (
-          <details className="text-sm">
+          <details className="text-base">
             <summary className="cursor-pointer text-slate-500">取り込めなかった資料 {run.ui.problems.length} 件</summary>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 break-words text-slate-600 dark:text-slate-400">
               {run.ui.problems.map((p) => (
@@ -133,7 +133,7 @@ function FixedAttachments({ requestId, run }: { requestId: string; run: Prefligh
   const list = run.attachments ?? [];
   if (!list.length) return null;
   return (
-    <div className="space-y-1 rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-950">
+    <div className="space-y-1 rounded-md bg-slate-50 p-3 text-base dark:bg-slate-950">
       <p className="font-medium">この run に固定した添付（Codex に渡したもの）</p>
       <ul className="space-y-1.5">
         {list.map((a) => {

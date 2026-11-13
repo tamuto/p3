@@ -103,13 +103,13 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
           </select>
         </Field>
         {ctx.info.project.milestones.length === 0 && (
-          <Link to="/release-notes" search={{ tab: "milestones" }} className={buttonCls("ghost", "mt-7 text-sm underline")}>
+          <Link to="/release-notes" search={{ tab: "milestones" }} className={buttonCls("ghost", "mt-7 text-base underline")}>
             マイルストーンを作る
           </Link>
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="request-tags" className="text-sm font-medium text-slate-500 dark:text-slate-400">
+        <label htmlFor="request-tags" className="text-base font-medium text-slate-700 dark:text-slate-300">
           タグ（外部 ID や分類。値ごとに Enter で足し、× で外す。すぐ保存）
         </label>
         <TagInput id="request-tags" tags={tagsD.value} onChange={(next) => void changeTags(next)} disabled={tagsBusy || data.gone} text={tagText} onText={setTagText} />
@@ -129,7 +129,7 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
         </p>
       )}
       {request.status === "resolved" && !data.issue && (
-        <p className="text-sm text-sky-700 dark:text-sky-300">
+        <p className="text-base text-sky-700 dark:text-sky-300">
           作業は全部終わっています。成果物を確かめたら、ステータスを「完了済」にしてください。
         </p>
       )}
@@ -144,8 +144,8 @@ function Branches({ request }: { request: Request }) {
   if (!branches.length) return null;
   return (
     <div className="space-y-1">
-      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">ブランチ（作業先ごと）</p>
-      <ul className="space-y-0.5 text-sm">
+      <p className="text-base font-medium text-slate-700 dark:text-slate-300">ブランチ（作業先ごと）</p>
+      <ul className="space-y-0.5 text-base">
         {branches.map(([name, w]) => (
           <li key={name} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium break-all">{name}</span>
