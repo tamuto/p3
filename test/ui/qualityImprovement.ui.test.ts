@@ -1,4 +1,4 @@
-// 品質の改善要望: 設定の「品質基準」（未設定）から「改善要望の案を確認」→ 不足と原稿 → 題を直して「要望を登録」→ 要望を開ける、
+// 品質の改善要望: 設定の「品質基準」（未設定。「品質基準を決めるための要望を作る」を開く）から「改善要望の案を確認」→ 不足と原稿 → 題を直して「要望を登録」→ 要望を開ける、
 // もう一度開くと登録済みと出て、登録すると既存の要望へ案内する（作らない）、閉じるだけなら何も作らない、幅 375 ではみ出さない。
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { pageOverflow, reachable } from "./layout.ts";
@@ -20,6 +20,8 @@ describe.skipIf(!inject("chromium").available)("品質の改善要望", () => {
 
     await step("閉じるだけなら何も作らない", async () => {
       await page.goto("/settings?tab=quality");
+      // 未設定の画面では、改善要望は「品質基準を決めるための要望を作る」を開いたところにある
+      await page.getByText("品質基準を決めるための要望を作る").click();
       await page.getByRole("button", { name: "改善要望の案を確認" }).click();
       await until.visible(dialog.getByRole("region", { name: "品質の不足" }).getByText(/プロジェクトの品質基準が未設定です/));
       await dialog.getByRole("button", { name: "閉じる（登録しない）" }).click();
@@ -56,6 +58,7 @@ describe.skipIf(!inject("chromium").available)("品質の改善要望", () => {
       "375",
       async () => {
         await page.goto("/settings?tab=quality");
+        await page.getByText("品質基準を決めるための要望を作る").click();
         await page.getByRole("button", { name: "改善要望の案を確認" }).click();
         const dialog = page.getByRole("dialog", { name: /品質の診断/ });
         await until.visible(dialog.getByLabel("要望の題"));
