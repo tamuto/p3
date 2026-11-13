@@ -31,9 +31,12 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
   quality                      品質基準（project.yaml の quality。未設定・設定済み・読めない）とテンプレートの改版の差分
                                templates / template <id>  同梱のテンプレート（版つきの例。業界の標準への認証ではない）
-                               init 空で設定する / adopt <テンプレート> 写して採用する / upgrade <テンプレート> 改版の差分を当てる
-                               add --text 文 [--repo 名前] (--command コマンド --success 成功の条件 | --reference 確かめ方)
-                               set <Q1> [--text] [--repo 名前|all] [...] / rm <Q1> / exempt <Q1> --reason 理由 / unexempt <Q1>
+                               未設定のままでも作業は続けられる（init は必須ではない）。未設定から add / adopt をそのまま使える
+                               init 意図して空にする（設定済みなら何も変えない）/ adopt <テンプレート> 写して採用する / upgrade <テンプレート> 改版の差分を当てる
+                               add --text 文 [--repo 名前 ...] (--command コマンド --success 成功の条件 | --reference 確かめ方)
+                               set <Q1> [--text] [--repo 名前 ...|all] [...] / rm <Q1> / exempt <Q1> --reason 理由 / unexempt <Q1>
+                               --repo は繰り返して複数の参照先（例: --repo app --repo infra）。add で省くと全参照先、set で省くと対象を変えない。
+                                 all は全参照先で、個別の名前とは一緒に使えない。--repo を繰り返せるのは quality add / set だけ
                                --version <版> で、他で変わっていれば競合（終了コード 3）。P3 はコマンドを実行しない
                                improve [task <要望>/<T> <run> | milestone <ID> <run>]  品質の不足の診断と改善要望の原稿（読むだけ）
                                  --key <不足の鍵>... で選ぶ / --register --hash <診断の版> [--title] [--body] [--reopen] で明示して登録する

@@ -9,10 +9,11 @@ import { UsageError } from "./project.ts";
  * 品質基準（core/quality.ts。画面の設定の「品質基準」と同じ）。
  *   quality                                  今の設定（未設定・設定済み・読めない）とテンプレートの改版の差分
  *   quality templates / quality template <id> 同梱のテンプレートの一覧・中身
- *   quality init                             空の品質基準を設定する（意図して空）
+ *   quality init                             空の品質基準を設定する（意図して空。必須ではなく、設定済みなら内容は変えない）
  *   quality adopt <テンプレート>               テンプレートを写して採用する / quality upgrade <テンプレート> 改版の差分を当てる
  *   quality add --text 文 [--repo 名前]... (--command コマンド --success 成功の条件 | --reference 確かめ方)
- *   quality set <Q1> [--text] [--repo]... [--command --success | --reference]   quality rm <Q1>
+ *   quality set <Q1> [--text] [--repo 名前|all]... [--command --success | --reference]   quality rm <Q1>
+ *     --repo は繰り返して複数の参照先を指定する（qualityRepos）。add で省くと全参照先、set で省くと対象は変えない
  *   quality exempt <Q1> --reason 理由 / quality unexempt <Q1>
  *   変える操作は --version <版>（quality --json の version）を付けると、違えば競合（終了コード 3）
  */
@@ -42,6 +43,7 @@ export async function qualityCommand(env: CommandEnv): Promise<number> {
     if (o.command !== undefined || o.success !== undefined) return { kind: "machine", command: o.command ?? "", success: o.success ?? "" };
     return undefined;
   };
+  if (o.repos !== undefined && sub !== "add" && sub !== "set") throw new UsageError(`--repo は p3 quality add / set でだけ使えます（${sub} は対象を取りません）`);
   let ops: QualityOp[];
   switch (sub) {
     case "init":
@@ -58,13 +60,15 @@ export async function qualityCommand(env: CommandEnv): Promise<number> {
     case "add": {
       const c = check();
       if (!c) throw new UsageError("確認の方法を指定してください: --command <コマンド> --success <成功の条件>（機械の検査）か --reference <確かめ方>（人の確認）");
-      ops = [{ op: "add", standard: { text: readBody(o.text ?? ""), ...(o.repo !== undefined ? { repos: [o.repo] } : {}), check: c } }];
+      const repos = qualityRepos(o.repos, ws.project.repos.map((r) => r.name));
+      ops = [{ op: "add", standard: { text: readBody(o.text ?? ""), ...(repos ? { repos } : {}), check: c } }];
       break;
     }
     case "set": {
-      if (!rest[0]) throw new UsageError("使い方: p3 quality set <Q1> [--text 文] [--repo 名前|all] [--command ... --success ... | --reference ...]");
+      if (!rest[0]) throw new UsageError("使い方: p3 quality set <Q1> [--text 文] [--repo 名前 ...|all] [--command ... --success ... | --reference ...]");
       const c = check();
-      ops = [{ op: "edit", id: rest[0], standard: { ...(o.text !== undefined ? { text: readBody(o.text) } : {}), ...(o.repo !== undefined ? { repos: o.repo === "all" ? [] : [o.repo] } : {}), ...(c ? { check: c } : {}) } }];
+      const repos = qualityRepos(o.repos, ws.project.repos.map((r) => r.name));
+      ops = [{ op: "edit", id: rest[0], standard: { ...(o.text !== undefined ? { text: readBody(o.text) } : {}), ...(repos ? { repos } : {}), ...(c ? { check: c } : {}) } }];
       break;
     }
     case "rm":
@@ -85,6 +89,20 @@ export async function qualityCommand(env: CommandEnv): Promise<number> {
   }
   const v = await updateQuality(ws, ops, { expectedVersion: o.version });
   return out.result(v, () => formatQuality(v));
+}
+
+/**
+ * 品質基準の対象（--repo を繰り返した全部）。省くと undefined（add は全参照先・set は今の対象のまま）、all は全参照先（[]）。
+ * all と個別の名前は一緒に使えない。同じ名前は1つにまとめる。登録されていない名前は保存の規則（shared/quality.ts）が断る
+ */
+export function qualityRepos(raw: string[] | undefined, repoNames: readonly string[]): string[] | undefined {
+  if (raw === undefined) return undefined;
+  const names = [...new Set(raw.map((r) => r.trim()))];
+  if (names.includes("")) throw new UsageError("--repo に参照先の名前を指定してください（全参照先なら --repo all）");
+  if (!names.includes("all")) return names;
+  if (names.length > 1) throw new UsageError(`--repo all（全参照先）と個別の参照先（${names.filter((n) => n !== "all").join(", ")}）は一緒に指定できません`);
+  if (repoNames.includes("all")) throw new UsageError("「all」という名前の参照先があるため、--repo all が全参照先か参照先 all かを決められません（画面の品質基準で対象を選んでください）");
+  return [];
 }
 
 /**
@@ -127,15 +145,17 @@ export function formatQuality(v: QualityView): string {
   const q = v.quality;
   if (q.state === "unset") {
     return [
-      "品質基準: 未設定（初めて作ったときの状態に任せています）",
-      "  テンプレートから始める: p3 quality adopt basic（一覧は p3 quality templates）。空のまま設定するなら p3 quality init",
+      "品質基準: 未設定（このままでも作業は続けられます。p3 quality init は必須ではありません）",
+      "  基準を足す:       p3 quality add --text 文 (--command コマンド --success 成功の条件 | --reference 確かめ方) [--repo 名前 ...]",
+      "  テンプレートから: p3 quality adopt basic（一覧は p3 quality templates）",
+      "  基準を置かないと決めたことを残す: p3 quality init（意図して空にする。設定済みなら何も変えない）",
     ].join("\n");
   }
   if (q.state === "invalid") return ["品質基準: 読めません（project.yaml の quality を直してください。保存しても消しません）", ...q.problems.map((p) => `  - ${p}`)].join("\n");
   const lines = [`品質基準: ${q.config.standards.length} 件（版 ${v.version}${q.config.templates?.length ? `・テンプレート ${q.config.templates.map((t) => `${t.id}@${t.version}`).join(", ")}` : ""}）`];
   if (!q.config.standards.length) lines.push("  （意図して空にしています）");
   for (const s of q.config.standards) {
-    lines.push(`  ${s.id}  ${s.text}${s.repos?.length ? `  [${s.repos.join(", ")}]` : ""}${s.exempt ? "  ※除外" : ""}`, `      ${checkLine(s.check)}`);
+    lines.push(`  ${s.id}  ${s.text}${s.exempt ? "  ※除外" : ""}`, `      対象: ${s.repos?.length ? s.repos.join(", ") : "全参照先"}`, `      ${checkLine(s.check)}`);
     if (s.exempt) lines.push(`      除外の理由: ${s.exempt.reason}`);
   }
   for (const w of q.warnings ?? []) lines.push(`  ⚠ ${w}`);

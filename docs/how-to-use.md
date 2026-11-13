@@ -496,18 +496,23 @@ p3 show T003 --archived --req <要望>  # 本文・変更の記録・成果物�
 ### 品質基準
 
 プロジェクトとして守る最低限の水準（規約・構成・検証・文書・lint など）を、ID の付いた項目として project.yaml に書いておける。
-未設定でも作業は続けられる。
+未設定でも作業は続けられる。`p3 quality init` は必須ではなく、未設定から `add`・`adopt` をそのまま使える。
 
 ```bash
 p3 quality                          # 今の設定（未設定・設定済み・読めない）
 p3 quality templates                # 同梱のテンプレート（basic@1 共通の基本 / typescript@1 TypeScript の例）
 p3 quality template typescript      # 中身を見る
-p3 quality adopt basic              # 写して採用する（編集できる実体になる）。空のまま設定するなら p3 quality init
-p3 quality add --text "lint が警告なしで通る" --repo app --command "pnpm lint" --success "終了コード 0"   # 機械の検査
-p3 quality add --text "画面の文言は用語集に従う" --reference "docs/glossary.md と照らす"                   # 人の確認
+p3 quality adopt basic              # 写して採用する（編集できる実体になる）
+p3 quality add --text "lint が警告なしで通る" --repo app --repo infra --command "pnpm lint" --success "終了コード 0"   # 機械の検査（対象 app と infra）
+p3 quality add --text "画面の文言は用語集に従う" --reference "docs/glossary.md と照らす"                   # 人の確認（対象は全参照先）
 p3 quality exempt Q2 --reason "小さい CLI なので層が無い"   # 適用の除外（理由は必須）。unexempt で戻す
-p3 quality set Q5 --repo all        # 対象を全部の参照先に戻す / rm Q4 で消す（ID は使い直さない）
+p3 quality set Q5 --repo all        # 対象を全参照先に戻す / rm Q4 で消す（ID は使い直さない）
+p3 quality init                     # 基準を置かないと決めたことを残す（意図して空。設定済みなら何も変えない）
 ```
+
+- **対象（`--repo`）**: 繰り返して複数の参照先を指定する（`--repo app --repo infra`。`--repo=app` の形も同じ）。同じ名前は1つにまとめる。
+  `add` で省くと全参照先、`set` で省くと今の対象のまま。`all` は全参照先で、個別の名前と一緒には使えない（登録されていない名前と同じく、
+  何も変えずに断る）。`--repo` を繰り返せるのは `quality add` / `set` だけで、作業先を1つだけ取る `new`・`ls` などで繰り返すと断る
 
 - 画面では設定の「品質基準」のタブで、テンプレートの中身を確かめて編集中の一覧へ足し、対象・確認の方法・除外の理由を直して
   「品質基準を保存」。編集中に他で変わったら入力は残し、保存はさせない（「元に戻す」で最新を読む）

@@ -26,7 +26,7 @@ import { table } from "./format.ts";
 import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, runnerText, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
 import { readsOnly } from "./readOnly.ts";
-import { parse, type CommandEnv } from "./args.ts";
+import { checkRepeatedRepo, parse, type CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
 import { taskCommand } from "./taskCommands.ts";
@@ -85,6 +85,7 @@ async function main(argv: string[]): Promise<number> {
   }
   const cwd = process.cwd();
   const out = new Output(o.json ?? false);
+  checkRepeatedRepo(cmd, o);
 
   // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
   if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
