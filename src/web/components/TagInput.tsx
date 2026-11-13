@@ -43,7 +43,7 @@ export function TagInput({
           {tags.map((t) => (
             <li
               key={t}
-              className="inline-flex max-w-full items-start gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-sm ring-1 ring-slate-200 ring-inset dark:bg-slate-800 dark:ring-slate-700"
+              className="inline-flex max-w-full items-start gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-base ring-1 ring-slate-200 ring-inset dark:bg-slate-800 dark:ring-slate-700"
             >
               <span className="min-w-0 break-all whitespace-pre-wrap">{t}</span>
               <button
@@ -80,7 +80,7 @@ export function TagInput({
         </Button>
       </div>
       {hint && (
-        <p role="status" className="text-sm text-slate-500">
+        <p role="status" className="text-base text-slate-500">
           {hint}
         </p>
       )}

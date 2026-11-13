@@ -154,3 +154,34 @@ export function luminance(css: string): number {
 }
 
 export { fmt as fmtBox };
+
+/**
+ * 文字の大きさ（計算済みの font-size）: 見えている文字はどれも aux px 以上。本文・フォームの見出し・主な操作（p・li・label・button・
+ * a・入力・見出し・summary・表のセル）は body px 以上。補助の情報（ID・パスなどの等幅の文字・バッジ・件数）は、本文の要素の中でも
+ * 等幅（font-mono）か data-aux を付けた要素の中なら aux px でよい。記号だけの印（文字を持たない装飾・aria-hidden）は数えない
+ */
+export function fontProblems(root: Locator, sizes = { body: 16, aux: 14 }): Promise<string[]> {
+  return root.evaluate((el, s) => {
+    const problems: string[] = [];
+    const BODY = "p, li, label, button, a, input, textarea, select, h1, h2, h3, h4, summary, td, th, legend, dt, dd";
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode() as Text | null; n && problems.length < 40; n = walker.nextNode() as Text | null) {
+      const parent = n.parentElement;
+      if (!parent || !n.data.trim() || !/[\p{L}\p{N}]/u.test(n.data)) continue;
+      if (parent.closest("[aria-hidden='true'], dialog:not([open]), svg")) continue;
+      const style = getComputedStyle(parent);
+      const r = parent.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || (r.width === 0 && r.height === 0)) continue;
+      const size = parseFloat(style.fontSize);
+      const what = `「${n.data.trim().slice(0, 30)}」（${parent.tagName.toLowerCase()} ${size}px）`;
+      if (size < s.aux - 0.01) {
+        problems.push(`${what} が ${s.aux}px より小さい`);
+        continue;
+      }
+      const host = parent.closest(BODY);
+      const aux = /\bfont-mono\b/.test(parent.className.toString()) || parent.closest("[data-aux], code, pre, kbd") !== null || style.fontFamily.includes("Mono");
+      if (host && !aux && size < s.body - 0.01) problems.push(`${what} は本文・見出し・操作なのに ${s.body}px より小さい`);
+    }
+    return problems;
+  }, sizes);
+}

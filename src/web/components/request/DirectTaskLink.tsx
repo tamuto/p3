@@ -7,11 +7,11 @@ import { buttonCls } from "../ui.tsx";
  */
 export function DirectTaskLink({ requestId }: { requestId: string }) {
   return (
-    <p className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
+    <p className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-base text-slate-600 dark:text-slate-400">
       <span>
         Preflight を使えない間も、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
       </span>
-      <Link to="/requests/$requestId/board" params={{ requestId }} search={{ add: true }} className={buttonCls("secondary", "text-sm")}>
+      <Link to="/requests/$requestId/board" params={{ requestId }} search={{ add: true }} className={buttonCls("secondary", "text-base")}>
         Preflight を通さずにタスクを作成
       </Link>
     </p>

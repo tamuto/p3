@@ -66,7 +66,7 @@ export function Tabs<T extends string>({
             >
               {t.label}
               {unsaved?.[t.id] && (
-                <span className="text-xs text-amber-600 dark:text-amber-400" title="保存していない変更があります">
+                <span data-aux className="text-sm text-amber-600 dark:text-amber-400" title="保存していない変更があります">
                   ●<span className="sr-only">（未保存）</span>
                 </span>
               )}

@@ -112,7 +112,7 @@ export function NewTaskForm({
           <h2 id="new-task-title" className="font-semibold">
             タスクを追加（Preflight を通さない）
           </h2>
-          <p className="mt-1 text-sm text-slate-500">{DIRECT_TASK_NOTE}</p>
+          <p className="mt-1 text-base text-slate-500">{DIRECT_TASK_NOTE}</p>
         </div>
         <div className="min-h-0 space-y-3 overflow-y-auto p-3 sm:p-4">
           <Field label="題">
@@ -133,28 +133,28 @@ export function NewTaskForm({
             </Field>
           )}
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-slate-500 dark:text-slate-400">受け入れ基準（任意）</legend>
+            <legend className="text-base font-medium text-slate-700 dark:text-slate-300">受け入れ基準（任意）</legend>
             <CriteriaRowsEditor rows={criteria} disabled={busy} idPrefix="new-task-criterion" onChange={setCriteria} />
-            <p className="text-sm text-slate-400">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
+            <p className="text-base text-slate-500 dark:text-slate-400">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
           </fieldset>
           {project.quality?.state === "set" && (() => {
             const target = project.repos.length ? (repo === NO_REPO ? null : repo) : null;
             const n = standardsFor(project.quality.config, target).applies.length;
             return target ? (
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-base">
                 <input type="checkbox" checked={withQuality} disabled={busy} onChange={(e) => setWithQuality(e.target.checked)} />
                 作業先 {target} に当てはまる品質基準を受け入れ基準に取り込む（{n} 件）
               </label>
             ) : (
-              <p className="text-sm text-slate-400">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
+              <p className="text-base text-slate-500 dark:text-slate-400">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
             );
           })()}
           {BEFORE_ACTIVE.includes(request.status) && (
-            <p className="text-sm text-slate-500">
+            <p className="text-base text-slate-500">
               タスクを足しても要望のステータスは変わりません。作業を始めるときは、概要のタブでステータスを「進行中」にしてください。
             </p>
           )}
-          {request.status === "resolved" && <p className="text-sm text-slate-500">対応済の要望に未着手のタスクを足すと、要望は進行中に戻ります。</p>}
+          {request.status === "resolved" && <p className="text-base text-slate-500">対応済の要望に未着手のタスクを足すと、要望は進行中に戻ります。</p>}
           {error && (
             <p role="alert" className="text-rose-600">
               {error}

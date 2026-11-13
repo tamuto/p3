@@ -183,7 +183,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       >
         <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
           <Id id={task.id} />
-          <span className="text-sm text-slate-400">
+          <span className="text-base text-slate-500 dark:text-slate-400">
             rev {task.rev} · {task.updatedBy ?? "?"}
           </span>
           <div className="ml-auto flex gap-2">
@@ -256,7 +256,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 ))}
               </select>
             </Field>
-            <dl className="grid grid-cols-3 gap-2 pb-1.5 text-sm" title="ステータスを変えたときに p3 が記録する日時">
+            <dl className="grid grid-cols-3 gap-2 pb-1.5 text-base" title="ステータスを変えたときに p3 が記録する日時">
               <div>
                 <dt className="text-slate-500">作成</dt>
                 <dd>{fmtTime(task.createdAt)}</dd>
@@ -289,11 +289,11 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 </Button>
               </div>
               {acc ? (
-                <p className={acc.shortfalls.length ? "text-sm text-amber-800 dark:text-amber-300" : "text-sm text-emerald-800 dark:text-emerald-300"}>受け入れ基準: {shortfallSummary(acc)}</p>
+                <p className={acc.shortfalls.length ? "text-base text-amber-800 dark:text-amber-300" : "text-base text-emerald-800 dark:text-emerald-300"}>受け入れ基準: {shortfallSummary(acc)}</p>
               ) : (
-                <p className="text-sm text-slate-500">受け入れ基準なし</p>
+                <p className="text-base text-slate-500">受け入れ基準なし</p>
               )}
-              {(dirty || accDirty || blockDirty) && <p className="text-sm text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
+              {(dirty || accDirty || blockDirty) && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
           <Section title="受け入れ基準と作業した側の証拠">
@@ -329,7 +329,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               // 保存済みのもの（URL はリンク。編集中の内容は下の欄で、保存するとここに出る）
               <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} />
             ) : (
-              <p className="text-sm text-slate-400">まだありません</p>
+              <p className="text-base text-slate-500 dark:text-slate-400">まだありません</p>
             )}
             {multi && <RepoOutputsEditor ctx={ctx} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           </Section>
@@ -359,16 +359,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                   const archived = !live && !!archivedIds?.has(r.target);
                   return (
                     <li key={r.key} className="flex min-w-0 items-center gap-2">
-                      <span className="w-14 shrink-0 text-sm text-slate-500">{r.role}</span>
+                      <span className="w-14 shrink-0 text-base text-slate-500">{r.role}</span>
                       <Id id={r.target} onClick={() => (archived ? ctx.openArchived(`${rid}/${r.target}`) : open(`${rid}/${r.target}`))} />
                       {live ? (
                         <span className="min-w-0 truncate">{title(r.target)}</span>
                       ) : archived ? (
-                        <button type="button" className="min-w-0 truncate text-left text-sm text-slate-500 hover:text-indigo-600" onClick={() => ctx.openArchived(`${rid}/${r.target}`)}>
+                        <button type="button" className="min-w-0 truncate text-left text-base text-slate-500 hover:text-indigo-600" onClick={() => ctx.openArchived(`${rid}/${r.target}`)}>
                           <Badge tone="violet">アーカイブ</Badge> 閲覧専用の詳細を開く
                         </button>
                       ) : (
-                        <span className="min-w-0 truncate text-sm text-slate-400">{archivedIds ? "（通常のタスクにもアーカイブにも見つかりません）" : "（通常のタスクにありません）"}</span>
+                        <span className="min-w-0 truncate text-base text-slate-500 dark:text-slate-400">{archivedIds ? "（通常のタスクにもアーカイブにも見つかりません）" : "（通常のタスクにありません）"}</span>
                       )}
                     </li>
                   );
@@ -377,7 +377,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             )}
           </Section>
 
-          <p className="font-mono text-sm text-slate-400">
+          <p className="font-mono text-sm text-slate-500 dark:text-slate-400">
             {ctx.info.dataDir}/requests/{rid}/tasks/{task.id}.md
           </p>
         </div>
@@ -423,7 +423,7 @@ function WorkTarget({
           ))}
         </select>
       </Field>
-      <p className="pb-2 text-sm text-slate-500">
+      <p className="pb-2 text-base text-slate-500">
         {current ? (branch ? <>ブランチ <code className="font-mono break-all">{branch.branch}</code></> : "ブランチなし（git でないフォルダ・まだ割り当てていない）") : "作業先なし（調査・人の判断など）"}
       </p>
     </div>
@@ -450,7 +450,7 @@ function RepoOutputsEditor({ ctx, task, disabled, onSaved, onError }: { ctx: App
       {list.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label="リポジトリごとの成果物">
           {list.map((o, i) => (
-            <li key={`${i}:${o.repo}:${o.output}`} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-sm dark:bg-slate-800">
+            <li key={`${i}:${o.repo}:${o.output}`} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-base dark:bg-slate-800">
               <span className="min-w-0 break-all">
                 {o.repo}: {o.output}
               </span>

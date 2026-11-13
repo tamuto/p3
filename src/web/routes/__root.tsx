@@ -84,7 +84,7 @@ function Layout() {
           ＋<span className="sr-only sm:not-sr-only">新しい要望</span>
         </Link>
         {errors.length > 0 && (
-          <span className="text-sm text-rose-600" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>
+          <span className="text-base text-rose-600" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>
             ⚠ 読めないファイル {errors.length} 件
           </span>
         )}

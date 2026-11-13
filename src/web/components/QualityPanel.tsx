@@ -123,13 +123,13 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
   return (
     <Section title="品質基準">
       <div className="space-y-4">
-        <p className="text-sm text-slate-500">
+        <p className="text-base text-slate-500">
           プロジェクトとして守る最低限の水準（規約・構成・検証・文書など）。確認の方法は機械の検査（コマンドと成功の条件）か人の確認で、P3 はコマンドを実行しません。CI
           や特定の製品・フォルダを必須にはしません。テンプレートは版つきの例で、業界の標準への認証ではありません。
         </p>
-        {loadError && <p role="alert" className="text-sm text-rose-600">読み込めません: {loadError}</p>}
+        {loadError && <p role="alert" className="text-base text-rose-600">読み込めません: {loadError}</p>}
         {q?.state === "unset" && !draft && (
-          <div role="status" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <div role="status" className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 dark:bg-amber-950 dark:text-amber-200">
             品質基準は未設定です（初めて作ったときの状態に任せています）。未設定のまま作業を続けることもできます。テンプレートの中身を確かめて採用するか、空のまま設定できます。
             決めるのを要望にするなら、改善要望の案を確かめて登録できます。
             <div className="mt-2">
@@ -138,7 +138,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
           </div>
         )}
         {q?.state === "invalid" && (
-          <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
             <p>project.yaml の quality が読めません（未設定として扱い、保存しても消しません）。ファイルを直してください:</p>
             <ImprovementButton source={{ type: "project" }} />
             <ul className="list-disc pl-5">
@@ -151,20 +151,20 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
           </div>
         )}
         {view && q?.state !== "invalid" && (
-          <p className="text-sm text-slate-500">
+          <p className="text-base text-slate-500">
             保存済み: {q?.state === "unset" ? "未設定" : `${saved.length} 件`}・版 <span className="font-mono">{view.version}</span>
             {q?.state === "set" && q.config.templates?.length ? `・テンプレート ${q.config.templates.map((t) => `${t.id}@${t.version}`).join(", ")}` : ""}
           </p>
         )}
         {q?.state === "set" && q.warnings?.map((w) => (
-          <p key={w} className="text-sm text-amber-700 dark:text-amber-400">
+          <p key={w} className="text-base text-amber-700 dark:text-amber-400">
             ⚠ {w}
           </p>
         ))}
         {view?.diffs.map((d) => (
-          <div key={d.template} className="flex flex-wrap items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sm dark:bg-sky-950">
+          <div key={d.template} className="flex flex-wrap items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-base dark:bg-sky-950">
             テンプレート {d.template} に新しい版があります（{d.from} → {d.to}。足す {d.added.length}・変わる {d.changed.length}・消える {d.removed.length}）。
-            <Button className="text-sm" disabled={busy || dirty} onClick={() => void send([{ op: "upgrade", template: d.template }], view.version, `テンプレート ${d.template} の差分を当てました`)}>
+            <Button className="text-base" disabled={busy || dirty} onClick={() => void send([{ op: "upgrade", template: d.template }], view.version, `テンプレート ${d.template} の差分を当てました`)}>
               差分を当てる
             </Button>
           </div>
@@ -181,8 +181,8 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                     {t.id}@{t.version}
                   </span>
                   <span>{t.title}</span>
-                  <span className="text-sm text-slate-500">{t.items} 件</span>
-                  {adopted.has(t.id) ? <Badge tone="emerald">採用済み</Badge> : <Button className="text-sm" onClick={() => void showTemplate(t.id)}>採用する前に中身を確かめる</Button>}
+                  <span data-aux className="text-sm text-slate-500">{t.items} 件</span>
+                  {adopted.has(t.id) ? <Badge tone="emerald">採用済み</Badge> : <Button className="text-base" onClick={() => void showTemplate(t.id)}>採用する前に中身を確かめる</Button>}
                 </li>
               ))}
             </ul>
@@ -191,8 +191,8 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                 <p className="font-medium">
                   {preview.title}（{preview.id}@{preview.version}）
                 </p>
-                <p className="text-sm text-slate-500">{preview.description}</p>
-                <ul className="space-y-1 text-sm">
+                <p className="text-base text-slate-500">{preview.description}</p>
+                <ul className="space-y-1 text-base">
                   {preview.items.map((i) => (
                     <li key={i.key} className="break-words">
                       {i.text}
@@ -201,17 +201,17 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                   ))}
                 </ul>
                 <div className="flex flex-wrap gap-2">
-                  <Button className="text-sm" variant="primary" onClick={() => addTemplate(preview)}>
+                  <Button className="text-base" variant="primary" onClick={() => addTemplate(preview)}>
                     編集中の一覧へ足す
                   </Button>
-                  <Button className="text-sm" onClick={() => setPreview(null)}>
+                  <Button className="text-base" onClick={() => setPreview(null)}>
                     閉じる
                   </Button>
                 </div>
               </section>
             )}
             {q?.state === "unset" && !draft && (
-              <Button className="text-sm" disabled={busy} onClick={() => void send([{ op: "init" }], view.version, "品質基準を空のまま設定しました")}>
+              <Button className="text-base" disabled={busy} onClick={() => void send([{ op: "init" }], view.version, "品質基準を空のまま設定しました")}>
                 空のまま設定する
               </Button>
             )}
@@ -221,20 +221,20 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
         {/* 一覧と編集 */}
         {q?.state !== "invalid" && !draft && q?.state === "set" && (
           <div className="space-y-2">
-            {!saved.length && <p className="text-sm text-slate-400">（品質基準を意図して空にしています）</p>}
+            {!saved.length && <p className="text-base text-slate-500 dark:text-slate-400">（品質基準を意図して空にしています）</p>}
             <ul className="space-y-1">
               {saved.map((s) => (
                 <li key={s.id} className="min-w-0 break-words">
                   <span className="font-mono text-sm text-slate-500">{s.id}</span> {s.text}
-                  {s.repos?.length ? <span className="text-sm text-slate-500"> [{s.repos.join(", ")}]</span> : null}
+                  {s.repos?.length ? <span className="text-base text-slate-500"> [{s.repos.join(", ")}]</span> : null}
                   {s.exempt && <Badge tone="amber" className="ml-1">除外</Badge>}
-                  <span className="block text-sm text-slate-500">{checkLine(s.check)}</span>
-                  {s.exempt && <span className="block text-sm text-amber-700 dark:text-amber-400">除外の理由: {s.exempt.reason}</span>}
+                  <span className="block text-base text-slate-500">{checkLine(s.check)}</span>
+                  {s.exempt && <span className="block text-base text-amber-700 dark:text-amber-400">除外の理由: {s.exempt.reason}</span>}
                 </li>
               ))}
             </ul>
             <div className="flex flex-wrap gap-2">
-              <Button className="text-sm" onClick={startEdit}>
+              <Button className="text-base" onClick={startEdit}>
                 品質基準を編集
               </Button>
               {saved.some((x) => x.exempt) && <ImprovementButton source={{ type: "project" }} label="除外を見直す要望の案を確認" />}
@@ -291,7 +291,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                     <textarea rows={2} className={inputCls} value={r.check.reference} onChange={(e) => r.check.kind === "manual" && setRow(r.key, { check: { ...r.check, reference: e.target.value } })} />
                   </Field>
                 )}
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-base">
                   <input type="checkbox" checked={r.exempt} onChange={(e) => setRow(r.key, { exempt: e.target.checked })} />
                   適用から除外する（理由が要ります）
                 </label>
@@ -300,19 +300,19 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                     <input className={inputCls} value={r.reason} maxLength={QUALITY_LIMITS.reason} onChange={(e) => setRow(r.key, { reason: e.target.value })} />
                   </Field>
                 )}
-                <Button className="text-sm" onClick={() => setDraft((d) => d && { ...d, rows: d.rows.filter((x) => x.key !== r.key) })}>
+                <Button className="text-base" onClick={() => setDraft((d) => d && { ...d, rows: d.rows.filter((x) => x.key !== r.key) })}>
                   この基準を消す
                 </Button>
               </fieldset>
             ))}
             <Button
-              className="text-sm"
+              className="text-base"
               onClick={() => setDraft((d) => d && { ...d, rows: [...d.rows, { key: `new-${++rowSeq}`, text: "", repos: [], check: { kind: "manual", reference: "" }, exempt: false, reason: "" }] })}
             >
               基準を足す
             </Button>
             {changedElsewhere && (
-              <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+              <p role="status" className="text-base text-amber-700 dark:text-amber-400">
                 編集中に品質基準が他で変わりました。入力は残してあります。このままでは保存できません（「元に戻す」で最新を読み直せます）。
               </p>
             )}
@@ -323,12 +323,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
               <Button disabled={busy} onClick={() => (setDraft(null), setMsg(null))}>
                 元に戻す
               </Button>
-              {dirty && <span className="text-sm text-slate-500">保存していない変更があります</span>}
+              {dirty && <span className="text-base text-slate-500">保存していない変更があります</span>}
             </div>
           </div>
         )}
         {msg && (
-          <p role={msg.ok ? "status" : "alert"} className={cx("text-sm break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
+          <p role={msg.ok ? "status" : "alert"} className={cx("text-base break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
             {msg.text}
           </p>
         )}

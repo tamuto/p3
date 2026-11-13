@@ -141,23 +141,23 @@ function BoardPage() {
         <Button ref={addButton} onClick={openAdd} title="Preflight を通さずに、この要望へタスクを直接足す">
           ＋ タスクを追加
         </Button>
-        <label className="flex items-center gap-1.5 text-sm">
+        <label className="flex items-center gap-1.5 text-base">
           <input type="checkbox" checked={!!onlyBlocked} onChange={(e) => setOnlyBlocked(e.target.checked)} />
           停止中のみ
         </label>
-        <span className="text-sm text-slate-500">
+        <span className="text-base text-slate-500">
           全 {tasks.length} 件・作業中 {doingCount} 件（うち停止中 {blockedCount} 件）
         </span>
         {notice && (
-          <span role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+          <span role="status" className="text-base text-emerald-700 dark:text-emerald-400">
             {notice}
           </span>
         )}
       </div>
       {onlyBlocked && blockedCount === 0 && tasks.length > 0 && (
-        <div className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm dark:bg-slate-800">
+        <div className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-base dark:bg-slate-800">
           停止中のタスクはありません。
-          <Button className="text-sm" onClick={() => setOnlyBlocked(false)}>
+          <Button className="text-base" onClick={() => setOnlyBlocked(false)}>
             絞り込みを解除
           </Button>
         </div>
@@ -180,7 +180,7 @@ function BoardPage() {
                 <Link
                   to="/requests/$requestId/done"
                   params={{ requestId: request.id }}
-                  className="text-sm text-slate-500 hover:text-indigo-600 hover:underline"
+                  className="text-base text-slate-500 hover:text-indigo-600 hover:underline"
                   title="済みにしたタスクの一覧"
                 >
                   済み {checked} 件 →
@@ -227,7 +227,7 @@ function Pane({
       <header className="flex items-center gap-2 px-3 py-2.5">
         {MARK[status]}
         <span className="font-semibold">{TASK_STATUS_LABEL[status]}</span>
-        <span className="text-sm text-slate-500">{total !== undefined ? `${count} / 全 ${total}` : count}</span>
+        <span className="text-base text-slate-500">{total !== undefined ? `${count} / 全 ${total}` : count}</span>
         {blocked > 0 && (
           <Badge tone="amber" title="作業中のうち止まっているタスクの数">
             ⏸ 停止中 {blocked}
@@ -288,12 +288,12 @@ function Card({
             </Badge>
           )}
         </span>
-        {t.updatedBy && <span className="truncate text-sm text-slate-400">{t.updatedBy}</span>}
+        {t.updatedBy && <span className="truncate text-base text-slate-500 dark:text-slate-400">{t.updatedBy}</span>}
       </div>
       {/* 題はパスなど区切りの無い長い文字も多いので、どこでも折り返してカードに収める */}
       <p className="mt-1 leading-snug font-medium wrap-anywhere">{t.title}</p>
       {t.block && (
-        <div aria-label={`${t.id} は止まっています`} className="mt-2 space-y-0.5 rounded-md bg-amber-50 px-2 py-1.5 text-sm text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
+        <div aria-label={`${t.id} は止まっています`} className="mt-2 space-y-0.5 rounded-md bg-amber-50 px-2 py-1.5 text-base text-amber-900 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
           <p className="font-semibold">⏸ 停止中（{fmtTime(t.block.since)} から）</p>
           <p className="line-clamp-2 wrap-anywhere">理由: {t.block.reason}</p>
           {t.block.decision && <p className="line-clamp-2 wrap-anywhere">決めてほしいこと: {t.block.decision}</p>}
@@ -321,7 +321,7 @@ function Card({
       {(t.outputs.length > 0 || !!t.repoOutputs?.length) && <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} compact />}
       <div className="mt-2 flex items-center gap-2">
         {(t.doneAt || t.startedAt) && (
-          <span className="text-sm text-slate-400" title="ステータスを変えたときに記録された日時">
+          <span className="text-base text-slate-500 dark:text-slate-400" title="ステータスを変えたときに記録された日時">
             {t.doneAt ? `完了 ${fmtTime(t.doneAt)}` : `作業中にした ${fmtTime(t.startedAt)}`}
           </span>
         )}
@@ -329,7 +329,7 @@ function Card({
           <button
             onClick={(e) => (e.stopPropagation(), onCheck())}
             title="成果物を確認したら済みにする（このボードから消え、対応済みの一覧に移る）"
-            className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:ring-emerald-800 dark:hover:bg-emerald-950"
+            className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-base font-medium text-emerald-700 ring-1 ring-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:ring-emerald-800 dark:hover:bg-emerald-950"
           >
             ✓ 済み
           </button>

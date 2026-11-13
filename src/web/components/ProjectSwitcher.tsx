@@ -99,7 +99,7 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
           <h2 id="switch-title" className="font-semibold">
             保存していない入力があります
           </h2>
-          <p className="text-sm">
+          <p className="text-base">
             「{target === CHOOSER ? "プロジェクトの一覧" : target}」へ切り替えると、このプロジェクトで保存していない入力は失われます（どこにも送りません）。
             実行中の Preflight・生成は、このプロジェクトで続きます。
           </p>
@@ -126,7 +126,7 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
   const notices = (
     <>
       {waiting && (
-        <div role="status" className="bg-slate-50 px-5 py-1.5 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+        <div role="status" className="bg-slate-50 px-5 py-1.5 text-base text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
           保存の完了を待っています…（終わったら切り替えます）
         </div>
       )}

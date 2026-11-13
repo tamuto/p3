@@ -16,7 +16,7 @@ export function PreflightNotice({ run, fresh, onOpen }: { run: RunPulse; fresh: 
           <span className="font-mono text-sm break-all">{run.id}</span>
           <Badge tone={state.tone}>{state.label}</Badge>
         </p>
-        <p className="text-sm text-slate-500">今の評価を表示したままです。入力中の内容も残っています。</p>
+        <p className="text-base text-slate-500">今の評価を表示したままです。入力中の内容も残っています。</p>
       </div>
       <Button variant="primary" onClick={onOpen}>
         {fresh ? "新しい run を開く" : "最新の run を開く"}

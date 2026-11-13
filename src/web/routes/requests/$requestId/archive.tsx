@@ -44,7 +44,7 @@ function ArchivePage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-8">
-      <p className="text-sm text-slate-500">
+      <p className="text-base text-slate-500">
         アーカイブしたタスクを読むだけの一覧です。進捗・要望の対応済の判定・新しいレビューとリリースノートの材料には入りません。状態・最終更新はアーカイブする前の最後の値です。
       </p>
       {error && (
@@ -62,7 +62,7 @@ function ArchivePage() {
           {list.errors.length > 0 && (
             <div role="status" className="rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
               <p>読めないアーカイブのファイルが {list.errors.length} 件あります（一覧には出していません）:</p>
-              <ul className="mt-1 space-y-0.5 text-sm">
+              <ul className="mt-1 space-y-0.5 text-base">
                 {list.errors.map((e) => (
                   <li key={e.id} className="break-all">
                     <span className="font-mono">{e.id}</span>: {e.error}
@@ -84,7 +84,7 @@ function ArchivePage() {
                   >
                     <span className="shrink-0 font-mono text-sm text-slate-500 dark:text-slate-400">{t.id}</span>
                     <span className="min-w-0 flex-1 break-words">{t.title}</span>
-                    <span className="text-sm whitespace-nowrap text-slate-500">
+                    <span className="text-base whitespace-nowrap text-slate-500">
                       {TASK_STATUS_LABEL[t.status]} · 最終更新 {fmtTime(t.updatedAt)}
                     </span>
                   </button>

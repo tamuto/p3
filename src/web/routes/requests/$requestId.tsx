@@ -55,7 +55,7 @@ function RequestFrame() {
       <div className="shrink-0 border-b border-slate-200 bg-white px-6 pt-4 dark:border-slate-800 dark:bg-slate-900">
         {/* 祖先（根から順）。長い題も折り返し、横にスクロールさせない */}
         {!!data.ancestors?.length && (
-          <nav aria-label="親の要望" className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-sm text-slate-500">
+          <nav aria-label="親の要望" className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-base text-slate-500">
             {data.ancestors.map((a) => (
               <span key={a.id} className="flex min-w-0 items-center gap-1">
                 <Link to="/requests/$requestId" params={{ requestId: a.id }} className="min-w-0 break-all underline hover:text-slate-800 dark:hover:text-slate-200">
@@ -70,7 +70,7 @@ function RequestFrame() {
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="min-w-0 text-xl font-bold break-words">{request.title}</h1>
           {tasks.length > 0 && (
-            <span className="text-sm whitespace-nowrap text-slate-500">
+            <span className="text-base whitespace-nowrap text-slate-500">
               タスク {finished}/{tasks.length} 完了
             </span>
           )}

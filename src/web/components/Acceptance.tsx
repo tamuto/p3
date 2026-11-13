@@ -56,7 +56,7 @@ export function CriteriaRowsEditor({ rows, onChange, disabled, idPrefix = "crite
   };
   return (
     <div className="space-y-3">
-      {rows.length === 0 && <p className="text-sm text-slate-500">受け入れ基準なし</p>}
+      {rows.length === 0 && <p className="text-base text-slate-500">受け入れ基準なし</p>}
       <ol className="space-y-3">
         {rows.map((r, i) => (
           <li key={r.key} className="space-y-1">
@@ -77,15 +77,15 @@ export function CriteriaRowsEditor({ rows, onChange, disabled, idPrefix = "crite
               onChange={(e) => onChange(rows.map((x) => (x.key === r.key ? { ...x, text: e.target.value } : x)))}
             />
             <div className="flex flex-wrap gap-2">
-              <Button type="button" className="text-sm" disabled={disabled || i === 0} aria-label={`${name(r, i)} を上へ`} onClick={() => move(i, -1)}>
+              <Button type="button" className="text-base" disabled={disabled || i === 0} aria-label={`${name(r, i)} を上へ`} onClick={() => move(i, -1)}>
                 上へ
               </Button>
-              <Button type="button" className="text-sm" disabled={disabled || i === rows.length - 1} aria-label={`${name(r, i)} を下へ`} onClick={() => move(i, 1)}>
+              <Button type="button" className="text-base" disabled={disabled || i === rows.length - 1} aria-label={`${name(r, i)} を下へ`} onClick={() => move(i, 1)}>
                 下へ
               </Button>
               <Button
                 type="button"
-                className="text-sm"
+                className="text-base"
                 disabled={disabled}
                 aria-label={`${name(r, i)} を削除`}
                 onClick={() => {
@@ -101,7 +101,7 @@ export function CriteriaRowsEditor({ rows, onChange, disabled, idPrefix = "crite
       </ol>
       <Button
         type="button"
-        className="text-sm"
+        className="text-base"
         disabled={disabled}
         onClick={() => {
           const key = newRowKey();
@@ -111,7 +111,7 @@ export function CriteriaRowsEditor({ rows, onChange, disabled, idPrefix = "crite
       >
         項目を追加
       </Button>
-      {rowsInvalid(rows) && <p className="text-sm text-rose-600">空の項目があります。文を書くか削除してください</p>}
+      {rowsInvalid(rows) && <p className="text-base text-rose-600">空の項目があります。文を書くか削除してください</p>}
     </div>
   );
 }
@@ -146,9 +146,9 @@ function EvidenceBody({ e }: { e: AcceptanceEvidence }) {
           <Markdown text={e.evidence} />
         </div>
       ) : (
-        <p className="text-sm text-slate-500">（本文なし）</p>
+        <p className="text-base text-slate-500">（本文なし）</p>
       )}
-      <p className="text-sm text-slate-400">
+      <p className="text-base text-slate-500 dark:text-slate-400">
         {fmtTime(e.recordedAt)}
         {e.recordedBy ? ` · ${e.recordedBy}` : ""}
       </p>
@@ -166,8 +166,8 @@ function CriterionItem({ id, text, state, evidence, staleFrom, children }: { id:
       </div>
       <div className="min-w-0 space-y-2">
         <Badge tone={STATE[state].tone}>{STATE[state].label}</Badge>
-        {staleFrom !== undefined && <p className="text-sm break-words text-amber-700 dark:text-amber-400">記録したときの基準: {staleFrom}</p>}
-        {evidence ? <EvidenceBody e={evidence} /> : <p className="text-sm text-slate-500">確認の材料がありません</p>}
+        {staleFrom !== undefined && <p className="text-base break-words text-amber-700 dark:text-amber-400">記録したときの基準: {staleFrom}</p>}
+        {evidence ? <EvidenceBody e={evidence} /> : <p className="text-base text-slate-500">確認の材料がありません</p>}
         {children}
       </div>
     </li>
@@ -177,10 +177,10 @@ function CriterionItem({ id, text, state, evidence, staleFrom, children }: { id:
 /** 基準と証拠・不足を読むだけ（アーカイブの詳細） */
 export function AcceptanceView({ task }: { task: Task }) {
   const acc = acceptanceStatus(task);
-  if (!acc) return <p className="text-sm text-slate-400">受け入れ基準なし</p>;
+  if (!acc) return <p className="text-base text-slate-500 dark:text-slate-400">受け入れ基準なし</p>;
   return (
     <div className="space-y-2">
-      <p className="text-sm text-slate-500">証拠は作業した側の申告です（{acc.met}/{acc.total} を満たした）</p>
+      <p className="text-base text-slate-500">証拠は作業した側の申告です（{acc.met}/{acc.total} を満たした）</p>
       <Problems acc={acc} />
       <ul className="space-y-2">
         {acc.items.map((i) => (
@@ -190,7 +190,7 @@ export function AcceptanceView({ task }: { task: Task }) {
           <CriterionItem key={`orphan-${e.criterionId}`} id={e.criterionId} text={`（基準は消されています）${e.criterionText}`} state={e.result} evidence={e} />
         ))}
       </ul>
-      {acc.shortfalls.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">{shortfallSummary(acc)}</p>}
+      {acc.shortfalls.length > 0 && <p className="text-base text-amber-700 dark:text-amber-400">{shortfallSummary(acc)}</p>}
     </div>
   );
 }
@@ -198,7 +198,7 @@ export function AcceptanceView({ task }: { task: Task }) {
 function Problems({ acc }: { acc: AcceptanceStatus }) {
   if (!acc.problems.length) return null;
   return (
-    <div role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+    <div role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
       <p>ファイルの受け入れ基準・証拠に読めない値があります（直すまで画面からは変えられません。ほかの保存では元の値を残します）:</p>
       <ul className="list-disc pl-5">
         {acc.problems.map((p) => (
@@ -300,15 +300,15 @@ export function AcceptancePanel({
   const notice = editing && (
     <>
       {external && !conflict && (
-        <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+        <p role="status" className="text-base text-amber-700 dark:text-amber-400">
           編集中に他で更新されました（rev {task.rev}）。このまま保存すると競合になります。
         </p>
       )}
       {error && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-rose-600">
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
           <span className="min-w-0 break-words">{error}</span>
           {conflict && (
-            <Button type="button" className="text-sm" onClick={rebase}>
+            <Button type="button" className="text-base" onClick={rebase}>
               最新に合わせる
             </Button>
           )}
@@ -331,7 +331,7 @@ export function AcceptancePanel({
   if (editing?.kind === "criteria") {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-slate-500">基準の文を変えると、その基準の証拠は「再確認が必要」になります。済みの後に基準・証拠を変えると済みが外れます。</p>
+        <p className="text-base text-slate-500">基準の文を変えると、その基準の証拠は「再確認が必要」になります。済みの後に基準・証拠を変えると済みが外れます。</p>
         <CriteriaRowsEditor rows={editing.rows} disabled={busy} idPrefix={`task-${task.id}`} onChange={(rows) => setEditing({ ...editing, rows })} />
         {notice}
         {actions("基準を保存")}
@@ -360,7 +360,7 @@ export function AcceptancePanel({
             <textarea rows={4} className={`${inputCls} font-mono`} value={editing.text} disabled={busy} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
           </Field>
         )}
-        {editing.result === "met" && !editing.text.trim() && <p className="text-sm text-rose-600">満たしたときは証拠を書いてください</p>}
+        {editing.result === "met" && !editing.text.trim() && <p className="text-base text-rose-600">満たしたときは証拠を書いてください</p>}
         {notice}
         {actions(editing.result === "" ? "証拠を消す" : "証拠を保存")}
       </div>
@@ -371,14 +371,14 @@ export function AcceptancePanel({
 
   return (
     <div className="space-y-3">
-      {acc ? <p className="text-sm text-slate-500">証拠は作業した側の申告です。人が内容を確かめて「済み」を決めます（{acc.met}/{acc.total} を満たした）</p> : <p className="text-sm text-slate-400">受け入れ基準なし</p>}
+      {acc ? <p className="text-base text-slate-500">証拠は作業した側の申告です。人が内容を確かめて「済み」を決めます（{acc.met}/{acc.total} を満たした）</p> : <p className="text-base text-slate-500 dark:text-slate-400">受け入れ基準なし</p>}
       {acc && <Problems acc={acc} />}
       {acc && (
         <ul className="space-y-2">
           {acc.items.map((i) => (
             <CriterionItem key={i.id} {...i} staleFrom={i.state === "stale" ? i.evidence?.criterionText : undefined}>
               {evidenceEditor(i.id) ?? (
-                <Button type="button" className="text-sm" disabled={locked || !!editing} aria-label={`${i.id} の証拠を${i.evidence ? "編集" : "登録"}`} onClick={() => editEvidence(i.id, i.evidence)}>
+                <Button type="button" className="text-base" disabled={locked || !!editing} aria-label={`${i.id} の証拠を${i.evidence ? "編集" : "登録"}`} onClick={() => editEvidence(i.id, i.evidence)}>
                   {i.evidence ? "証拠を編集" : "証拠を登録"}
                 </Button>
               )}
@@ -386,15 +386,15 @@ export function AcceptancePanel({
           ))}
           {acc.orphans.map((e) => (
             <CriterionItem key={`orphan-${e.criterionId}`} id={e.criterionId} text={`（基準は消されています）${e.criterionText}`} state={e.result} evidence={e}>
-              <Button type="button" className="text-sm" disabled={locked || !!editing} aria-label={`${e.criterionId} の証拠を消す`} onClick={() => void send([{ op: "unrecord", id: e.criterionId }], task.rev)}>
+              <Button type="button" className="text-base" disabled={locked || !!editing} aria-label={`${e.criterionId} の証拠を消す`} onClick={() => void send([{ op: "unrecord", id: e.criterionId }], task.rev)}>
                 証拠を消す
               </Button>
             </CriterionItem>
           ))}
         </ul>
       )}
-      {!editing && error && <p className="text-sm text-rose-600">{error}</p>}
-      <Button type="button" className="text-sm" disabled={locked || !!editing} onClick={() => start({ kind: "criteria", baseRev: task.rev, base: task.acceptanceCriteria ?? [], rows: rowsOf(task.acceptanceCriteria) })}>
+      {!editing && error && <p className="text-base text-rose-600">{error}</p>}
+      <Button type="button" className="text-base" disabled={locked || !!editing} onClick={() => start({ kind: "criteria", baseRev: task.rev, base: task.acceptanceCriteria ?? [], rows: rowsOf(task.acceptanceCriteria) })}>
         {task.acceptanceCriteria?.length ? "基準を編集" : "基準を足す"}
       </Button>
     </div>

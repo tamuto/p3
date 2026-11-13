@@ -145,7 +145,7 @@ export function MilestoneReviewPanel({
 
   return (
     <div className="min-w-0 space-y-6">
-      <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+      <p className="rounded-md bg-slate-50 p-3 text-base text-slate-600 dark:bg-slate-900 dark:text-slate-300">
         保存してある目的・予定機能に対して、Codex が参照先のコードと git の履歴を読み、達成の度合い・不足・意図しない変更を確かめた参考の記録です（要望・タスクの記録は手がかり）。リリースするかは人が読んで決めます
         （レビューをしなくても、要望の完了やリリースノートの操作はできます）。
       </p>
@@ -155,7 +155,7 @@ export function MilestoneReviewPanel({
           評価する内容
         </h3>
         {milestonesDirty && (
-          <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+          <p role="status" className="text-base text-amber-700 dark:text-amber-300">
             ⚠ 「マイルストーン」タブに保存していない変更があります。レビューは保存した目的・予定機能で行います。
           </p>
         )}
@@ -163,9 +163,9 @@ export function MilestoneReviewPanel({
           <>
             <Purpose text={preview.milestone.purpose} />
             <div>
-              <p className="text-sm font-medium">予定している機能・目標</p>
+              <p className="text-base font-medium">予定している機能・目標</p>
               {preview.milestone.goals?.length ? (
-                <ul className="mt-1 space-y-1 text-sm">
+                <ul className="mt-1 space-y-1 text-base">
                   {preview.milestone.goals.map((g) => (
                     <li key={g.id} className="break-words">
                       <span className="mr-2 font-mono text-slate-500">{g.id}</span>
@@ -174,24 +174,24 @@ export function MilestoneReviewPanel({
                   ))}
                 </ul>
               ) : (
-                <p className="mt-1 text-sm text-slate-500">（なし{preview.milestone.purpose ? "。目的そのものを評価します" : ""}）</p>
+                <p className="mt-1 text-base text-slate-500">（なし{preview.milestone.purpose ? "。目的そのものを評価します" : ""}）</p>
               )}
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-base text-slate-600 dark:text-slate-300">
               所属する要望 {preview.requests} 件
               {preview.requests > 0 && `（${Object.entries(preview.statuses).map(([s, n]) => `${STATUS_JA[s] ?? s} ${n}`).join("・")}）`}
               {preview.context > 0 && `・別のマイルストーンの親子 ${preview.context} 件（文脈として渡し、成果に数えません）`}
             </p>
             <CodeList code={preview.code} />
             {preview.warnings.length > 0 && (
-              <ul className="space-y-1 text-sm text-amber-700 dark:text-amber-300">
+              <ul className="space-y-1 text-base text-amber-700 dark:text-amber-300">
                 {preview.warnings.map((w) => (
                   <li key={`${w.code}:${w.target}`}>⚠ {w.message}</li>
                 ))}
               </ul>
             )}
             {preview.quality && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-base text-slate-500 dark:text-slate-400">
                 品質基準:{" "}
                 {preview.quality.state === "set"
                   ? `版 ${preview.quality.version}・${preview.quality.standards.filter((q) => !q.exempt).length} 件を評価${preview.quality.standards.some((q) => q.exempt) ? `・除外 ${preview.quality.standards.filter((q) => q.exempt).map((q) => q.id).join(", ")}` : ""}`
@@ -200,12 +200,12 @@ export function MilestoneReviewPanel({
                     : "読めません（品質は評価しません）"}
               </p>
             )}
-            <p className="text-sm text-slate-500 dark:text-slate-400">範囲: {preview.scope}</p>
+            <p className="text-base text-slate-500 dark:text-slate-400">範囲: {preview.scope}</p>
           </>
         ) : (
-          <p className="text-sm text-amber-700 dark:text-amber-300">このマイルストーンは project.yaml にありません（過去の記録だけを読めます）。</p>
+          <p className="text-base text-amber-700 dark:text-amber-300">このマイルストーンは project.yaml にありません（過去の記録だけを読めます）。</p>
         )}
-        <p className="text-sm">
+        <p className="text-base">
           <Link to="/release-notes" search={{ m: milestone, tab: "milestones" }} className="underline">
             目的・予定機能を書く・直す（「マイルストーン」タブ）
           </Link>
@@ -238,7 +238,7 @@ export function MilestoneReviewPanel({
         <section aria-labelledby="rv-latest" className="space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-800">
           <h3 id="rv-latest" className="font-semibold">
             最新の実行: {REVIEW_STATUS_LABELS[newest.run.status]}
-            <span className="ml-2 text-sm font-normal text-slate-500">{fmtTime(newest.run.startedAt)}</span>
+            <span data-aux className="ml-2 text-sm font-normal text-slate-500">{fmtTime(newest.run.startedAt)}</span>
           </h3>
           {newest.run.status === "running" && (
             <>
@@ -248,14 +248,14 @@ export function MilestoneReviewPanel({
               {ownerUnknown && owner && "reason" in owner && (
                 <div className="space-y-2 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                   <p>実行しているプロセスを確かめられません（{owner.reason}）。止まっていると確かめたら、この実行を中断にできます。</p>
-                  <p className="text-sm">中断は記録を終えるだけで、ほかの環境で動いているプロセスを止めるとは限りません。</p>
+                  <p className="text-base">中断は記録を終えるだけで、ほかの環境で動いているプロセスを止めるとは限りません。</p>
                   <Button disabled={busy} onClick={() => void cancel(newest.run.id, true)}>
                     止まっていることを確かめて中断
                   </Button>
                 </div>
               )}
               {runningDetail && "run" in runningDetail && runningDetail.run.log.length > 0 && (
-                <ol className="max-h-40 overflow-y-auto font-mono text-xs text-slate-500" aria-label="進み具合">
+                <ol className="max-h-40 overflow-y-auto font-mono text-sm text-slate-500" aria-label="進み具合">
                   {runningDetail.run.log.map((l, i) => (
                     <li key={i}>{l.text}</li>
                   ))}
@@ -275,10 +275,10 @@ export function MilestoneReviewPanel({
       <section aria-labelledby="rv-result" className="space-y-3">
         <h3 id="rv-result" className="text-lg font-semibold">
           {run ? "選んだ記録" : "最後の成功結果"}
-          {shownItem && <span className="ml-2 text-sm font-normal text-slate-500">{fmtTime(shownItem.run.startedAt)}</span>}
+          {shownItem && <span data-aux className="ml-2 text-sm font-normal text-slate-500">{fmtTime(shownItem.run.startedAt)}</span>}
         </h3>
         {run && (
-          <button type="button" className="text-sm underline" onClick={() => onSelectRun(undefined)}>
+          <button type="button" className="text-base underline" onClick={() => onSelectRun(undefined)}>
             最後の成功結果に戻る
           </button>
         )}
@@ -305,7 +305,7 @@ export function MilestoneReviewPanel({
           <ul className="space-y-1" aria-label="レビューの履歴">
             {items.map((x) =>
               x.state === "broken" ? (
-                <li key={x.id} className="text-sm text-rose-600 break-words">
+                <li key={x.id} className="text-base text-rose-600 break-words">
                   ⚠ 読めない記録 <span className="font-mono">{x.id}</span>: {x.error}
                 </li>
               ) : (
@@ -315,7 +315,7 @@ export function MilestoneReviewPanel({
                     aria-current={x.run.id === shownId ? "true" : undefined}
                     onClick={() => onSelectRun(x.run.id)}
                     className={cx(
-                      "w-full rounded-md px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none",
+                      "w-full rounded-md px-3 py-2 text-left text-base focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none",
                       x.run.id === shownId ? "bg-indigo-50 dark:bg-indigo-950" : "hover:bg-slate-100 dark:hover:bg-slate-800",
                     )}
                   >
@@ -323,7 +323,7 @@ export function MilestoneReviewPanel({
                     <span className="mr-2 font-medium">{REVIEW_STATUS_LABELS[x.run.status]}</span>
                     {x.verdicts && <span className="mr-2 text-slate-500">{verdictSummary(x.verdicts)}</span>}
                     {preview && x.inputHash !== preview.hash && x.run.status === "completed" && <span className="text-amber-700 dark:text-amber-300">評価の後に材料が変わっています</span>}
-                    <span className="block text-xs text-slate-500 break-words">
+                    <span data-aux className="block text-sm text-slate-500 break-words">
                       評価した目的・予定機能: {x.purpose ? `${x.purpose.split("\n")[0]} / ` : ""}
                       {x.units.map((u) => u.id).join(", ")}
                     </span>
@@ -361,25 +361,25 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
   const canImprove = !!q && detail.run.status === "completed" && (q.state !== "set" || (result?.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || (q.standards ?? []).some((x) => x.exempt));
   return (
     <section aria-label="品質" className="space-y-2">
-      <p className="text-sm font-medium">品質（プロジェクトの品質基準への適合。目的の達成とは別）</p>
+      <p className="text-base font-medium">品質（プロジェクトの品質基準への適合。目的の達成とは別）</p>
       {!q ? (
-        <p className="text-sm text-slate-500">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
+        <p className="text-base text-slate-500">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
       ) : q.state !== "set" ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-base text-slate-500">
           品質は評価していません（品質基準が{q.state === "unset" ? "未設定" : "読めません"}）。設定の「品質基準」で設定できます。
         </p>
       ) : (
         <>
-          <p className="text-sm text-slate-500">
+          <p className="text-base text-slate-500">
             評価した版 <span className="font-mono">{q.version}</span>
             {latest && latest !== q.version ? <span className="text-amber-700 dark:text-amber-300">（今の品質基準は版 {latest} に変わっています）</span> : null}
           </p>
           {(result?.quality ?? []).some((r) => r.verdict === "violated") && (
-            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
               品質の指摘: {(result?.quality ?? []).filter((r) => r.verdict === "violated").map((r) => `${r.standard}${r.regression ? "（品質の低下）" : ""}`).join(", ")}
             </p>
           )}
-          <ul className="space-y-2 text-sm">
+          <ul className="space-y-2 text-base">
             {(result?.quality ?? []).map((r) => (
               <li key={r.standard} aria-label={`品質 ${r.standard}`} className="space-y-1 rounded-md border border-slate-200 p-2 dark:border-slate-800">
                 <p className="flex flex-wrap items-center gap-2">
@@ -418,8 +418,8 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
 function Purpose({ text }: { text?: string }) {
   return (
     <div>
-      <p className="text-sm font-medium">目的</p>
-      {text ? <p className="mt-1 text-sm whitespace-pre-wrap break-words">{text}</p> : <p className="mt-1 text-sm text-slate-500">（なし）</p>}
+      <p className="text-base font-medium">目的</p>
+      {text ? <p className="mt-1 text-base whitespace-pre-wrap break-words">{text}</p> : <p className="mt-1 text-base text-slate-500">（なし）</p>}
     </div>
   );
 }
@@ -430,9 +430,9 @@ function CodeList({ code, detail = false }: { code?: ReviewCodeRef[]; detail?: b
   const ok = code.filter((c) => c.status === "ok");
   return (
     <div>
-      <p className="text-sm font-medium">確かめるコード（参照先。読むだけで Codex に渡します）</p>
+      <p className="text-base font-medium">確かめるコード（参照先。読むだけで Codex に渡します）</p>
       {code.length ? (
-        <ul className="mt-1 space-y-1 text-sm" aria-label="確かめるコード">
+        <ul className="mt-1 space-y-1 text-base" aria-label="確かめるコード">
           {code.map((c) => (
             <li key={c.name} className="break-words">
               <span className="font-mono">{c.name}</span>
@@ -461,7 +461,7 @@ function CodeList({ code, detail = false }: { code?: ReviewCodeRef[]; detail?: b
         </ul>
       ) : null}
       {!ok.length && (
-        <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">読める参照先がありません。実装は確かめられず、記録だけの点検になります（達成とは判定しません）。</p>
+        <p className="mt-1 text-base text-amber-700 dark:text-amber-300">読める参照先がありません。実装は確かめられず、記録だけの点検になります（達成とは判定しません）。</p>
       )}
     </div>
   );
@@ -501,7 +501,7 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
         </div>
       )}
       <div>
-        <p className="text-sm font-medium">全体の所見</p>
+        <p className="text-base font-medium">全体の所見</p>
         <p className="mt-1 whitespace-pre-wrap break-words">{result.overall}</p>
       </div>
       <ul className="space-y-3" aria-label="比較単位ごとの判定">
@@ -509,15 +509,15 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
           <li key={u.unit} className="space-y-1 rounded-md border border-slate-200 p-3 dark:border-slate-800">
             <p className="flex flex-wrap items-baseline gap-2">
               <span className="font-mono text-sm text-slate-500">{u.unit === "purpose" ? "目的" : u.unit}</span>
-              <span className={cx("rounded px-2 py-0.5 text-sm font-medium", VERDICT_CLS[u.verdict])}>{REVIEW_VERDICT_LABELS[u.verdict]}</span>
+              <span className={cx("rounded px-2 py-0.5 text-base font-medium", VERDICT_CLS[u.verdict])}>{REVIEW_VERDICT_LABELS[u.verdict]}</span>
               <span className="min-w-0 break-words">{(text.get(u.unit) ?? "").split("\n")[0]}</span>
             </p>
-            <p className="text-sm break-words">
+            <p className="text-base break-words">
               <span className="text-slate-500">理由: </span>
               {u.reason}
             </p>
             {u.evidence.length > 0 && (
-              <p className="flex flex-wrap gap-x-2 text-sm">
+              <p className="flex flex-wrap gap-x-2 text-base">
                 <span className="text-slate-500">根拠:</span>
                 {u.evidence.map((r) => (
                   <RefLink key={r} r={r} />
@@ -525,7 +525,7 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
               </p>
             )}
             {u.gaps.length > 0 && (
-              <ul className="list-disc pl-5 text-sm">
+              <ul className="list-disc pl-5 text-base">
                 {u.gaps.map((g, i) => (
                   <li key={i} className="break-words">
                     {g}
@@ -538,9 +538,9 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
       </ul>
       {result.unplanned && (
         <div>
-          <p className="text-sm font-medium">目的・予定機能に無い変更（意図しない変更の候補）</p>
+          <p className="text-base font-medium">目的・予定機能に無い変更（意図しない変更の候補）</p>
           {result.unplanned.length ? (
-            <ul className="mt-1 space-y-2 text-sm" aria-label="意図しない変更の候補">
+            <ul className="mt-1 space-y-2 text-base" aria-label="意図しない変更の候補">
               {result.unplanned.map((u, i) => (
                 <li key={i} className="space-y-1 rounded-md border border-amber-200 p-2 dark:border-amber-900">
                   <p className="break-words">{u.text}</p>
@@ -556,17 +556,17 @@ function ReviewResultView({ detail, changed, canRerun, onRerun, busy }: { detail
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-sm text-slate-500">（見つかっていません）</p>
+            <p className="mt-1 text-base text-slate-500">（見つかっていません）</p>
           )}
         </div>
       )}
       <ReviewQualityView detail={detail} />
-      {detail.run.inputChanged && <p className="text-sm text-amber-700 dark:text-amber-300">実行中に材料が変わりました（結果は始めたときの材料に対するものです）。</p>}
-      <p className="text-sm text-slate-500 dark:text-slate-400">範囲: {result.scope}</p>
+      {detail.run.inputChanged && <p className="text-base text-amber-700 dark:text-amber-300">実行中に材料が変わりました（結果は始めたときの材料に対するものです）。</p>}
+      <p className="text-base text-slate-500 dark:text-slate-400">範囲: {result.scope}</p>
       {input && (
         <details className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-          <summary className="cursor-pointer text-sm font-medium">評価したときの材料（目的・予定機能・参照先のコード・要望の文面）</summary>
-          <div className="mt-3 max-h-96 space-y-3 overflow-y-auto text-sm">
+          <summary className="cursor-pointer text-base font-medium">評価したときの材料（目的・予定機能・参照先のコード・要望の文面）</summary>
+          <div className="mt-3 max-h-96 space-y-3 overflow-y-auto text-base">
             <Purpose text={input.milestone.purpose} />
             <CodeList code={input.code} detail />
             {input.units.length > 0 && (

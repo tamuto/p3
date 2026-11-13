@@ -92,7 +92,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </p>
         )}
         {note && (
-          <p role="status" className="break-words text-sm text-amber-700 dark:text-amber-400">
+          <p role="status" className="break-words text-base text-amber-700 dark:text-amber-400">
             {note}
           </p>
         )}
@@ -110,7 +110,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         {children.length > 0 && <ChildList ctx={ctx} data={data} />}
 
         {(children.length > 0 || ancestors.length > 0) && row && (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-base">
             <span>
               この要望自身: <strong>{row.done}/{row.total}</strong> タスク完了
             </span>
@@ -122,7 +122,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </div>
         )}
         {children.length > 0 && (
-          <p className="text-sm text-slate-500">全体の集計では各タスクを1回だけ数えます。子のタスクは親のボードには出ません（子の画面で見ます）。</p>
+          <p className="text-base text-slate-500">全体の集計では各タスクを1回だけ数えます。子のタスクは親のボードには出ません（子の画面で見ます）。</p>
         )}
         {children.length > 0 && data.completion?.blocker && request.status !== "resolved" && request.status !== "done" && (
           <p role="status" className="rounded-md bg-amber-50 px-3 py-2 break-words text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
@@ -130,16 +130,16 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </p>
         )}
         {!!data.completion?.excluded.length && (
-          <p className="text-sm break-words text-slate-600 dark:text-slate-400">
+          <p className="text-base break-words text-slate-600 dark:text-slate-400">
             見送りの子は完了の判定の対象外です: {data.completion.excluded.join(", ")}
           </p>
         )}
         {structural && (
-          <p className="text-sm text-slate-500">
+          <p className="text-base text-slate-500">
             自分のタスクが無い親です。リリースノートでは「構造の要望」として収録の判定に入り、変更の記録は各子の要望から入ります。
           </p>
         )}
-        {!children.length && !ancestors.length && !issues.length && <p className="text-sm text-slate-500">親も子もありません。大きい要望は Preflight の分割の案から子に分けられます。</p>}
+        {!children.length && !ancestors.length && !issues.length && <p className="text-base text-slate-500">親も子もありません。大きい要望は Preflight の分割の案から子に分けられます。</p>}
       </div>
     </Section>
   );
@@ -218,7 +218,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   return (
     <div className="space-y-2">
       <p className="font-medium">子の要望（{children.length} 件・表示順）</p>
-      <p className="text-sm text-slate-500">表示順は着手可能かを判定しません。子の本文にある前提を確認してください。</p>
+      <p className="text-base text-slate-500">表示順は着手可能かを判定しません。子の本文にある前提を確認してください。</p>
       <ul className="divide-y divide-slate-200 dark:divide-slate-800" aria-label="子の要望（表示順）">
         {shown.map((c, i) => (
           <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2">
@@ -230,17 +230,17 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
               {c.title}
             </Link>
             <span className="font-mono text-sm text-slate-500">{c.id}</span>
-            <span className="text-sm whitespace-nowrap text-slate-600 dark:text-slate-400">
+            <span className="text-base whitespace-nowrap text-slate-600 dark:text-slate-400">
               自分のタスク {c.tasks.done}/{c.tasks.total}
             </span>
-            <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("ghost", "text-sm underline")}>
+            <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("ghost", "text-base underline")}>
               ボード
             </Link>
             {shown.length > 1 && (
               <span className="flex gap-1">
                 <Button
                   ref={(el) => void buttons.current.set(`${c.id}:up`, el)}
-                  className="px-2 py-0.5 text-sm"
+                  className="px-2 py-0.5 text-base"
                   aria-label={`${c.title} を上へ`}
                   disabled={saving || data.gone || i === 0}
                   onClick={() => move(i, -1)}
@@ -249,7 +249,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
                 </Button>
                 <Button
                   ref={(el) => void buttons.current.set(`${c.id}:down`, el)}
-                  className="px-2 py-0.5 text-sm"
+                  className="px-2 py-0.5 text-base"
                   aria-label={`${c.title} を下へ`}
                   disabled={saving || data.gone || i === shown.length - 1}
                   onClick={() => move(i, 1)}
@@ -269,7 +269,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           <Button disabled={saving} onClick={() => (setDraft(null), setError(null), setMoved("並べ替えを取り消しました"))}>
             取消
           </Button>
-          <span className="text-sm text-slate-500">保存していない並べ替えがあります</span>
+          <span className="text-base text-slate-500">保存していない並べ替えがあります</span>
         </div>
       )}
       {error && (

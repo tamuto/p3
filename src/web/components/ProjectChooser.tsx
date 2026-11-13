@@ -61,7 +61,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
         {problem && (
           <div role="alert" className="space-y-1 rounded-md bg-rose-50 p-3 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
             <p className="font-medium break-words">{requested ? `「${requested}」を開けません。` : ""}{problem}</p>
-            <p className="text-sm">ほかのプロジェクトは選べます。登録は CLI で確かめて直します（p3 project ls / p3 project add &lt;名前&gt; &lt;フォルダ&gt;）。直したら一覧を読み直してください。</p>
+            <p className="text-base">ほかのプロジェクトは選べます。登録は CLI で確かめて直します（p3 project ls / p3 project add &lt;名前&gt; &lt;フォルダ&gt;）。直したら一覧を読み直してください。</p>
           </div>
         )}
         {listing.configError && (
@@ -69,7 +69,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
             {listing.configError}
           </p>
         )}
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p className="text-base text-rose-600">{error}</p>}
 
         {listing.projects.length ? (
           <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:divide-slate-800 dark:ring-slate-800">
@@ -82,7 +82,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
                     className="flex items-center gap-3 p-4 font-medium text-indigo-700 transition hover:bg-indigo-50 focus-visible:bg-indigo-50 focus-visible:outline-none dark:text-indigo-300 dark:hover:bg-indigo-950 dark:focus-visible:bg-indigo-950"
                   >
                     <span className="min-w-0 flex-1 break-words">{p.name}</span>
-                    <span aria-hidden className="text-slate-400">
+                    <span aria-hidden className="text-slate-500 dark:text-slate-400">
                       →
                     </span>
                   </a>
@@ -90,7 +90,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4">
                     <span className="font-medium">{p.name}</span>
                     <Badge tone="rose">開けません</Badge>
-                    {p.error && <p className="w-full text-sm break-words text-rose-700 dark:text-rose-300">{p.error}</p>}
+                    {p.error && <p className="w-full text-base break-words text-rose-700 dark:text-rose-300">{p.error}</p>}
                   </div>
                 )}
               </li>
@@ -103,7 +103,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
         )}
 
         {listing.invalid.length > 0 && (
-          <div className="space-y-1 text-sm">
+          <div className="space-y-1 text-base">
             <p className="font-medium text-amber-700 dark:text-amber-400">個人設定にあるが使えない登録:</p>
             <ul className="list-disc pl-5">
               {listing.invalid.map((i) => (

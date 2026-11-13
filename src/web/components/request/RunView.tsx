@@ -53,6 +53,7 @@ export function RunView({
         {steps.map((st, i) => (
           <li key={st.label} className="flex flex-1 items-center gap-2" aria-current={st.current ? "step" : undefined}>
             <span
+              data-aux
               className={cx(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
                 st.state === "done"
@@ -92,7 +93,7 @@ export function RunView({
         </div>
       )}
 
-      <p className="text-sm text-slate-600 dark:text-slate-400">
+      <p className="text-base text-slate-600 dark:text-slate-400">
         {run.previous ? (
           <>
             前回{" "}
@@ -156,7 +157,7 @@ export function RunView({
                   tone="amber"
                   action={
                     a.questions.length > 0 ? (
-                      <a href={`#${NOTE_INPUT_ID}`} className="text-sm text-indigo-600 underline" onClick={focusNoteInput}>
+                      <a href={`#${NOTE_INPUT_ID}`} className="text-base text-indigo-600 underline" onClick={focusNoteInput}>
                         メモ欄で答える ↓
                       </a>
                     ) : undefined
@@ -197,7 +198,7 @@ function ListBlock({ title, items, tone, action }: { title: string; items: strin
         {action}
       </div>
       {items.length === 0 ? (
-        <p className="text-slate-400">なし</p>
+        <p className="text-slate-500 dark:text-slate-400">なし</p>
       ) : (
         <ul className="mt-1 space-y-1">
           {items.map((r) => (
@@ -216,9 +217,9 @@ function LogView({ log, running }: { log: PreflightLogEntry[]; running: boolean 
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [log.length]);
-  const color = { info: "text-slate-400", command: "text-sky-300", message: "text-slate-100", error: "text-rose-400" };
+  const color = { info: "text-slate-500 dark:text-slate-400", command: "text-sky-300", message: "text-slate-100", error: "text-rose-400" };
   return (
-    <Section title="実行ログ" aside={running ? <span className="animate-pulse text-sm text-indigo-500">● live</span> : null}>
+    <Section title="実行ログ" aside={running ? <span className="animate-pulse text-base text-indigo-500">● live</span> : null}>
       <div ref={ref} className="h-72 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-sm leading-relaxed dark:ring-1 dark:ring-slate-800">
         {log.map((l, i) => (
           <div key={i} className={cx("whitespace-pre-wrap break-words", color[l.kind])}>
