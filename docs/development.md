@@ -318,8 +318,8 @@ serve になること。本物の Codex（ソケット・pathMap・ChatGPT の�
 
 | 文書 | 書くこと |
 | --- | --- |
-| [README](../README.md) | 何をするツールか・必要なもの・最短の手順・文書の案内だけ |
-| [docs/installation.md](installation.md) | 導入（Docker・パスの対応・ChatGPT・Codex のイメージ・つまずいたとき・マシンごとの設定） |
+| [README](../README.md) | 何をするツールか・必要なもの・最短の手順（参加して画面を開くまで）・次にできること・文書の案内だけ |
+| [docs/installation.md](installation.md) | 導入を段階の順に（段階 0: 参加・作成と画面、段階 1: Preflight の準備（Docker・パスの対応・ChatGPT・Codex のイメージ）、段階 2: 任意の機能への入口）。つまずいたとき・マシンごとの設定・Docker で動かす。段階 0 に段階 1 以降の準備を混ぜない（`test/docs.test.ts`）。段階 2 の機能の操作は使い方ガイドに書き、ここからはリンクする |
 | [docs/how-to-use.md](how-to-use.md) | 使い方の手順とリファレンス（操作・状態・データ・画面・CLI） |
 | [docs/architecture.md](architecture.md) | 設計と規則（なぜそうするか・どこで守っているか） |
 | [docs/chatgpt-sign-in.md](chatgpt-sign-in.md) | ChatGPT のサインインの設計 |

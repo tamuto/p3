@@ -1,92 +1,67 @@
 # 導入ガイド
 
-infodb p3（以下 P3）を入れて、最初の Preflight を動かせる状態にするまでの手順。要望を作ってからの使い方は
-[使い方ガイド](how-to-use.md) へ続く。
+infodb p3（以下 P3）を使い始めるまでの手順。全部を一度にそろえなくてよい。段階 0 だけで要望とタスクを使い始められ、
+段階 1・2 は必要になってから足す。要望を作ってからの使い方は [使い方ガイド](how-to-use.md) へ続く。
 
-P3 の Preflight は、Codex を **Docker のコンテナの中で** 動かす。導入でつまずくのはほとんどが Docker とパスの対応なので、
-この文書はそこを詳しく書く。
+| 段階 | すること | できるようになること | 要るもの |
+| --- | --- | --- | --- |
+| [0](#段階-0-要望とタスクを使う) | プロジェクトに参加する（か新しく作る）・画面を開く | 要望とタスクを書いて進める | Node.js と Git |
+| [1](#段階-1-preflight-を足す) | Preflight の評価のしかたを選んで準備する | 要望をタスクにする前に、リポジトリを読んだ評価とタスク案を受け取る | Codex で評価するなら Docker と ChatGPT。手元の AI エージェントで評価するなら足すものは無い |
+| [2](#段階-2-必要になったら足す) | 品質基準・レビューなどを、要るものだけ足す | 守る水準の確認・完了したタスクやマイルストーンの確かめ | 機能による（段階 2 の表） |
 
-Docker と ChatGPT の接続が要るのは Preflight（Codex）・リリースノートの要約の生成・画面イメージの描画だけで、要望・タスク・
-変更の記録・マイルストーンの管理と、リリースノートを手で書いて保存することは無くても動く。Docker を用意できない・Preflight が止まる間も、Preflight を通さずにタスクを作って進められる
-（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。Preflight を Claude Code などの手元の対話エージェントに
-頼むなら Docker と ChatGPT は要らない（画面イメージの描画だけ Docker を使う。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）。
+この文書の例では `npx @infodb/p3` と書く（Node.js に付いてくる npm の `npx`。pnpm があれば `pnpx @infodb/p3` でも同じ）。
+`pnpm add -g @infodb/p3` / `npm i -g @infodb/p3` で入れたなら `p3` に読み替える。
 
-## 全体の流れ
+## 段階 0: 要望とタスクを使う
 
-| # | すること | 終わったと分かる目安 |
-| --- | --- | --- |
-| 1 | 必要なものをそろえる | `node -v` が 24 以上（推奨 26）、`git --version`、`docker version` が通る |
-| 2 | どこで P3 を動かすか決める（ホスト / DevContainer） | 下の「動かす場所」のどちらかに当てはまる |
-| 3 | Docker に繋がるか確かめる | `docker version` に **Client と Server の両方** が出る |
-| 4 | プロジェクトを作る（か参加する） | `p3 whoami` にプロジェクトとデータのフォルダが出る |
-| 5 | （DevContainer のときだけ）パスの対応を書く | `p3 user-config` の `codex.pathMap` に、リポジトリとデータの両方の対応がある |
-| 6 | ChatGPT に接続する | `p3 chatgpt status` が「ChatGPT プランを使います」 |
-| 7 | Codex のイメージを作る | `p3 codex update` が「Codex を更新しました: codex-cli …」 |
-| 8 | 画面を開いて、試しに Preflight を動かす | 評価とタスク案が出る |
+**すること**: プロジェクトに参加する（か新しく作る）・画面を開く。**できるようになること**: 要望とタスクを書いて進める。
+Docker・ChatGPT・パスの設定は要らない。
 
-P3 を Docker のコンテナで動かす（プロジェクトを跨ぐ serve を既定にする）ときは、後の「[Docker で動かす](#docker-で動かすプロジェクトを跨ぐ-serve)」。
+要るのは **Node.js 24 以上（推奨 26）** と **Git**（`node -v` と `git --version` で確かめる）。版の補足は後の「[Node.js の版](#補足-nodejs-の版と同じ版で動かすこと)」。
 
-## 1. 必要なもの
+### 参加する（ほかの人が作ったプロジェクト）
 
-| もの | 何に使う | 確かめ方 |
-| --- | --- | --- |
-| Node.js 24 以上（推奨 26） | P3 本体（CLI と `p3 serve`） | `node -v` |
-| pnpm（`pnpx`）か npm（`npx`） | P3 を入れずに動かす。`pnpm add -g @infodb/p3` / `npm i -g @infodb/p3` で `p3` コマンドにしてもよい | `pnpm -v` / `npm -v` |
-| Git | 管理したいリポジトリと、要望ごとのブランチ。Preflight の Codex も履歴を読む | `git --version` |
-| Docker（CLI とデーモン） | Preflight の Codex を、リポジトリとデータのフォルダだけを見せたコンテナの中で動かす。画面イメージの描画にも使う | `docker version`（下の 3.） |
-| ChatGPT のアカウント（プラン） | Preflight の Codex をその人のアカウントで動かす | 6. で接続する |
+共有されたリポジトリを取得してある（`git clone` 済み）なら、3つで始められる。
 
-- Codex をこのマシンに入れる必要はない（コンテナのイメージに入れる）。画面はビルド済みのものが入っているので、ビルドも要らない
-- P3 そのものを開発するときと、Docker のイメージ（`tamuto/p3`・描画のイメージ）は Node 26 を使う（[開発ガイド](development.md)）。
-  使うだけなら 24 以上でよい
-- **Node 22 から上げるとき**: Node 22 はサポートの終わり（2027-04-30）が近いので、この版から P3 は Node 24 以上で動かす（`engines` は
-  `>=24`）。Node 22 のままでも止められるとは限らない: npm は入れるときに警告（`EBADENGINE`）を出して入れ、`engine-strict=true`
-  なら断る。pnpm（12.10 で確かめた）と `pnpx` は警告を出さずに入れて動かす。`node -v` を確かめ、24 以上（推奨 26）に上げてから入れ直す。Docker で動かしているなら、新しいイメージを `docker pull` してコンテナを作り直す
-  （起動し直すだけでは前のイメージの Node のまま）
-- 以下の例では `p3` と書く。入れていなければ `pnpx @infodb/p3`（または `npx @infodb/p3`）に読み替える
-- 同じデータを使う人と AI は、なるべく同じ版で動かす（`pnpx @infodb/p3@<版>` のように版を付けられる。`pnpx` は取った版をしばらく
-  使い続ける）。古い版で更新すると、新しい版で足した項目が消えることがある（[データの形](architecture.md#データの形)）
+1. そのリポジトリのフォルダに移る: `cd ~/src/myapp`
+2. 参加する: `npx @infodb/p3 join --yes`
+3. 画面を開く: `npx @infodb/p3 serve` を実行したまま、ブラウザで http://localhost:4310 を開く
 
-## 2. 動かす場所
+**できたと分かる目安**: ブラウザに、そのプロジェクトの「進捗」（要望の一覧）が出る。
 
-P3 が Codex のコンテナを作るとき、リポジトリとデータのフォルダを **Docker のデーモンから見たパス** でマウントする。
-そのため、次の3つのパスを区別する。
+- `join` は、このマシンの個人設定にプロジェクトを登録するだけ。データ（要望・タスク）とリポジトリのファイルは書かない。
+  データを取ってくることも、同期することもしない（データはリポジトリの `.p3` なら `git pull` で、共有ドライブなら同期で届く）
+- データがリポジトリの外（共有ドライブなど）にあるプロジェクトでは、その場所を指定する: `npx @infodb/p3 join --yes --dir ~/p3-data/myapp`。
+  どこにあるかはプロジェクトを作った人に聞く
+- 詳しい決まりは後の「[参加の決まり](#参加の決まり)」
 
-| パス | 例 | 説明 |
-| --- | --- | --- |
-| P3 から見たパス（このマシンのパス） | `/workspaces/myapp` | `p3` を動かしている場所でのパス。個人設定に登録する |
-| Docker のデーモン（ホスト）から見たパス | `/home/me/workspaces/myapp` | コンテナを作るのはデーモンなので、マウントはこのパスで指定する |
-| Codex のコンテナの中のパス | `/workspace/myapp`、`/data` | 参照先は `/workspace/<名前>`（読むだけ）、データのフォルダは `/data` |
+### 新しく作る
 
-動かし方は2通りある。
+管理したいリポジトリの中で:
 
-- **A. ホストで直接動かす**（Mac・Linux・WSL の中で `p3` を実行し、Docker も同じ環境のもの）: 1つ目と2つ目のパスが同じなので、
-  パスの対応は要らない
-- **B. VS Code の DevContainer の中で動かし、Docker はホストのデーモンを使う**（docker-outside-of-docker）: 1つ目と2つ目の
-  パスが違うので、5. でその対応（`codex.pathMap`）を書く。データのフォルダも、ホストから見える（バインドマウントされた）場所に置く
+1. `cd ~/src/myapp`
+2. 作る: `npx @infodb/p3 init --yes`（リポジトリの `.p3` にデータのフォルダを作り、個人設定に登録する）
+3. 画面を開く: `npx @infodb/p3 serve` を実行したまま、ブラウザで http://localhost:4310 を開く
 
-> Docker Desktop・WSL・リモートの Docker（`DOCKER_HOST` で別のマシンを指す）では、パスの見え方がさらに違うことがある。
-> この文書の手順は A と B（VS Code の DevContainer と、そのホストの Docker）で書いている。ほかの形では、「Docker のデーモンから
-> 見たパス」を自分の環境で確かめてから 5. の対応を書く。
+**できたと分かる目安**: ブラウザに「進捗」（まだ要望が無い一覧）と「新しい要望」のボタンが出る。
 
-## 3. Docker に繋がるか確かめる
+- できた `.p3` をリポジトリに入れて共有すれば、ほかの人は上の「参加する」で加われる。git に入れるか（`.gitignore` に書くか）は
+  自分で決める（p3 は `.gitignore` を書き換えず、データをコミットもしない）
+- 作るときの細かい選び方（データをリポジトリの外に置く・何のプロジェクトかを書く・AI 向けの入口を置く）は後の「[作るときに選べること](#作るときに選べること)」。
+  後から変えられるので、最初は `--yes` のままでよい
 
-```bash
-docker version --format 'Client {{.Client.Version}} / Server {{.Server.Version}}'
-# Client 29.8.2 / Server 29.3.0      ← 両方出れば繋がっている
-```
+### 画面について
 
-| 出たもの | 意味と次にすること |
-| --- | --- |
-| `docker: command not found` | Docker の CLI が無い。Docker Desktop か Docker Engine を入れ、`PATH` を確かめる。DevContainer なら、CLI を入れる設定（docker-outside-of-docker の feature など）を足す |
-| Server の行が無い・`Cannot connect to the Docker daemon` | デーモンに繋がらない。Docker を起動する。繋ぎ先は `docker context ls`（`*` が今のもの）と環境変数 `DOCKER_HOST` で確かめる。DevContainer なら、ホストのソケット（`/var/run/docker.sock`）が渡っているか |
-| `permission denied ... docker.sock` | ソケットを使う権限が無い。Linux なら利用者を `docker` グループに入れ直してログインし直す（または管理者に相談する） |
+- 既定では `0.0.0.0:4310` で待つ（DevContainer の外から見るため）。画面には認証が無いので、信頼できないネットワークでは
+  `npx @infodb/p3 user-config set serve.host=127.0.0.1` で絞る。待ち受け（`serve.host` / `serve.port`）を変えたら serve を起動し直す
+- **DevContainer:** 4310 をホストへ転送して、ホストのブラウザで開く
+- 開けないときは「[うまくいかないとき](#うまくいかないとき)」
 
-## 4. プロジェクトを作る（か参加する）
+### 作るときに選べること
 
-管理したいリポジトリの中で `p3 init` を実行し、プロジェクト名と **データを置くフォルダ** を決める。データのフォルダの既定は
-**リポジトリのルートの `.p3`**（git のメインの作業ツリーの直下。サブフォルダや要望の作業ツリーから実行してもそこ。git 管理外なら
-実行した場所の `.p3`）で、ふつうはこのまま Enter で決める。
+`init` は対話でも使える（`--yes` を付けなければ聞く）。データのフォルダの既定は **リポジトリのルートの `.p3`**
+（git のメインの作業ツリーの直下。サブフォルダや要望の作業ツリーから実行してもそこ。git 管理外なら実行した場所の `.p3`）で、
+ふつうはこのまま Enter で決める。
 
 公開できない要望を含むときや、複数のリポジトリにまたがるプロジェクトをどのリポジトリとも別に管理したいときは、リポジトリの外の
 フォルダを指定する（例: `~/p3-data/myapp`。チームで共有するなら同期するフォルダ）。相対パスは実行した場所から、`~` はホームから。
@@ -94,7 +69,7 @@ DevContainer で外に置くときは、ホストから見える（バインド�
 
 ```bash
 cd ~/src/myapp
-p3 init --agents
+npx @infodb/p3 init
 #   プロジェクト名（切り替えに使う短い名前） [myapp]:
 #   データを置くフォルダ（相対パスは今いる場所から。リポジトリの外も指定できます） [/home/me/src/myapp/.p3]:
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
@@ -103,42 +78,40 @@ p3 init --agents
 #   Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価） [codex]:
 
 # AI やスクリプトからは引数で（--yes で質問しない。--dir を付けなければリポジトリのルートの .p3）
-p3 init --yes --agents --project myapp --description "社内向けの経費精算アプリ"
+npx @infodb/p3 init --yes --agents --project myapp --description "社内向けの経費精算アプリ"
 
 # リポジトリの外に置くなら --dir で指定する
-p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
+npx @infodb/p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
 
 # Codex（ChatGPT のプラン）を使わず、Claude Code などの手元のエージェントに Preflight を頼むなら
-p3 init --yes --agents claude --project myapp --preflight-runner agent --description "社内向けの経費精算アプリ"
+npx @infodb/p3 init --yes --agents claude --project myapp --preflight-runner agent --description "社内向けの経費精算アプリ"
 ```
 
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
   最初に読む・作業先にできる）として登録される
 - `init` は新しく作るだけ。そのフォルダに既にプロジェクト（`project.yaml`）があれば、何も変えずに断って `p3 join` を案内する
-- ほかの人が作って共有したプロジェクトには **`p3 join`** で参加する（下の「参加する」）
-- 既定の `.p3` を git に入れるか（`.gitignore` に書くか）は自分で決める。p3 は `.gitignore` を書き換えず、データをコミットもしない
 - `--agents claude|codex|both` を付けると、AI エージェント向けの入口（手順は CLI の `p3 guide` から読ませる短い指示）を `AGENTS.md`
   （無ければ `CLAUDE.md`）に追記し、スキルを選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
   （値を省くと both。付けなければ置かない。対話では聞き、Enter は置かない）。置いたファイルはリポジトリに入れて共有する。
-  作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md) の「AI エージェントから使う」。`init --agents` を
+  作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md#ai-エージェントから使う) の「AI エージェントから使う」。`init --agents` を
   既にあるプロジェクトで実行し直しても置かない）
-- **Preflight の担当**（`preflight.runner`。共有の設定）を決める。`codex`（既定。Enter と `--yes` もこれ）は人が `p3 preflight` や
-  画面から実行し、Codex が評価する（6. と 7. が要る）。`agent` は Codex を使えない環境（Codex を準備していない・ChatGPT のプランが
-  無い）向けで、人がチャットで「Preflight して」と頼むと手元の AI エージェントが評価する（6. と 7. は要らない。画面イメージの描画
-  だけ Docker を使う）。後から `p3 config set preflight.runner=agent|codex` で変えられる（[使い方ガイド](how-to-use.md) の
-  「プロジェクトの設定」）
+- **Preflight の担当**（`preflight.runner`。共有の設定）は段階 1 で選ぶ。`--yes` と Enter は `codex`。後から
+  `p3 config set preflight.runner=agent|codex` で変えられる（[段階 1](#段階-1-preflight-を足す)）
+- 何のプロジェクトか（`description`）を `--yes` で省いたら、後から `p3 config set description="..."` で書ける（Preflight の精度に効く。
+  [使い方ガイド: プロジェクトの設定](how-to-use.md#プロジェクトの設定)）
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
 
-### 参加する（ほかの人が作ったプロジェクト）
+### 参加の決まり
 
-clone したリポジトリの中で `p3 join` を実行する。個人設定に「プロジェクト名 → データのフォルダ・このリポジトリのこのマシンのパス」を
-登録するだけで、データ（`project.yaml`・要望）とリポジトリのファイル（スキル・`AGENTS.md` / `CLAUDE.md`）は書かない。
+`p3 join` は、個人設定に「プロジェクト名 → データのフォルダ・このリポジトリのこのマシンのパス」を登録するだけで、
+データ（`project.yaml`・要望）とリポジトリのファイル（スキル・`AGENTS.md` / `CLAUDE.md`）は書かない。
 チームで消した AI 向けのファイルが、参加した人の操作で戻ることはない。
 
 ```bash
 cd ~/src/myapp
-p3 join --project myapp                              # リポジトリの .p3 に入れて共有しているとき（既定はルートの .p3）
-p3 join --project myapp --dir ~/p3-data/myapp        # リポジトリの外のフォルダ（共有ドライブなど）のとき
+npx @infodb/p3 join --yes                                   # リポジトリの .p3 に入れて共有しているとき（既定はルートの .p3）
+npx @infodb/p3 join --yes --dir ~/p3-data/myapp             # リポジトリの外のフォルダ（共有ドライブなど）のとき
+npx @infodb/p3 join --yes --project myapp                   # このマシンで使う名前を決める（省くとフォルダ名）
 ```
 
 - データのフォルダの決め方（既定・相対・`~`・絶対、サブフォルダや作業ツリーから実行してもルートの `.p3`）は `init` と同じ。
@@ -149,10 +122,10 @@ p3 join --project myapp --dir ~/p3-data/myapp        # リポジトリの外の�
   新しく作るなら `init`）。同じ名前で別のフォルダは断る。同じ参加をもう一度しても何も変えない
 - `--agents` と、作るときだけの項目（`--name`・`--description`・`--instructions`・`--preflight-runner`）は使えない（共有の定義を変えるなら `p3 config set`）
 
-確かめる:
+### 登録を確かめる
 
 ```bash
-p3 whoami
+npx @infodb/p3 whoami
 # プロジェクト  myapp  /home/me/src/myapp/.p3
 # 決まり方      cwd（今いる場所）
 # 今いる参照先  myapp  ブランチ main
@@ -176,11 +149,107 @@ p3 --project myapp request new "通知"           # どこからでも、明示�
 ほかのリポジトリ（ドキュメント・基盤など）も Preflight に読ませたいときは
 [使い方ガイド](how-to-use.md#参照先と作業先) の「参照先と作業先」。
 
-## 5. パスの対応を書く（DevContainer のときだけ）
+段階 0 のままでも、Preflight を通さずにタスクを作って進められる（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。
+
+## 段階 1: Preflight を足す
+
+**すること**: Preflight の評価のしかたを選んで準備する。**できるようになること**: 要望をタスクにする前に、リポジトリと過去の経緯を
+読んだ評価と、着手できる粒度のタスク案を受け取る。
+
+### どちらで評価するか選ぶ
+
+評価のしかたは、プロジェクトで1つ決める（**Preflight の担当**。`project.yaml` の `preflight.runner`。共有の設定）。
+
+| 担当 | 評価するもの | 要る準備 |
+| --- | --- | --- |
+| `codex`（既定） | 人が `p3 preflight` か画面から実行し、Codex が評価する | Docker と ChatGPT のアカウント（プラン）。下の「[Codex で評価する](#codex-で評価する)」 |
+| `agent` | 人がチャットで「Preflight して」と頼むと、Claude Code などの手元の AI エージェントが評価する | 足すものは無い（エージェントに入口を置く）。下の「[手元の AI エージェントで評価する](#手元の-ai-エージェントで評価する)」 |
+
+```bash
+npx @infodb/p3 config set preflight.runner=agent     # codex に戻すなら preflight.runner=codex
+npx @infodb/p3 whoami                                 # Preflight の行に今の担当が出る
+```
+
+担当の細かい決まりは [使い方ガイド: Preflight の担当](how-to-use.md#preflight-の担当)。作るときに `description`（何のプロジェクトか）を
+省いたなら、ここで書いておくと評価の精度が上がる: `npx @infodb/p3 config set description="社内向けの経費精算アプリ"`。
+
+### 手元の AI エージェントで評価する
+
+Docker と ChatGPT は要らない。
+
+1. AI エージェント向けの入口を置く（プロジェクトで1回。置いたファイルはリポジトリに入れて共有する）:
+   `npx @infodb/p3 agents claude`（Codex なら `codex`、両方なら `both`。[使い方ガイド: AI エージェントから使う](how-to-use.md#ai-エージェントから使う)）
+2. 担当を `agent` にする: `npx @infodb/p3 config set preflight.runner=agent`
+3. エージェントのチャットで頼む: 「要望 261009-k7m3x の Preflight をして」
+
+- 評価とタスク案を書くのに Docker は使わない。ただし、画面イメージ（評価に付く画面の絵）を PNG に描くときだけ Docker を使う
+  （Docker が無くても評価は残る。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）
+- 担当が `codex` のプロジェクトでも、手元で評価してほしいことをはっきり頼めば同じように評価できる（同じ節）
+
+**できたと分かる目安**: `npx @infodb/p3 drafts <要望ID>`（か画面の要望）で、評価とタスク案が読める。
+
+### Codex で評価する
+
+Codex を **Docker のコンテナの中で** 動かし、各自の ChatGPT アカウント（プラン）で評価させる。つまずくのはほとんどが Docker と
+パスの対応なので、そこを詳しく書く。
+
+| # | すること | 終わったと分かる目安 |
+| --- | --- | --- |
+| 1 | Docker に繋がるか確かめる | `docker version` に **Client と Server の両方** が出る |
+| 2 | どこで P3 を動かすか決める（ホスト / DevContainer） | 下の「動かす場所」のどちらかに当てはまる |
+| 3 | （DevContainer のときだけ）パスの対応を書く | `p3 user-config` の `codex.pathMap` に、リポジトリとデータの両方の対応がある |
+| 4 | ChatGPT に接続する | `p3 chatgpt status` が「ChatGPT プランを使います」 |
+| 5 | Codex のイメージを作る | `p3 codex update` が「Codex を更新しました: codex-cli …」 |
+| 6 | 画面で試しに Preflight を動かす | 評価とタスク案が出る |
+
+- Codex をこのマシンに入れる必要はない（コンテナのイメージに入れる）。画面はビルド済みのものが入っているので、ビルドも要らない
+- Docker と ChatGPT の接続を使うのは、Preflight（Codex）・リリースノートの要約の生成・タスクとマイルストーンの AI レビュー・
+  画面イメージの描画（Docker だけ）。準備が済むまでの間も、Preflight を通さずにタスクを作って進められる
+  （[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）
+
+#### 1. Docker に繋がるか確かめる
+
+Docker（CLI とデーモン）は、Preflight の Codex を、リポジトリとデータのフォルダだけを見せたコンテナの中で動かすのに使う。
+画面イメージの描画にも使う。
+
+```bash
+docker version --format 'Client {{.Client.Version}} / Server {{.Server.Version}}'
+# Client 29.8.2 / Server 29.3.0      ← 両方出れば繋がっている
+```
+
+| 出たもの | 意味と次にすること |
+| --- | --- |
+| `docker: command not found` | Docker の CLI が無い。Docker Desktop か Docker Engine を入れ、`PATH` を確かめる。DevContainer なら、CLI を入れる設定（docker-outside-of-docker の feature など）を足す |
+| Server の行が無い・`Cannot connect to the Docker daemon` | デーモンに繋がらない。Docker を起動する。繋ぎ先は `docker context ls`（`*` が今のもの）と環境変数 `DOCKER_HOST` で確かめる。DevContainer なら、ホストのソケット（`/var/run/docker.sock`）が渡っているか |
+| `permission denied ... docker.sock` | ソケットを使う権限が無い。Linux なら利用者を `docker` グループに入れ直してログインし直す（または管理者に相談する） |
+
+#### 2. 動かす場所
+
+P3 が Codex のコンテナを作るとき、リポジトリとデータのフォルダを **Docker のデーモンから見たパス** でマウントする。
+そのため、次の3つのパスを区別する。
+
+| パス | 例 | 説明 |
+| --- | --- | --- |
+| P3 から見たパス（このマシンのパス） | `/workspaces/myapp` | `p3` を動かしている場所でのパス。個人設定に登録する |
+| Docker のデーモン（ホスト）から見たパス | `/home/me/workspaces/myapp` | コンテナを作るのはデーモンなので、マウントはこのパスで指定する |
+| Codex のコンテナの中のパス | `/workspace/myapp`、`/data` | 参照先は `/workspace/<名前>`（読むだけ）、データのフォルダは `/data` |
+
+動かし方は2通りある。
+
+- **A. ホストで直接動かす**（Mac・Linux・WSL の中で `p3` を実行し、Docker も同じ環境のもの）: 1つ目と2つ目のパスが同じなので、
+  パスの対応は要らない
+- **B. VS Code の DevContainer の中で動かし、Docker はホストのデーモンを使う**（docker-outside-of-docker）: 1つ目と2つ目の
+  パスが違うので、3. でその対応（`codex.pathMap`）を書く。データのフォルダも、ホストから見える（バインドマウントされた）場所に置く
+
+> Docker Desktop・WSL・リモートの Docker（`DOCKER_HOST` で別のマシンを指す）では、パスの見え方がさらに違うことがある。
+> この文書の手順は A と B（VS Code の DevContainer と、そのホストの Docker）で書いている。ほかの形では、「Docker のデーモンから
+> 見たパス」を自分の環境で確かめてから 3. の対応を書く。
+
+#### 3. パスの対応を書く（DevContainer のときだけ）
 
 ホストで直接動かす（2. の A）なら飛ばしてよい。
 
-### 5-1. ホストから見たパスを調べる
+##### 3-1. ホストから見たパスを調べる
 
 DevContainer の中の `docker` はホストのデーモンに繋がっているので、中から自分のコンテナのマウントを調べられる。
 
@@ -197,7 +266,7 @@ docker inspect <コンテナの名前> --format '{{range .Mounts}}{{.Type}}  {{.
 - `volume` は名前付きボリューム。`Source` はデーモンの中の場所で、ふつうのパスとして別のコンテナにマウントできるとは限らない。
   リポジトリとデータのフォルダは、`bind`（ホストのフォルダ）の下に置く
 
-### 5-2. 対応を書く
+##### 3-2. 対応を書く
 
 左がコンテナの中（P3 から見たパス）、右がホスト（Docker のデーモンから見たパス）。`Destination` ごとに1件。
 
@@ -213,7 +282,7 @@ p3 user-config set codex.pathMap-=/mnt/assets                     # 1件外す�
 - 書き間違い（`=` が無い、相対パスなど）は、何を直すかを出して何も書かない
 - 直したら、serve を起動し直さなくても **次の Preflight から** 効く
 
-## 6. ChatGPT に接続する
+#### 4. ChatGPT に接続する
 
 Preflight の Codex は、各自の ChatGPT アカウント（プラン）で動く。サインインは P3 が行う（Codex の初期設定は要らない）。
 
@@ -232,7 +301,7 @@ p3 chatgpt status
   読める）に置き、CLI の出力・画面・ログには出さない。個人設定（`config.yaml`）とは別のファイル
 - 解除は `p3 chatgpt logout`（ChatGPT 側の取り消しも行う）。`--forget` でこのマシンの登録ごと消す
 
-## 7. Codex のイメージを作る
+#### 5. Codex のイメージを作る
 
 ```bash
 p3 codex update
@@ -248,19 +317,10 @@ p3 codex update
   今すぐ作り直す（しなくても1日以内に作り直される）
 - 画面イメージの描画のイメージ（`infodb-p3-render`）は、最初に画面イメージを描くときに作る（`p3 render update` で今すぐ）
 
-## 8. 画面を開いて、試しに Preflight を動かす
+#### 6. 画面で試しに Preflight を動かす
 
-```bash
-p3 serve
-# http://localhost:4310 をブラウザで開く
-```
-
-- **DevContainer:** 4310 もホストへ転送して、ホストのブラウザで開く
-- 既定では `0.0.0.0:4310` で待つ（DevContainer の外から見るため）。画面には認証が無いので、信頼できないネットワークでは
-  `p3 user-config set serve.host=127.0.0.1` で絞る。待ち受け（`serve.host` / `serve.port`）を変えたら serve を起動し直す
-
-概要ページの上にエンジンの状態が出る（Codex なら Docker・認証・イメージを確かめ、使えなければ理由を出して実行のボタンを止める）。
-ここで問題が無ければ、試しに要望を1件作って Preflight を実行する（[使い方ガイド](how-to-use.md) の 1.〜2.）。
+`p3 serve` で開いた画面（段階 0）の概要ページの上にエンジンの状態が出る（Codex なら Docker・認証・イメージを確かめ、使えなければ
+理由を出して実行のボタンを止める）。ここで問題が無ければ、試しに要望を1件作って Preflight を実行する（[使い方ガイド](how-to-use.md) の 1.〜2.）。
 
 Preflight の実行ログの最初の方に、参照先とデータのフォルダが **コンテナの中のどこに当たったか** が出る:
 
@@ -270,7 +330,23 @@ Preflight の実行ログの最初の方に、参照先とデータのフォル�
   データ → コンテナ /data（codex.pathMap の対応あり）
 ```
 
-DevContainer で「対応あり」にならなければ 5. を見直す。評価とタスク案が出れば導入は終わり。
+DevContainer で「対応あり」にならなければ 3. を見直す。
+
+**できたと分かる目安**: 評価とタスク案が画面（か `p3 drafts <要望ID>`）に出る。
+
+## 段階 2: 必要になったら足す
+
+**すること**: 要る機能だけを足す（全部を設定しなくてよい）。**できるようになること**: プロジェクトとして守る水準を確かめる・完了した
+タスクやマイルストーンを別の目で確かめる。
+
+| 機能 | 何ができるか | 要るもの | 操作 |
+| --- | --- | --- | --- |
+| 品質基準 | 守る最低限の水準（lint・検証・文書など）を項目にし、タスクの受け入れ基準に取り込む | 足すものは無い（Codex の準備も要らない） | [使い方ガイド: 品質基準](how-to-use.md#品質基準) |
+| タスクの AI レビュー | 完了したタスクが本文・受け入れ基準を満たしているかを、別の Codex に確かめさせる | 段階 1 の Codex の接続（Docker と ChatGPT） | [使い方ガイド: タスクの AI レビュー](how-to-use.md#タスクの-ai-レビュー) |
+| マイルストーンレビュー | マイルストーンの目的に対して、できあがったものが足りているかを確かめる | 段階 1 の Codex の接続 | [使い方ガイド: マイルストーンレビュー](how-to-use.md#マイルストーンレビュー) |
+| リリースノートの要約 | タスクの変更の記録から機能の要約の案を作る（手で書いて保存するだけなら要るものは無い） | 段階 1 の Codex の接続 | [使い方ガイド: リリースノート](how-to-use.md#リリースノート) |
+
+**できたと分かる目安**: 足した機能の結果（選んだ品質基準・レビューの結果など）を、画面か CLI で読める。
 
 ## うまくいかないとき
 
@@ -278,14 +354,14 @@ DevContainer で「対応あり」にならなければ 5. を見直す。評価
 
 Preflight を使えない・失敗したとき（Docker・ChatGPT の接続・使用量の上限など、理由によらない）は、概要ページ・失敗した run・
 CLI の出力に、Preflight を通さずにタスクを作る道も出る。直すまでの間はそれで進めてよい（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。Preflight を Claude Code などの手元の対話エージェントに
-頼むなら Docker と ChatGPT は要らない（画面イメージの描画だけ Docker を使う。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）。
+頼むなら Docker と ChatGPT は要らない（[手元の AI エージェントで評価する](#手元の-ai-エージェントで評価する)）。
 
 | どこで | 出るもの | 確かめる | 直す |
 | --- | --- | --- | --- |
 | Preflight・`codex update` | `docker` が無い（ENOENT） | `docker version` | Docker を入れ、`PATH` を確かめる |
-| 〃 | `Cannot connect to the Docker daemon` | `docker version` の Server、`docker context ls`、`DOCKER_HOST` | Docker を起動する。繋ぎ先と権限（3.）を直す |
+| 〃 | `Cannot connect to the Docker daemon` | `docker version` の Server、`docker context ls`、`DOCKER_HOST` | Docker を起動する。繋ぎ先と権限（[段階 1 の 1.](#1-docker-に繋がるか確かめる)）を直す |
 | 〃 | `permission denied ... docker.sock` | `ls -l /var/run/docker.sock` | `docker` グループなど、ソケットの権限を直す |
-| Preflight | `bind source path does not exist: <参照先 …>` / `<データ>` | ログの「パスの対応」、`p3 user-config` の `codex.pathMap`、5-1. の `docker inspect` | `p3 user-config set codex.pathMap+=<このマシンのパス>=<ホストのパス>`。「対応あり」なのに無いなら、右側（ホストのパス）の誤り。serve はそのままで次の Preflight から効く |
+| Preflight | `bind source path does not exist: <参照先 …>` / `<データ>` | ログの「パスの対応」、`p3 user-config` の `codex.pathMap`、[3-1.](#3-1-ホストから見たパスを調べる) の `docker inspect` | `p3 user-config set codex.pathMap+=<このマシンのパス>=<ホストのパス>`。「対応あり」なのに無いなら、右側（ホストのパス）の誤り。serve はそのままで次の Preflight から効く |
 | Preflight | 「Codex のイメージを用意できません（app-server を起こす前）」 | `p3 codex update` の出力 | ネットワーク（プロキシ）を確かめて `p3 codex update` をやり直す。`Unable to find image` も同じ |
 | Preflight | 「〜が 60 秒で終わらないので止めました」（イメージの確認 15 秒・版の確認 60 秒・ビルド 10 分） | `docker ps -a --filter label=infodb.p3`（P3 が起こしたコンテナ） | P3 はそのコンテナを消してから終わる。Docker が重い・止まっていないかを確かめてやり直す。「コンテナ p3-… を消せませんでした（残っているかもしれません）」と出たら、出ている `docker rm -f <名前>` で消す |
 | Preflight・画面 | 「ChatGPT にサインインしてください」「ChatGPT の接続が切れています」「プランの利用が許可されていません」 | `p3 chatgpt status` | `p3 chatgpt login`（届かなければ `--paste`）。プランの利用に同意する |
@@ -293,6 +369,7 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 | Preflight・画面 | 個人設定を読めない（YAML の行と直すファイル） | `~/.config/infodb-p3/config.yaml` | 書き間違いを直す。serve はそのままで次の Preflight から効く |
 | CLI | プロジェクトが決まらない | `p3 whoami`、`p3 project` | `--project <名前>`、または `p3 project add <名前> <フォルダ>` |
 | CLI・serve | 「データのフォルダがありません」「データのフォルダに project.yaml がありません」 | `p3 project ls` の登録先、フォルダを移していないか、共有ドライブ（同期するフォルダ）がつながっているか | つながっていなければつないでやり直す。移したなら `p3 project rm <名前>` → `p3 project add <名前> <正しいフォルダ>`（rm はデータを消さない。そのあと `p3 repo path` で手元のリポジトリを登録し直す）。新しく作るなら管理したいリポジトリの中で `p3 init --project <名前>`（外に置くなら `--dir <フォルダ>`） |
+| `join` | データのフォルダ・`project.yaml` が無い | リポジトリを `git pull` したか、データの場所（共有ドライブ）を聞いたか | `.p3` が届いていなければ取得する。外にあるなら `--dir <フォルダ>` で指定する |
 | 画面 | 開けない | serve のログ、ポートの転送 | 4310 を転送する。`serve.port` を変えたら転送先も変える |
 
 ## 設定の決まり
@@ -415,12 +492,24 @@ docker exec p3 p3 codex update      # Codex のイメージを作る（ホスト
 - ソケットを渡すと、コンテナの中から **ホストの Docker を何でも操作できる**（ホストの管理者と同じ強さ）。信頼できるマシンでだけ渡す
 - Codex・描画のコンテナはホストのデーモンが作り、データのフォルダと参照先を **ホストのパスで** マウントする。上のように同じパスで
   マウントしていれば対応は要らない。違うパスでマウントしたときは、コンテナの中のパスとホストのパスの対応を
-  `docker exec p3 p3 user-config set codex.pathMap+=<コンテナの中のパス>=<ホストのパス>` で全部のプロジェクトの分を足す（5.）
+  `docker exec p3 p3 user-config set codex.pathMap+=<コンテナの中のパス>=<ホストのパス>` で全部のプロジェクトの分を足す
+  （[段階 1 の 3.](#3-パスの対応を書くdevcontainer-のときだけ)）
 - ChatGPT の接続はマウントした ~/.config に残るので、コンテナを作り直しても接続し直さなくてよい
 - ソケットを渡していない・繋がらないときも、要望・タスクの作成と編集・プロジェクトの選択は使える。Preflight は
   使えない理由と直し方を出して止まる（Mock には落とさない）。その間は Preflight を通さずにタスクを作ってよい
   （[使い方ガイド](how-to-use.md#preflight-を通さずにタスクを作る)）
 - P3 を作り直してイメージの中身（入れる道具）が変わったら `docker exec p3 p3 codex update`
+
+## 補足: Node.js の版と、同じ版で動かすこと
+
+- P3 そのものを開発するときと、Docker のイメージ（`tamuto/p3`・描画のイメージ）は Node 26 を使う（[開発ガイド](development.md)）。
+  使うだけなら 24 以上でよい
+- **Node 22 から上げるとき**: Node 22 はサポートの終わり（2027-04-30）が近いので、この版から P3 は Node 24 以上で動かす（`engines` は
+  `>=24`）。Node 22 のままでも止められるとは限らない: npm は入れるときに警告（`EBADENGINE`）を出して入れ、`engine-strict=true`
+  なら断る。pnpm（12.10 で確かめた）と `pnpx` は警告を出さずに入れて動かす。`node -v` を確かめ、24 以上（推奨 26）に上げてから入れ直す。Docker で動かしているなら、新しいイメージを `docker pull` してコンテナを作り直す
+  （起動し直すだけでは前のイメージの Node のまま）
+- 同じデータを使う人と AI は、なるべく同じ版で動かす（`npx @infodb/p3@<版>` / `pnpx @infodb/p3@<版>` のように版を付けられる。
+  `npx`・`pnpx` は取った版をしばらく使い続ける）。古い版で更新すると、新しい版で足した項目が消えることがある（[データの形](architecture.md#データの形)）
 
 ## 補足: 旧来の認証と Mock
 
