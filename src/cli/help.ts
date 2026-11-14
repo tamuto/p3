@@ -31,6 +31,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                    codex.effort / codex.ensureImage / preflight.engine / serve.host / serve.port（キー= で消す）
                                set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>  パスの対応を足す
                                set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
+                               paths <このマシンのパス> ...  Docker にマウントするときのホストのパスと決め方（DevContainer では自動。変えない）
   quality                      品質基準（project.yaml の quality。未設定・設定済み・読めない）とテンプレートの改版の差分
                                templates / template <id>  同梱のテンプレート（版つきの例。業界の標準への認証ではない）
                                未設定のままでも作業は続けられる（init は必須ではない）。未設定から add / adopt をそのまま使える

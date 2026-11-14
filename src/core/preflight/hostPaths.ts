@@ -2,7 +2,6 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { hostname as osHostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DOCKER_LIMITS, DockerAbortError, DockerCommandError, dockerExec } from "./docker.ts";
-import { mapPath } from "./diagnose.ts";
 
 /**
  * Docker のコンテナにマウントするパス（このマシンのパス）を、Docker のデーモンから見たパスに決める（261115-d0n30）。
@@ -126,6 +125,25 @@ function realpathLoose(p: string): string {
     }
   }
 }
+
+/** 手で書いた対応: 前から順に、境界（/）が合う最初の対応を使う（当たらなければ元のパス） */
+export function mapPath(pathMap: readonly [string, string][], local: string): { host: string; rule?: [string, string] } {
+  for (const rule of pathMap) {
+    const [from, to] = rule;
+    if (local === from || local.startsWith(`${from}/`)) return { host: to + local.slice(from.length), rule };
+  }
+  return { host: local };
+}
+
+/** コンテナの外として振る舞う（P3_HOST_PATHS=direct のとき） */
+export const DIRECT_PROBE: HostPathProbe = {
+  mountinfo: () => null,
+  cgroup: () => null,
+  dockerenv: () => false,
+  hostname: () => "",
+  realpath: (p) => p,
+  inspect: async () => null,
+};
 
 /** 実際の OS と docker の CLI（接続先は docker の CLI が環境変数と context から決める） */
 export function systemProbe(docker = "docker", timeoutMs = DOCKER_LIMITS.inspectMs): HostPathProbe {
@@ -291,7 +309,8 @@ export function nextStep(reason: HostPathReason): string {
  * 対象のパスごとに、Docker のデーモンから見たパスを決める。1つでも決まらなければ ok: false（呼ぶ側はコンテナを起こさない）
  */
 export async function resolveHostPaths(locals: readonly string[], opts: HostPathOptions): Promise<HostPathResolution> {
-  const probe = opts.probe ?? systemProbe(opts.docker, opts.timeoutMs);
+  // P3_HOST_PATHS=direct: 自動で決めず、コンテナの外と同じに扱う（手で書いた対応だけ。テストと切り分け用）
+  const probe = opts.probe ?? (process.env.P3_HOST_PATHS === "direct" ? DIRECT_PROBE : systemProbe(opts.docker, opts.timeoutMs));
   const manual = (local: string) => {
     const m = mapPath(opts.pathMap, local);
     return m.rule ? m : undefined;
@@ -321,4 +340,34 @@ export async function resolveHostPaths(locals: readonly string[], opts: HostPath
     return { ok: true, local, host: auto.host, origin: "auto", destination: auto.destination };
   });
   return { ok: paths.every((p) => p.ok), environment: self.env, paths };
+}
+
+/** ローカルで確かめるコマンド（実際のパスはこの CLI の出力だけに出す） */
+export const PATHS_CHECK = "p3 user-config paths <このマシンのパス>";
+
+/**
+ * 決まらなかったときのエラーの文。共有の記録（run.json・ログ）に残るので、このマシンのパス・ホストのパス・コンテナの ID は書かず、
+ * 対象の名前・理由・次にすること・確かめ方だけにする
+ */
+export function unresolvedMessage(what: string, items: readonly { label: string; result: HostPathResult }[]): string {
+  const ng = items.filter((i): i is { label: string; result: Extract<HostPathResult, { ok: false }> } => !i.result.ok);
+  const nexts = [...new Set(ng.map((i) => i.result.next))];
+  return [
+    `${what}でマウントするフォルダが Docker のホストのどこにあるか決められないので、コンテナを起こしません（どのフォルダもマウントしていません）`,
+    ...ng.map((i) => `  ${i.label}: ${i.result.detail}`),
+    ...nexts.map((n) => `次にすること: ${n}`),
+    `確かめる: このマシンで ${PATHS_CHECK}（実際のパスと決め方が出ます）`,
+  ].join("\n");
+}
+
+/** 決め方の説明（共有の記録に残してよい言葉だけ） */
+export function originText(r: Extract<HostPathResult, { ok: true }>, rules: number): string {
+  if (r.origin === "auto") return "自動（p3 が動いているコンテナのマウントから）";
+  if (r.origin === "manual")
+    return r.rule && r.rule[0] === r.rule[1]
+      ? `codex.pathMap の対応あり（パスは変わらない）${r.verified ? "。コンテナのマウントとも一致" : ""}`
+      : `codex.pathMap の対応あり${r.verified ? "。コンテナのマウントとも一致" : ""}`;
+  return rules
+    ? `codex.pathMap の対応なし（${rules} 件のどれにも当たらない。このマシンのパスのまま渡す）`
+    : "codex.pathMap の対応なし（このマシンのパスのまま渡す）";
 }

@@ -1,4 +1,7 @@
+import { resolve } from "node:path";
 import { THEMES } from "../shared/types.ts";
+import { resolveMachineSettings } from "../core/machineSettings.ts";
+import { originText, resolveHostPaths, type HostPathResolution } from "../core/preflight/hostPaths.ts";
 import { describeSettings, parseSettingChange, SETTING_KEY_LIST, SettingsInputError, writeMachineSettings, type SettingChange } from "../core/machineSettingsEdit.ts";
 import { loadUserConfig, UserConfigError, userConfigPath } from "../core/userConfig.ts";
 import { readTheme, ThemeInputError, writeTheme } from "../core/userTheme.ts";
@@ -9,7 +12,44 @@ const USAGE = [
   `p3 user-config set キー=値 ...                    ui.theme=${THEMES.join("|")} / ${SETTING_KEY_LIST.filter((k) => k !== "codex.pathMap").join(" ")}（キー= で消す）`,
   "p3 user-config set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>   パスの対応を足す",
   "p3 user-config set codex.pathMap-=<このマシンのパス>                                パスの対応を外す（codex.pathMap= で全部）",
+  "p3 user-config paths <このマシンのパス> ...       Docker にマウントするときのホストのパスと決め方（変えない）",
 ].join("\n");
+
+/** 動いている場所の説明（このマシンの CLI の出力だけ。共有の記録には残さない） */
+function environmentText(r: HostPathResolution): string {
+  const e = r.environment;
+  if (e.kind === "direct") return "コンテナの外（パスはそのまま渡します。手で書いた対応があればそれを使います）";
+  if (e.kind === "container") return `コンテナの中（自分のコンテナ ${e.containerId.slice(0, 12)} を Docker で確かめました。マウントから決めます）`;
+  return `コンテナの中（自分のコンテナを確かめられません: ${e.detail}）`;
+}
+
+/**
+ * p3 user-config paths: Preflight・描画と同じ設定と決め方で、このマシンのパスが Docker のホストのどこに当たるかを見せる。
+ * 読むだけで、個人設定とデータは変えない。実際のパスはこの出力だけに出す
+ */
+async function pathsCommand(paths: string[], env: Record<string, string | undefined>, path: string): Promise<{ data: unknown; text: string }> {
+  if (!paths.length) throw new UsageError("p3 user-config paths <このマシンのパス> ...（例: p3 user-config paths . ~/p3-data/myapp）");
+  const user = await loadUserConfig(path).catch((e) => {
+    if (e instanceof UserConfigError) throw new UsageError(e.message);
+    throw e;
+  });
+  let pathMap: [string, string][];
+  try {
+    pathMap = resolveMachineSettings(user, env).codex.pathMap;
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  const locals = paths.map((p) => resolve(p));
+  const r = await resolveHostPaths(locals, { pathMap });
+  const lines = [`p3 が動いている場所: ${environmentText(r)}`, ""];
+  for (const p of r.paths) {
+    lines.push(p.local);
+    if (p.ok) lines.push(`  → ${p.host}  ${originText(p, pathMap.length)}${p.origin === "auto" && p.destination ? `（マウント ${p.destination}）` : ""}`);
+    else lines.push(`  × 決められません: ${p.detail}`, `    次にすること: ${p.next}`);
+  }
+  lines.push("", r.ok ? "全部決まりました（Preflight と描画でこのとおりにマウントします）" : "決まらないものがあります。Preflight と描画は、このフォルダを使うときコンテナを起こさずに止まります");
+  return { data: r, text: lines.join("\n") };
+}
 
 /**
  * p3 user-config [set ...]。個人設定（このマシン・この人）のうち、画面のテーマとマシンごとの設定（codex / preflight / serve）を
@@ -36,6 +76,7 @@ export async function userConfigCommand(args: string[], env: Record<string, stri
     ].join("\n");
     return { data: { ui: { theme }, settings: rows, ...(error ? { error } : {}), path }, text };
   }
+  if (sub === "paths") return pathsCommand(pairs, env, path);
   if (sub !== "set" || !pairs.length) throw new UsageError(USAGE);
 
   let theme: string | undefined;

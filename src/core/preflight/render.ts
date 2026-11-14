@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { mapPath, pathMapHowTo } from "./diagnose.ts";
+import { DockerAbortError } from "./docker.ts";
+import { PATHS_CHECK, resolveHostPaths, unresolvedMessage, type HostPathProbe } from "./hostPaths.ts";
 
 const exec = promisify(execFile);
 
@@ -45,7 +47,7 @@ export const RENDER_LIMITS = {
 export class RenderError extends Error {
   constructor(
     message: string,
-    readonly step: "check" | "docker" | "image" | "run" | "timeout" | "cancel",
+    readonly step: "check" | "docker" | "image" | "paths" | "run" | "timeout" | "cancel",
   ) {
     super(message);
   }
@@ -120,6 +122,8 @@ export interface RenderOptions {
   pathMap?: readonly [string, string][];
   /** 使うイメージ（無ければ renderImageTag） */
   image?: string;
+  /** マウントするパスの決め方の差し替え（テスト。既定は実際の OS と docker） */
+  hostProbe?: HostPathProbe;
   signal?: AbortSignal;
   onProgress?: (text: string) => void;
 }
@@ -245,8 +249,23 @@ export async function renderHtml(jobs: RenderJob[], workDir: string, outDir: str
       await chmod(join(tmp, "out"), 0o777);
       for (const j of ok) await writeFile(join(tmp, "in", `${j.id}.html`), j.html);
       await writeFile(join(tmp, "in", "jobs.json"), JSON.stringify(ok.map((j) => ({ id: j.id, file: `${j.id}.html`, width: j.width }))));
-      const host = (p: string) => mapPath(opts.pathMap ?? [], p).host;
-      const args = renderArgs({ image, name, hostIn: host(join(tmp, "in")), hostOut: host(join(tmp, "out")) });
+      // 実際にマウントする一時の in / out を、描画のコンテナを起こす前に決める（1つでも決まらなければ起こさない）
+      let paths: Awaited<ReturnType<typeof resolveHostPaths>>;
+      try {
+        paths = await resolveHostPaths([join(tmp, "in"), join(tmp, "out")], { pathMap: opts.pathMap ?? [], docker, signal: opts.signal, probe: opts.hostProbe });
+      } catch (e) {
+        if (e instanceof DockerAbortError) throw new RenderError("描画を取り消しました", "cancel");
+        throw e;
+      }
+      if (!paths.ok) {
+        const items = [
+          { label: "描画の原稿", result: paths.paths[0] },
+          { label: "描画の出力", result: paths.paths[1] },
+        ];
+        throw new RenderError(unresolvedMessage("描画", items), "paths");
+      }
+      const [hostIn, hostOut] = paths.paths.map((p) => (p.ok ? p.host : ""));
+      const args = renderArgs({ image, name, hostIn, hostOut });
       opts.onProgress?.(`${ok.length} 枚を描画します`);
       const timeoutMs = RENDER_LIMITS.baseTimeoutMs + ok.length * RENDER_LIMITS.perPageTimeoutMs;
       const out = await runProcess(docker, args, { timeoutMs, signal: opts.signal, onStop: () => exec(docker, ["kill", name]).catch(() => {}) });
@@ -290,7 +309,7 @@ export function diagnoseRender(stderr: string, pathMap: readonly [string, string
   if (/bind source path does not exist|invalid mount config|not a directory|no such file or directory/i.test(stderr)) {
     const m = workDir ? mapPath(pathMap, workDir) : undefined;
     return [
-      `描画のコンテナに原稿のフォルダをマウントできません（${last}）。DevContainer の中から使うときは、パスの対応（codex.pathMap）が要ります`,
+      `描画のコンテナに原稿のフォルダをマウントできません（${last}）。Docker のホストから見たパスが違います（このマシンで ${PATHS_CHECK} で確かめられます）`,
       ...pathMapHowTo(m && { label: "描画", local: workDir!, host: m.host, rule: m.rule, container: "/in" }),
     ].join("\n");
   }

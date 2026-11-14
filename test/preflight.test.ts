@@ -1,3 +1,4 @@
+import { mapPath } from "../src/core/preflight/hostPaths.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -422,9 +423,10 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
       ["/workspaces", "/root/workspaces"],
       ["/a", "/b"],
     ]);
-    const e = new CodexWorkspaceEngine(cfg);
-    expect(e.hostPath("/workspaces/p3")).toBe("/root/workspaces/p3");
-    expect(e.hostPath("/workspacesX")).toBe("/workspacesX");
+    expect(mapPath(cfg.pathMap, "/workspaces/p3").host).toBe("/root/workspaces/p3");
+    expect(mapPath(cfg.pathMap, "/workspacesX").host).toBe("/workspacesX");
+    // 同期で読めるパスの変換（自動で決めないもの）をエンジンに持たせない（自動の決定は起動の前に resolveHostPaths で）
+    expect("hostPath" in new CodexWorkspaceEngine(cfg)).toBe(false);
   });
 });
 
