@@ -25,6 +25,8 @@ import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, runnerText, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
+import { guide } from "./guide.ts";
+import { agentsText, diagnoseAgents } from "./agentsStatus.ts";
 import { readsOnly } from "./readOnly.ts";
 import { checkRepeatedRepo, parse, type CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
@@ -103,6 +105,16 @@ async function main(argv: string[]): Promise<number> {
     const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
     return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+  }
+
+  // AI 向けの作業の手順。この CLI に同梱した原本を返すだけで、プロジェクトは決めない（未登録・壊れた定義でも読める）
+  if (cmd === "guide") {
+    if (args.length) throw new UsageError(`guide は位置引数を取りません: ${args.join(" ")}（p3 guide [--json]）`);
+    const g = { ...guide(), agents: diagnoseAgents(cwd) };
+    // 通常の出力は手順の本文だけ（JSON の guide と同じ）。入口に対応が要るときだけ、その要点を標準エラーに出す
+    if (!o.json && !g.agents.ok) process.stderr.write(`p3: 置いた AI 向けの入口: ${agentsText(g.agents).join("\n")}\n`);
+    out.result(g, () => g.guide.trimEnd());
+    return 0;
   }
 
   // AI 向けの使い方を置く・最新にする。今いるリポジトリのルートに置くだけで、プロジェクトは決めない（データ・個人設定は変えない）
@@ -253,7 +265,9 @@ async function main(argv: string[]): Promise<number> {
       // Preflight の担当（AI 向けの手順が読む。読めなければ runner: null と problem。agent と推測しない）
       const pf = runnerView(ctx.ws.project.preflight);
       const preflight = { runner: pf.runner, source: pf.source, ...(pf.problem ? { problem: pf.problem } : {}) };
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight }, () =>
+      // 置いた AI 向けの入口の状態（読むだけ。古くても操作は断らない）
+      const agents = diagnoseAgents(cwd);
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight, agents }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
           `決まり方      ${target.via}（${VIA_LABEL[target.via]}）`,
@@ -261,6 +275,7 @@ async function main(argv: string[]): Promise<number> {
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
           `Preflight     ${runnerText(pf)}`,
+          ...agentsText(agents).map((l, i) => (i ? `              ${l}` : `AI の入口     ${l}`)),
         ].join("\n"),
       );
     }

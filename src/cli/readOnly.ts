@@ -7,6 +7,7 @@ export function readsOnly(cmd: string, args: string[]): boolean {
   const sub = args[0];
   switch (cmd) {
     case "whoami":
+    case "guide":
     case "progress":
     case "ls":
     case "list":

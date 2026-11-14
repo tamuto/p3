@@ -74,8 +74,9 @@ describe("p3 init", () => {
     expect(existsSync(join(root, ".p3", "requests"))).toBe(true);
     const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
     expect(agents).toContain("タスク管理（infodb p3）");
-    expect(agents).toContain("status=resolved"); // 作業を終えたら対応済にする
-    expect(agents).toContain("完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める");
+    // 節は入口だけ（手順の本文は p3 guide から読ませる）
+    expect(agents).toContain("pnpx @infodb/p3 guide --json");
+    expect(agents).toContain("<!-- p3-entry-version: ");
     // サブフォルダから実行しても、スキルはリポジトリのルートに置く
     for (const t of [".claude", ".agents"]) {
       expect(existsSync(join(root, t, "skills", "p3", "SKILL.md"))).toBe(true);
@@ -641,7 +642,7 @@ describe("AI 向けの使い方の置く先（init --agents claude|codex|both・
     writeFileSync(join(deep, "AGENTS.md"), "# rules\n\n### タスク管理（infodb p3）\n\n- 古い\n\n### 次の節\n\n- そのまま\n");
     expect(p3(deep, ["agents", "claude", "--force"]).out).toContain("更新  AI 向けの使い方");
     const text = agentsMd(deep);
-    expect(text).toContain("### タスク管理（infodb p3）\n\n- 作業の単位は要望");
+    expect(text).toContain("### タスク管理（infodb p3）\n\n<!-- p3-entry-version: ");
     expect(text).not.toContain("- 古い\n");
     expect(text).toContain("### 次の節\n\n- そのまま\n");
     // コードの囲みの中の見出しは数えない

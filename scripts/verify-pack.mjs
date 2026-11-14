@@ -6,7 +6,7 @@
 //   1. npm pack（prepack で画面をビルドする）。--tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      init --agents / init --agents codex と p3 agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      guide / init --agents / init --agents codex と p3 agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -86,7 +86,7 @@ try {
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
     // CLI・serve はビルド済みの JavaScript（lib/）。TypeScript のソース（src/）は入れない
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/launcher.mjs", "lib/core/preflight/mock-ui.html"]) {
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/launcher.mjs", "lib/core/preflight/mock-ui.html", "lib/cli/guide.md"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|node_modules\/)/.test(f) || f.endsWith(".ts"));
@@ -128,6 +128,16 @@ try {
     return repo;
   });
 
+  await step("p3 guide（登録の前・配布物の原本と版）", () => {
+    const installed = join(prefix, "node_modules", "@infodb", "p3");
+    const g = p3json(["guide"]);
+    const version = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).version;
+    check(g.schemaVersion === 1 && g.entryVersion === 1, `guide の版が違います: schemaVersion ${g.schemaVersion} / entryVersion ${g.entryVersion}`);
+    check(g.cliVersion === version, `guide の cliVersion（${g.cliVersion}）が入れた版（${version}）と違います`);
+    check(g.guide === readFileSync(join(installed, "lib", "cli", "guide.md"), "utf8"), "guide の手順が配布物の原本（lib/cli/guide.md）と違います");
+    return `cliVersion ${g.cliVersion}・entryVersion ${g.entryVersion}`;
+  });
+
   await step("p3 init --agents", () => {
     p3(["init", "--yes", "--agents", "--project", "sample", "--dir", join(work, "data"), "--description", "検証用"]);
     check(existsSync(join(work, "data", "project.yaml")), "データのフォルダができていません");
@@ -159,7 +169,9 @@ try {
   await step("p3 whoami", () => {
     const w = p3json(["whoami"]);
     check(w.project === "sample", `プロジェクトが違います: ${JSON.stringify(w)}`);
-    return `${w.project} → ${w.dataDir ?? ""}`;
+    // init --agents で置いた入口は、配布物の入口と同じ（最新）と診断される
+    check(w.agents?.ok === true, `置いた入口の診断が最新になっていません: ${JSON.stringify(w.agents)}`);
+    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}`;
   });
 
   let rid = "";

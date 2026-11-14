@@ -21,7 +21,7 @@ describe("npm pack の中身だけで動く", () => {
     execFileSync("tar", ["xzf", tgz, "-C", work]);
     const pkg = join(work, "package");
     // 資材も lib/ に入り、TypeScript のソースは入らない
-    for (const f of ["lib/cli/main.js", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/mock-ui.png", "lib/core/preflight/mock-ui.html", "lib/core/preflight/launcher.mjs"]) {
+    for (const f of ["lib/cli/main.js", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/mock-ui.png", "lib/core/preflight/mock-ui.html", "lib/core/preflight/launcher.mjs", "lib/cli/guide.md"]) {
       expect(existsSync(join(pkg, f)), f).toBe(true);
     }
     expect(existsSync(join(pkg, "src"))).toBe(false);
@@ -40,6 +40,11 @@ describe("npm pack の中身だけで動く", () => {
       return r.stdout;
     };
 
+    // 手順（guide）は配布物に同梱した原本とそのパッケージの版を返す（登録の前でも読める。ソースは使わない）
+    const g = JSON.parse(p3(["guide", "--json"]));
+    expect(g).toMatchObject({ schemaVersion: 1, entryVersion: 1, cliVersion: JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).version });
+    expect(g.guide).toBe(readFileSync(join(pkg, "lib", "cli", "guide.md"), "utf8"));
+    expect(g.guide).toBe(readFileSync(join(ROOT, "src", "cli", "guide.md"), "utf8"));
     p3(["init", "--yes", "--agents", "--project", "sample", "--dir", join(work, "data")]);
     const original = readFileSync(join(ROOT, "skills", "p3", "SKILL.md"), "utf8");
     for (const dir of [".claude", ".agents"]) {
