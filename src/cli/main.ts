@@ -25,6 +25,7 @@ import { chatgptCommand } from "./chatgpt.ts";
 import { table } from "./format.ts";
 import { config, currentRequest, init, isAgentChoice, joinProject, locateHere, placeAgents, projectCommand, repoCommand, repoRoot, resolveActor, runnerText, UsageError } from "./project.ts";
 import { HELP } from "./help.ts";
+import { guide } from "./guide.ts";
 import { readsOnly } from "./readOnly.ts";
 import { checkRepeatedRepo, parse, type CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
@@ -103,6 +104,14 @@ async function main(argv: string[]): Promise<number> {
     const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
     return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+  }
+
+  // AI 向けの作業の手順。この CLI に同梱した原本を返すだけで、プロジェクトは決めない（未登録・壊れた定義でも読める）
+  if (cmd === "guide") {
+    if (args.length) throw new UsageError(`guide は位置引数を取りません: ${args.join(" ")}（p3 guide [--json]）`);
+    const g = guide();
+    out.result(g, () => g.guide.trimEnd());
+    return 0;
   }
 
   // AI 向けの使い方を置く・最新にする。今いるリポジトリのルートに置くだけで、プロジェクトは決めない（データ・個人設定は変えない）

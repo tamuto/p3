@@ -1382,6 +1382,23 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 `p3 agents <先>` で違いを確かめ、`--force` で選んだ先のスキルと p3 の節だけを同梱の版にする（節の前後の文は残す。節が複数・
 見出しになっていなければ変えずに手で整理してもらう）。
 
+### 作業の手順（`p3 guide`）
+
+置いたスキル・節は人が更新しないと古いまま残るので、手順の本文は実行中の CLI から読めるようにする（`src/cli/guide.ts`）。
+
+- 原本は CLI と一緒に配る `src/cli/guide.md` の1つ（配布物では `scripts/build-cli.mjs` が写した `lib/cli/guide.md`）。毎回この原本を
+  読んで返し、写しを持たない。オプションなしは本文、`--json` は `{ schemaVersion, cliVersion, entryVersion, guide }`
+- `schemaVersion` は JSON の形の版（`GUIDE_SCHEMA_VERSION`）。`cliVersion` は同梱の `package.json` の版で、最新かどうかの判断には
+  使わない（npm に問い合わせない）。`entryVersion`（`ENTRY_VERSION`。正の整数）は入口（置いたスキル・節）の決まりの版で、起動の
+  しかた・読み込みの約束など入口に書くことを変えたときだけ上げる。手順の本文を直しただけでは上げない
+- プロジェクトを決める前に扱う（`cli/main.ts`。`agents` と同じ位置）。未登録・登録が複数・壊れた個人設定や `project.yaml` でも
+  共通の手順を返す。対象の確かめ方（`whoami` と `via`）は手順の中に書き、`guide` 自身は対象を推測して操作しない
+- 読むだけ（`cli/readOnly.ts`）。データ・個人設定・置いたファイルを変えず、Codex・Docker・npm を呼ばない（`test/guide.test.ts`）
+- 手順の呼び方は `pnpx @infodb/p3` を先にし、手順の中の `p3 <コマンド>` は「手順を取得したときと同じ呼び方」と決める
+  （全体に入れた古い `p3` へ切り替えさせない）
+- 決まり（役割・終わり方）の検査は `test/agents.test.ts` が原本と同梱のスキルの両方に掛ける。配布物で同じ原本と版を返すことは
+  `test/pack.test.ts` と `scripts/verify-pack.mjs`
+
 ```markdown
 ## タスク管理（infodb p3）
 

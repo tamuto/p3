@@ -15,6 +15,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                --agents claude|codex|both  AI 向けの使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（値を省くと both。付けなければ置かない）
   agents claude|codex|both [--force]  AI 向けの使い方を、今いるリポジトリに後から置く・最新にする（選んだ先だけ。データ・個人設定は変えない）
                                違うものは上書きせず知らせる。--force で選んだ先のスキルと p3 の節だけを同梱の版にする（ほかの文は残す）
+  guide                        AI エージェント向けの作業の手順（この CLI に同梱した版）を出す。プロジェクトを決めず、何も変えない
+                               --json で schemaVersion・cliVersion（実行中の版）・entryVersion（入口の決まりの版）・guide（手順の全文）
   join                         既にあるプロジェクト（共有されたデータのフォルダ）に参加する。個人設定に登録するだけで、データ・リポジトリのファイルは変えない
                                --project 名前 --dir フォルダ（既定はリポジトリのルートの .p3）--repo-name 参照先の名前（共有の定義にあるもの）--yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト

@@ -186,6 +186,7 @@ suspicious カテゴリの一括（JSX で要らない `react-in-jsx-scope` な�
 src/                 依存の向き: shared ← core ← server / cli、web → shared（test/layers.test.ts で確かめる）
   shared/            型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
   cli/               p3 CLI（core でファイルを直接操作。serve でサーバも起動する）
+    guide.md         AI 向けの作業の手順の原本（p3 guide が返す。ビルドで lib/cli/ に写す）
     main.ts          振り分け・プロジェクトと変更者と今の要望の決定・終了コード
     taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は core/requestOps.ts を通す）
     args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
@@ -320,4 +321,5 @@ serve になること。本物の Codex（ソケット・pathMap・ChatGPT の�
 
 同じ説明を複数の文書に書かない（片方からリンクする）。確認作業の記録（どの幅・どのブラウザで確かめたか）は文書に書かず、
 PR とタスクの変更の記録に残す。CLI のヘルプ（`src/cli/help.ts`）・API の説明（`src/server/api/manifest.ts`）は入口が変わったとき、
-AI の手順が変わったときは `skills/p3/SKILL.md` と `src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）の両方を直す。
+AI の手順が変わったときは、手順の原本 `src/cli/guide.md`（`p3 guide` が返す）と、`skills/p3/SKILL.md`・`src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）を直す
+（スキルと節を入口だけにするまでは、スキルにも同じ手順の全文がある。決まりは `test/agents.test.ts` が両方で確かめる）。
