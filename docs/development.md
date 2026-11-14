@@ -58,16 +58,23 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   XDG_CONFIG_HOME=$TMP/cfg node <このチェックアウト>/bin/p3.mjs init --yes --agents --project sample --dir $TMP/data
   # ルート・サブフォルダ・other/ のそれぞれで、スキルの一覧と場所を聞く（p3 は .agents/skills/p3/SKILL.md、other/ では出ない）
   codex exec --ephemeral --ignore-user-config -s read-only "List every skill available to you with its SKILL.md path. Also quote what each skill root alias (r0, r1) maps to."
-  # $p3 を明示して、本文だけにあること（whoami --json の via の確認・Preflight と accept は人）を引用させる
-  codex exec --ephemeral --ignore-user-config -s read-only '$p3 Do not run p3. Quote what the skill says to check first and who runs Preflight and accept.'
+  # $p3 を明示して、入口が最初に実行させるもの（pnpx @infodb/p3 guide --json）と、取れないときに止まることを引用させる
+  codex exec --ephemeral --ignore-user-config -s read-only '$p3 Do not run anything. Quote what the skill says to run first and what to do if that fails.'
   ```
 
+  スキルの frontmatter の `metadata`（入口の版 `p3-entry-version`）があっても一覧に出ることも、ここで確かめる。
   個人のスキル（`~/.agents/skills`・`/etc/codex/skills`）と `~/.codex/config.toml` の `[[skills.config]]` に p3 が無いことを先に確かめる。
   Codex がスキルを探す場所は公式の文書（<https://developers.openai.com/codex/skills/> の「Where Codex loads local skills」）
+- 入口から手順を読む流れ（入口 → `pnpx @infodb/p3 guide --json` → `whoami --json`）を本物のエージェントが辿るかは、テストでは確かめ
+  られない。入口（`skills/p3/SKILL.md`・`agentsSnippet`）か `ENTRY_VERSION` を変えたときは、一時フォルダのプロジェクトに入口を置いて
+  Claude Code・Codex に p3 の作業（「進捗を見せて」など）を頼み、guide を読んでから whoami に進むこと、古い入口（前の全文のスキル）に
+  したときは `agents` の状態を人に伝えて自分で `p3 agents` を実行しないことを確かめる。入口は公開版（`pnpx @infodb/p3`）を呼ぶので、
+  `guide` を含む版を公開する前は guide が取れない（前の版にはコマンドが無い）。その間は「取れなければ p3 を操作せず、エラーと呼び方を
+  伝えて終える」ことだけを確かめ、取れたときの流れは公開した後に確かめる（版と結果はタスクの変更の記録に残す。確かめられなければ未検証と書く）
 - 手元の対話エージェントの Preflight（`--prepare` / `--complete`）は、CLI と取り込みを別プロセスのテストで確かめる
-  （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が同梱のスキルを見つけて
-  担当（`preflight.runner`）どおりに依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。担当で分けた節の書き方の
-  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。スキルの Preflight の
+  （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が入口のスキルから手順（`p3 guide`）を読んで
+  担当（`preflight.runner`）どおりに依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。担当で分けた手順の書き方の
+  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。手順（`src/cli/guide.md`）の Preflight の
   節や指示の形を変えたときは、一時フォルダのプロジェクト（`init --agents claude --preflight-runner agent`）を Claude Code で開き、
   親と子の要望を作って「要望 <ID> の Preflight をして」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、
   依頼の無い登録では始めないことを確かめる。`p3 config set preflight.runner=codex` に変えて、「Preflight して」とだけ頼むと聞き返すこと、
@@ -205,7 +212,7 @@ src/                 依存の向き: shared ← core ← server / cli、web →
     routeTree.gen.ts ルート一覧（自動生成）
     components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
 bin/p3.mjs           CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
-skills/p3/SKILL.md   AI 向けスキルの原本（p3 init --agents / p3 agents で各プロジェクトの .claude/skills・.agents/skills の選んだ先に写す）
+skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）
 scripts/             デモデータ・配布物の確認・使い方の動画（video/）
 docs/                導入・使い方・開発・設計・公開の文書
 test/                ユニットテスト
@@ -321,5 +328,6 @@ serve になること。本物の Codex（ソケット・pathMap・ChatGPT の�
 
 同じ説明を複数の文書に書かない（片方からリンクする）。確認作業の記録（どの幅・どのブラウザで確かめたか）は文書に書かず、
 PR とタスクの変更の記録に残す。CLI のヘルプ（`src/cli/help.ts`）・API の説明（`src/server/api/manifest.ts`）は入口が変わったとき、
-AI の手順が変わったときは、手順の原本 `src/cli/guide.md`（`p3 guide` が返す）と、`skills/p3/SKILL.md`・`src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`）を直す
-（スキルと節を入口だけにするまでは、スキルにも同じ手順の全文がある。決まりは `test/agents.test.ts` が両方で確かめる）。
+AI の手順が変わったときは手順の原本 `src/cli/guide.md`（`p3 guide` が返す）の1か所を直す。置く入口（`skills/p3/SKILL.md` と
+`src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`））は、入口に書くこと（呼び方・読み込みの約束）を変えたときだけ両方を直し、
+`src/cli/guide.ts` の `ENTRY_VERSION` を上げる（手順の本文だけの改訂では上げない。`test/agents.test.ts` が確かめる）。

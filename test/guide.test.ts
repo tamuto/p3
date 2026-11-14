@@ -38,7 +38,9 @@ describe("p3 guide（AI エージェント向けの作業の手順）", () => {
     const r = p3(here, ["guide", "--json"]);
     expect(r.code, r.err).toBe(0);
     const j = JSON.parse(r.out) as Record<string, unknown>;
-    expect(Object.keys(j).sort()).toEqual(["cliVersion", "entryVersion", "guide", "schemaVersion"]);
+    expect(Object.keys(j).sort()).toEqual(["agents", "cliVersion", "entryVersion", "guide", "schemaVersion"]);
+    // 入口の診断も同じ JSON に（何も置いていない場所なので未配置）
+    expect(j.agents).toMatchObject({ root: here, placed: false, ok: false, entries: [], expectedVersion: ENTRY_VERSION });
     expect(j).toMatchObject({ schemaVersion: GUIDE_SCHEMA_VERSION, cliVersion: PKG.version, entryVersion: ENTRY_VERSION });
     expect(Number.isInteger(j.entryVersion) && (j.entryVersion as number) > 0).toBe(true);
     // 省かずに原本の全文
@@ -96,6 +98,35 @@ describe("p3 guide（AI エージェント向けの作業の手順）", () => {
     }
     expect({ repo: snapshot(root), config: snapshot(config) }).toEqual(before);
     expect(existsSync(marker)).toBe(false);
+  });
+});
+
+describe("whoami と guide の入口の診断（agents）", () => {
+  it("同じ診断を返し、古い入口があっても whoami の対象の情報は隠さず、通常の出力にも要点と次の操作が出る", () => {
+    const root = tempDir("p3-guide-whoami-");
+    gitInit(root);
+    const config = tempDir("p3-guide-whoami-config-");
+    const env = { XDG_CONFIG_HOME: config };
+    expect(p3(root, ["init", "--yes", "--agents", "claude", "--project", "sample"], env).code).toBe(0);
+    const fresh = JSON.parse(p3(root, ["whoami", "--json"], env).out);
+    expect(fresh).toMatchObject({ project: "sample", via: "cwd", agents: { ok: true, placed: true } });
+
+    // 前の p3 の全文のスキルにする
+    writeFileSync(join(root, ".claude", "skills", "p3", "SKILL.md"), "---\nname: p3\ndescription: 前の版\n---\n\n# 全文\n");
+    const who = JSON.parse(p3(root, ["whoami", "--json"], env).out);
+    const g = JSON.parse(p3(root, ["guide", "--json"], env).out);
+    expect(who.agents).toEqual(g.agents);
+    expect(who).toMatchObject({ project: "sample", via: "cwd" });
+    expect(who.agents.entries).toContainEqual(expect.objectContaining({ path: ".claude/skills/p3/SKILL.md", status: "outdated" }));
+
+    const text = p3(root, ["whoami"], env);
+    expect(text.out).toContain("プロジェクト  sample");
+    expect(text.out).toMatch(/AI の入口 +対応が必要/);
+    expect(text.out).toContain("pnpx @infodb/p3 agents claude --force");
+    // guide の通常の出力は手順だけ。入口の要点は標準エラー
+    const plain = p3(root, ["guide"], env);
+    expect(plain.out.trimEnd()).toBe(source.trimEnd());
+    expect(plain.err).toContain("置いた AI 向けの入口");
   });
 });
 

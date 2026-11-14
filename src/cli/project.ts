@@ -18,6 +18,7 @@ import { requestWorkstreams } from "../shared/workTarget.ts";
 import type { ProjectPatch, Workspace } from "../core/store/workspace.ts";
 import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, runnerView, type PreflightRunner, type RunnerView } from "../shared/preflightRunner.ts";
 import { DATA_DIR_NAME } from "../core/store/locate.ts";
+import { ENTRY_VERSION } from "./guide.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "../core/userConfig.ts";
 
@@ -110,7 +111,7 @@ export function currentRequest(ctx: P3Context, explicit: string | undefined, cwd
 const DOC_CANDIDATES = ["docs", "doc", "README.md", "ARCHITECTURE.md", "DESIGN.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
 const DOC_ENTRIES = ["README.md", "index.md"];
 
-const AGENTS_MARK = "タスク管理（infodb p3）";
+export const AGENTS_MARK = "タスク管理（infodb p3）";
 
 /** AI 向けの使い方を置く先（リポジトリのルートからの相対パス。どれも同じ原本 skills/p3/SKILL.md を写す） */
 export const AGENT_TARGETS = {
@@ -122,11 +123,14 @@ export type AgentKind = keyof typeof AGENT_TARGETS;
 export const AGENT_CHOICES = { claude: ["claude"], codex: ["codex"], both: ["claude", "codex"] } as const satisfies Record<string, readonly AgentKind[]>;
 export type AgentChoice = keyof typeof AGENT_CHOICES;
 export const isAgentChoice = (v: unknown): v is AgentChoice => typeof v === "string" && Object.hasOwn(AGENT_CHOICES, v);
-const KINDS = Object.keys(AGENT_TARGETS) as AgentKind[];
+export const KINDS = Object.keys(AGENT_TARGETS) as AgentKind[];
+
+/** 節の入口の版を書く機械可読のコメント（ENTRY_VERSION。見出しの次の行） */
+export const ENTRY_COMMENT = (v: number) => `<!-- p3-entry-version: ${v} -->`;
 
 /**
- * AGENTS.md / CLAUDE.md に書く指示（節）。スキルの参照は、置いた先（と既にある先）だけを書く。手順の詳しい版は同梱のスキル
- * （skills/p3/SKILL.md）で、役割と終わり方はそちらとそろえる（test/agents.test.ts が確かめる）
+ * AGENTS.md / CLAUDE.md に書く指示（節）。入口だけで、手順の本文は CLI（p3 guide）から読ませる。
+ * スキルの参照は、置いた先（と既にある先）だけを書く。入口の決まりを変えたら ENTRY_VERSION を上げる（test/agents.test.ts が確かめる）
  */
 export function agentsSnippet(kinds: readonly AgentKind[]): string {
   const list = KINDS.filter((k) => kinds.includes(k));
@@ -134,28 +138,11 @@ export function agentsSnippet(kinds: readonly AgentKind[]): string {
   return `
 ## ${AGENTS_MARK}
 
-- 作業の単位は要望。タスクは \`p3\` CLI（入っていなければ \`pnpx @infodb/p3\`）で操作し、\`--json\` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順はスキル ${skills}
-- 変更するときは環境変数 \`P3_ACTOR=ai:<エージェント名>\` を付ける
-- 操作する要望は \`--req <要望ID>\` で指定する（要望の作業ツリーの中なら省ける）。まず \`p3 whoami --json\` で確かめる（Preflight の担当 \`preflight.runner\` も出る）
-- \`whoami\` の \`via\`（プロジェクトの決まり方）が \`cwd\` でなければ（\`dir\` / \`project\` / \`legacy\` / \`only\`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した \`--project\` / \`--dir\` で避けない。人が指定・確認した後はその対象のまま続ける）
-- プロジェクトが無い・未登録のときは \`p3 init\` / \`p3 join\` を自分から実行せず、新しく作る（\`init\`）のか共有されたものに参加する（\`join\`）のかを人に確かめる
-- 新しい作業を頼まれたら \`p3 request new "<タイトル>" --body "..."\` で要望を登録し、ID を伝えて終える。
-  Preflight（\`preflight\`）は自分から始めない（勧めない・尋ねない）。タスク化（\`accept\`）は人が行う（結果を \`p3 drafts\` で読むのと、頼まれたメモの保存 \`--note-only\` はよい）
-- Preflight を頼まれたら、担当（\`whoami --json\` の \`preflight.runner\`）で分ける。\`codex\`: 人が \`p3 preflight\` か画面で実行する（AI は \`--prepare\` の無い \`p3 preflight\` をしない）。人がチャットで対象の要望の手元の評価を明示的に頼んだときだけ手元で評価し、「Preflight して」とだけなら、人が実行するのか手元で評価するのかを確かめる。\`agent\`: 人に「Preflight して」と頼まれたら手元で評価する（「このチャットで」は求めない）。\`null\`（読めない）: \`agent\` と推測せず \`problem\` を伝え、\`codex\` と同じ扱い。子の要望も同じ。対象の要望が分からなければ確かめる
-- 手元の評価: \`p3 preflight <要望ID> --prepare --json\` → 返った指示のファイル（\`instructions\`）を最後まで読み、書くのは返った run の成果物（\`outputs\`）だけ → \`p3 preflight <要望ID> --complete --run <run> --json\` → \`p3 drafts\` の結果を伝えて終える（自分から始めない。タスク化 \`accept\` と着手はしない）
-- 着手する前に \`p3 show T003 --brief --json\` で本文・依存とその状態（\`dependencies\`）・置き換えの注意（\`warnings\`）を読む
-- 着手する前に、\`--brief --json\` の \`work\`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
-- 着手するときは \`p3 move T003 doing\`。テストを通したら、コミットする前に \`p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -\` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）
-- 受け入れ基準（\`--brief --json\` の \`item.acceptanceCriteria\`）があれば着手する前に読み、完了するときに基準ごとの証拠を \`--evidence-file evidence.md\`（見出し \`## A1 met\` ごとに通したテスト・コマンドと結果・確かめたこと）で残す。\`[Q1]\` で始まる基準はプロジェクトの品質基準で、その検査は自分で実行してコマンド・参照先とコミット（未コミットならそう書く）・結果・範囲を証拠に書く（P3 が実行したとは書かない）。満たせなかった・確かめていない項目は \`unmet\` / \`unverified\` と理由を正直に書き（推測で \`met\` にしない）、未達・未検証を残して完了にしたら人に伝える。証拠は自分の申告で、済みにするかは人が決める。基準を自分で消す・書き換えて満たしたことにしない
-- 要望のタスクを全部終えたら、コミットする前に \`p3 request set <要望ID> status=resolved\`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
-- 子の要望（\`parent\` のある要望）は、親とは別の要望として子ごとのタスクとブランチで作業する（親のタスクにしない）。分割の案の採用（\`accept\`）は人が行う。子の Preflight は親と同じ担当で、頼まれたときだけ（分割の採用・子の作成から自分で評価へ進まない）。親を対応済にするのは、親のタスクと見送り以外の子（\`request show <親> --brief --json\` の \`children\`）が全部終わってから
-- データのフォルダがこの作業ツリーの中で git 管理されているなら、要望のフォルダ（\`requests/<要望ID>/\`）の変更も実装と同じコミットに入れる（後のレビューで要望とやったことを精査するため。子なら祖先の要望のフォルダ、親を対応済にするときは子孫の要望のフォルダ（見送りの子など）のまだ入っていない変更も入れ、ほかの要望・関係ない変更は入れない。外・無視・worktree のときは入らないので、移動や \`git add -f\` はしない）。push に失敗したら完了の記録は残し、公開できていないことを伝える。要望のフォルダは、マージするまで要望のブランチにしか無い。既定のブランチに切り替えると、その要望（子なら親の子の一覧からも）が消えたように見えるが、データはブランチにある（作り直したり、別のブランチから写したりしない）
-- コミットや PR の URL は後から \`p3 move T003 done --output <URL>\` で足す（完了・記録はそのまま。データをコミットしているなら追記もコミットして push）。複数のリポジトリにまたがるときは最後のタスクに \`--repo-output <参照先>=<PR の URL>\` で全部の PR を残す
-- タスクの AI レビュー（\`p3 review\`）は頼まれずに始めない（Codex を使う）。結果を理由に済みにしたり基準・証拠を書き換えたりしない
-- 置き換えられたタスク（\`p3 ls\` の \`※置換\`、\`--json\` の \`superseded\`）からは始めない。\`move\` が \`warnings\` を返したら止めて人に確かめる
-- 人の判断・権限が要る・前提が崩れた・テストが通らず先に進めないなどでタスクを続けられなくなったら、\`p3 block T003 --reason "<具体的な理由>" --decision "<人に決めてほしいこと>" --json\` で止まっている理由を付け（通常の修正・調査の途中では使わない）、JSON の \`block\` で保存できたことを確かめてから、理由・いつから・答えてほしいこと・再開のしかたを人に伝えて作業を終える（止まったまま完了・済み・対応済に進めない。基準や証拠を書き換えない）。回答を受けたら \`p3 unblock T003 --resolution "<回答>"\` で解除して再開する（解除だけでは再開しない。人が先に解除していたら履歴の回答を読んで確かめる）
-- 作業中に新しく必要になった作業は \`p3 new "<タイトル>" --body "..."\` でタスクにする（人への質問はタスクにしない）
+${ENTRY_COMMENT(ENTRY_VERSION)}
+
+- このリポジトリの作業は infodb p3 の要望とタスクで管理する。p3 を操作する前に \`pnpx @infodb/p3 guide --json\` を実行し、返った \`guide\`（作業の手順）を最後まで読んで従う（手順は動いている CLI の版のものが返る。ここには写さない）
+- \`guide\` を取得できなければ（コマンドが無い・エラーになる・JSON が読めない）、p3 を操作しない。出たエラーと呼び方（\`pnpx @infodb/p3 guide --json\`）を人に伝えて終える
+- 同じ入口のスキル: ${skills}
 `;
 }
 
@@ -177,7 +164,7 @@ function firstDiffLine(a: string, b: string): number {
 }
 
 /** 指示の節（見出し「タスク管理（infodb p3）」からその見出しと同じか上の段の次の見出しの前まで。コードの囲みの中は見出しに数えない） */
-function findSections(text: string): { start: number; end: number; level: number }[] {
+export function findSections(text: string): { start: number; end: number; level: number }[] {
   const lines = text.split("\n");
   const heads: { line: number; level: number; mark: boolean }[] = [];
   let fence = false;

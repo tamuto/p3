@@ -169,7 +169,9 @@ try {
   await step("p3 whoami", () => {
     const w = p3json(["whoami"]);
     check(w.project === "sample", `プロジェクトが違います: ${JSON.stringify(w)}`);
-    return `${w.project} → ${w.dataDir ?? ""}`;
+    // init --agents で置いた入口は、配布物の入口と同じ（最新）と診断される
+    check(w.agents?.ok === true, `置いた入口の診断が最新になっていません: ${JSON.stringify(w.agents)}`);
+    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}`;
   });
 
   let rid = "";

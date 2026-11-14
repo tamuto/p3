@@ -1370,24 +1370,63 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
    ファイル内容のハッシュによる楽観ロックに変えれば、`rev` をファイルに書かずに済む。要望単位で人が排他するので優先度は低い（今後）
 3. **git を使わないメンバー。** 閲覧だけなら、静的な HTML に書き出して共有する（`p3 export`、今後）
 
-## AI エージェントへの指示（`p3 init --agents` / `p3 agents` で AGENTS.md / CLAUDE.md に足す節）
+## AI エージェントへの指示（`p3 init --agents` / `p3 agents` で置く入口）
 
-手順の詳しい版は同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
-`codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `src/cli/project.ts` の `AGENT_TARGETS`、
-選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）で、役割と終わり方は両方でそろえる
-（`src/cli/project.ts` の `agentsSnippet`。節のスキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`。
-`test/agents.test.ts` が確かめる）。置き先を覚えておく共有の設定は持たない（参加の `join` は置かず、置く・最新にするのは人が明示する
-`p3 agents` だけなので、消した先が戻らない）。
-既にあるスキル・節は上書きしないので、原本を変えても各プロジェクトに置いたものには届かない。変えたときは、置いたプロジェクトで
-`p3 agents <先>` で違いを確かめ、`--force` で選んだ先のスキルと p3 の節だけを同梱の版にする（節の前後の文は残す。節が複数・
-見出しになっていなければ変えずに手で整理してもらう）。
+各プロジェクトに置くのは **入口** だけにし、手順の本文は実行中の CLI から読ませる（`p3 guide`）。置いたファイルは人が更新しないと
+古いまま残る（原本を変えても届かない）が、CLI は `pnpx @infodb/p3` で新しいものが使われるので、手順は CLI の版に合ったものになる。
+
+- 入口は2つ。同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
+  `codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `src/cli/project.ts` の `AGENT_TARGETS`、
+  選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）と、AGENTS.md（無ければ CLAUDE.md）の「タスク管理（infodb p3）」の節
+  （`src/cli/project.ts` の `agentsSnippet`。スキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`）
+- 入口に書くのは、いつ使うか（スキルの `description`）・`pnpx @infodb/p3 guide --json` の `guide` を最後まで読んで従うこと・取得
+  できなければ p3 を操作せずエラーと呼び方を人に伝えて終えることだけ。入口の古さの伝え方・`whoami` での対象の確かめ方・更新の
+  しかたは手順（guide）の側に書く
+- 入口の版（`ENTRY_VERSION`。`src/cli/guide.ts`。正の整数）を、スキルは frontmatter の `metadata.p3-entry-version`（Agent Skills の
+  `metadata` は文字列の対応なので `"1"`）、節は見出しの次の行のコメント `<!-- p3-entry-version: 1 -->` に持たせる。入口に書くこと
+  （呼び方・読み込みの約束）を変えたときだけ上げ、手順の本文の改訂では上げない。JSON の `schemaVersion`・CLI の `cliVersion` とは別
+- 置き先を覚えておく共有の設定は持たない（参加の `join` は置かず、置く・最新にするのは人が明示する `p3 agents` だけなので、消した先が
+  戻らない）。既にあるスキル・節は上書きせず、`--force` で選んだ先のスキルと p3 の節だけを同梱の版にする（節の前後の文は残す。
+  節が複数・見出しになっていなければ変えずに手で整理してもらう）。書く先はメインの作業ツリー（`repoRoot`）
+- 検査（`test/agents.test.ts`）: 入口は版・取得の指示・止まり方を持ち、手順の本文を写していない（短い）こと。手順の決まり（役割・
+  終わり方）は guide の原本に掛ける。下の写しは `AGENTS_SNIPPET` と同じ
+
+```markdown
+## タスク管理（infodb p3）
+
+<!-- p3-entry-version: 1 -->
+
+- このリポジトリの作業は infodb p3 の要望とタスクで管理する。p3 を操作する前に `pnpx @infodb/p3 guide --json` を実行し、返った `guide`（作業の手順）を最後まで読んで従う（手順は動いている CLI の版のものが返る。ここには写さない）
+- `guide` を取得できなければ（コマンドが無い・エラーになる・JSON が読めない）、p3 を操作しない。出たエラーと呼び方（`pnpx @infodb/p3 guide --json`）を人に伝えて終える
+- 同じ入口のスキル: `.claude/skills/p3/SKILL.md`（Claude Code）・`.agents/skills/p3/SKILL.md`（Codex）。中身は同じ
+```
+
+### 置いた入口の診断（`agents`）
+
+`whoami --json` と `guide --json` は、同じ診断（`src/cli/agentsStatus.ts` の `diagnoseAgents`）を `agents` に返す。読むだけで、
+古くても操作を断らず、書き換えもしない（更新は人が `p3 agents` で行う。AI は伝えるだけ。手順の「置いた入口の状態」）。
+
+- 調べるのは今いる git の作業ツリーのルート（git 管理外は今いる場所）の、両方のスキルと AGENTS.md / CLAUDE.md の両方の節だけ
+  （全リポジトリ・個人のスキルの場所は見ない）。追加の作業ツリーで調べたときは、書く先（メインの作業ツリー）を `writeRoot` に出し、
+  更新したものをそのブランチへ取り込むよう案内する
+- 形: `{ root, writeRoot?, expectedVersion, placed, ok, entries: [{ path, kind, target?, primary?, version, status, reason }], advice, problem? }`。
+  `primary` は節が `p3 agents` の書く文書（AGENTS.md があればそれ）か、ほかで見つかった節か
+- 状態: `current`（版が同じで同梱の入口と同じ。改行の違い・見出しの段・節の参照するスキルの組み合わせは許す）・`outdated`（版が小さい・
+  版の無い前の p3 の全文）・`missing`・`modified`（版は同じで中身が違う。手で直した可能性を正常と断定しない）・`newer`（CLI より新しい版）・
+  `unknown`（版が読めない・節が複数・見出しでない・p3 のスキルの形でない）・`unreadable`
+- 欠けた片方を必須にしない: スキルは、節が参照している・既にあるものだけを調べる（無ければ `missing`）。スキルはあるのに節がどこにも
+  無ければ節を `missing`。何も無ければ `placed: false` で、人が先を選んで置くよう案内する
+- 案内（`advice`）: `outdated` は差分を確かめてから `--force`、`modified`・`newer`・`unknown` には `--force` を勧めない（`newer` は古い CLI で
+  動いていないかを確かめる）。実行している版はローカルの `cliVersion` で示し、最新版の照会や起動経路の推測で古い全体インストールと断定しない
+- 診断が失敗しても `problem` に入れて返し、`whoami` の対象の情報や guide の本文は隠さない。通常の出力では、`whoami` は「AI の入口」の
+  行に、`guide` は対応が要るときだけ標準エラーに要点と次の操作を出す
 
 ### 作業の手順（`p3 guide`）
 
 置いたスキル・節は人が更新しないと古いまま残るので、手順の本文は実行中の CLI から読めるようにする（`src/cli/guide.ts`）。
 
 - 原本は CLI と一緒に配る `src/cli/guide.md` の1つ（配布物では `scripts/build-cli.mjs` が写した `lib/cli/guide.md`）。毎回この原本を
-  読んで返し、写しを持たない。オプションなしは本文、`--json` は `{ schemaVersion, cliVersion, entryVersion, guide }`
+  読んで返し、写しを持たない。オプションなしは本文、`--json` は `{ schemaVersion, cliVersion, entryVersion, guide, agents }`（`agents` は上の診断）
 - `schemaVersion` は JSON の形の版（`GUIDE_SCHEMA_VERSION`）。`cliVersion` は同梱の `package.json` の版で、最新かどうかの判断には
   使わない（npm に問い合わせない）。`entryVersion`（`ENTRY_VERSION`。正の整数）は入口（置いたスキル・節）の決まりの版で、起動の
   しかた・読み込みの約束など入口に書くことを変えたときだけ上げる。手順の本文を直しただけでは上げない
@@ -1396,32 +1435,6 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 読むだけ（`cli/readOnly.ts`）。データ・個人設定・置いたファイルを変えず、Codex・Docker・npm を呼ばない（`test/guide.test.ts`）
 - 手順の呼び方は `pnpx @infodb/p3` を先にし、手順の中の `p3 <コマンド>` は「手順を取得したときと同じ呼び方」と決める
   （全体に入れた古い `p3` へ切り替えさせない）
-- 決まり（役割・終わり方）の検査は `test/agents.test.ts` が原本と同梱のスキルの両方に掛ける。配布物で同じ原本と版を返すことは
+- 決まり（役割・終わり方）の検査は `test/agents.test.ts` が原本に掛ける。配布物で同じ原本と版を返すことは
   `test/pack.test.ts` と `scripts/verify-pack.mjs`
 
-```markdown
-## タスク管理（infodb p3）
-
-- 作業の単位は要望。タスクは `p3` CLI（入っていなければ `pnpx @infodb/p3`）で操作し、`--json` で結果を読むこと（データのフォルダを直接編集しない）。
-  詳しい手順はスキル `.claude/skills/p3/SKILL.md`（Claude Code）・`.agents/skills/p3/SKILL.md`（Codex）。中身は同じ
-- 変更するときは環境変数 `P3_ACTOR=ai:<エージェント名>` を付ける
-- 操作する要望は `--req <要望ID>` で指定する（要望の作業ツリーの中なら省ける）。まず `p3 whoami --json` で確かめる（Preflight の担当 `preflight.runner` も出る）
-- `whoami` の `via`（プロジェクトの決まり方）が `cwd` でなければ（`dir` / `project` / `legacy` / `only`）、それ以上 p3 を操作せず、対象のプロジェクトでよいか人に確かめる（推測した `--project` / `--dir` で避けない。人が指定・確認した後はその対象のまま続ける）
-- プロジェクトが無い・未登録のときは `p3 init` / `p3 join` を自分から実行せず、新しく作る（`init`）のか共有されたものに参加する（`join`）のかを人に確かめる
-- 新しい作業を頼まれたら `p3 request new "<タイトル>" --body "..."` で要望を登録し、ID を伝えて終える。
-  Preflight（`preflight`）は自分から始めない（勧めない・尋ねない）。タスク化（`accept`）は人が行う（結果を `p3 drafts` で読むのと、頼まれたメモの保存 `--note-only` はよい）
-- Preflight を頼まれたら、担当（`whoami --json` の `preflight.runner`）で分ける。`codex`: 人が `p3 preflight` か画面で実行する（AI は `--prepare` の無い `p3 preflight` をしない）。人がチャットで対象の要望の手元の評価を明示的に頼んだときだけ手元で評価し、「Preflight して」とだけなら、人が実行するのか手元で評価するのかを確かめる。`agent`: 人に「Preflight して」と頼まれたら手元で評価する（「このチャットで」は求めない）。`null`（読めない）: `agent` と推測せず `problem` を伝え、`codex` と同じ扱い。子の要望も同じ。対象の要望が分からなければ確かめる
-- 手元の評価: `p3 preflight <要望ID> --prepare --json` → 返った指示のファイル（`instructions`）を最後まで読み、書くのは返った run の成果物（`outputs`）だけ → `p3 preflight <要望ID> --complete --run <run> --json` → `p3 drafts` の結果を伝えて終える（自分から始めない。タスク化 `accept` と着手はしない）
-- 着手する前に `p3 show T003 --brief --json` で本文・依存とその状態（`dependencies`）・置き換えの注意（`warnings`）を読む
-- 着手する前に、`--brief --json` の `work`（作業先のリポジトリとブランチ）を見て、そのリポジトリでブランチに入る（作業先なしなら移動しない）
-- 着手するときは `p3 move T003 doing`。テストを通したら、コミットする前に `p3 move T003 done --output <今ある成果物（変えたファイルや説明）> --record -` で完了にする（変更の記録は必須: 何を変えたか・なぜ・入れた決まり・やめたもの を標準入力から Markdown で。まだ無い URL は書かない）
-- 受け入れ基準（`--brief --json` の `item.acceptanceCriteria`）があれば着手する前に読み、完了するときに基準ごとの証拠を `--evidence-file evidence.md`（見出し `## A1 met` ごとに通したテスト・コマンドと結果・確かめたこと）で残す。`[Q1]` で始まる基準はプロジェクトの品質基準で、その検査は自分で実行してコマンド・参照先とコミット（未コミットならそう書く）・結果・範囲を証拠に書く（P3 が実行したとは書かない）。満たせなかった・確かめていない項目は `unmet` / `unverified` と理由を正直に書き（推測で `met` にしない）、未達・未検証を残して完了にしたら人に伝える。証拠は自分の申告で、済みにするかは人が決める。基準を自分で消す・書き換えて満たしたことにしない
-- 要望のタスクを全部終えたら、コミットする前に `p3 request set <要望ID> status=resolved`（対応済）にする。完了済（done）・見送り（rejected）とタスクの済み（check）は人が決める
-- 子の要望（`parent` のある要望）は、親とは別の要望として子ごとのタスクとブランチで作業する（親のタスクにしない）。分割の案の採用（`accept`）は人が行う。子の Preflight は親と同じ担当で、頼まれたときだけ（分割の採用・子の作成から自分で評価へ進まない）。親を対応済にするのは、親のタスクと見送り以外の子（`request show <親> --brief --json` の `children`）が全部終わってから
-- データのフォルダがこの作業ツリーの中で git 管理されているなら、要望のフォルダ（`requests/<要望ID>/`）の変更も実装と同じコミットに入れる（後のレビューで要望とやったことを精査するため。子なら祖先の要望のフォルダ、親を対応済にするときは子孫の要望のフォルダ（見送りの子など）のまだ入っていない変更も入れ、ほかの要望・関係ない変更は入れない。外・無視・worktree のときは入らないので、移動や `git add -f` はしない）。push に失敗したら完了の記録は残し、公開できていないことを伝える。要望のフォルダは、マージするまで要望のブランチにしか無い。既定のブランチに切り替えると、その要望（子なら親の子の一覧からも）が消えたように見えるが、データはブランチにある（作り直したり、別のブランチから写したりしない）
-- コミットや PR の URL は後から `p3 move T003 done --output <URL>` で足す（完了・記録はそのまま。データをコミットしているなら追記もコミットして push）。複数のリポジトリにまたがるときは最後のタスクに `--repo-output <参照先>=<PR の URL>` で全部の PR を残す
-- タスクの AI レビュー（`p3 review`）は頼まれずに始めない（Codex を使う）。結果を理由に済みにしたり基準・証拠を書き換えたりしない
-- 置き換えられたタスク（`p3 ls` の `※置換`、`--json` の `superseded`）からは始めない。`move` が `warnings` を返したら止めて人に確かめる
-- 人の判断・権限が要る・前提が崩れた・テストが通らず先に進めないなどでタスクを続けられなくなったら、`p3 block T003 --reason "<具体的な理由>" --decision "<人に決めてほしいこと>" --json` で止まっている理由を付け（通常の修正・調査の途中では使わない）、JSON の `block` で保存できたことを確かめてから、理由・いつから・答えてほしいこと・再開のしかたを人に伝えて作業を終える（止まったまま完了・済み・対応済に進めない。基準や証拠を書き換えない）。回答を受けたら `p3 unblock T003 --resolution "<回答>"` で解除して再開する（解除だけでは再開しない。人が先に解除していたら履歴の回答を読んで確かめる）
-- 作業中に新しく必要になった作業は `p3 new "<タイトル>" --body "..."` でタスクにする（人への質問はタスクにしない）
-```
