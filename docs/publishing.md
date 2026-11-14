@@ -34,7 +34,7 @@ node scripts/verify-pack.mjs --docker     # npm pack → 実行時の依存だ�
   `PATH=$(dirname $(npx -y node@24.0.0 -e "console.log(process.execPath)")):$PATH node scripts/verify-pack.mjs --tgz <作った tarball>`
 - [ ] Node の下限を上げた版を出すときは、リリースノートに知らせる: 前の下限の Node では、npm は警告を出して入れ（`engine-strict` なら断る）、
   pnpm・`pnpx` は警告を出さずに入れる（止められない）ので、利用者が `node -v` を確かめること、
-  Node を上げて入れ直すこと、Docker のイメージは pull してコンテナを作り直すこと（Node 22 → 24 以上は [導入ガイド](installation.md) の「Node 22 から上げるとき」）
+  Node を上げて入れ直すこと、Docker のイメージは pull してコンテナを作り直すこと（Node 22 → 24 以上は [導入ガイド](installation.md#補足-nodejs-の版と同じ版で動かすこと) の「Node 22 から上げるとき」）
 - [ ] Docker が無い環境で確かめたときは、`codex update` の段が「実行していない」と出る。その場合は Docker のある環境で
   `--docker` を付けて通すまで、公開に進まない
 
