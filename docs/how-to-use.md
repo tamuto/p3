@@ -1138,7 +1138,7 @@ CLI が返す手順（下の `p3 guide`）にある。CLI が新しくなれば�
 | コマンド | 内容 |
 | --- | --- |
 | `p3 init` / `p3 join` / `p3 project` / `p3 whoami` | 新しく作る / 共有されたものに参加する / 個人設定のプロジェクト / 今の判定 |
-| `p3 config` / `p3 repo` / `p3 user-config` | プロジェクトの設定 / 参照先 / 個人設定（テーマ・マシンごとの設定） |
+| `p3 config` / `p3 repo` / `p3 user-config` | プロジェクトの設定 / 参照先 / 個人設定（テーマ・マシンごとの設定）。`p3 user-config paths <フォルダ>` は Docker にマウントするときのホストのパスと決め方を見る（変えない。[導入ガイド](installation.md#3-パスを確かめるdevcontainer-のときだけ)） |
 | `p3 progress` | 要望ごとの進捗（マイルストーンごと。`--all` で完了・見送りも） |
 | `p3 milestone ls\|show\|add\|set\|rm\|purpose\|goal` | マイルストーン（目的・予定している機能も） |
 | `p3 milestone review\|reviews\|review-show\|review-cancel` | マイルストーンレビュー |

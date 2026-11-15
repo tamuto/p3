@@ -11,6 +11,8 @@ export default defineConfig({
     environment: "node",
     testTimeout: 20_000,
     // Preflight の run の所有者の識別子（core/preflight/owner.ts）を、ホームの ~/.local/state ではなく一時フォルダに作る
-    env: { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "p3-test-state-")) },
+    // マウントするパスの決め方（hostPaths.ts）を、テストを動かすマシン（DevContainer かどうか）で変えない（子のプロセスにも渡る）。
+    // 自分のコンテナのマウントを使うテストは probe を渡す
+    env: { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "p3-test-state-")), P3_HOST_PATHS: "direct" },
   },
 });

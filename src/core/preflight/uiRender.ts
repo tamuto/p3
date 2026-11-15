@@ -15,7 +15,7 @@ type Log = (e: Omit<PreflightLogEntry, "at">) => void;
  * 既に file があるもの・原稿の無いものは触らない。一覧が無い・読めないときは何もしない（取り込みで理由を残す）。
  * 描画の失敗・取消は例外にしない（評価は残す）
  */
-export async function renderManuscripts(runDir: string, opts: RenderOptions & { log: Log; render?: Renderer }): Promise<void> {
+export async function renderManuscripts(runDir: string, opts: RenderOptions & { log: Log; render?: Renderer; settingsError?: string }): Promise<void> {
   const uiDir = join(runDir, UI_DIR);
   const indexFile = join(uiDir, UI_INDEX);
   let index: { items?: unknown };
@@ -60,6 +60,8 @@ export async function renderManuscripts(runDir: string, opts: RenderOptions & { 
   if (jobs.length) {
     opts.log({ kind: "info", text: `画面イメージを描画します（${jobs.length} 枚。評価の後に P3 が描きます）` });
     try {
+      // 個人設定（パスの対応）を読めないときは、空の対応で描かずに理由を残す
+      if (opts.settingsError) throw new RenderError(`個人設定を読めないので描画しません（Docker は起動していません）: ${opts.settingsError}`, "paths");
       const results = await (opts.render ?? renderHtml)(jobs, uiDir, uiDir, opts);
       for (const r of results) {
         const item = byId.get(r.id)!;

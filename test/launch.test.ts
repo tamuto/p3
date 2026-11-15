@@ -65,7 +65,7 @@ describe("app-server（docker run）がすぐ終わったときの診断", () =>
     }
     expect(log).toContain('error: Docker の出力:\ndocker: Error response from daemon: invalid mount config for type "bind": bind source path does not exist: <参照先 main>');
     // 開始のログにパスの対応
-    expect(log).toContain("info: パスの対応（個人設定の codex.pathMap）:");
+    expect(log).toContain("info: パスの対応（Docker のホストから見たパス）:");
   });
 
   it("デーモンに繋がらない・イメージが無い・分からない失敗・終了コード 0・シグナル・起動できない", async () => {

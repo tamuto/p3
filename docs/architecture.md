@@ -518,6 +518,48 @@ include: true
   空の環境変数は既定に戻すので出どころも既定。プロジェクトの登録（projects）は表示しない（`p3 project ls`）
 - パスの対応のエラー（`bind source path does not exist`）には、直し方（`pathMapHowTo`）として設定するコマンド・例・ホストの
   パスの調べ方を添える。共有の記録に残るので、このマシンのパスは例のパスで示す。対応が当たっていたなら行き先の誤りとして案内する
+- **マウントするパスの決め方**（`src/core/preflight/hostPaths.ts` の `resolveHostPaths`。261115-d0n30）: Docker のコンテナに
+  マウントするこのマシンのパスを、Docker のデーモンから見たパスに決める。求めた結果は個人設定に書かず、毎回求める。
+  ここで Docker に出すのは `docker inspect` だけ（`dockerExec` の時間の上限と取消。引数は配列）で、全部の対象が決まる前にマウントする
+  コマンドは出さない。1つでも決まらなければ `ok: false` で、呼ぶ側はコンテナを起こさない
+
+  | p3 が動いている場所 | 手で書いた対応（`codex.pathMap`）が当たる対象 | 当たらない対象 |
+  | --- | --- | --- |
+  | コンテナの外（`/proc/self/mountinfo` に自分のコンテナの ID が無く、`/.dockerenv` も無い） | 対応のとおり | 変換しない（`direct`）。Docker Desktop・WSL・リモートの Docker でも、今までどおりそのまま渡す |
+  | コンテナの中で、自分のコンテナを確かめられた | 自分のマウントから求めたものと同じならその対応、違えば止める（`conflict`） | 自分のマウントから求める（`auto`）。求められなければ止める |
+  | コンテナの中で、自分のコンテナを確かめられない | 対応のとおり（確かめていない印 `verified: false`） | 止める |
+
+  - 自分のコンテナ: `/proc/self/mountinfo` のうち Docker（と Podman）がコンテナごとに置くもの（`/etc/hostname`・`/etc/hosts`・
+    `/etc/resolv.conf`）の元の場所にある 64 桁の ID と、cgroup v1 の docker の行を候補にし、接続先のデーモンの
+    `docker inspect --type container` で `Id` が同じものを探す。接続先（`DOCKER_HOST`・`DOCKER_CONTEXT`・選んでいる context）は
+    後で `docker run` するときと同じ docker の CLI に任せる（接続先のデーモンに自分が居れば、そのデーモンがコンテナを作る）。
+    ホスト名だけ・候補の先頭だけでは決めない。見つからない（`self-not-found`。リモート・別のデーモン）、複数（`self-ambiguous`）、
+    inspect のホスト名がこのマシンと違う（`self-mismatch`）、問い合わせの失敗・時間切れ（`inspect-failed`）、ID が分からない
+    （`self-unknown`）は自動では決めない
+  - 1つのパス: 対象の実体（シンボリックリンクを辿った先。無いところは在るところまで辿って残りを足す）を含む **一番深い** マウントを
+    mountinfo から選び、そこが inspect の `Mounts` の `Type: bind` の `Destination` のときだけ、その `Source` に残りを足す。
+    volume・tmpfs・Docker の知らないマウントの下（`not-bind`）や、どのマウントの下でもない（コンテナの層。`container-layer`）は、
+    親の bind に逃げずに止める。`Source` が `/` で始まらない形（`unsupported-source`）も止める。`Source` は同じデーモンが返した
+    もので、同じデーモンにそのまま渡せる（Docker Desktop の中の DevContainer でも、Desktop を見分けて止めることはしない）
+  - 手で書いた対応は今までどおり前から順の境界一致（`mapPath`）で、元のパス（実体ではない）に当てる。自動で求めたものと食い違えば
+    手の対応で上書きせずに止める（間違った行き先がホストに在ると、違うフォルダをマウントしてしまうため）
+  - コンテナの外で変換しないのは、以前からの利用者（Mac の Docker Desktop・WSL で直接動かし、同じパスでマウントできている）を
+    止めないため。リモートの Docker を外から使うときも以前と同じくそのまま渡す（要るなら手で書く）
+  - 止める理由ごとに次にすること（`nextStep`）を1つ添える: マウントの種類の問題はフォルダを bind の下へ移す、食い違いは手の対応を
+    直すか外す、問い合わせの失敗は `docker version`、それ以外は手で対応を書く
+  - 使うところ: Preflight（`CodexWorkspaceEngine.runWith`。全部の参照先とデータを、Codex のコンテナを起こす前にまとめて決める）、
+    参照先を読む ask（リリースノートの要約・レビュー）、描画（`renderHtml`。実際にマウントする一時の `in`・`out` を、描画の
+    コンテナを起こす前に決める。Preflight の後・手元の評価の取り込み・`p3 render` の全部）。同期でパスを変換する口（以前の
+    `hostPath`）は持たない（自動で決めたと誤って読まれないように）。手元の評価で原稿が無いとき・Mock・要望とタスクの操作は Docker に
+    問い合わせない
+  - 決まらないときのエラーと開始のログ（共有の記録）には、対象の名前（参照先 app・データ・描画の原稿）・理由・次にすること・
+    決め方（自動 / 手の対応 / 変換なし）だけを書き、このマシンのパス・ホストのパス・自分のコンテナの ID・inspect の中身は書かない。
+    実際のパスは、このマシンで `p3 user-config paths <パス>...`（読むだけ。プロジェクトを決める前に動く）で見る。エラーはこの
+    コマンドへ案内する
+  - 手元の評価の取り込みで個人設定（パスの対応）を読めないときは、空の対応で描かずに、描けなかった理由として残す（評価は残る）
+  - `P3_HOST_PATHS=direct` は自動で決めず、コンテナの外と同じに扱う（手で書いた対応だけ）。テスト（`vitest.config.ts`）が、
+    テストを動かすマシンが DevContainer かどうかで結果を変えないために使う。自分のコンテナのマウントを使うテストは
+    `hostProbe`（`HostPathProbe`）を渡す
 - 旧来の認証の auth.json は、P3 のイメージの中の Codex（`CODEX_HOME=/codex`）で `codex login --device-auth` すれば、ボリュームの
   一番上にでき、そのまま `authVolume`（`volume-subpath=auth.json`）で使える（サインインそのものは人が行う）。`authFile` は Docker のホストのパスで
   渡すので `codex.pathMap` は効かない
@@ -1306,7 +1348,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 原稿は描く前に確かめる（`render.ts` の `checkHtml`）: 使えるのは `<style>` の CSS・`data:` の画像とフォント・ページの中の `#id`。
   スクリプト・`on*` 属性・`javascript:`・外のファイルや通信を指す参照（`http(s):`・`file:`・相対パス・`@import`）・
   `iframe` / `object` / `embed` / `link` / `base` / `meta http-equiv` は断る。幅は 320〜2560 px、原稿は 2MB まで、高さ 16384 px を超える
-  ところは切る。DevContainer の中からは、出力先のフォルダにも `codex.pathMap` が要る
+  ところは切る。DevContainer の中からは、出力先の一時のフォルダもホストのフォルダ（bind）の下にある必要がある（パスは自動で決める。マウントするパスの決め方）
 - 日本語のフォントは Debian の `fonts-noto-cjk`（SIL Open Font License 1.1）。イメージの中にだけ入り、P3 の配布物には含めない
 - Playwright の依存（`--with-deps`）で WenQuanYi Zen Hei（中国語の字形）も入り、fontconfig ではそれが総称の既定に先に来る。
   `fonts-ja.conf`（`/etc/fonts/conf.d/99-p3-ja.conf` に置く）で、総称（`sans-serif`・`system-ui`・`serif`・`monospace`）と、

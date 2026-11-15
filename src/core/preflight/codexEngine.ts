@@ -17,7 +17,8 @@ import { redact } from "../redact.ts";
 import { ensureCodexImage } from "./codexImage.ts";
 import { CONTAINER_LABEL, containerName, DOCKER_LIMITS, DockerAbortError, removeContainer, removeLog, withContainerName } from "./docker.ts";
 import { renderManuscripts, type Renderer } from "./uiRender.ts";
-import { describeMapping, diagnoseLaunch, mapPath, type PathMapping } from "./diagnose.ts";
+import { describeMapping, diagnoseLaunch, type PathMapping } from "./diagnose.ts";
+import { resolveHostPaths, unresolvedMessage, type HostPathProbe } from "./hostPaths.ts";
 import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
 import { CONTAINER_DATA, containerEnv, developerInstructions, entryMissing, preflightPrompt } from "./instructions.ts";
@@ -58,6 +59,8 @@ export interface CodexWorkspaceConfig {
   command?: (m: { repos: HostMount[]; data: string | null; auth: CodexAuth["mode"] }) => string[];
   /** テスト用: 画面イメージの描画を差し替える（既定は描画のコンテナ） */
   render?: Renderer;
+  /** テスト用: マウントするパスの決め方の OS と Docker を差し替える（既定は実際のもの。hostPaths.ts） */
+  hostProbe?: HostPathProbe;
 }
 
 /** マシンごとの設定（環境変数と個人設定。→ machineSettings.ts）から */
@@ -119,6 +122,30 @@ function localPath(job: PreflightJob, p: string) {
     if (r.local && (abs === base || abs.startsWith(`${base}/`))) return join(r.local, abs.slice(base.length));
   }
   return abs;
+}
+
+/**
+ * マウントするパスを Docker のホストのパスに決める（hostPaths.ts）。1つでも決まらなければ、コンテナを起こさずに理由と次にすることで投げる。
+ * 実際のパスはエラーに書かない（共有の記録に残る）
+ */
+async function mountPaths(
+  cfg: CodexWorkspaceConfig,
+  targets: { label: string; local: string; container: string }[],
+  what: string,
+  signal?: AbortSignal,
+): Promise<PathMapping[]> {
+  let r: Awaited<ReturnType<typeof resolveHostPaths>>;
+  try {
+    r = await resolveHostPaths(targets.map((t) => t.local), { pathMap: cfg.pathMap, signal, probe: cfg.hostProbe });
+  } catch (e) {
+    if (e instanceof DockerAbortError) throw new Error("中止しました", { cause: e });
+    throw e;
+  }
+  if (!r.ok) throw new Error(unresolvedMessage(what, targets.map((t, i) => ({ label: t.label, result: r.paths[i] }))));
+  return targets.map((t, i) => {
+    const p = r.paths[i] as Extract<(typeof r.paths)[number], { ok: true }>;
+    return { label: t.label, local: t.local, host: p.host, rule: p.rule, container: t.container, resolved: p };
+  });
 }
 
 /**
@@ -241,10 +268,6 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     return status;
   }
 
-  hostPath(local: string): string {
-    return mapPath(this.cfg.pathMap, local).host;
-  }
-
   async run(job: PreflightJob, log: Log, signal: AbortSignal): Promise<EngineOutcome> {
     return this.authorized("Preflight", log, (a) => this.runWith(a.cfg, job, a.auth, a.env, a.log, signal));
   }
@@ -262,15 +285,12 @@ export class CodexWorkspaceEngine implements PreflightEngine {
   ): Promise<AskResult> {
     return this.authorized(input.label, log, async ({ cfg, auth, env, log }) => {
       const readable = (input.refs ?? []).filter((r) => r.status === "ok" && r.local);
-      const mappings: PathMapping[] = readable.map((r) => ({
-        label: `参照先 ${r.name}`,
-        local: r.local!,
-        ...mapPath(cfg.pathMap, r.local!),
-        container: `${CONTAINER_WORKSPACE}/${r.mount}`,
-      }));
+      const mappings = readable.length
+        ? await mountPaths(cfg, readable.map((r) => ({ label: `参照先 ${r.name}`, local: r.local!, container: `${CONTAINER_WORKSPACE}/${r.mount}` })), input.label, signal)
+        : [];
       const repos: HostMount[] = readable.map((r, i) => ({ name: r.name, host: mappings[i].host, container: mappings[i].container }));
       if (mappings.length) {
-        log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap。読むだけでマウントします）:" });
+        log({ kind: "info", text: "パスの対応（Docker のホストから見たパス。読むだけでマウントします）:" });
         for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
       }
       await this.prepareImage(cfg, log, signal);
@@ -402,13 +422,19 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     signal: AbortSignal,
   ): Promise<EngineOutcome> {
     const readable = job.refs.filter((r) => r.status === "ok" && r.local);
-    const mappings: PathMapping[] = [
-      ...readable.map((r) => ({ label: `参照先 ${r.name}`, local: r.local!, ...mapPath(cfg.pathMap, r.local!), container: `${CONTAINER_WORKSPACE}/${r.mount}` })),
-      { label: "データ", local: job.dataDir, ...mapPath(cfg.pathMap, job.dataDir), container: CONTAINER_DATA },
-    ];
+    // 全部の参照先とデータを、Codex のコンテナを起こす前にまとめて決める（1つでも決まらなければ起こさない）
+    const mappings = await mountPaths(
+      cfg,
+      [
+        ...readable.map((r) => ({ label: `参照先 ${r.name}`, local: r.local!, container: `${CONTAINER_WORKSPACE}/${r.mount}` })),
+        { label: "データ", local: job.dataDir, container: CONTAINER_DATA },
+      ],
+      "Preflight",
+      signal,
+    );
     const repos: HostMount[] = readable.map((r, i) => ({ name: r.name, host: mappings[i].host, container: mappings[i].container }));
     const data = mappings.at(-1)!.host;
-    log({ kind: "info", text: "パスの対応（個人設定の codex.pathMap）:" });
+    log({ kind: "info", text: "パスの対応（Docker のホストから見たパス）:" });
     for (const m of mappings) log({ kind: "info", text: `  ${describeMapping(m, cfg.pathMap.length)}` });
     for (const r of readable) for (const m of r.map) if (m.entry && entryMissing(r, m.entry)) log({ kind: "info", text: `入口のファイルがありません: ${r.name}:${m.entry}` });
     await this.prepareImage(cfg, log, signal);
@@ -425,7 +451,7 @@ export class CodexWorkspaceEngine implements PreflightEngine {
     );
     // 画面イメージ: Codex が書いた原稿を、Codex の後に P3 が描画のコンテナで PNG にする（Codex のコンテナに Docker は渡さない）。
     // 描けなくても評価は残す（取り込みで不足として扱う）
-    await renderManuscripts(job.runDir, { pathMap: cfg.pathMap, signal, log, render: cfg.render });
+    await renderManuscripts(job.runDir, { pathMap: cfg.pathMap, signal, log, render: cfg.render, hostProbe: cfg.hostProbe });
     return outcome;
   }
 

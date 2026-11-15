@@ -29,7 +29,7 @@ function pathWith(docker?: string) {
 
 function p3(cwd: string, args: string[], extra: Record<string, string> = {}) {
   const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_")));
-  const env = { ...base, XDG_CONFIG_HOME: CONFIG_HOME, P3_ACTOR: "human:tester", ...extra };
+  const env = { ...base, XDG_CONFIG_HOME: CONFIG_HOME, P3_ACTOR: "human:tester", P3_HOST_PATHS: "direct", ...extra };
   const r = spawnSync(process.execPath, [BIN, ...args], { cwd, encoding: "utf8", env });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }

@@ -212,6 +212,32 @@ describe("手元のエージェントの Preflight（prepare → complete）", (
     }
     expect(drew).toEqual(["U1"]);
   });
+
+  it("取り込みで個人設定（パスの対応）を読めなければ、空の対応で描かずに理由を残す（評価は残る）", async () => {
+    const { dataDir } = await makeRepo();
+    const ctx = await openTestProject(dataDir);
+    const drew: string[] = [];
+    const service = new PreflightService(ctx.ws, { codex: forbidden("codex"), mock: forbidden("mock") }, "codex", {
+      pathMap: async () => {
+        throw Object.assign(new Error("個人設定を読めません: /home/me/.config/infodb-p3/config.yaml の 3 行目"), { configPath: "/home/me/.config/infodb-p3/config.yaml" });
+      },
+      render: async (jobs) => {
+        drew.push(...jobs.map((j) => j.id));
+        return [];
+      },
+    });
+    const req = await newRequest(ctx, { title: "通知", status: "draft", body: "通知を送る" });
+    const p = await service.prepare(req.id);
+    writeResult(p.runDir, { ui: { needed: true, targets: ["D1"], items: [{ id: "U1", html: "src/U1.html", title: "設定画面", drafts: ["D1"], viewport: 800 }] } });
+    mkdirSync(join(p.runDir, "ui", "src"));
+    writeFileSync(join(p.runDir, "ui", "src", "U1.html"), "<p>設定</p>");
+    const r = await service.complete(req.id, p.run.id);
+    expect(drew).toEqual([]);
+    expect(r.run).toMatchObject({ status: "completed", ui: { status: "missing" } });
+    const log = r.run.log.map((l) => l.text).join("\n");
+    expect(log).toContain("個人設定を読めないので描画しません（Docker は起動していません）");
+    expect(log).not.toContain("/home/me/.config");
+  });
 });
 
 describe("画面（API）から見た手元のエージェントの Preflight", () => {

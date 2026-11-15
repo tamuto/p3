@@ -243,7 +243,14 @@ export class PreflightService {
         throw new LocalResultError(problems);
       }
       // 画面イメージ: 原稿があるときだけ描画のコンテナを使う。描けなくても評価は残す（取り込みで不足として扱う）
-      await renderManuscripts(runDir, { pathMap: await this.renderOpts.pathMap().catch(() => []), log: (e) => this.log(run, e), render: this.renderOpts.render });
+      let pathMap: [string, string][] | undefined;
+      let settingsError: string | undefined;
+      try {
+        pathMap = await this.renderOpts.pathMap();
+      } catch (e) {
+        settingsError = hideConfigPath(e);
+      }
+      await renderManuscripts(runDir, { pathMap, settingsError, log: (e) => this.log(run, e), render: this.renderOpts.render });
       await this.ingest(run, runDir, refs);
       run.status = "completed";
       await this.finishLocked(run, run.local!.before);

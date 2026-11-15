@@ -1,4 +1,5 @@
 import type { LaunchResult } from "./launch.ts";
+import { originText, type HostPathResult } from "./hostPaths.ts";
 
 /**
  * app-server（docker run）がすぐ終わったときの診断と、パスの対応（codex.pathMap）の説明。
@@ -15,22 +16,18 @@ export interface PathMapping {
   rule?: [string, string];
   /** コンテナの中のパス */
   container: string;
+  /** 決め方（resolveHostPaths の結果。無ければ rule の有無で説明する） */
+  resolved?: Extract<HostPathResult, { ok: true }>;
 }
 
-/** 前から順に、境界（/）が合う最初の対応を使う */
-export function mapPath(pathMap: readonly [string, string][], local: string): { host: string; rule?: [string, string] } {
-  for (const rule of pathMap) {
-    const [from, to] = rule;
-    if (local === from || local.startsWith(`${from}/`)) return { host: to + local.slice(from.length), rule };
-  }
-  return { host: local };
-}
+export { mapPath } from "./hostPaths.ts";
 
 /**
  * パスの対応の説明。共有の記録（run.json）に残るので、このマシンのパスと Docker のホストのパスは出さず、
  * 参照先の名前・コンテナの中のパス・codex.pathMap の対応が当たったかだけを書く
  */
 export function describeMapping(m: PathMapping, rules: number): string {
+  if (m.resolved) return `${m.label} → コンテナ ${m.container}（${originText(m.resolved, rules)}）`;
   const how = m.rule
     ? m.rule[0] === m.rule[1]
       ? "codex.pathMap の対応あり（パスは変わらない）"
