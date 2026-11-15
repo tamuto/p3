@@ -293,6 +293,14 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs
 serve になること。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
 確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
 
+マウントするパスの自動の決め方（`src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で
+確かめる。このマシン（DevContainer など）と、Dockerfile から作ったイメージ（中と外で違うパスの bind 2つ・名前付きボリューム・
+ソケット・コンテナの名前と違うホスト名）の両方で、`codex.pathMap` の無い使い捨ての個人設定の p3 が、`p3 user-config paths` で
+自分のコンテナを確かめてパスを決めること、bind の下の原稿を `p3 render` で PNG にすること、volume の下・コンテナの中だけの原稿・
+繋がらない `DOCKER_HOST` では描画のコンテナを起こさずに止まること（`docker events` で数える）を確かめる。`--work` は Docker の
+ホストから見える（bind の下の）フォルダ（既定はこのリポジトリの親）。本物の Codex の Preflight は ChatGPT のプランを使うので
+このスクリプトでは動かさず、人が `codex.pathMap` を外した状態で `p3 preflight` を実行して確かめる。
+
 ## 使い方の動画
 
 一般公開する使い方の動画（日本語の字幕、約3分）は `pnpm video` で録り直す（`scripts/video/record.mjs`）。機能や画面を

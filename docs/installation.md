@@ -191,13 +191,13 @@ Docker と ChatGPT は要らない。
 ### Codex で評価する
 
 Codex を **Docker のコンテナの中で** 動かし、各自の ChatGPT アカウント（プラン）で評価させる。つまずくのはほとんどが Docker と
-パスの対応なので、そこを詳しく書く。
+パスの見え方なので、そこを詳しく書く。
 
 | # | すること | 終わったと分かる目安 |
 | --- | --- | --- |
 | 1 | Docker に繋がるか確かめる | `docker version` に **Client と Server の両方** が出る |
 | 2 | どこで P3 を動かすか決める（ホスト / DevContainer） | 下の「動かす場所」のどちらかに当てはまる |
-| 3 | （DevContainer のときだけ）パスの対応を書く | `p3 user-config` の `codex.pathMap` に、リポジトリとデータの両方の対応がある |
+| 3 | （DevContainer のときだけ）パスを確かめる | `p3 user-config paths <リポジトリ> <データのフォルダ>` が「全部決まりました」 |
 | 4 | ChatGPT に接続する | `p3 chatgpt status` が「ChatGPT プランを使います」 |
 | 5 | Codex のイメージを作る | `p3 codex update` が「Codex を更新しました: codex-cli …」 |
 | 6 | 画面で試しに Preflight を動かす | 評価とタスク案が出る |
@@ -237,50 +237,52 @@ P3 が Codex のコンテナを作るとき、リポジトリとデータのフ�
 動かし方は2通りある。
 
 - **A. ホストで直接動かす**（Mac・Linux・WSL の中で `p3` を実行し、Docker も同じ環境のもの）: 1つ目と2つ目のパスが同じなので、
-  パスの対応は要らない
+  パスについてすることは無い（P3 はそのまま渡す。Docker Desktop・WSL でも同じ）
 - **B. VS Code の DevContainer の中で動かし、Docker はホストのデーモンを使う**（docker-outside-of-docker）: 1つ目と2つ目の
-  パスが違うので、3. でその対応（`codex.pathMap`）を書く。データのフォルダも、ホストから見える（バインドマウントされた）場所に置く
+  パスが違う。P3 が自分のコンテナのマウントから2つ目のパスを自動で決めるので、3. で確かめるだけでよい。リポジトリとデータの
+  フォルダは、ホストのフォルダをマウント（bind）した場所の下に置く
 
-> Docker Desktop・WSL・リモートの Docker（`DOCKER_HOST` で別のマシンを指す）では、パスの見え方がさらに違うことがある。
-> この文書の手順は A と B（VS Code の DevContainer と、そのホストの Docker）で書いている。ほかの形では、「Docker のデーモンから
-> 見たパス」を自分の環境で確かめてから 3. の対応を書く。
+> リモートの Docker（`DOCKER_HOST` で別のマシンを指す）や、P3 のコンテナが接続先のデーモンに無い形では、自動では決まらない。
+> そのときは 3. の確かめで理由が出るので、「自動で決まらないとき」の手順で手で書く。
 
-#### 3. パスの対応を書く（DevContainer のときだけ）
+#### 3. パスを確かめる（DevContainer のときだけ）
 
 ホストで直接動かす（2. の A）なら飛ばしてよい。
 
-##### 3-1. ホストから見たパスを調べる
-
-DevContainer の中の `docker` はホストのデーモンに繋がっているので、中から自分のコンテナのマウントを調べられる。
+P3 は Preflight と描画のたびに、自分が動いているコンテナを Docker に確かめ、そのマウントからリポジトリとデータのフォルダの
+ホストのパスを決める（ホスト名がコンテナの名前と違ってもよい。結果は保存しない）。決まるかは、このマシンで確かめられる:
 
 ```bash
-docker ps --format '{{.ID}}  {{.Names}}'        # 自分のコンテナを探す（VS Code が付けた名前・compose のサービス名など）
-docker inspect <コンテナの名前> --format '{{range .Mounts}}{{.Type}}  {{.Source}} → {{.Destination}}{{"\n"}}{{end}}'
-# bind    /home/me/workspaces → /workspaces       ← Source がホスト、Destination がコンテナの中
-# bind    /mnt/usb/assets → /mnt/assets
-# volume  /var/lib/docker/volumes/xxx/_data → /home/me/.cache   ← 名前付きボリューム（下の注意）
+p3 user-config paths . ~/p3-data/myapp          # リポジトリとデータのフォルダ（リポジトリの .p3 ならリポジトリだけでよい）
+# p3 が動いている場所: コンテナの中（自分のコンテナ 3f2a… を Docker で確かめました。マウントから決めます）
+# /workspaces/myapp
+#   → /home/me/workspaces/myapp  自動（p3 が動いているコンテナのマウントから）（マウント /workspaces）
+# 全部決まりました（Preflight と描画でこのとおりにマウントします）
 ```
 
-- コンテナの名前は、ホスト名（`hostname`）と同じとは限らない。分からなければ `docker ps` の一覧から探す
-- **リポジトリ** と **データのフォルダ** の両方について、それを含む `Destination` を探す
-- `volume` は名前付きボリューム。`Source` はデーモンの中の場所で、ふつうのパスとして別のコンテナにマウントできるとは限らない。
-  リポジトリとデータのフォルダは、`bind`（ホストのフォルダ）の下に置く
+決まらないものがあると、理由と次にすること（1つ）が出る。Preflight と描画も、そのフォルダを使うときはコンテナを起こさずに
+同じ理由で止まる（間違ったパスでは動かない）。
 
-##### 3-2. 対応を書く
+| 理由 | 次にすること |
+| --- | --- |
+| ホストのフォルダではないマウント（volume・tmpfs）の下・コンテナの中だけにある | フォルダを、ホストのフォルダをマウント（bind）した場所の下へ移す |
+| 自分のコンテナを確かめられない（リモートの Docker・別のデーモン・ID が分からない） | 下の「自動で決まらないとき」で手で書く |
+| 手で書いた対応と、コンテナのマウントから決めたものが違う | 手で書いた対応を直すか外す（`p3 user-config set codex.pathMap-=<このマシンのパス>`。外せば自動で決まる） |
 
-左がコンテナの中（P3 から見たパス）、右がホスト（Docker のデーモンから見たパス）。`Destination` ごとに1件。
+##### 自動で決まらないとき（手で書く）
+
+ホストから見たパスを調べ（ホストで `docker inspect <この開発コンテナ>` の `Mounts`。`Source` がホスト、`Destination` がこのマシン）、
+`Destination` ごとに1件書く。左がこのマシンのパス、右がホストのパス。
 
 ```bash
 p3 user-config set codex.pathMap+=/workspaces=/home/me/workspaces
-p3 user-config set codex.pathMap+=/mnt/assets=/mnt/usb/assets     # データのフォルダが別のマウントにあるとき
-p3 user-config                                                    # 今の値と出どころ（環境変数 / 個人設定 / 既定）
-# codex.pathMap      /workspaces → /home/me/workspaces, /mnt/assets → /mnt/usb/assets
-p3 user-config set codex.pathMap-=/mnt/assets                     # 1件外す（codex.pathMap= で全部外す）
+p3 user-config set codex.pathMap-=/workspaces                     # 1件外す（codex.pathMap= で全部外す）
 ```
 
-- 前から順に、境界（`/`）が合う最初の対応を使う。同じ左側をもう一度足すと置き換える
+- 手で書いた対応は自動より先に使う（前から順に、境界（`/`）が合う最初の対応。同じ左側をもう一度足すと置き換える）。当たらない
+  フォルダだけ自動で決める
 - 書き間違い（`=` が無い、相対パスなど）は、何を直すかを出して何も書かない
-- 直したら、serve を起動し直さなくても **次の Preflight から** 効く
+- 直したら、serve を起動し直さなくても **次の Preflight から** 効く。`p3 user-config paths` で結果を確かめる
 
 #### 4. ChatGPT に接続する
 
@@ -325,12 +327,12 @@ p3 codex update
 Preflight の実行ログの最初の方に、参照先とデータのフォルダが **コンテナの中のどこに当たったか** が出る:
 
 ```text
-パスの対応（個人設定の codex.pathMap）:
-  参照先 myapp → コンテナ /workspace/myapp（codex.pathMap の対応あり）
-  データ → コンテナ /data（codex.pathMap の対応あり）
+パスの対応（Docker のホストから見たパス）:
+  参照先 myapp → コンテナ /workspace/myapp（自動（p3 が動いているコンテナのマウントから））
+  データ → コンテナ /data（自動（p3 が動いているコンテナのマウントから））
 ```
 
-DevContainer で「対応あり」にならなければ 3. を見直す。
+ログには決め方だけが出る（実際のパスは共有の記録に残さない）。パスそのものは、このマシンで 3. の `p3 user-config paths` で見る。
 
 **できたと分かる目安**: 評価とタスク案が画面（か `p3 drafts <要望ID>`）に出る。
 
@@ -361,7 +363,8 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 | Preflight・`codex update` | `docker` が無い（ENOENT） | `docker version` | Docker を入れ、`PATH` を確かめる |
 | 〃 | `Cannot connect to the Docker daemon` | `docker version` の Server、`docker context ls`、`DOCKER_HOST` | Docker を起動する。繋ぎ先と権限（[段階 1 の 1.](#1-docker-に繋がるか確かめる)）を直す |
 | 〃 | `permission denied ... docker.sock` | `ls -l /var/run/docker.sock` | `docker` グループなど、ソケットの権限を直す |
-| Preflight | `bind source path does not exist: <参照先 …>` / `<データ>` | ログの「パスの対応」、`p3 user-config` の `codex.pathMap`、[3-1.](#3-1-ホストから見たパスを調べる) の `docker inspect` | `p3 user-config set codex.pathMap+=<このマシンのパス>=<ホストのパス>`。「対応あり」なのに無いなら、右側（ホストのパス）の誤り。serve はそのままで次の Preflight から効く |
+| Preflight・描画 | 「マウントするフォルダが Docker のホストのどこにあるか決められないので、コンテナを起こしません」 | 出ている理由と次にすること、`p3 user-config paths <フォルダ>` | [段階 1 の 3.](#3-パスを確かめるdevcontainer-のときだけ) の表のとおり |
+| Preflight | `bind source path does not exist: <参照先 …>` / `<データ>` | ログの「パスの対応」、`p3 user-config paths <フォルダ>` | 手で書いた対応（`codex.pathMap`）の右側（ホストのパス）の誤り。直すか外す（[自動で決まらないとき](#自動で決まらないとき手で書く)）。serve はそのままで次の Preflight から効く |
 | Preflight | 「Codex のイメージを用意できません（app-server を起こす前）」 | `p3 codex update` の出力 | ネットワーク（プロキシ）を確かめて `p3 codex update` をやり直す。`Unable to find image` も同じ |
 | Preflight | 「〜が 60 秒で終わらないので止めました」（イメージの確認 15 秒・版の確認 60 秒・ビルド 10 分） | `docker ps -a --filter label=infodb.p3`（P3 が起こしたコンテナ） | P3 はそのコンテナを消してから終わる。Docker が重い・止まっていないかを確かめてやり直す。「コンテナ p3-… を消せませんでした（残っているかもしれません）」と出たら、出ている `docker rm -f <名前>` で消す |
 | Preflight・画面 | 「ChatGPT にサインインしてください」「ChatGPT の接続が切れています」「プランの利用が許可されていません」 | `p3 chatgpt status` | `p3 chatgpt login`（届かなければ `--paste`）。プランの利用に同意する |
@@ -380,7 +383,7 @@ CLI の出力に、Preflight を通さずにタスクを作る道も出る。直
 
 | 個人設定 | 環境変数 | 内容 | 効くとき |
 | --- | --- | --- | --- |
-| `codex.pathMap` | `P3_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker のデーモンから見たパス | 次の Preflight |
+| `codex.pathMap` | `P3_CODEX_PATH_MAP`（`a=b,c=d`） | このマシンのパス → Docker のデーモンから見たパス（自動で決まらないときだけ書く） | 次の Preflight |
 | `codex.auth` | `P3_CODEX_AUTH` | `auto`（既定。ChatGPT に接続していればそれ）/ `legacy`（下の旧来の認証） | 次の Preflight |
 | `codex.authVolume` / `codex.authFile` | `P3_CODEX_AUTH_VOLUME` / `P3_CODEX_AUTH_FILE` | 旧来の認証の `auth.json` の置き場所 | 次の Preflight |
 | `codex.model` / `codex.effort` | `P3_CODEX_MODEL` / `P3_CODEX_EFFORT` | モデル・推論の深さ（省けば Codex の既定） | 次の Preflight |
@@ -418,7 +421,7 @@ pull して起動し直す。
 ### 開発コンテナのサイドカーとして動かす
 
 root で動く開発コンテナ（DevContainer など）で p3 の CLI を使っているなら、その横に p3 のコンテナを置き、**開発コンテナと同じ
-マウント**を付ける。個人設定（登録・`codex.pathMap`）と ChatGPT の接続を開発コンテナと共有するので、コンテナの中で登録し直す・
+マウント**を付ける。個人設定（登録など）と ChatGPT の接続を開発コンテナと共有するので、コンテナの中で登録し直す・
 接続し直す必要はない。登録・接続・テーマの変更は、開発コンテナの中の CLI でいつもどおり行い、画面の「一覧を読み直す」で反映する。
 
 ```yaml
@@ -438,7 +441,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock         # Preflight（Codex）と画面イメージの描画
 ```
 
-- 開発コンテナと同じパスで見えるので、開発コンテナ用に書いた `codex.pathMap`（コンテナの中のパス → ホストのパス）がそのまま効く
+- p3 のコンテナも、自分のマウントからホストのパスを自動で決める（開発コンテナで手で書いた `codex.pathMap` があれば、同じパスで見えるのでそのまま効く）
 - 個人設定は開発コンテナと p3 のコンテナの両方から書かれることがあるが、書くときはファイルのロックで順に行う
 
 ### 単独で動かす
@@ -455,8 +458,8 @@ docker run -d --name p3 --restart unless-stopped \
 docker exec -w /home/me/work/myapp p3 p3 join --project myapp --yes
 ```
 
-- データと参照先はホストと **同じパスで** マウントする（Codex・描画のコンテナはホストのデーモンが作るので、パスが同じなら
-  `codex.pathMap` は要らない）。ホストの個人設定を使うなら、その登録のパスとマウントのパスをそろえる
+- データと参照先はホストと **同じパスで** マウントするのが分かりやすい（違うパスでも、p3 が自分のマウントからホストのパスを自動で
+  決める）。ホストの個人設定を使うなら、その登録のパスとマウントのパスをそろえる
 - root で動くので、コンテナが作るファイル（要望・タスクなど）の持ち主は root になる
 
 ### どちらでも
@@ -490,10 +493,9 @@ docker exec p3 p3 codex update      # Codex のイメージを作る（ホスト
 ```
 
 - ソケットを渡すと、コンテナの中から **ホストの Docker を何でも操作できる**（ホストの管理者と同じ強さ）。信頼できるマシンでだけ渡す
-- Codex・描画のコンテナはホストのデーモンが作り、データのフォルダと参照先を **ホストのパスで** マウントする。上のように同じパスで
-  マウントしていれば対応は要らない。違うパスでマウントしたときは、コンテナの中のパスとホストのパスの対応を
-  `docker exec p3 p3 user-config set codex.pathMap+=<コンテナの中のパス>=<ホストのパス>` で全部のプロジェクトの分を足す
-  （[段階 1 の 3.](#3-パスの対応を書くdevcontainer-のときだけ)）
+- Codex・描画のコンテナはホストのデーモンが作り、データのフォルダと参照先を **ホストのパスで** マウントする。p3 のコンテナの
+  マウント（bind）から自動で決まる。名前付きボリュームの下に置いたフォルダは決まらないので、ホストのフォルダを bind する。
+  決まるかは `docker exec p3 p3 user-config paths <コンテナの中のパス>` で確かめる（[段階 1 の 3.](#3-パスを確かめるdevcontainer-のときだけ)）
 - ChatGPT の接続はマウントした ~/.config に残るので、コンテナを作り直しても接続し直さなくてよい
 - ソケットを渡していない・繋がらないときも、要望・タスクの作成と編集・プロジェクトの選択は使える。Preflight は
   使えない理由と直し方を出して止まる（Mock には落とさない）。その間は Preflight を通さずにタスクを作ってよい

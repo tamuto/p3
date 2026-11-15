@@ -1348,7 +1348,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 - 原稿は描く前に確かめる（`render.ts` の `checkHtml`）: 使えるのは `<style>` の CSS・`data:` の画像とフォント・ページの中の `#id`。
   スクリプト・`on*` 属性・`javascript:`・外のファイルや通信を指す参照（`http(s):`・`file:`・相対パス・`@import`）・
   `iframe` / `object` / `embed` / `link` / `base` / `meta http-equiv` は断る。幅は 320〜2560 px、原稿は 2MB まで、高さ 16384 px を超える
-  ところは切る。DevContainer の中からは、出力先のフォルダにも `codex.pathMap` が要る
+  ところは切る。DevContainer の中からは、出力先の一時のフォルダもホストのフォルダ（bind）の下にある必要がある（パスは自動で決める。マウントするパスの決め方）
 - 日本語のフォントは Debian の `fonts-noto-cjk`（SIL Open Font License 1.1）。イメージの中にだけ入り、P3 の配布物には含めない
 - Playwright の依存（`--with-deps`）で WenQuanYi Zen Hei（中国語の字形）も入り、fontconfig ではそれが総称の既定に先に来る。
   `fonts-ja.conf`（`/etc/fonts/conf.d/99-p3-ja.conf` に置く）で、総称（`sans-serif`・`system-ui`・`serif`・`monospace`）と、
