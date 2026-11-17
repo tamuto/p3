@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
+import { criteriaSourceView } from "../../shared/requirementSource.ts";
 import { qualitySnapshot, standardsFor, taskQualityDiff } from "../../shared/quality.ts";
 import type {
   TaskReviewChange,
@@ -248,6 +249,7 @@ export async function extractTaskReview(dataDir: string, rid: string, tid: strin
       ...(task.acceptanceCriteria?.length ? { criteria: task.acceptanceCriteria } : {}),
       ...(task.acceptanceEvidence?.length ? { evidence: task.acceptanceEvidence } : {}),
       ...(acc?.items.length ? { evidenceStates: acc.items.map((i) => ({ id: i.id, state: i.state })) } : {}),
+      ...(task.acceptanceSources?.length ? { sources: sourcesForReview(task, request ? (request.requirementSources ?? []).map((x) => x.id) : undefined) } : {}),
       ...(task.acceptanceProblems?.length ? { acceptanceProblems: task.acceptanceProblems } : {}),
     },
     items,
@@ -263,6 +265,12 @@ export async function extractTaskReview(dataDir: string, rid: string, tid: strin
  * 材料の識別子（抽出の日時は入れない）。比較対象の出典（成果物の文字列か、指定した文字列か）も入れない
  * （同じ SHA を比べていれば、指定の仕方によらず同じ材料）
  */
+/** 基準ごとの要求の根拠の記録と状態（材料のスナップショットに入れ、hash にも入る） */
+function sourcesForReview(task: Task, requestSourceIds: readonly string[] | undefined) {
+  const view = criteriaSourceView(task.acceptanceCriteria, task.acceptanceSources, requestSourceIds);
+  return [...view.items.flatMap((i) => i.sources), ...view.orphans];
+}
+
 export function taskReviewInputHash(i: Omit<TaskReviewInput, "extractedAt" | "hash">): string {
   const targets = i.targets.map(({ sources: _s, ...t }) => t);
   const notes = i.notes.filter((n) => n.code !== "pr_unresolved");

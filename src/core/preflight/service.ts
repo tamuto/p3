@@ -21,7 +21,8 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { AcceptanceInputError, applyAcceptanceOps, criteriaForTask, sameCriteria, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
+import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
+import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { qualityCriteria, qualitySnapshot } from "../../shared/quality.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
@@ -60,9 +61,15 @@ export class PreflightBusyError extends Error {}
 export class DraftConflictError extends Error {
   constructor(
     readonly current: ProposedTask,
-    what: "title" | "criteria" = "title",
+    what: "title" | "criteria" | "sources" = "title",
   ) {
-    super(what === "title" ? `${current.key} の題が他で変わりました（今の題: ${current.title}）` : `${current.key} の受け入れ基準が他で変わりました（読み直してから直してください）`);
+    super(
+      what === "title"
+        ? `${current.key} の題が他で変わりました（今の題: ${current.title}）`
+        : what === "criteria"
+          ? `${current.key} の受け入れ基準が他で変わりました（読み直してから直してください）`
+          : `${current.key} の基準の出典と確認が他で変わりました（読み直してから直してください）`,
+    );
   }
 }
 
@@ -471,10 +478,16 @@ export class PreflightService {
     // 親子の評価対象も固定する: 子なら親の目的、親なら今の子（分割の採用・子のタスク化の直前に比べる。input.ts の compareFamily）
     const parent = current.parent ? this.ws.requests.get(current.parent) : undefined;
     const kids = hierarchyNow(this.ws).children(requestId);
+    // 要求の根拠と回答も固定する（壊れていれば始めない: 評価の資料と比べる対象が決まらない）
+    if (current.requirementProblems?.length) {
+      throw new RequirementInputError(`${requestId} の要求の根拠・回答のファイルの値が読めないため、Preflight を始められません。request.md を直してください: ${current.requirementProblems.join(" / ")}`);
+    }
+    const requirement = requirementInputOf(current);
     const input: PreflightInput = {
       ...text,
       ...(parent ? { parent: { id: parent.id, hash: inputHash(parent) } } : {}),
       children: kids.map((c) => ({ id: c.id, hash: inputHash(c) })),
+      ...(requirement ? { requirement } : {}),
     };
     const busy = await this.busy(requestId);
     if (busy) throw new PreflightBusyError(busy);
@@ -651,6 +664,8 @@ export class PreflightService {
   /** run のフォルダの成果物（評価・案・子の案・画面資料）を取り込む。評価が読めなければ例外 */
   private async ingest(run: PreflightRun, runDir: string, refs: ResolvedRef[]) {
     run.assessment = parseAssessment(await readFile(join(runDir, "assessment.json"), "utf8"), refs);
+    // 読めない確認事項は評価に残し（clarificationProblems）、人が読めるよう知らせる
+    for (const p of run.assessment.clarificationProblems ?? []) this.log(run, { kind: "error", text: `確認事項（clarifications）を読めません: ${p}` });
     run.drafts = await this.ws.preflight.loadDrafts(run.requestId, run.id);
     // 読めない受け入れ基準は案に残し（その案はタスク化できない）、人が直せるよう知らせる
     for (const d of run.drafts) for (const p of d.acceptanceProblems ?? []) this.log(run, { kind: "error", text: `${d.key} の受け入れ基準を読めません（案の詳細で直してください）: ${p}` });
@@ -813,8 +828,12 @@ export class PreflightService {
     requestId: string,
     runId: string,
     key: string,
-    patch: Partial<Omit<ProposedTask, "acceptanceCriteria">> & { acceptanceCriteria?: { id?: string | null; text: string }[] },
-    opts: { expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[] } = {},
+    patch: Partial<Omit<ProposedTask, "acceptanceCriteria" | "acceptanceSources">> & {
+      acceptanceCriteria?: { id?: string | null; text: string }[];
+      /** 基準ごとの要求の根拠への操作（shared/requirementSource.ts。案の基準の文を対象にする） */
+      sourceOps?: { id: string; source: SourceOp }[];
+    },
+    opts: { expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[]; expectedSources?: CriterionSource[]; actor?: string } = {},
   ) {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
@@ -822,19 +841,33 @@ export class PreflightService {
     if (opts.expectedTitle !== undefined && draft.title !== opts.expectedTitle) throw new DraftConflictError(draft);
     // 基準を変えるときは、編集を始めたときの基準と今の基準を比べる（同じ題のまま他で基準が変わっても上書きしない）
     if (opts.expectedCriteria !== undefined && !sameCriteria(draft.acceptanceCriteria, opts.expectedCriteria)) throw new DraftConflictError(draft, "criteria");
+    // 根拠だけを変えるときも、編集を始めたときの根拠と比べる
+    if (opts.expectedSources !== undefined && !sameSources(draft.acceptanceSources, opts.expectedSources)) throw new DraftConflictError(draft, "sources");
     // 作業先は作業先にできる参照先だけ（変える前に断る）
     if ("repo" in patch) checkRepoTarget(this.ws, patch.repo);
     // 基準は並び全体の置き換え（id は残し、無い項目に振る。空の並びは基準なし）。直せば読めなかった理由も消える
-    const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, ...rest } = patch;
+    const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, sourceOps, ...rest } = patch;
     const criteria = rawCriteria !== undefined ? tidyDraftCriteria(rawCriteria) : undefined;
+    // 根拠の記録が読めないとき: 操作は断り、関係のない更新ではファイルの元の値のまま書き戻す
+    const rawSources = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSources");
+    const sourceProblems: string[] = [];
+    readCriterionSources(rawSources, sourceProblems);
+    if (sourceProblems.length && sourceOps?.length) throw new AcceptanceInputError(`${key} の要求の根拠の記録が読めないため変えられません。ファイルを直してください: ${sourceProblems.join(" / ")}`);
+    const now = new Date().toISOString();
+    const finalCriteria = rawCriteria !== undefined ? (criteria!.length ? criteria : undefined) : draft.acceptanceCriteria;
+    let sources = draft.acceptanceSources;
+    if (sourceOps?.length) sources = applyDraftSourceOps(finalCriteria, sources, sourceOps, { now, actor: opts.actor, requestSources: this.ws.requests.get(requestId)?.requirementSources ?? [] });
+    else if (rawCriteria !== undefined) sources = settleDraftSources(finalCriteria, sources, now);
     const next: ProposedTask = {
       ...draft,
       ...rest,
       key,
-      ...(rawCriteria !== undefined ? { acceptanceCriteria: criteria!.length ? criteria : undefined, acceptanceProblems: undefined } : {}),
+      ...(rawCriteria !== undefined ? { acceptanceCriteria: finalCriteria, acceptanceProblems: undefined } : {}),
+      acceptanceSources: sources?.length ? sources : undefined,
     };
-    await this.ws.preflight.saveDraft(requestId, runId, next);
-    return next;
+    if (sourceProblems.length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, { acceptanceSources: rawSources });
+    else await this.ws.preflight.saveDraft(requestId, runId, next);
+    return sourceProblems.length ? { ...next, acceptanceSources: undefined, acceptanceProblems: [...(next.acceptanceProblems ?? []), ...sourceProblems] } : next;
   }
 
   /**
@@ -1101,7 +1134,7 @@ export class PreflightService {
             outputs: [],
             relations: supersedes(d),
             // 案の受け入れ基準を ID ごと写し、作業先に当てはまる品質基準（始めたときの版）を出典つきで足す（採用した案だけ。やり直しで作ったタスクは上書きしない）
-            ...withQuality(criteriaForTask(d.acceptanceCriteria), run.quality, draftRepo(d)),
+            ...withQuality(criteriaForTask(d.acceptanceCriteria, d.acceptanceSources, request.requirementSources), run.quality, draftRepo(d)),
             body: `${d.description}\n\n${marker}`,
           },
           actor,
@@ -1217,7 +1250,8 @@ async function localProblems(ws: Workspace, run: PreflightRun, runDir: string): 
   if (text === undefined) problems.push("assessment.json がありません");
   else {
     try {
-      parseAssessment(text);
+      const a = parseAssessment(text);
+      for (const p of a.clarificationProblems ?? []) problems.push(`assessment.json の clarifications: ${p}`);
     } catch (e) {
       problems.push((e as Error).message);
     }
@@ -1326,6 +1360,12 @@ function verifiedProblem(ev: Evidence, refs: readonly ResolvedRef[]): string | u
   return undefined;
 }
 
+/** 構造化した確認事項（壊れた項目は黙って捨てず clarificationProblems に理由を残す。Codex・手元のエージェントで同じ） */
+function clarificationsOf(v: unknown): Pick<PreflightAssessment, "clarifications" | "clarificationProblems"> {
+  const { clarifications, problems } = readClarifications(v);
+  return { ...(clarifications ? { clarifications } : {}), ...(problems ? { clarificationProblems: problems } : {}) };
+}
+
 export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): PreflightAssessment {
   let a: Record<string, any>;
   try {
@@ -1341,6 +1381,7 @@ export function parseAssessment(text: string, refs?: readonly ResolvedRef[]): Pr
     feasibility: { score: clampScore(a.feasibility?.score), reasons: strs(a.feasibility?.reasons) },
     risks: strs(a.risks),
     questions: strs(a.questions),
+    ...clarificationsOf(a.clarifications),
     areas: strs(a.areas),
     ...(Array.isArray(a.evidence) ? { evidence: parseEvidence(a.evidence, refs) } : {}),
     ...(parseSplit(a.split) ? { split: parseSplit(a.split) } : {}),

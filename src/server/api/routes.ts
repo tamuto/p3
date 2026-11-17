@@ -7,6 +7,7 @@ import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
+import { requestRequirementView, RequirementInputError, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
@@ -26,7 +27,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { milestoneReviewRoutes } from "./milestoneReviewRoutes.ts";
 import { taskReviewRoutes } from "./taskReviewRoutes.ts";
-import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality } from "../../core/requestOps.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality, saveClarifyAnswer, updateRequirement } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
@@ -68,6 +69,8 @@ const acceptanceOp = z.discriminatedUnion("op", [
   // basis（根拠）の形と組み合わせは shared/acceptance.ts の cleanBasis・basisMismatch が確かめる（規則を2か所に書かない）
   z.object({ op: z.literal("record"), id: z.string(), result: z.enum(ACCEPTANCE_RESULTS), evidence: z.string().default(""), basis: z.custom<EvidenceBasis>((v) => v !== null && typeof v === "object").optional() }),
   z.object({ op: z.literal("unrecord"), id: z.string() }),
+  // 基準ごとの要求の根拠（出典・確認）。操作の形と規則は shared/requirementSource.ts の applySourceOps が確かめる
+  z.object({ op: z.literal("source"), id: z.string(), source: z.custom<SourceOp>((v) => v !== null && typeof v === "object") }),
 ]);
 /** 品質基準の操作（規則は shared/quality.ts。CLI の p3 quality と同じ） */
 const qualityCheck = z.discriminatedUnion("kind", [
@@ -198,6 +201,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
     // 受け入れ基準・証拠の操作が規則に合わない（何も書いていない）
     if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
+    // 要求の根拠・回答の操作が規則に合わない（何も書いていない）
+    if (err instanceof RequirementInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
@@ -275,6 +280,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const id = rid(c);
     return c.json({
       request: ws.requests.get(id),
+      // 要求の根拠の記録と回答の状態（shared/requirementSource.ts。申告の記録で、P3 の保証ではない）
+      requirement: requestRequirementView(ws.requests.require(id)),
       tasks: ws.tasksOf(id).list(),
       runs: await Promise.all((await preflight.list(id)).map((r) => preflight.withInputMatch(id, r))),
       // 対応済なのに未完了のタスクがある（外部の直接編集など）
@@ -291,6 +298,40 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.patch("/requests/:rid", async (c) => {
     const { rev, ...patch } = requestPatch.parse(await c.req.json());
     return c.json(await updateRequest(ctx, rid(c), unnull(patch) as Partial<Request>, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) }));
+  });
+
+  /** 要望の要求の根拠の記録を変える（CLI の p3 source と同じ操作。順に当て、1つでも合わなければ何も書かない） */
+  app.post("/requests/:rid/sources", async (c) => {
+    const { ops, rev } = z.object({ ops: z.array(z.custom<SourceOp>((v) => v !== null && typeof v === "object")).min(1), rev: z.number().int().optional() }).parse(await c.req.json());
+    const r = await updateRequirement(ctx, rid(c), ops, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ request: r, requirement: requestRequirementView(r) });
+  });
+  /**
+   * Preflight の確認事項に回答する（CLI の p3 answer と同じ）。answer: null で回答を消す。回答は要望に残し、過去の run は書き換えない。
+   * 回答しただけでは根拠の記録を確認記録ありにしない。再評価は別に明示して始める
+   */
+  app.post("/requests/:rid/answers", async (c) => {
+    const b = z
+      .object({
+        run: z.string(),
+        question: z.string(),
+        answer: z.string().nullable(),
+        by: z.string().optional(),
+        on: z.string().optional(),
+        source: z.string().optional(),
+        basis: z.string().optional(),
+        links: z.array(z.string()).optional(),
+        rev: z.number().int().optional(),
+      })
+      .parse(await c.req.json());
+    const id = rid(c);
+    const run = await preflight.get(id, b.run);
+    if (!run) throw new NotFoundError(b.run);
+    const q = run.assessment?.clarifications?.find((x) => x.id === b.question);
+    if (!q) return c.json({ error: `${b.run} に確認事項 ${b.question} はありません`, code: "requirement_invalid" }, 400);
+    const input = b.answer === null ? null : { answer: b.answer, by: b.by, on: b.on, source: b.source, basis: b.basis, links: b.links };
+    const r = await saveClarifyAnswer(ctx, id, b.run, q, input, { expectedRev: expectedRev(c, b), actor: actorOf(c) });
+    return c.json({ request: r.request, answer: r.answer ?? null, requirement: requestRequirementView(r.request) });
   });
 
   /** 子の表示順（直下の子を全部、上から順に。CLI の request order と同じ操作） */
@@ -498,22 +539,28 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     // expectedTitle: 編集を始めたときの題（制御用。案には書かない）。今の題と違えば 409 で書かない
     // acceptanceCriteria: 受け入れ基準の並び全体（id は残し、無い項目に振る）。expectedCriteria: 編集を始めたときの基準（違えば 409）
     const criterion = z.object({ id: z.string().nullish(), text: z.string() });
-    const { expectedTitle, expectedCriteria, ...patch } = z
+    // sourceOps: 基準ごとの要求の根拠への操作。expectedSources: 編集を始めたときの根拠の記録（違えば 409。根拠だけの編集の競合も見る）
+    const { expectedTitle, expectedCriteria, expectedSources, ...patch } = z
       .object({
         title: z.string(),
         description: z.string(),
         include: z.boolean(),
         repo: z.string().nullable(),
         acceptanceCriteria: z.array(criterion),
+        sourceOps: z.array(z.object({ id: z.string(), source: z.custom<SourceOp>((v) => v !== null && typeof v === "object") })),
         expectedTitle: z.string(),
         expectedCriteria: z.array(z.object({ id: z.string(), text: z.string() })),
+        expectedSources: z.array(z.custom<CriterionSource>((v) => v !== null && typeof v === "object")),
       })
       .partial()
       .parse(await c.req.json());
     if (patch.acceptanceCriteria !== undefined && expectedCriteria === undefined) {
       return c.json({ error: "受け入れ基準を直すときは expectedCriteria（編集を始めたときの基準）を渡してください", code: "acceptance_invalid" }, 400);
     }
-    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle, expectedCriteria }));
+    if (patch.sourceOps?.length && expectedSources === undefined) {
+      return c.json({ error: "要求の根拠を直すときは expectedSources（編集を始めたときの根拠の記録）を渡してください", code: "requirement_invalid" }, 400);
+    }
+    return c.json(await preflight.updateDraft(rid(c), c.req.param("run"), c.req.param("key"), patch, { expectedTitle, expectedCriteria, expectedSources, actor: actorOf(c) }));
   });
   /** 子の要望の案（分割の run）を直す。expectedTitle は上と同じ */
   app.patch("/requests/:rid/preflight/:run/children/:key", async (c) => {

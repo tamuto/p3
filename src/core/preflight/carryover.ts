@@ -104,6 +104,13 @@ export function renderCarryover(c: Carryover): string | undefined {
       `判定: ${a.verdict} / 妥当性 ${a.validity.score} / 実現可能性 ${a.feasibility.score}`,
       a.summary,
       `### 確認事項\n${list(a.questions)}`,
+      ...(a.clarifications?.length
+        ? [
+            `### 構造化した確認事項（回答は要望の「要求の出典と確認」に元の組のまま載せています）\n${list(
+              a.clarifications.map((q) => `${p.id}/${q.id}: ${q.question}（確認先: ${q.ask} / 対象: ${q.target}${q.needed ? ` / 必要な根拠: ${q.needed}` : ""}）`),
+            )}`,
+          ]
+        : []),
       `### リスク\n${list(a.risks)}`,
       // 前回の根拠は前回の時点のもの。今回の確かめた根拠としてそのまま写させない
       `### 前回の根拠（前回の時点のもの。使うなら今回あらためて確かめ、確かめていなければ assumed にする）\n${

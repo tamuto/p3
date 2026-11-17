@@ -1,3 +1,4 @@
+import type { CriterionSource, SourceState } from "./requirementSource.ts";
 import type { AcceptanceCriterion, AcceptanceEvidence, CriterionState } from "./acceptance.ts";
 import type { QualitySnapshot, QualityStandard, TaskQualityDiffItem } from "./quality.ts";
 import type { PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "./types.ts";
@@ -155,6 +156,8 @@ export interface TaskReviewInput {
     evidence?: AcceptanceEvidence[];
     /** 基準ごとの今の状態（missing: 証拠なし / stale: 基準を変えた後の古い証拠） */
     evidenceStates?: { id: string; state: CriterionState }[];
+    /** 基準ごとの要求の根拠の記録と確認の状態（要望者の申告。shared/requirementSource.ts。無ければ記録なし） */
+    sources?: (CriterionSource & { state: SourceState })[];
     acceptanceProblems?: string[];
   };
   items: TaskReviewItem[];

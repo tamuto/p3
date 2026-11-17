@@ -1,3 +1,4 @@
+import { ASK_UNKNOWN } from "../../shared/requirementSource.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
@@ -98,16 +99,33 @@ export class MockEngine implements PreflightEngine {
       : [];
 
     const clarity = Math.min(100, 40 + (request.body.length + notes.reduce((n, x) => n + x.body.length, 0)) / 8);
+    // 確認事項への回答（要望の clarifyAnswers）もメモと同じく、確認が済んだものとして扱う
+    const answered = notes.length > 0 || (request.clarifyAnswers?.length ?? 0) > 0;
+    const unclear = clarity < 55 && !answered;
     const carried = [previous && `前回 ${previous.id} を引き継ぎ`, notes.length && `メモ ${notes.length} 件を反映`].filter(Boolean).join("、");
     const assessment: PreflightAssessment = {
       summary: split
         ? `「${request.title}」は想定 ${items.length} 件のタスクになるので、${children.length} 件の子の要望に分けます。${carried ? `${carried}しました。` : ""}（mock による推定）`
         : `「${request.title}」を ${drafts.length} 件のタスクに分割しました。${carried ? `${carried}しました。` : ""}（mock による推定）`,
-      verdict: clarity < 55 && !notes.length ? "clarify" : "go",
+      verdict: unclear ? "clarify" : "go",
       validity: { score: Math.round(clarity), reasons: ["mock: 本文の具体性から推定"] },
       feasibility: { score: 80, reasons: ["mock: 固定の値"] },
       risks: [],
-      questions: clarity < 55 && !notes.length ? ["完了条件をより具体的にしてください"] : [],
+      questions: unclear ? ["完了条件をより具体的にしてください"] : [],
+      ...(unclear
+        ? {
+            clarifications: [
+              {
+                id: "Q1",
+                target: "要望の完了条件",
+                ask: ASK_UNKNOWN,
+                question: "完了条件をより具体的にしてください",
+                needed: "完了したと確かめられる条件（業務の担当が承認した例など）",
+                impact: "完了条件が決まらないと受け入れ基準を書けません（mock による推定）",
+              },
+            ],
+          }
+        : {}),
       areas,
       // Mock は参照先を読まないので、根拠はすべて推測
       evidence: [{ claim: "mock: 要望の本文の箇条書きからタスク案を作った（コードは読んでいない）", kind: "assumed" }],

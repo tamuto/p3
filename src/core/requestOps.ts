@@ -2,6 +2,21 @@ import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../sha
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
+import {
+  answersKey,
+  applySourceOps,
+  makeAnswer,
+  putAnswer,
+  requestSubject,
+  RequirementInputError,
+  settleSources,
+  sourceSeq,
+  sourcesKey,
+  type AnswerInput,
+  type Clarification,
+  type ClarifyAnswer,
+  type SourceOp,
+} from "../shared/requirementSource.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
@@ -158,7 +173,7 @@ export async function createTask(
   for (const o of input.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = input;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = input;
   // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
   const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
   const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
@@ -185,7 +200,7 @@ export async function updateTask(
   const cur = col.require(tid);
   const { checked, acceptance, blockOp, ...rest } = patch;
   // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = rest;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, ...plain } = rest;
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
@@ -217,7 +232,7 @@ export async function updateTask(
         if (blockTo) out = { ...out, ...blockTo };
         checkBlockedStatus(fresh.status, status, blockTo ? blockTo.block : fresh.block, fresh.ref);
         if (!acceptance?.length) return out;
-        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor });
+        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor, requestSources: ctx.ws.requests.get(rid)?.requirementSources ?? [] });
         if (!acceptanceChanged(fresh, changedTo)) return out;
         // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
         const clear = !!fresh.checkedAt && !("checkedAt" in next);
@@ -262,21 +277,113 @@ export async function createRequest(ctx: P3Context, input: Partial<Request> & { 
  * 要望を変える。対応済にするのは全タスクが完了のときだけ（requestStatus.ts）。
  * parent を含むなら親の付け替え（undefined で外す）を関係のロックの中で確かめてから書く（hierarchy.ts）
  */
-export async function updateRequest(ctx: P3Context, rid: string, patch: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
+export async function updateRequest(ctx: P3Context, rid: string, input: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
+  // 要求の根拠・回答は操作（updateRequirement・answerClarification）でだけ変える（値をそのまま書く道は持たない）
+  const { requirementSources: _rs, requirementSeq: _sq, clarifyAnswers: _ca, requirementProblems: _rp, ...patch } = input;
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
   // 状態か親が変わったら、未完了になった配下の分だけ祖先を戻す
   const after = async (r: Request) => (patch.status !== undefined || "parent" in patch ? withAncestors(r, await afterRequestWrite(ctx, r.id, opts.actor)) : r);
+  // 題・本文を変えたら、要望の根拠の記録の確認は効かなくなる（書く直前に読み直した値で、履歴へ移す）
+  const write = () => ctx.ws.requests.update(rid, (fresh) => withSettledSources(fresh, patch), opts);
   if (!("parent" in patch)) {
-    const r = await ctx.ws.requests.update(rid, patch, opts);
+    const r = await write();
     changed(ctx, "request", r.id);
     return after(r);
   }
-  const { result: r, previous } = await withParentChange(ctx.ws, rid, patch.parent, () => ctx.ws.requests.update(rid, patch, opts));
+  const { result: r, previous } = await withParentChange(ctx.ws, rid, patch.parent, write);
   changed(ctx, "request", r.id);
   // 前と今の親の子の一覧も変わる
   for (const p of new Set([previous, r.parent])) if (p && p !== r.id) changed(ctx, "request", p);
   return after(r);
+}
+
+/** 題・本文の変更で効かなくなった要望の根拠の確認を履歴へ移した patch（変わらなければ patch のまま） */
+function withSettledSources(fresh: Request, patch: Partial<Request>): Partial<Request> {
+  if ((patch.title === undefined && patch.body === undefined) || !fresh.requirementSources?.length || fresh.requirementProblems?.length) return patch;
+  const subject = requestSubject({ title: patch.title ?? fresh.title, body: patch.body ?? fresh.body });
+  const settled = settleSources(fresh.requirementSources, () => subject, new Date().toISOString());
+  return sourcesKey(settled) === sourcesKey(fresh.requirementSources) ? patch : { ...patch, requirementSources: settled };
+}
+
+/** 要望の根拠・回答が読めないときは変えない */
+function checkRequirementReadable(r: Request) {
+  if (r.requirementProblems?.length) throw new RequirementInputError(`${r.id} の要求の根拠・回答のファイルの値が読めないため変えられません。request.md を直してください: ${r.requirementProblems.join(" / ")}`);
+}
+
+/**
+ * 要望の要求の根拠の記録を変える（shared/requirementSource.ts の操作。書く直前に読み直した値に当て、規則に合わなければ何も書かない）。
+ * 同じ値の再保存では書かない（rev を上げない）。expectedRev で競合を見る
+ */
+export async function updateRequirement(ctx: P3Context, rid: string, ops: readonly SourceOp[], opts: WriteOpts = {}): Promise<Request> {
+  if (!ops.length) throw new RequirementInputError("根拠の記録への操作がありません");
+  let unchanged: Request | undefined;
+  const r = await ctx.ws.requests
+    .update(
+      rid,
+      (fresh) => {
+        checkRequirementReadable(fresh);
+        const before = fresh.requirementSources ?? [];
+        const subject = requestSubject(fresh);
+        const { list, seq } = applySourceOps(before, ops, { now: new Date().toISOString(), actor: opts.actor, subjectOf: () => subject, seq: fresh.requirementSeq });
+        if (sourcesKey(list) === sourcesKey(before) && seq === (fresh.requirementSeq ?? sourceSeq(before))) {
+          unchanged = fresh;
+          throw new NoChange();
+        }
+        return { requirementSources: list.length ? list : undefined, requirementSeq: seq > 0 ? seq : undefined };
+      },
+      opts,
+    )
+    .catch((e: unknown) => {
+      if (e instanceof NoChange && unchanged) return unchanged;
+      throw e;
+    });
+  if (r !== unchanged) changed(ctx, "request", rid);
+  return r;
+}
+
+/**
+ * Preflight の確認事項に回答する（要望の clarifyAnswers に残す。過去の run と評価は書き換えない）。clarification は元の run の確認事項
+ * （呼ぶ側が run から取り出す）。回答しただけでは根拠の記録を確認記録ありにしない。answer が null なら回答を消す
+ */
+export async function saveClarifyAnswer(
+  ctx: P3Context,
+  rid: string,
+  runId: string,
+  q: Clarification,
+  input: AnswerInput | null,
+  opts: WriteOpts = {},
+): Promise<{ request: Request; answer?: ClarifyAnswer }> {
+  let unchanged: Request | undefined;
+  let saved: ClarifyAnswer | undefined;
+  const r = await ctx.ws.requests
+    .update(
+      rid,
+      (fresh) => {
+        checkRequirementReadable(fresh);
+        const cur = fresh.clarifyAnswers ?? [];
+        if (input === null) {
+          if (!cur.some((a) => a.run === runId && a.question === q.id)) throw new RequirementInputError(`${runId}/${q.id} への回答はありません`);
+          const next = cur.filter((a) => !(a.run === runId && a.question === q.id));
+          return { clarifyAnswers: next.length ? next : undefined };
+        }
+        saved = makeAnswer(runId, q, input, fresh.requirementSources ?? [], { now: new Date().toISOString(), actor: opts.actor });
+        const next = putAnswer(cur, saved);
+        if (answersKey(next) === answersKey(cur)) {
+          saved = cur.find((a) => a.run === runId && a.question === q.id);
+          unchanged = fresh;
+          throw new NoChange();
+        }
+        return { clarifyAnswers: next };
+      },
+      opts,
+    )
+    .catch((e: unknown) => {
+      if (e instanceof NoChange && unchanged) return unchanged;
+      throw e;
+    });
+  if (r !== unchanged) changed(ctx, "request", rid);
+  return { request: r, ...(saved ? { answer: saved } : {}) };
 }
 
 /**

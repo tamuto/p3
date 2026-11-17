@@ -8,7 +8,7 @@ import { QualityInputError, qualityPlain, type QualityConfig } from "../../share
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "./fsutil.ts";
-import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, TASK_DERIVED, TASK_KEY_ORDER, taskKeepRaw } from "./normalize.ts";
+import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, REQUEST_DERIVED, requestKeepRaw, TASK_DERIVED, TASK_KEY_ORDER, taskKeepRaw } from "./normalize.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";
 import { NoteStore } from "./noteStore.ts";
@@ -133,6 +133,8 @@ export class Workspace {
       layout: folderLayout(this.requestsDir, "request.md", REQUEST_ID, () => newRequestId()),
       normalize: normalizeRequest,
       keyOrder: REQUEST_KEY_ORDER,
+      derived: REQUEST_DERIVED,
+      keepRaw: requestKeepRaw,
     });
     this.preflight = new PreflightStore(this.requestsDir);
     this.notes = new NoteStore(this.requestsDir);

@@ -137,6 +137,12 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   ls --archived                アーカイブしたタスクの一覧（今の要望。読むだけ。壊れたファイルは「読めない」に出す）
   show <T003> --archived       アーカイブしたタスクの詳細（本文・変更の記録・成果物）。通常の ls / show / 進捗には出ない
   find <語句>                    参照・タイトルで探す
+  source [<要望>]               要求の出典と確認（任意）: 根拠の記録と状態（未記録・未確認・確認記録あり・再確認が必要・対応先不明）・回答
+                               add  --target 対象の要求・前提 --source 出典（役割・資料名・版・節）--grounds 根拠|-（承認された計算例など）
+                               edit <S1> [同じ項目]  /  confirm <S1> --by 確かめた役割・アクター --on YYYY-MM-DD  /  rm <S1>
+                               （確認には出典・根拠・人・日が要る。題・本文・記録を変えると再確認が必要。記録は申告で P3 の保証ではない）
+  source <T003|D1> [<A1> 操作]   受け入れ基準ごとの記録（D1 はタスク案。--run PF-...）。add --from S1 で要望の記録を写す（確認は引き継がない）
+                               --sources-json 操作.json|-  まとめて（[{"criterion":"A1","op":"add","source":"…","basis":"…"}]）
 
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
@@ -149,6 +155,10 @@ Preflight
                                Codex / Mock の run は、動いているプロセスに中断を頼み、止まるまで少し待つ。止まらなければ requested）
                                --acknowledge-stopped  動いているか確かめられない run（以前の版・別の環境）を、止まっていることを確かめて中断にする
                                （記録だけ。プロセスやコンテナは止めない）
+  clarify [<要望>]              確認事項（ID・確認先・質問・必要な根拠・判断への影響）と回答の状態  --run PF-...
+  answer [<要望>] <Q1>          確認事項に回答する（要望に残す。過去の run は書き換えない。再評価は preflight で明示して始める）
+                               --body 回答|-  --by 回答した役割  --on YYYY-MM-DD  --source 出典  --grounds 根拠|-  --link S1（対応する根拠の記録）
+                               --answer-json 回答.json|-  まとめて / answer [<要望>] <Q1> rm  消す
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
   attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）
   attach add <ファイル>           添付を足す  --description 説明 --source 出典。次の Preflight を始めるときに run に固定して渡す

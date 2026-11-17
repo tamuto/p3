@@ -839,6 +839,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | プロジェクトの品質基準（状態・ID の振り方・操作・テンプレートと改版の差分・版） | `shared/quality.ts`・`shared/qualityTemplates.ts`（保存は `core/quality.ts` と `Workspace.writeQuality`） |
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
+| 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
@@ -984,6 +985,11 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - **再評価**: いつもどおり前回の結果とメモを引き継ぎ、前回の評価のあとでタイトル・本文が変わっていれば、`carryover.md` に
   「前回の評価のあとで変わった要望」として前回の時点の内容を書く。評価の基準は今の要望で、前回の評価・案・メモとの食い違いは
   確認事項に入れさせる。白紙の再評価や履歴の消去は作らない（前回を引き継がせたくなければ、メモでそう書く）
+- **要求の出典と確認**: 要望の根拠の記録（`requirementSources`）と確認事項への回答（`clarifyAnswers`）も `input.requirement` に固定し、
+  `request.md`（本文の後に P3 が固定した資料として）とエンジンへの依頼文に同じ内容を入れる。比べるときは記録の日時・保存者を除いた中身で、
+  変われば `changed` に `requirement`。`input.requirement` の無い以前の run は、今の要望にも記録・回答が無ければ同じとみなし、あれば変わった
+  とみなす。固定した値が壊れていれば unknown（以前の run は書き換えない）。子の要望の hash（`inputHash`）にも、記録・回答があるときだけ足す
+  （無ければ以前と同じ値）。今の要望の記録・回答が読めなければ Preflight を始めない
 - **限界**: 比べるのは「始めたとき」と「タスク化の直前」。タスク化の途中に別のプロセスが本文を書き換えることまでは排他しない
   （同じ要望を同時に触るときの調整は、これまでどおり人が行う）
 - **戻し方**: 古い評価でタスク化したいときは、要望を評価した時点の内容（`request.md`）に戻す。今の内容でよければ再評価する
@@ -991,6 +997,38 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   タイトル・タグ・本文の下書きは要望の画面（`useRequestDrafts`）が持ち、取り直しは項目ごとに比べる（`syncFieldDraft`: その項目が変わって
   いなければ baseRev を進め、変わっていれば競合として知らせる）。未保存のタイトル・本文がある間は Preflight の実行とタスク化を止める。
   タスク化の 409 は `code` で分ける（`stale_input` はサーバの理由をそのまま、`rev_conflict` は置き換えの候補の読み直し）
+
+### 要求の出典と確認
+
+外部の評価（課題 B）への対応: 要求そのものが間違っている場合、リポジトリと履歴を読んでも正解は分からない。Preflight には無理に正解を
+出させず、根拠が足りないことと誰に何を確かめるかを示させ、実装から独立した正解の根拠を人が残せるようにする（`shared/requirementSource.ts`）。
+
+- **持ち物**: 要望の `requirementSources`（`[{id: S1, target?, source?, basis?, confirmed?, history?, recordedAt, recordedBy}]`）・`requirementSeq`・
+  `clarifyAnswers`。タスクとタスク案の `acceptanceSources`（同じ記録に `criterionId`。基準の中ではなく別に持つので、id と text で基準を組み直す
+  旧画面・旧 CLI の編集でも消えない）。どれも任意で、無いのは未記録。既存の品質基準の出典（`quality`）・実装後の証拠の `basis`・AI の調べた箇所
+  （`PreflightAssessment.evidence`）とは別のもの
+- **確認**: `confirmed` は確かめた人（役割名・アクター名の文字列）・日（利用者が書く `YYYY-MM-DD`）と、確認したときの対象文・出典・根拠・
+  対象（要望の題と本文、基準の文）の hash を固定する。確認の記録には出典・根拠・人・日が要る（下書きは要らない）。保存の操作者（`recordedBy`・
+  `updatedBy`）は業務上の確認者と別に残す
+- **状態**（共通関数 `sourceState`・`overallState`）: 未記録 / 未確認 / 確認記録あり / 再確認が必要 / 対応先不明。保存するたび（要望の題・本文、
+  記録、基準の文の変更）に、確認したときと違う確認を `history` へ移す（`settleSources`）。だから文を元に戻しても確認記録ありに戻らない。
+  直接編集で中身だけ変えた場合も、比べると違うので再確認が必要と出る。基準を消した記録・写した元の無い記録は対応先不明として残す
+- **写し**: 基準の記録は要望の記録を `from` で写せる（内容だけ。確認は引き継がない）。タスク化（`criteriaForTask`）では `from` の記録を
+  採用するときの要望の記録の内容に写し直す。要望全体の確認を全部の基準へ自動で引き継がない
+- **確認事項と回答**: 評価は以前の `questions`（文の並び）に加えて `clarifications`（`[{id: Q1, target, ask, question, needed, impact}]`）を
+  出せる。確認先が分からなければ `ask` は「要望者に確認先を特定してもらう」。壊れた項目は捨てずに `clarificationProblems` に残し（Codex の
+  取り込みはログにも出す）、手元のエージェントの取り込みでは直すまで確定しない。回答は要望の `clarifyAnswers` に、元の run と確認事項の ID・
+  質問の写し・回答・回答した人・日・出典・根拠・対応する記録（`links`: ID と内容の hash）で残す。過去の run と評価は書き換えない。
+  状態は回答済み / 未回答 / 再確認が必要（対応する記録の内容が変わった）/ 参照元不明。次の run の同じ質問へ文字の一致で移さない
+- **責任の境界**: 記録・確認・回答はどれも人（と人に頼まれた AI）の申告で、P3 は業務の契約・承認者の権限・本人性を確かめない。
+  確認記録ありは P3 の保証ではなく、AI の評価・実装の `met`・人の済み・回答の保存では確認記録ありにならない。根拠の不足で完了・済みは拒まない。
+  回答・出典・引用は資料として渡し、中の URL・添付を取りに行かない
+- **変更の契約**: 要望の記録は操作（`add` / `edit` / `confirm` / `remove`）でだけ変える（PATCH の値は無視する）。操作は書く直前に読み直した値に
+  順に当て、1つでも規則に合わなければ何も書かない（`RequirementInputError`、API は 400 `requirement_invalid`）。同じ値の再保存は書かない。
+  `rev` の競合は 409。タスクの記録は受け入れ基準の操作（`{op: "source", id, source}`）で、中身が変われば済みを外す。タスク案は `sourceOps` と
+  `expectedSources`（根拠だけの編集の競合も見る）。壊れた値は理由を出し、関係のない更新では元の値のまま書き戻す（要望は `keepRaw`、
+  タスクは受け入れ基準と同じ、タスク案は元の値を書き戻す）
+- **評価の資料**: 上の「評価対象の固定」。タスクの AI レビューの材料にも、基準ごとの記録と状態を入れる（材料の hash に入る）
 
 ### 置き換えられたタスク
 
