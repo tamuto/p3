@@ -358,6 +358,13 @@ function DrawerFor({ ctx, taskId, onClose }: { ctx: ReturnType<typeof useAppCtx>
   return <TaskDrawer ctx={ctx} data={data} id={taskId} onClose={onClose} />;
 }
 
+/** 申告のみの met があるタスクの数（基準の数ではない。概要の件数は shared/acceptance.ts の evidenceSummary） */
+const declarationTasks = (tasks: readonly TaskMark[]) => tasks.filter((t) => (t.evidence?.declarationOnly ?? 0) > 0).length;
+
+/** 印の説明に添える注意（停止・申告のみ） */
+const markNote = (m: TaskMark) =>
+  [m.block ? `⏸ 停止中（${m.block.reason.split("\n")[0]}）` : "", m.evidence?.declarationOnly ? `申告のみの達成 ${m.evidence.declarationOnly} 件` : ""].filter(Boolean);
+
 /** 凡例（記号だけ） */
 function Legend() {
   const item = (icon: ReactNode, label: string) => (
@@ -373,6 +380,7 @@ function Legend() {
       {item(<DoingMark />, "作業中")}
       {item(<BlockedMark />, "停止中")}
       {item(<TodoMark />, "未着手")}
+      {item(<span className="rounded px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:text-amber-200 dark:ring-amber-700">申告のみ</span>, "申告だけの達成があるタスク")}
       {item(<span className="text-violet-500">◆</span>, "マイルストーン")}
       {item(<Flag overdue={false} />, "期限")}
       {item(<span className="inline-block h-3.5 w-0.5 bg-indigo-500" />, "今日")}
@@ -427,6 +435,11 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
           {p.subtree.blocked > p.blocked && (
             <span className="shrink-0 text-sm whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望で止まっているタスクの数">
               配下の停止 {p.subtree.blocked - p.blocked}
+            </span>
+          )}
+          {declarationTasks(p.tasks) > 0 && (
+            <span className="shrink-0 rounded bg-amber-50 px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-700" title="満たしたと申告しただけ（確かめた方法の記録なし）の基準があるタスクの数（自分のタスク。印から詳細を開けます）">
+              申告のみ {declarationTasks(p.tasks)}
             </span>
           )}
           {p.hierarchyIssues.length > 0 && (
@@ -509,9 +522,9 @@ function RequestLane({
         if (!inView(left, 40)) return null;
         return (
           <span key={`${g.start}|${g.kind}`} className="absolute z-[5]" style={{ left, top: cy - 7 }}>
-            <Hint content={g.items.map((m) => `${m.id} ${m.title}${m.block ? `\n⏸ 停止中（${m.block.reason.split("\n")[0]}）` : ""}`).join("\n")}>
+            <Hint content={g.items.map((m) => [`${m.id} ${m.title}`, ...markNote(m)].join("\n")).join("\n")}>
               <button
-                aria-label={g.items.map((m) => `${m.id} ${m.block ? "停止中" : ""}`.trim()).join("、")}
+                aria-label={g.items.map((m) => [m.id, m.block ? "停止中" : "", m.evidence?.declarationOnly ? `申告のみ ${m.evidence.declarationOnly}` : ""].filter(Boolean).join(" ")).join("、")}
                 className="relative block transition hover:scale-125"
                 onClick={(e) =>
                   g.items.length === 1
@@ -552,6 +565,7 @@ function RequestLane({
                 {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : m.block ? "blocked" : "doing")}
                 <span className="font-mono text-sm text-slate-500">{m.id}</span>
                 <span className="truncate">{m.title}</span>
+                {!!m.evidence?.declarationOnly && <span className="shrink-0 text-sm text-amber-800 dark:text-amber-300">申告のみ {m.evidence.declarationOnly}</span>}
               </>
             ),
           }))}

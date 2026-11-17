@@ -81,7 +81,7 @@ describe.skipIf(!inject("chromium").available)("主な流れ（要望の登録�
       await step(`${id} を済みにする（人の確認）`, async () => {
         const drawer = page.locator("aside");
         await drawer.getByRole("button", { name: "済みにする" }).click();
-        await until.visible(drawer.getByText(/^済み（.+ に確認）$/));
+        await until.visible(drawer.getByText(/^人が確認済み（最終確認・.+）$/));
         await drawer.getByRole("button", { name: "✕" }).click();
       });
     }

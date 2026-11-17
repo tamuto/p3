@@ -237,7 +237,7 @@ export function basisDetail(basis: EvidenceBasis): { label: string; value: strin
     case "machine":
       return [
         { label: "コマンド", value: basis.command },
-        { label: "結果", value: basis.result },
+        { label: "検査の結果", value: basis.result },
         { label: "対象", value: basis.target },
       ];
     default:

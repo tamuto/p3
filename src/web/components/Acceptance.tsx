@@ -3,7 +3,17 @@ import {
   ACCEPTANCE_RESULT_LABEL,
   ACCEPTANCE_RESULTS,
   acceptanceStatus,
+  basisDetail,
+  basisLabel,
+  basisMismatch,
+  BASIS_LIMITS,
   criteriaEditOps,
+  EVIDENCE_BASIS_HINT,
+  EVIDENCE_BASIS_KINDS,
+  EVIDENCE_BASIS_LABEL,
+  evidenceBasisOf,
+  type EvidenceBasis,
+  type EvidenceBasisKind,
   type AcceptanceCriterion,
   type AcceptanceEvidence,
   type AcceptanceOp,
@@ -124,6 +134,12 @@ const STATE: Record<CriterionState, { label: string; tone: Tone }> = {
   stale: { label: "再確認が必要", tone: "amber" },
 };
 
+/** 満たしたと申告した数と根拠の内訳（例: 「満たしたと申告 2/3、うち申告のみ 1（検査結果あり 1）」） */
+export function metSummary(acc: AcceptanceStatus): string {
+  const others = EVIDENCE_BASIS_KINDS.filter((k) => k !== "declaration" && acc.metByBasis[k] > 0).map((k) => `${EVIDENCE_BASIS_LABEL[k]} ${acc.metByBasis[k]}`);
+  return `満たしたと申告 ${acc.met}/${acc.total}${acc.met ? `、うち申告のみ ${acc.declarationOnly.length}` : ""}${others.length ? `（${others.join("・")}）` : ""}`;
+}
+
 /** 不足の数（「済み」の近くに出す）。不足が無ければ「すべて満たした」 */
 export function shortfallSummary(acc: AcceptanceStatus): string {
   const n = (s: CriterionState) => acc.items.filter((i) => i.state === s).length;
@@ -134,13 +150,40 @@ export function shortfallSummary(acc: AcceptanceStatus): string {
     n("stale") && `基準を変えた後の古い証拠 ${n("stale")} 件`,
     acc.orphans.length && `対応する基準のない証拠 ${acc.orphans.length} 件`,
     acc.problems.length && `読めない値 ${acc.problems.length} 件`,
+    acc.declarationOnly.length && `申告のみの達成 ${acc.declarationOnly.length} 件（確かめた方法の記録なし）`,
   ].filter(Boolean);
   return parts.length ? `${parts.join("・")}。内容を確かめて判断してください。不足があっても「済み」にできます` : `${acc.total} 件すべてを満たした（作業した側の申告）`;
+}
+
+/** 根拠（結果と別のラベル）。古い証拠は「種類未記録」、読んだもの・検査の項目を並べる */
+function BasisView({ e }: { e: AcceptanceEvidence }) {
+  const { basis, recorded } = evidenceBasisOf(e);
+  const tone: Tone = basis.kind === "declaration" ? "amber" : basis.kind === "unverified" ? "slate" : "indigo";
+  return (
+    <div className="min-w-0 space-y-1">
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="text-base text-slate-500 dark:text-slate-400">根拠</span>
+        <Badge tone={tone}>{basisLabel(e)}</Badge>
+      </p>
+      <p className="text-base text-slate-500 dark:text-slate-400">{recorded ? EVIDENCE_BASIS_HINT[basis.kind] : "根拠の種類を記録する前の証拠です（申告として読みます）"}</p>
+      {basisDetail(basis).length > 0 && (
+        <dl className="grid min-w-0 gap-x-2 text-base sm:grid-cols-[auto_1fr]">
+          {basisDetail(basis).map((d) => (
+            <div key={d.label} className="contents">
+              <dt className="text-slate-500 dark:text-slate-400">{d.label}</dt>
+              <dd className="min-w-0 font-mono break-all whitespace-pre-wrap">{d.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
 }
 
 function EvidenceBody({ e }: { e: AcceptanceEvidence }) {
   return (
     <div className="min-w-0 space-y-1">
+      <BasisView e={e} />
       {e.evidence.trim() ? (
         <div className="min-w-0 break-words [&_a]:break-all [&_code]:break-all">
           <Markdown text={e.evidence} />
@@ -165,7 +208,10 @@ function CriterionItem({ id, text, state, evidence, staleFrom, children }: { id:
         <p className="break-words">{text}</p>
       </div>
       <div className="min-w-0 space-y-2">
-        <Badge tone={STATE[state].tone}>{STATE[state].label}</Badge>
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="text-base text-slate-500 dark:text-slate-400">結果</span>
+          <Badge tone={STATE[state].tone}>{STATE[state].label}</Badge>
+        </p>
         {staleFrom !== undefined && <p className="text-base break-words text-amber-700 dark:text-amber-400">記録したときの基準: {staleFrom}</p>}
         {evidence ? <EvidenceBody e={evidence} /> : <p className="text-base text-slate-500">確認の材料がありません</p>}
         {children}
@@ -180,7 +226,7 @@ export function AcceptanceView({ task }: { task: Task }) {
   if (!acc) return <p className="text-base text-slate-500 dark:text-slate-400">受け入れ基準なし</p>;
   return (
     <div className="space-y-2">
-      <p className="text-base text-slate-500">証拠は作業した側の申告です（{acc.met}/{acc.total} を満たした）</p>
+      <p className="text-base text-slate-500">証拠は作業した側の申告です（{metSummary(acc)}）</p>
       <Problems acc={acc} />
       <ul className="space-y-2">
         {acc.items.map((i) => (
@@ -211,12 +257,57 @@ function Problems({ acc }: { acc: AcceptanceStatus }) {
   );
 }
 
+/** 根拠の入力（種類ごとの欄。使わない欄も残し、種類を戻したときに消えないようにする） */
+interface BasisInput {
+  kind: EvidenceBasisKind;
+  reference: string;
+  command: string;
+  result: string;
+  target: string;
+}
+
+const basisInputOf = (e?: AcceptanceEvidence): BasisInput => {
+  const b = e ? evidenceBasisOf(e).basis : ({ kind: "declaration" } as EvidenceBasis);
+  return { kind: b.kind, reference: b.kind === "read" ? b.reference : "", command: b.kind === "machine" ? b.command : "", result: b.kind === "machine" ? b.result : "", target: b.kind === "machine" ? b.target : "" };
+};
+
+/** 入力を保存する根拠にする（欄の空白は shared の cleanBasis が除く） */
+const basisOfInput = (b: BasisInput): EvidenceBasis =>
+  b.kind === "read" ? { kind: "read", reference: b.reference } : b.kind === "machine" ? { kind: "machine", command: b.command, result: b.result, target: b.target } : { kind: b.kind };
+
+/** 種類に要る欄がそろっているか（そろっていなければ理由） */
+function basisMissing(b: BasisInput): string | undefined {
+  if (b.kind === "read" && !b.reference.trim()) return "読んだものと確かめた内容を書いてください";
+  if (b.kind === "machine") {
+    const lack = [!b.command.trim() && "コマンド", !b.result.trim() && "結果", !b.target.trim() && "対象"].filter(Boolean);
+    if (lack.length) return `検査の${lack.join("・")}を書いてください`;
+  }
+  return undefined;
+}
+
+/** 根拠の入力の比較（使っている種類の欄だけ） */
+const basisKey = (b: BasisInput) => JSON.stringify(basisOfInput(b));
+
 type Editing =
   | { kind: "criteria"; baseRev: number; base: AcceptanceCriterion[]; rows: CriterionRow[] }
-  | { kind: "evidence"; id: string; baseRev: number; baseResult: AcceptanceResult | ""; baseText: string; result: AcceptanceResult | ""; text: string };
+  | {
+      kind: "evidence";
+      id: string;
+      baseRev: number;
+      baseResult: AcceptanceResult | "";
+      baseText: string;
+      baseBasis: BasisInput;
+      result: AcceptanceResult | "";
+      text: string;
+      basis: BasisInput;
+    };
 
 const editingDirty = (e: Editing | null) =>
-  !!e && (e.kind === "criteria" ? !rowsEqual(e.rows, rowsOf(e.base)) : e.result !== e.baseResult || e.text !== e.baseText);
+  !!e && (e.kind === "criteria" ? !rowsEqual(e.rows, rowsOf(e.base)) : e.result !== e.baseResult || e.text !== e.baseText || basisKey(e.basis) !== basisKey(e.baseBasis));
+
+/** 結果を変えたときの根拠の種類（unverified は未確認だけ。未確認から満たした・満たせなかったへは申告のみ） */
+const kindForResult = (result: AcceptanceResult | "", kind: EvidenceBasisKind): EvidenceBasisKind =>
+  result === "unverified" ? "unverified" : kind === "unverified" ? "declaration" : kind;
 
 /**
  * タスク詳細の受け入れ基準と証拠。基準の編集と証拠の編集はどちらか1つずつ（保存・取消）。保存は編集を始めたときの rev で送り、
@@ -249,8 +340,10 @@ export function AcceptancePanel({
 
   const acc = acceptanceStatus(task);
   const locked = disabled || !!acc?.problems.length;
-  // 保存できない入力（空の基準・本文の無い「満たした」）
-  const invalid = !!editing && (editing.kind === "criteria" ? rowsInvalid(editing.rows) : editing.result === "met" && !editing.text.trim());
+  // 保存できない入力（空の基準・本文の無い「満たした」・根拠の欄の不足）
+  const invalid =
+    !!editing &&
+    (editing.kind === "criteria" ? rowsInvalid(editing.rows) : (editing.result === "met" && !editing.text.trim()) || (editing.result !== "" && !!basisMissing(editing.basis)));
   const external = !!editing && editing.baseRev !== task.rev;
 
   const start = (e: Editing) => {
@@ -294,7 +387,11 @@ export function AcceptancePanel({
       return send(criteriaEditOps({ ...task, acceptanceCriteria: editing.base }, editing.rows), editing.baseRev);
     }
     if (editing.result === "") return send([{ op: "unrecord", id: editing.id }], editing.baseRev);
-    return send([{ op: "record", id: editing.id, result: editing.result, evidence: editing.text }], editing.baseRev);
+    // 根拠に触れていなければ送らない（古い証拠を開いて本文だけ直しても、根拠を足したことにしない。サーバが前の根拠を引き継ぐ）
+    const touched = basisKey(editing.basis) !== basisKey(editing.baseBasis) || editing.result !== editing.baseResult;
+    const basis = basisOfInput(editing.basis);
+    if (touched && basisMismatch(editing.result, basis)) return setError(basisMismatch(editing.result, basis)!);
+    return send([{ op: "record", id: editing.id, result: editing.result, evidence: editing.text, ...(touched ? { basis } : {}) }], editing.baseRev);
   }
 
   const notice = editing && (
@@ -343,7 +440,15 @@ export function AcceptancePanel({
     editing?.kind === "evidence" && editing.id === id ? (
       <div className="space-y-2 rounded-md bg-white p-2 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
         <Field label="作業した側の結果">
-          <select className={inputCls} value={editing.result} disabled={busy} onChange={(e) => setEditing({ ...editing, result: e.target.value as AcceptanceResult | "" })}>
+          <select
+            className={inputCls}
+            value={editing.result}
+            disabled={busy}
+            onChange={(e) => {
+              const result = e.target.value as AcceptanceResult | "";
+              setEditing({ ...editing, result, basis: { ...editing.basis, kind: kindForResult(result, editing.basis.kind) } });
+            }}
+          >
             {ACCEPTANCE_RESULTS.map((r) => (
               <option key={r} value={r}>
                 {ACCEPTANCE_RESULT_LABEL[r]}
@@ -361,17 +466,32 @@ export function AcceptancePanel({
           </Field>
         )}
         {editing.result === "met" && !editing.text.trim() && <p className="text-base text-rose-600">満たしたときは証拠を書いてください</p>}
+        {editing.result !== "" && <BasisEditor value={editing.basis} result={editing.result} disabled={busy} idPrefix={`basis-${task.id}-${id}`} onChange={(basis) => setEditing({ ...editing, basis })} />}
         {notice}
         {actions(editing.result === "" ? "証拠を消す" : "証拠を保存")}
       </div>
     ) : null;
 
   const editEvidence = (id: string, e?: AcceptanceEvidence) =>
-    start({ kind: "evidence", id, baseRev: task.rev, baseResult: e?.result ?? "", baseText: e?.evidence ?? "", result: e?.result ?? "met", text: e?.evidence ?? "" });
+    start({
+      kind: "evidence",
+      id,
+      baseRev: task.rev,
+      baseResult: e?.result ?? "",
+      baseText: e?.evidence ?? "",
+      baseBasis: basisInputOf(e),
+      result: e?.result ?? "met",
+      text: e?.evidence ?? "",
+      basis: basisInputOf(e),
+    });
 
   return (
     <div className="space-y-3">
-      {acc ? <p className="text-base text-slate-500">証拠は作業した側の申告です。人が内容を確かめて「済み」を決めます（{acc.met}/{acc.total} を満たした）</p> : <p className="text-base text-slate-500 dark:text-slate-400">受け入れ基準なし</p>}
+      {acc ? (
+        <p className="text-base text-slate-500">証拠と根拠は作業した側の申告です。人が内容を確かめて「済み」（最終確認）を決めます（{metSummary(acc)}）</p>
+      ) : (
+        <p className="text-base text-slate-500 dark:text-slate-400">受け入れ基準なし</p>
+      )}
       {acc && <Problems acc={acc} />}
       {acc && (
         <ul className="space-y-2">
@@ -397,6 +517,47 @@ export function AcceptancePanel({
       <Button type="button" className="text-base" disabled={locked || !!editing} onClick={() => start({ kind: "criteria", baseRev: task.rev, base: task.acceptanceCriteria ?? [], rows: rowsOf(task.acceptanceCriteria) })}>
         {task.acceptanceCriteria?.length ? "基準を編集" : "基準を足す"}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * 根拠の入力。種類は結果に合うものだけを選べる（未検証は未確認だけ、満たした・満たせなかったは申告のみ・読んで確認・検査結果あり）。
+ * 検査結果ありは作業した側が記録した結果で、P3 は実行しない。AI のレビューはここからは動かさない
+ */
+function BasisEditor({ value, result, disabled, idPrefix, onChange }: { value: BasisInput; result: AcceptanceResult; disabled: boolean; idPrefix: string; onChange: (b: BasisInput) => void }) {
+  const kinds = EVIDENCE_BASIS_KINDS.filter((k) => (result === "unverified" ? k === "unverified" : k !== "unverified"));
+  const set = (patch: Partial<BasisInput>) => onChange({ ...value, ...patch });
+  const missing = basisMissing(value);
+  const text = (key: "reference" | "command" | "result" | "target", label: string, hint: string, rows = 1) => (
+    <Field label={label} hint={hint}>
+      {rows > 1 ? (
+        <textarea id={`${idPrefix}-${key}`} rows={rows} maxLength={BASIS_LIMITS[key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+      ) : (
+        <input id={`${idPrefix}-${key}`} maxLength={BASIS_LIMITS[key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+      )}
+    </Field>
+  );
+  return (
+    <div className="space-y-2">
+      <Field label="根拠の種類" hint={EVIDENCE_BASIS_HINT[value.kind]}>
+        <select className={inputCls} value={value.kind} disabled={disabled || kinds.length < 2} onChange={(e) => set({ kind: e.target.value as EvidenceBasisKind })}>
+          {kinds.map((k) => (
+            <option key={k} value={k}>
+              {EVIDENCE_BASIS_LABEL[k]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {value.kind === "read" && text("reference", "読んだもの（必須）", "読んだコード・資料・画面と、確かめた内容", 2)}
+      {value.kind === "machine" && (
+        <>
+          {text("command", "検査のコマンド（必須）", "実行したコマンド")}
+          {text("result", "検査の結果（必須）", "終了コードと結果。失敗もそのまま書きます", 2)}
+          {text("target", "対象（必須）", "参照先とコミット（例: app:3f2a1c0）。未コミットならそう書きます")}
+        </>
+      )}
+      {missing && <p className="text-base text-rose-600">{missing}</p>}
     </div>
   );
 }
