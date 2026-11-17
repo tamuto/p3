@@ -46,9 +46,9 @@ function section(file: string, heading: RegExp): string {
 const LATER_SETUP = /chatgpt login|codex update|render update|codex\.pathMap|P3_CODEX_PATH_MAP|docker (version|ps|inspect|run|pull|exec)/i;
 
 describe("導入の段階", () => {
-  it("README の最短の手順は3つ以内で、段階 1 以降の準備（Docker・ChatGPT・Preflight）を求めない", () => {
+  it("README の最短の手順は3つで、段階 1 以降の準備（Docker・ChatGPT・Preflight）を求めない", () => {
     const quick = section("README.md", /最短の手順/);
-    expect(quick.split("\n").filter((l) => /^\d+\. /.test(l)).length).toBeLessThanOrEqual(3);
+    expect(quick.split("\n").filter((l) => /^\d+\. /.test(l))).toHaveLength(3);
     expect(quick).not.toMatch(LATER_SETUP);
     expect(quick).not.toMatch(/Docker|ChatGPT|Preflight|Codex/);
     expect(quick).toMatch(/join/);
