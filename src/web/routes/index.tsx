@@ -41,7 +41,7 @@ import {
  * 狭い画面（スマートフォン）では左の一覧を縮め（lib/timeline.ts の leftWidth）、ステータスとタイトルを2段で出す。
  */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom; blocked?: boolean } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom; blocked?: boolean; review?: boolean } => ({
     show: parseShow(s.show),
     /** 選んだタグ（JSON の配列）。以前の ?tag= も読む（lib/requestFilter.ts の parseTagsSearch） */
     tags: parseTagsSearch(s.tags, s.tag),
@@ -50,6 +50,8 @@ export const Route = createFileRoute("/")({
     zoom: s.zoom === "week" || s.zoom === "month" ? s.zoom : undefined,
     /** 止まっているタスクのある要望だけ（表示範囲・タグと AND） */
     blocked: s.blocked === true || s.blocked === 1 || s.blocked === "1" || s.blocked === "true" ? true : undefined,
+    /** 見直しが必要（候補）のある要望だけ（完了済み・対応済みも含める。タグ・停止中と AND） */
+    review: s.review === true || s.review === 1 || s.review === "1" || s.review === "true" ? true : undefined,
   }),
   component: ProgressPage,
 });
@@ -74,7 +76,7 @@ const withoutLegacyTag = <T extends object>(search: T): T => {
 
 function ProgressPage() {
   const ctx = useAppCtx();
-  const { show = "open", tags, task, zoom = "day", blocked: onlyBlocked } = Route.useSearch();
+  const { show = "open", tags, task, zoom = "day", blocked: onlyBlocked, review: onlyReview } = Route.useSearch();
   // URL から読むたびに別の配列になるので、中身で決める
   const tagsKey = JSON.stringify(tags ?? []);
   const selectedTags = useMemo<string[]>(() => JSON.parse(tagsKey), [tagsKey]);
@@ -91,11 +93,15 @@ function ProgressPage() {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
-    const base = filterRequests(ctx.requests, show, selectedTags);
+    // 見直し候補のみ: 完了済みを隠す表示範囲でも、候補は完了済み・対応済みにあるので全部から探す
+    const base = filterRequests(ctx.requests, onlyReview ? "all" : show, selectedTags);
     // 停止中のみ: 止まっている自分のタスクがある要望だけ（祖先は文脈として木が出す）。印は止まっているタスクだけを描き、完了率は絞る前のまま
-    const hit = onlyBlocked ? base.filter((p) => p.blocked > 0).map((p) => ({ ...p, tasks: p.tasks.filter((t) => t.block) })) : base;
+    const blockedHit = onlyBlocked ? base.filter((p) => p.blocked > 0).map((p) => ({ ...p, tasks: p.tasks.filter((t) => t.block) })) : base;
+    // 見直し候補のみ: 要望自身か自分のタスクに候補がある要望だけ（配下だけの親は文脈として木が出す）
+    const hit = onlyReview ? blockedHit.filter((p) => ownReview(p) > 0) : blockedHit;
     return hit.sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
-  }, [ctx.requests, milestones, show, selectedTags, onlyBlocked]);
+  }, [ctx.requests, milestones, show, selectedTags, onlyBlocked, onlyReview]);
+  const reviewTotal = matched.reduce((n, p) => n + ownReview(p), 0);
   const blockedTotal = matched.reduce((n, p) => n + p.blocked, 0);
   // 親子の木: 子は親の下に並べ、絞り込みに合う子の祖先は文脈として出す（数えない）。畳んだ親はこの画面の間だけ覚える
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -220,6 +226,15 @@ function ProgressPage() {
             停止中 {blockedTotal} 件・{matched.length} 要望
           </span>
         )}
+        <label className="flex items-center gap-1.5 text-base" title="完了済み・対応済みも含めて、完了したときの条件から変わったものがある要望だけ">
+          <input type="checkbox" checked={!!onlyReview} onChange={(e) => void navigate({ search: (prev) => ({ ...prev, review: e.target.checked || undefined }), replace: true })} />
+          見直し候補のみ
+        </label>
+        {onlyReview && (
+          <span className="text-base text-slate-500" title="要望自身と自分のタスクの候補の合計（配下を二重に数えない）。完了済みも含む">
+            見直し候補 {reviewTotal} 件・{matched.length} 要望
+          </span>
+        )}
         <TagFilter
           requests={ctx.requests}
           selected={selectedTags}
@@ -246,7 +261,16 @@ function ProgressPage() {
         <Legend />
       </div>
 
-      {!hasRows && onlyBlocked ? (
+      {!hasRows && onlyReview ? (
+        <div className="p-10">
+          <Empty>
+            見直しが必要（候補）の要望はありません（完了済みも含めて探しました）。
+            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className={buttonCls("ghost", "ml-2 underline")}>
+              絞り込みを解除
+            </button>
+          </Empty>
+        </div>
+      ) : !hasRows && onlyBlocked ? (
         <div className="p-10">
           <Empty>
             停止中のタスクはありません。
@@ -358,6 +382,11 @@ function DrawerFor({ ctx, taskId, onClose }: { ctx: ReturnType<typeof useAppCtx>
   return <TaskDrawer ctx={ctx} data={data} id={taskId} onClose={onClose} />;
 }
 
+/** 要望自身と自分のタスクの見直し候補の数（配下は含めない） */
+const ownReview = (p: RequestProgress) => (p.review?.self?.state === "candidate" ? 1 : 0) + (p.review?.tasks ?? 0);
+const reviewTitle = (p: RequestProgress) =>
+  [p.review?.self?.state === "candidate" ? "要望自身が見直しが必要（候補）" : "", p.review?.tasks ? `自分のタスク ${p.review.tasks} 件が見直しが必要（候補）` : "", "完了したときの条件から変わったもの。状態・済みは変わっていません"].filter(Boolean).join("\n");
+
 /** 申告のみの met があるタスクの数（基準の数ではない。概要の件数は shared/acceptance.ts の evidenceSummary） */
 const declarationTasks = (tasks: readonly TaskMark[]) => tasks.filter((t) => (t.evidence?.declarationOnly ?? 0) > 0).length;
 
@@ -440,6 +469,16 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
           {declarationTasks(p.tasks) > 0 && (
             <span className="shrink-0 rounded bg-amber-50 px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-700" title="満たしたと申告しただけ（確かめた方法の記録なし）の基準があるタスクの数（自分のタスク。印から詳細を開けます）">
               申告のみ {declarationTasks(p.tasks)}
+            </span>
+          )}
+          {ownReview(p) > 0 && (
+            <span className="shrink-0 rounded bg-amber-50 px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-700" title={reviewTitle(p)}>
+              見直し {ownReview(p)}
+            </span>
+          )}
+          {!narrow && (p.review?.below ?? 0) > 0 && (
+            <span className="shrink-0 text-sm whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望自身とそのタスクの見直し候補の数（この要望自身の候補ではありません）">
+              配下の見直し {p.review!.below}
             </span>
           )}
           {p.hierarchyIssues.length > 0 && (

@@ -5,6 +5,7 @@ import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
 import type { ClarifyAnswer, CriterionSource, RequestRequirementView, SourceOp } from "../../shared/requirementSource.ts";
+import type { ReviewDiagnosis, ReviewSummary } from "../../shared/reviewCandidate.ts";
 import type { ImprovementDiagnosis, ImprovementSource } from "../../shared/qualityImprovement.ts";
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
@@ -23,6 +24,7 @@ import type {
   ProposedTask,
   Request,
   RequestProgress,
+  RequestReviewCounts,
   SupersedeCandidate,
   SupersededMark,
   Task,
@@ -180,6 +182,8 @@ export interface RequestDetail {
   completion?: { blocker?: string; excluded: string[] };
   /** 要求の出典と確認（無い以前のサーバでは省略。画面は要望から shared の関数で作り直せる） */
   requirement?: RequestRequirementView;
+  /** 見直しが必要（候補）: 要望自身（対応済・完了済）・タスクごとの概要・配下の件数（無い以前のサーバでは省略） */
+  review?: { self?: ReviewDiagnosis; tasks: Record<string, ReviewSummary>; counts: RequestReviewCounts };
 }
 
 /** 着手などで添えられる警告（操作は行われている） */
@@ -282,7 +286,7 @@ export const api = {
   /** 子の表示順の保存（直下の子を全部、上から順に）。子が変わっていれば 409 code: child_order_invalid（今の並び children）、rev 違いは rev_conflict */
   orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
 
-  task: (ref: string) => call<{ task: Task; superseded: SupersededMark[] }>("GET", taskPath(ref)),
+  task: (ref: string) => call<{ task: Task; superseded: SupersededMark[]; review?: ReviewDiagnosis | null }>("GET", taskPath(ref)),
   /** criteria: 受け入れ基準の文の並び（ID はサーバが振る） */
   createTask: (rid: string, t: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" | string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** 今の品質基準との差分（読むだけ）と、明示した差分の取り込み */

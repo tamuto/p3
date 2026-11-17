@@ -1,5 +1,5 @@
 import { latestCompletion, type CompletionRecord } from "./completionRecord.ts";
-import { standardHash, standardsFor, type QualityStandard, type QualityState } from "./quality.ts";
+import { checkLine, standardHash, standardsFor, type QualityStandard, type QualityState } from "./quality.ts";
 import { criterionSubject, requestSubject, sourceState, type CriterionSource, type RequirementSource } from "./requirementSource.ts";
 import type { Request, Task } from "./types.ts";
 
@@ -204,7 +204,7 @@ export function applyPremiseOp(list: readonly PremiseChange[], op: PremiseOp, ct
 // --- 診断 ---------------------------------------------------------------------
 
 const short = (s: string | undefined, n = 200) => (s === undefined ? undefined : s.length > n ? `${s.slice(0, n)}…` : s);
-const stdLine = (s: QualityStandard) => `${s.text}${s.repos?.length ? `（対象: ${s.repos.join(", ")}）` : ""}${s.exempt ? `（除外: ${s.exempt.reason}）` : ""}`;
+const stdLine = (s: QualityStandard) => `${s.text}（${checkLine(s.check)}）${s.repos?.length ? `（対象: ${s.repos.join(", ")}）` : ""}${s.exempt ? `（除外: ${s.exempt.reason}）` : ""}`;
 const sourceLine = (s: RequirementSource) => [s.target, s.source, s.basis].filter(Boolean).join(" / ");
 const sourceKey = (s: RequirementSource) => JSON.stringify([s.target ?? "", s.source ?? "", s.basis ?? ""]);
 

@@ -54,10 +54,10 @@ describe("理由と当時・今の値", () => {
     expect(d.state).toBe("candidate");
     expect(d.qualityVersion).toBe(ctx.ws.project.qualityVersion);
     const by = Object.fromEntries(d.reasons.map((r) => [`${r.code}:${r.target}`, r]));
-    expect(by["quality_changed:Q1"]).toMatchObject({ was: "テストを通す", now: "テストを全部通す" });
+    expect(by["quality_changed:Q1"]).toMatchObject({ was: "テストを通す（検査: pnpm test（成功: exit 0））", now: "テストを全部通す（検査: pnpm test（成功: exit 0））" });
     expect(by["quality_exempted:Q2"]?.now).toContain("移行中");
     expect(by["quality_added:Q3"]).toBeTruthy();
-    expect(by["quality_added:Q4"]).toMatchObject({ now: "型検査" });
+    expect(by["quality_added:Q4"]?.now).toMatch(/^型検査/);
     // 品質を戻すと候補は消える（現在差分方式）
     setQuality(ctx.ws, { standards: [std("Q1", "テストを通す"), std("Q2", "lint を通す"), std("Q3", "別の参照先", { repos: ["other"] })] });
     expect(taskReview(ctx, t())!.state).toBe("none");
