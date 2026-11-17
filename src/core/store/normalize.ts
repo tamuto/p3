@@ -1,5 +1,6 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
+import { COMPLETION_KEYS, readCompletion } from "../../shared/completionRecord.ts";
 import { qualityVersion, readQuality } from "../../shared/quality.ts";
 import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
@@ -48,6 +49,7 @@ export const normalizeTaskIn =
     record: str(d.record)?.trim() || undefined,
     ...readAcceptance(d),
     ...readBlock(d),
+    ...readCompletion(d),
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -57,14 +59,18 @@ export const normalizeTaskIn =
   });
 
 /** タスクのうちファイルに書かないキー（場所から決まるもの・読んだときの問題） */
-export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems"];
+export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems", "completionProblems"];
 
 /** 基準・証拠が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/acceptance.ts） */
-export const taskKeepRaw = (t: Task): readonly string[] => [...(t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []), ...(t.blockProblems?.length ? BLOCK_KEYS : [])];
+export const taskKeepRaw = (t: Task): readonly string[] => [
+  ...(t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []),
+  ...(t.blockProblems?.length ? BLOCK_KEYS : []),
+  ...(t.completionProblems?.length ? COMPLETION_KEYS : []),
+];
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "completionRecords",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
@@ -85,6 +91,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
     ...readRequirement(d),
+    ...readCompletion(d),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
@@ -95,14 +102,14 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
   "id", "title", "status", "parent", "childOrder", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
-  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy",
+  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy", "completionRecords",
 ];
 
 /** 要望のうちファイルに書かないキー（読んだときの問題） */
-export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems"];
+export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems", "completionProblems"];
 
 /** 要求の根拠・回答が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/requirementSource.ts） */
-export const requestKeepRaw = (r: Request): readonly string[] => (r.requirementProblems?.length ? REQUIREMENT_KEYS : []);
+export const requestKeepRaw = (r: Request): readonly string[] => [...(r.requirementProblems?.length ? REQUIREMENT_KEYS : []), ...(r.completionProblems?.length ? COMPLETION_KEYS : [])];
 
 /** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
 function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {

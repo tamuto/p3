@@ -136,6 +136,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { task: next, warnings } = r;
       warn(warnings);
       checkClearedNote(r.checkCleared);
+      completionSkippedNote(r.completionSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
@@ -163,6 +164,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { task: next, warnings } = r;
       warn(warnings);
       checkClearedNote(r.checkCleared);
+      completionSkippedNote(r.completionSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
       if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
@@ -174,7 +176,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
     case "check": {
       const ref = taskArg(args[0]);
       const { tid } = split(ref);
-      const { task: next } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
+      const { task: next, completionSkipped } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
+      completionSkippedNote(completionSkipped);
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
@@ -237,6 +240,11 @@ async function blockCommand(cmd: "block" | "unblock", { ctx, out, args, o, actor
 // --- 受け入れ基準と証拠 -------------------------------------------------------------
 
 function checkClearedNote(msg: string | undefined) {
+  if (msg) process.stderr.write(`${msg}\n`);
+}
+
+/** 完了の記録を足せなかった（壊れた記録）ことを知らせる */
+export function completionSkippedNote(msg: string | undefined) {
   if (msg) process.stderr.write(`${msg}\n`);
 }
 

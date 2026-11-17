@@ -121,6 +121,10 @@ export interface Task {
   blockHistory?: BlockHistoryEntry[];
   /** 直接編集で読めなかった停止の値の理由（ファイルには書かない） */
   blockProblems?: string[];
+  /** 完了・人の済みにしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
+  completionRecords?: CompletionRecord[];
+  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
+  completionProblems?: string[];
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -206,6 +210,10 @@ export interface Request {
   clarifyAnswers?: ClarifyAnswer[];
   /** 直接編集で読めなかった根拠・回答の理由（ファイルには書かない。あれば操作で変えない） */
   requirementProblems?: string[];
+  /** 対応済・完了済にしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
+  completionRecords?: CompletionRecord[];
+  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
+  completionProblems?: string[];
   rev: number;
   createdAt: string;
   updatedAt: string;
@@ -214,6 +222,7 @@ export interface Request {
 }
 
 import type { HierarchyIssue } from "./hierarchy.ts";
+import type { CompletionRecord } from "./completionRecord.ts";
 import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
 
 /** 進捗の画面・CLI 用の集計 */

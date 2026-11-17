@@ -139,6 +139,7 @@ export async function requestCommand(
       const next = await updateRequest(ctx, rid, patch, { expectedRev, actor });
       warn(next.warnings ?? []);
       reopenedNote(undefined, next.reopenedAncestors);
+      if (next.completionSkipped) process.stderr.write(`${next.completionSkipped}\n`);
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
     case "order": {

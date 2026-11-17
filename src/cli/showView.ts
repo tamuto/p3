@@ -3,6 +3,7 @@ import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
 import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../shared/acceptance.ts";
 import { blockWarnings } from "../shared/taskBlock.ts";
+import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type RefCapture } from "../shared/completionRecord.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
@@ -122,7 +123,54 @@ export function briefTask(ctx: P3Context, task: Task, marks: Map<string, Superse
   // 着手先: 作業先のリポジトリとそのブランチ（作業先なしは repo: null）
   // 基準・証拠の状態（基準なしのタスクでは省く）
   const acceptance = acceptanceStatus(task);
-  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks), ...(acceptance ? { acceptance } : {}) };
+  const completion = completionBrief(task);
+  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks), ...(acceptance ? { acceptance } : {}), ...(completion ? { completion } : {}) };
+}
+
+/** 完了の記録の概要（契機・日時・主体・rev。条件の写しは p3 show（--brief でない）か API の詳細で読む）。記録も問題も無ければ省く */
+export function completionBrief(x: Pick<Task, "completionRecords" | "completionProblems">) {
+  if (!x.completionRecords?.length && !x.completionProblems?.length) return undefined;
+  return {
+    records: (x.completionRecords ?? []).map((r) => ({ id: r.id, trigger: r.trigger, at: r.at, ...(r.by ? { by: r.by } : {}), rev: r.rev, status: r.status })),
+    ...(x.completionProblems?.length ? { problems: x.completionProblems } : {}),
+  };
+}
+
+const refLine = (r: RefCapture) =>
+  r.state === "ok"
+    ? `${r.name}: ${r.commit?.slice(0, 12) ?? ""}${r.dirty === true ? "（未コミットの変更あり）" : r.dirty === false ? "" : `（未コミットの変更は不明${r.reason ? `: ${r.reason}` : ""}）`}`
+    : `${r.name}: ${r.reason ?? REF_CAPTURE_LABEL[r.state]}`;
+
+/** 完了の記録の詳細（p3 show。そのときの条件の写しで、今の値とは別） */
+export function formatCompletionDetail(x: Pick<Task, "completionRecords" | "completionProblems">): string[] {
+  const lines = ["完了の記録（そのときの条件の写し。今の値とは別）:"];
+  for (const r of x.completionRecords ?? []) {
+    lines.push(`  ${r.id}  ${COMPLETION_TRIGGER_LABEL[r.trigger]}  ${r.at}  ${r.by ?? "（主体なし）"}  rev ${r.rev}  ${r.status}${r.checked ? "  済み" : ""}`);
+    const q = r.quality;
+    lines.push(`      品質: ${q.state === "set" ? "設定済" : q.state === "unset" ? "未設定" : "読めない"}  版 ${q.version}${q.standards ? `  項目 ${q.standards.map((s) => `${s.id}${s.exempt ? "（除外）" : ""}`).join(", ") || "なし"}` : ""}`);
+    if (r.acceptance?.problems) lines.push(`      受け入れ基準: 読めない（${r.acceptance.problems.join(" / ")}）`);
+    for (const c of r.acceptance?.criteria ?? []) {
+      const e = r.acceptance?.evidence?.find((v) => v.criterionId === c.id);
+      lines.push(`      ${c.id} ${c.text}${e ? `  → ${e.result}・${basisLabel(e)}` : "  → 証拠なし"}`);
+    }
+    if (r.title !== undefined) lines.push(`      題: ${r.title}`);
+    if (r.requirement?.problems) lines.push(`      要求の根拠: 読めない（${r.requirement.problems.join(" / ")}）`);
+    else if (r.requirement?.sources?.length) lines.push(`      要求の根拠: ${r.requirement.sources.map((s) => s.id).join(", ")}`);
+    if (r.tasks) lines.push(`      タスク: ${r.tasks.map((t) => `${t.id} rev ${t.rev} ${t.status}${t.record ? ` ${t.record}` : "（記録なし）"}`).join(" / ") || "なし"}`);
+    if (r.children?.length) lines.push(`      子の要望: ${r.children.map((t) => `${t.id} rev ${t.rev} ${t.status}${t.record ? ` ${t.record}` : "（記録なし）"}`).join(" / ")}`);
+    lines.push(`      参照先: ${r.refs ? r.refs.map(refLine).join(" / ") || "登録なし" : "取得していません"}`);
+  }
+  for (const p of x.completionProblems ?? []) lines.push(`  ※読めない: ${p}（ファイルの completionRecords を直すまで新しい記録は足しません）`);
+  return lines;
+}
+
+/** 完了の記録の行（今の値とは別の、そのときの記録） */
+export function formatCompletion(c: NonNullable<ReturnType<typeof completionBrief>>): string[] {
+  return [
+    "完了の記録（そのときの条件の写し。今の値とは別）:",
+    ...c.records.map((r) => `  ${r.id}  ${COMPLETION_TRIGGER_LABEL[r.trigger]}  ${r.at}  ${r.by ?? "（主体なし）"}  rev ${r.rev}`),
+    ...(c.problems ?? []).map((p) => `  ※読めない: ${p}（ファイルの completionRecords を直すまで新しい記録は足しません）`),
+  ];
 }
 
 export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
@@ -142,6 +190,7 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   if (item.body.trim()) lines.push("", item.body.trim());
   if (item.record) lines.push("", "## 変更の記録", item.record);
   lines.push("", ...formatAcceptance(item as Task));
+  if (view.completion) lines.push("", ...formatCompletion(view.completion));
   return lines.join("\n");
 }
 
@@ -163,7 +212,8 @@ export function briefRequest(ctx: P3Context, r: Request, issue: string | undefin
   // 要求の出典と確認（記録・回答・読めない値があるときだけ）
   const req = requestRequirementView(r);
   const requirement = req.sources.length || req.answers.length || req.problems.length ? req : undefined;
-  return { item, branches, tasks, ...(issue ? { issue } : {}), ...(requirement ? { requirement } : {}) };
+  const completion = completionBrief(r);
+  return { item, branches, tasks, ...(issue ? { issue } : {}), ...(requirement ? { requirement } : {}), ...(completion ? { completion } : {}) };
 }
 
 const confirmLine = (c: SourceConfirmation) => `${c.by}・${c.on}`;
@@ -216,6 +266,7 @@ export function formatBriefRequest(view: ReturnType<typeof briefRequest> & Parti
     ...(family ? formatFamily(family) : []),
     item.body.trim() ? `\n${item.body.trim()}` : "",
     ...(view.requirement ? ["", ...formatRequirement(view.requirement)] : []),
+    ...(view.completion ? ["", ...formatCompletion(view.completion)] : []),
     "",
     `タスク (${tasks.length}):`,
     table(tasks.map((t) => [`  ${t.id}`, t.status, t.repo ?? "（作業先なし）", `${t.title}${t.blocked ? "  ⏸停止" : ""}`])) || "  （なし）",

@@ -840,6 +840,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
+| 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
@@ -1074,6 +1075,29 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
 - 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### 完了の記録
+
+タスクの完了（`task_done`）・人の済み（`task_checked`）・要望の対応済（`request_resolved`）・完了済（`request_done`）のとき、
+そのときの条件の写しを `completionRecords` に追記する（`shared/completionRecord.ts`）。今の値（`doneAt`・`checkedAt` は再開で消える）とは別に持ち、
+後から「当時どの条件で完了・確認したか」を比べる材料にする。
+
+- 状態と同じ更新（同じ rev）で同じファイルに書く。片方だけが保存されることはない。`expectedRev` の競合では何も書かない
+- 契機は書く直前に読み直した値と書いた後の値から決める（`taskTriggers`・`requestTriggers`）。タスクは完了でないものが完了になったら
+  `task_done`、完了で済みが付いたら `task_checked`（済みのまま基準・証拠・基準の根拠を変えて済みを付け直したときも足す）。
+  同じ状態の再保存・成果物の追記・済みの付け直しでは足さない。再開・済みの解除でも消さない
+- 写す値は、同じ操作で変えた基準・証拠を当てた後のもの。品質は完了したときの最新の値（設定全体の版・作業先に当てはまる項目と除外）で、
+  取り込んだときの版は基準の `quality.version` に残る。要望の記録は題と `requestSubject`（題と本文の hash）を持ち、本文は写さない
+- 要望の記録の `tasks`・`children` は判定に使った直下のタスクと子の要望（ID・rev・状態・その時点の最新の記録 ID）。子だけの親も子の記録から辿れる
+- 参照先は書く前（ロックの外）に `core/completionRefs.ts` が取る: `git rev-parse HEAD` と、参照先のフォルダに限った `git status --porcelain`。
+  状態は `ok`・`not_git`・`unregistered`・`missing`・`notdir`・`failed` で、理由にはこのマシンのパスを入れない。完了になりうる更新
+  （状態を完了にする・済みを付ける・対応済・完了済にする）のときだけ取る。Preflight の評価対象にはコミットの固定が無いので、run から補わない
+- 入口: `createTask`（完了で作る）・`updateTask`（CLI の move・set・check、API の PATCH、品質の取り込み）・`updateRequest`（CLI の request set、
+  API の PATCH、マイルストーンの一括完了）。どれも記録の値を受け付けず（`completionRecords` は捨てる）、P3 が作る
+- 記録の無い古いデータは補わない。読めない記録は `completionProblems` にして `keepRaw` で元の値を書き戻し、新しい記録は足さない
+  （状態は変え、`completionSkipped` で知らせる）。読めない品質・基準・根拠は `problems` として写し、完了は拒まない
+- ファイルの並びでは最後（`updatedBy` の後）に書く。人が読む項目を上に残すため
+- 一覧（進捗・タスクの一覧）にも今は全部が載る。概要だけを返す読み取りは見直し候補の診断と一緒に足す
 
 ### 受け入れ基準と証拠
 

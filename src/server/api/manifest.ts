@@ -121,6 +121,7 @@ export const AI_MANIFEST = {
         "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
         "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
         "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
+        "完了・済みにすると、そのときの条件の写しを completionRecords に追記する（要望の PATCH の対応済・完了済も同じ。記録の値は受け付けない。記録が読めず足せなければ completionSkipped）。" +
         "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
         "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },
     {

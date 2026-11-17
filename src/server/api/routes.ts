@@ -400,8 +400,16 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(acceptance?.length ? { acceptance } : {}),
     };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
-    const { task, warnings, reopened, reopenedAncestors, checkCleared } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(checkCleared ? { checkCleared } : {}) });
+    // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）
+    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({
+      ...task,
+      ...(warnings.length ? { warnings } : {}),
+      ...(reopened ? { reopened } : {}),
+      ...(reopenedAncestors ? { reopenedAncestors } : {}),
+      ...(checkCleared ? { checkCleared } : {}),
+      ...(completionSkipped ? { completionSkipped } : {}),
+    });
   });
   /** 今の品質基準との差分（読むだけ。タスクは書き換えない） */
   app.get("/requests/:rid/tasks/:tid/quality-diff", (c) => {
