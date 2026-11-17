@@ -10,6 +10,7 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { staleNotice } from "../../lib/requestEdit.ts";
 import { NOTE_INPUT_ID, focusNoteInput } from "./Notes.tsx";
 import { Drafts } from "./Drafts.tsx";
+import { Clarifications } from "./Clarifications.tsx";
 import { ChildDrafts } from "./ChildDrafts.tsx";
 import { DirectTaskLink } from "./DirectTaskLink.tsx";
 import { preflightFailed } from "../../../shared/directTask.ts";
@@ -31,6 +32,10 @@ export function RunView({
   onOpenRun,
   notes,
   blocked,
+  onAnswersDirty,
+  onRerun,
+  canRerun,
+  onRequestChanged,
 }: {
   ctx: AppCtx;
   request: Request;
@@ -39,8 +44,15 @@ export function RunView({
   onOpenRun: (runId: string) => void;
   /** メモ欄。評価の下の決まった場所に置く（評価が無い間＝実行中・失敗も同じ場所。入れ替えて作り直さない） */
   notes: ReactNode;
-  /** タスク化を止める理由（未保存のタイトル・本文） */
+  /** タスク化を止める理由（未保存のタイトル・本文・根拠・回答） */
   blocked: string | null;
+  /** 確認事項への回答に未保存があるか（評価の開始とタスク化を止める） */
+  onAnswersDirty?: (dirty: boolean) => void;
+  /** 保存した内容で再評価する（明示の操作だけ） */
+  onRerun?: () => void;
+  canRerun?: boolean;
+  /** 回答を保存した（要望を取り直す） */
+  onRequestChanged?: () => void;
 }) {
   const a = run.assessment;
   const steps = preflightSteps(run);
@@ -166,6 +178,18 @@ export function RunView({
               </div>
             </div>
           </Section>
+      )}
+
+      {a && onAnswersDirty && (
+        <Clarifications
+          request={request}
+          run={run}
+          latest={request.lastPreflight === run.id}
+          onSaved={() => onRequestChanged?.()}
+          onDirty={onAnswersDirty}
+          onRerun={() => onRerun?.()}
+          canRerun={!!canRerun}
+        />
       )}
 
       {/* 画面資料は評価の下（評価と一緒に、提案の画面イメージを確かめる）。run を替えれば作り直す */}

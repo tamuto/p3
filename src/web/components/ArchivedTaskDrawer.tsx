@@ -6,6 +6,7 @@ import { api, archiveUnreadable, failureOf } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { AcceptanceView } from "./Acceptance.tsx";
+import { CriteriaSources } from "./RequirementSources.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -144,6 +145,8 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
       <Section title="受け入れ基準と作業した側の証拠">
         <AcceptanceView task={task} />
       </Section>
+      {/* 要求の出典と確認（閲覧専用） */}
+      <CriteriaSources criteria={task.acceptanceCriteria} sources={task.acceptanceSources} />
       <Section title="タスクの AI レビュー（履歴）">
         <TaskReviewPanel task={task} archived />
       </Section>

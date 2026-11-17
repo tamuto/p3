@@ -13,7 +13,7 @@ import { useUnsaved } from "../../../lib/unsaved.ts";
 import { optionalString } from "../../../lib/search.ts";
 import { AttachmentsPanel } from "../../../components/Attachments.tsx";
 import { isDirty, sameBody } from "../../../lib/draft.ts";
-import { UNSAVED_BLOCKED, unsavedFields } from "../../../lib/requestEdit.ts";
+import { REQUIREMENT_UNSAVED, UNSAVED_BLOCKED, unsavedFields } from "../../../lib/requestEdit.ts";
 import { RunView } from "../../../components/request/RunView.tsx";
 import { Notes } from "../../../components/request/Notes.tsx";
 import { RequestMeta } from "../../../components/request/RequestMeta.tsx";
@@ -24,6 +24,7 @@ import { latestOnly, STALE } from "../../../lib/latest.ts";
 import { createPulsePoller, latestNotice, shownRunChanged } from "../../../lib/preflightWatch.ts";
 import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx";
 import { DirectTaskLink } from "../../../components/request/DirectTaskLink.tsx";
+import { RequirementPanel } from "../../../components/request/RequirementPanel.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -87,7 +88,10 @@ function RequestPanel({
   const [editingBody, setEditingBody] = useState(false);
   // 未保存のタイトル・本文がある間は、Preflight の開始とタスク化を止める（保存していない内容は評価にもタスクにも渡らない）
   const unsaved = unsavedFields({ title: isDirty(drafts.titleD), body: editingBody && isDirty(drafts.bodyD, sameBody) });
-  const blocked = unsaved.length ? UNSAVED_BLOCKED : null;
+  // 要求の出典と確認・確認事項への回答の未保存も、評価の開始とタスク化を止める（保存していない根拠・回答は評価に渡らない）
+  const [sourcesDirty, setSourcesDirty] = useState(false);
+  const [answersDirty, setAnswersDirty] = useState(false);
+  const blocked = unsaved.length ? UNSAVED_BLOCKED : sourcesDirty || answersDirty ? REQUIREMENT_UNSAVED : null;
   useUnsaved(unsaved.length > 0);
   const [error, setError] = useState<string | null>(null);
   // 個人設定を直したら、取り直したとき（タブに戻った・「再読み込み」など）に反映する
@@ -271,6 +275,8 @@ function RequestPanel({
         )}
       </section>
 
+      <RequirementPanel data={data} onDirty={setSourcesDirty} />
+
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
@@ -344,7 +350,7 @@ function RequestPanel({
               // 表示中の run でなければ取り込まない（切り替えたあとに届いた応答）
               return next.id === runIdRef.current ? next : cur;
             })
-          } onOpenRun={setRunId} notes={notes} blocked={blocked} />
+          } onOpenRun={setRunId} notes={notes} blocked={blocked} onAnswersDirty={setAnswersDirty} onRequestChanged={() => { data.reload(); refreshRun(); }} onRerun={() => void start()} canRerun={!running && engine?.ok !== false && !notesState.blockPlainRun && !blocked} />
       ) : (
         // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
         notes

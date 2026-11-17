@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
 import { AcceptancePanel, metSummary, shortfallSummary } from "./Acceptance.tsx";
+import { CriteriaSources } from "./RequirementSources.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { QualityDiffPanel } from "./QualityDiff.tsx";
@@ -55,7 +56,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   // 停止の入力中（保存していない入力）
   const [blockDirty, setBlockDirty] = useState(false);
   const onBlockDirty = useCallback((d: boolean) => setBlockDirty(d), []);
-  useUnsaved(dirty || accDirty || blockDirty);
+  // 基準の出典と確認の入力中（受け入れ基準の編集と同じく、済みの変更を止める）
+  const [srcDirty, setSrcDirty] = useState(false);
+  const onSrcDirty = useCallback((d: boolean) => setSrcDirty(d), []);
+  useUnsaved(dirty || accDirty || blockDirty || srcDirty);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。
@@ -163,7 +167,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
   async function toggleChecked() {
     // 保存していない入力がある間は済みを変えない（保存した内容で確かめる）
-    if (dirty || accDirty || blockDirty) return;
+    if (dirty || accDirty || blockDirty || srcDirty) return;
     try {
       await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
       await load(false, true);
@@ -287,7 +291,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 <span className="min-w-0 flex-1">
                   {task.checkedAt ? `人が確認済み（最終確認・${fmtTime(task.checkedAt)}）` : "人の最終確認：未。成果物と受け入れ基準の証拠・根拠を確認したら済みにしてください"}
                 </span>
-                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty || blockDirty} onClick={() => void toggleChecked()}>
+                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty || blockDirty || srcDirty} onClick={() => void toggleChecked()}>
                   {task.checkedAt ? "済みを外す" : "済みにする"}
                 </Button>
               </div>
@@ -298,7 +302,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               ) : (
                 <p className="text-base text-slate-500">受け入れ基準なし</p>
               )}
-              {(dirty || accDirty || blockDirty) && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
+              {(dirty || accDirty || blockDirty || srcDirty) && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
           <Section title="受け入れ基準と作業した側の証拠">
@@ -324,6 +328,21 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               }}
             />
           </Section>
+
+          <CriteriaSources
+            criteria={task.acceptanceCriteria}
+            sources={task.acceptanceSources}
+            requestSources={data.request.requirementSources}
+            disabled={gone || !!task.acceptanceProblems?.length}
+            onDirty={onSrcDirty}
+            onSave={async (ops) => {
+              const res = await api.patchTask(id, { rev: task.rev, acceptance: ops.map((o) => ({ op: "source" as const, id: o.id, source: o.source })) });
+              setMsg(res.checkCleared ?? null);
+              void load(false, true);
+              data.reload();
+              ctx.reload();
+            }}
+          />
 
           <Section title="タスクの AI レビュー">
             <TaskReviewPanel task={task} unsaved={dirty || accDirty || blockDirty} />
