@@ -42,15 +42,14 @@ describe("比較材料", () => {
     const i = await extractReviewInput(dataDir, "v1");
     expect(i.milestone).toMatchObject({ id: "v1", known: true, purpose: "在庫の確認を速くする" });
     expect(i.units.map((u) => u.id)).toEqual(["G1", "G2"]);
-    expect(i.requests.map((r) => [r.id, r.status])).toEqual([
-      [done.id, "resolved"],
-      [open.id, "active"],
-      [rejected.id, "rejected"],
-      [draft.id, "draft"],
-    ]);
-    expect(i.requests[0].body).toBe("在庫を一覧で見たい");
-    expect(i.requests[0].tasks[0]).toMatchObject({ status: "done", body: "表を作る", record: "在庫の一覧を表示できるようにした", outputs: ["https://example.com/pull/1"] });
-    expect(i.requests[1].tasks.map((t) => t.status)).toEqual(["doing", "done"]);
+    // 並びは作成日時の順で、同じ日時なら ID の順（続けて作ると同じミリ秒になり、ID はランダムなので作った順とは限らない）
+    const order = [done, open, rejected, draft].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true }));
+    expect(i.requests.map((r) => [r.id, r.status])).toEqual(order.map((r) => [r.id, r.status]));
+    expect(new Set(i.requests.map((r) => r.status))).toEqual(new Set(["resolved", "active", "rejected", "draft"]));
+    const byId = (id: string) => i.requests.find((r) => r.id === id)!;
+    expect(byId(done.id).body).toBe("在庫を一覧で見たい");
+    expect(byId(done.id).tasks[0]).toMatchObject({ status: "done", body: "表を作る", record: "在庫の一覧を表示できるようにした", outputs: ["https://example.com/pull/1"] });
+    expect(byId(open.id).tasks.map((t) => t.status)).toEqual(["doing", "done"]);
     // 参照先を渡さなければ記録だけ（警告と範囲で分かる）
     expect(i.warnings.map((w) => w.code)).toEqual(["missing_record", "quality_unset", "no_code"]);
     expect(i.code).toEqual([]);

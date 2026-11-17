@@ -1,10 +1,10 @@
-// UI テスト（test/ui、pnpm test:ui）の土台: Chromium が無いときだけ飛ばし、ほかの失敗は飛ばさないこと、子の p3 の環境を分けること。
+// UI テスト（test/ui、pnpm test:ui）の土台: Chromium が無いときだけ飛ばし、ほかの失敗は飛ばさないこと、pnpm check が最初にブラウザを確かめること、子の p3 の環境を分けること。
 // 本物の Chromium は使わない（無い環境でも確かめられる）
-import { chmodSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright-core";
+import { chromium, type Browser } from "playwright-core";
 import { describe, expect, it } from "vitest";
-import { missingExecutable, probeChromium } from "./ui/chromium.ts";
+import { checkBrowser, DEPS_HINT, INSTALL_HINT, missingExecutable, probeChromium } from "./ui/chromium.ts";
 import { childBaseEnv } from "./ui/env.ts";
 import { checkBuilt, FONTCONFIG, jaFontconfig } from "./ui/globalSetup.ts";
 import { tempDir } from "./helpers.ts";
@@ -33,6 +33,31 @@ describe("UI テストの Chromium の判定", () => {
     chmodSync(broken, 0o755);
     await expect(probeChromium(() => chromium.launch({ executablePath: broken, timeout: 10_000 }))).rejects.toThrow(/Chromium を起動できません（実行ファイルはあります/);
     await expect(probeChromium(() => Promise.reject(new Error("spawn EACCES")))).rejects.toThrow(/spawn EACCES/);
+  });
+
+  it("pnpm check は型検査より前にブラウザを確かめ、無い・起動できないなら入れ方を出して止める", async () => {
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
+    expect(pkg.scripts.check.split(" && ")[0]).toBe("pnpm check:browser");
+    expect(pkg.scripts["check:browser"]).toBe("tsx scripts/check-browser.ts");
+
+    const dir = tempDir();
+    const none = join(dir, "chrome-headless-shell");
+    const missing = await checkBrowser(() => chromium.launch({ executablePath: none }));
+    expect(missing.ok).toBe(false);
+    expect(!missing.ok && missing.message).toContain(`入れるには: ${INSTALL_HINT}`);
+
+    const broken = join(dir, "broken-shell");
+    writeFileSync(broken, "#!/bin/sh\necho 'error while loading shared libraries: libnspr4.so' >&2\nexit 127\n");
+    chmodSync(broken, 0o755);
+    const deps = await checkBrowser(() => chromium.launch({ executablePath: broken, timeout: 10_000 }));
+    expect(deps.ok).toBe(false);
+    expect(!deps.ok && deps.message).toContain(DEPS_HINT);
+    expect(!deps.ok && deps.message).toContain("libnspr4.so");
+
+    let closed = false;
+    const fake = { close: async () => void (closed = true) } as unknown as Browser;
+    await expect(checkBrowser(async () => fake)).resolves.toEqual({ ok: true });
+    expect(closed).toBe(true);
   });
 
   it("画面のビルドが無ければ、Chromium の有無によらず失敗にする", () => {

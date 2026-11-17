@@ -31,7 +31,7 @@ pnpm typecheck
 pnpm lint                    # oxlint（型情報も使う。下の「lint」）
 pnpm test                    # ユニットテスト（vitest）。pnpm test:watch で監視
 pnpm test:ui                 # ブラウザで画面を操作する UI テスト（ビルドした画面が要る。下の「UI テスト」）
-pnpm check                   # 型検査 + lint + テスト + ビルド + UI テスト
+pnpm check                   # ブラウザの確認 + 型検査 + lint + テスト + ビルド + UI テスト
 pnpm demo:reset              # デモデータ（.p3-demo/）を作り直す
 pnpm verify:pack             # 配布物を別の場所に入れて動かす（--docker で codex update と render も）
 pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-demo.mp4。下の「使い方の動画」）
@@ -101,11 +101,13 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 `test/ui/*.ui.test.ts` は、ブラウザ（Playwright の Chromium headless shell）で `p3 serve` のビルドした画面を開いて操作する。
 設定は `vitest.ui.config.ts` で、通常の `pnpm test` には入らない。型検査・lint の対象には入る。
 
-- `pnpm check` は、型検査・lint・テスト・ビルドの後に `pnpm test:ui` を流す。単独で流すときは先に `pnpm build` する
-  （ビルドが無ければ、Chromium の有無によらず失敗にする）
-- Chromium は `pnpm exec playwright-core install chromium-headless-shell` で入れる（自動では入れない）。Playwright が起動する
-  実行ファイル（既定のキャッシュか `PLAYWRIGHT_BROWSERS_PATH`）が無いときだけ、理由と入れ方を出して UI テストを飛ばす（件数は
-  vitest の skipped に出る）。実行ファイルがあるのに起動できない（共有ライブラリが無いなど）・サーバが起きない・操作の対象が
+- `pnpm check` は、最初（型検査の前）に `pnpm check:browser`（`scripts/check-browser.ts`）で Chromium を起動してみる。実行ファイルが
+  無い・起動できないなら、理由と入れ方を出してそこで止める（コンテナを作り直して消えたことに、単体テストとビルドを待たずに気づくため。
+  `pnpm check` では UI テストを飛ばさない）。続けて型検査・lint・テスト・ビルドの後に `pnpm test:ui` を流す。単独で流すときは先に
+  `pnpm build` する（ビルドが無ければ、Chromium の有無によらず失敗にする）
+- Chromium は `pnpm exec playwright-core install chromium-headless-shell` で入れる（自動では入れない）。`pnpm test:ui` を単独で流した
+  ときは、Playwright が起動する実行ファイル（既定のキャッシュか `PLAYWRIGHT_BROWSERS_PATH`）が無いときだけ、理由と入れ方を出して
+  UI テストを飛ばす（件数は vitest の skipped に出る）。実行ファイルがあるのに起動できない（共有ライブラリが無いなど）・サーバが起きない・操作の対象が
   見つからないときは失敗にする（判定は `test/ui/chromium.ts`、本物の Chromium を使わない確認は `test/uiHarness.test.ts`）。
   共有ライブラリが無いと出たら `pnpm exec playwright-core install-deps chromium-headless-shell` で入れる
 - シナリオごとに一時のフォルダを作り、その中に HOME・個人設定（`XDG_CONFIG_HOME`）・git リポジトリ・データを置いて、本物の CLI
