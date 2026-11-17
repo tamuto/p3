@@ -60,6 +60,8 @@ const OPTIONS = {
   decision: { type: "string" },
   resolution: { type: "string" },
   blocked: { type: "boolean" },
+  review: { type: "boolean" },
+  condition: { type: "string" },
   viewpoint: { type: "string" },
   preview: { type: "boolean" },
   note: { type: "string" },

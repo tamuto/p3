@@ -75,13 +75,28 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block と証拠の概要 evidence（{met, total, declarationOnly, metByBasis, problems}。本文は載せない。基準も証拠も無ければ省く）" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block と証拠の概要 evidence（{met, total, declarationOnly, metByBasis, problems}。本文は載せない。基準も証拠も無ければ省く）・完了したタスクの見直しの状態 review、要望ごとの見直し候補の数 review: {self?, tasks, below}（below は自分を除く配下）" },
     { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
     {
       method: "GET",
       path: "/api/requests/:rid",
       desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）・" +
-        "要求の出典と確認（requirement: {state, sources, answers, problems}。state は unrecorded / unconfirmed / confirmed / reconfirm / unlinked。申告の記録で P3 の保証ではない）",
+        "要求の出典と確認（requirement: {state, sources, answers, problems}。state は unrecorded / unconfirmed / confirmed / reconfirm / unlinked。申告の記録で P3 の保証ではない）・" +
+        "見直しが必要（候補）（review: {self?（対応済・完了済のときの要望自身の診断）, tasks（タスクごとの概要）, counts: {tasks, below}}）",
+    },
+    {
+      method: "GET|POST",
+      path: "/api/requests/:rid/premises",
+      desc:
+        "前提の変更（外部の規則の変更など。要望の premiseChanges に追記）。POST {op: \"add\", targets: [要望 ID|タスク ID|要望の根拠の ID], reason, condition, rev?} / {op: \"ack\", id, target, condition, rev?}（変更を確かめたことを残す）。" +
+        "基点の完了の記録より後の変更で、確認の無い対象は見直し候補の理由になる。過去の完了の記録・状態・済みは変えない。対象が無い・規則に合わなければ 400 premise_invalid、rev が違えば 409（何も書かない）",
+    },
+    {
+      method: "GET",
+      path: "/api/revisit[?request=<要望ID>]",
+      desc:
+        "見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む）。各項目は {target, state, record, qualityVersion, reasons: [{code, target, was?, now?, related?}], unreadable?}。" +
+        "品質は作業先に当てはまる項目の差だけを見て、設定全体の版の違い・参照先の HEAD の更新では候補にしない。読むだけでファイルを書かない。タスクの一覧は ?review=true で候補だけに絞れる",
     },
     {
       method: "POST",
@@ -122,6 +137,7 @@ export const AI_MANIFEST = {
         "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
         "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
         "完了・済みにすると、そのときの条件の写しを completionRecords に追記する（要望の PATCH の対応済・完了済も同じ。記録の値は受け付けない。記録が読めず足せなければ completionSkipped）。" +
+        "GET は見直しの診断 review（完了したタスクだけ。state: no_record|unreadable|none|candidate、基点の record、reasons: [{code, target, was?, now?, related?}]。状態は変えない）も返す。" +
         "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
         "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },
     {

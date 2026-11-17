@@ -1,6 +1,7 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
 import { COMPLETION_KEYS, readCompletion } from "../../shared/completionRecord.ts";
+import { PREMISE_KEYS, readPremises } from "../../shared/reviewCandidate.ts";
 import { qualityVersion, readQuality } from "../../shared/quality.ts";
 import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
@@ -92,6 +93,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     lastPreflight: str(d.lastPreflight),
     ...readRequirement(d),
     ...readCompletion(d),
+    ...readPremises(d),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
@@ -102,14 +104,14 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
   "id", "title", "status", "parent", "childOrder", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
-  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy", "completionRecords",
+  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy", "premiseChanges", "completionRecords",
 ];
 
 /** 要望のうちファイルに書かないキー（読んだときの問題） */
-export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems", "completionProblems"];
+export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems", "completionProblems", "premiseProblems"];
 
 /** 要求の根拠・回答が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/requirementSource.ts） */
-export const requestKeepRaw = (r: Request): readonly string[] => [...(r.requirementProblems?.length ? REQUIREMENT_KEYS : []), ...(r.completionProblems?.length ? COMPLETION_KEYS : [])];
+export const requestKeepRaw = (r: Request): readonly string[] => [...(r.requirementProblems?.length ? REQUIREMENT_KEYS : []), ...(r.completionProblems?.length ? COMPLETION_KEYS : []), ...(r.premiseProblems?.length ? PREMISE_KEYS : [])];
 
 /** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
 function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {

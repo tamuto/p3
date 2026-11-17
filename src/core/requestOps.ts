@@ -20,6 +20,7 @@ import {
 import { defaultRepo } from "../shared/workTarget.ts";
 import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../shared/completionRecord.ts";
 import { captureRefs } from "./completionRefs.ts";
+import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../shared/reviewCandidate.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
@@ -338,7 +339,7 @@ export async function createRequest(ctx: P3Context, input: Partial<Request> & { 
 export async function updateRequest(ctx: P3Context, rid: string, input: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
   // 要求の根拠・回答は操作（updateRequirement・answerClarification）でだけ変える（値をそのまま書く道は持たない）
   // 完了の記録も p3 が作る
-  const { requirementSources: _rs, requirementSeq: _sq, clarifyAnswers: _ca, requirementProblems: _rp, completionRecords: _cr, completionProblems: _cp, ...patch } = input;
+  const { requirementSources: _rs, requirementSeq: _sq, clarifyAnswers: _ca, requirementProblems: _rp, completionRecords: _cr, completionProblems: _cp, premiseChanges: _pc, premiseProblems: _pp, ...patch } = input;
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
   // 対応済・完了済になりうる更新なら、参照先を書く前に取る
@@ -483,4 +484,27 @@ export async function orderChildren(ctx: P3Context, rid: string, ids: string[], 
 export async function archiveRequest(ctx: P3Context, rid: string): Promise<void> {
   await withArchiveCheck(ctx.ws, rid, () => ctx.ws.requests.archive(rid));
   changed(ctx, "request", rid);
+}
+
+/**
+ * 前提の変更を記録する（外部の規則の変更など。要望の premiseChanges に追記。shared/reviewCandidate.ts）。add: 対象（要望 ID・この要望の
+ * タスク ID・要望の根拠の ID）と理由・新しい条件 / ack: 変更を確かめたことを対象と条件の版つきで残す。過去の完了の記録・状態・済み・
+ * 基準・証拠は変えない。対象が無い・規則に合わない・rev の競合では何も書かない
+ */
+export async function recordPremise(ctx: P3Context, rid: string, op: PremiseOp, opts: WriteOpts = {}): Promise<{ request: Request; change: PremiseChange }> {
+  let change: PremiseChange | undefined;
+  const r = await ctx.ws.requests.update(
+    rid,
+    (fresh) => {
+      if (fresh.premiseProblems?.length) throw new PremiseInputError(`${rid} の前提の変更の記録が読めないため足せません。request.md を直してください: ${fresh.premiseProblems.join(" / ")}`);
+      const tasks = ctx.ws.tasksOf(rid);
+      const exists = (t: string) => t === rid || !!tasks.get(t) || !!fresh.requirementSources?.some((s) => s.id === t);
+      const list = applyPremiseOp(fresh.premiseChanges ?? [], op, { now: new Date().toISOString(), actor: opts.actor, exists });
+      change = op.op === "add" ? list.at(-1) : list.find((c) => c.id === op.id);
+      return { premiseChanges: list };
+    },
+    opts,
+  );
+  changed(ctx, "request", rid);
+  return { request: r, change: change! };
 }

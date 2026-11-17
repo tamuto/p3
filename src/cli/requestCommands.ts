@@ -13,6 +13,16 @@ import { resolveRequestId } from "../core/ops.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest, formatFamily } from "./showView.ts";
+import { formatReview as formatRevisit } from "./revisitCommands.ts";
+import { requestReview } from "../core/reviewCandidates.ts";
+import { reviewSummary } from "../shared/reviewCandidate.ts";
+
+/** 要望の配下の見直し候補の件数（無ければ何も出さない。親の件数は集約で、親自身を候補とは扱わない） */
+function reviewCountLines(review: ReturnType<typeof requestReview>): string[] {
+  const { tasks, below } = review.counts;
+  if (!tasks && !below) return [];
+  return ["", `見直しが必要（候補）: タスク ${tasks} 件${below ? `・配下 ${below} 件（子の要望とそのタスク）` : ""}（p3 revisit で理由）`];
+}
 import { UsageError } from "./project.ts";
 import { tagsFrom } from "../shared/tags.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
@@ -88,15 +98,18 @@ export async function requestCommand(
       const rid = requestArg(rest[0]);
       const r = ctx.ws.requests.require(rid);
       const family = await hierarchyView(ctx.ws, rid);
+      const review = requestReview(ctx, rid);
       if (o.brief) {
-        const view = { ...briefRequest(ctx, r, resolvedIssue(ctx.ws, r)), ...family };
-        return out.result(view, () => formatBriefRequest(view));
+        // 見直しの概要は、要望自身か配下に候補があるときだけ（記録なし・差分なしは短い出力に出さない）
+        const brief = review.self?.state === "candidate" || review.counts.tasks || review.counts.below ? { review: { ...(review.self ? { self: reviewSummary(review.self) } : {}), counts: review.counts } } : {};
+        const view = { ...briefRequest(ctx, r, resolvedIssue(ctx.ws, r)), ...family, ...brief };
+        return out.result(view, () => [formatBriefRequest(view), ...reviewCountLines(review)].join("\n"));
       }
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);
       const branches = requestWorkstreams(r);
       const multi = ctx.ws.project.repos.length > 0;
-      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), file, ...family, ...(issue ? { issue } : {}) }, () => {
+      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), file, ...family, ...(issue ? { issue } : {}), review }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
         return [
           issue ? `※ ${issue}\n` : "",
@@ -108,7 +121,9 @@ export async function requestCommand(
             : []),
           "",
           `タスク (${tasks.length}):`,
-          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, deps(t)])) || "  （なし）",
+          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, [deps(t), review.tasks[t.id]?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  ")])) || "  （なし）",
+          ...reviewCountLines(review),
+          ...(review.self ? ["", ...formatRevisit(review.self)] : []),
         ].join("\n");
       });
     }

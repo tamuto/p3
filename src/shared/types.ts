@@ -214,6 +214,10 @@ export interface Request {
   completionRecords?: CompletionRecord[];
   /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
   completionProblems?: string[];
+  /** 人が明示した前提の変更（外部の規則の変更など。追記だけ。shared/reviewCandidate.ts） */
+  premiseChanges?: PremiseChange[];
+  /** 直接編集で読めなかった前提の変更の理由（ファイルには書かない） */
+  premiseProblems?: string[];
   rev: number;
   createdAt: string;
   updatedAt: string;
@@ -223,6 +227,7 @@ export interface Request {
 
 import type { HierarchyIssue } from "./hierarchy.ts";
 import type { CompletionRecord } from "./completionRecord.ts";
+import type { PremiseChange, ReviewState, ReviewSummary } from "./reviewCandidate.ts";
 import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
 
 /** 進捗の画面・CLI 用の集計 */
@@ -230,6 +235,8 @@ import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, R
 export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block"> & {
   /** 受け入れ基準の証拠の概要（有効な met・申告のみの件数・根拠ごとの件数・読めない値の有無。本文は載せない）。基準も証拠も無ければ省く */
   evidence?: EvidenceSummary;
+  /** 完了したタスクの見直しの診断の状態（完了していなければ省く） */
+  review?: ReviewState;
 };
 
 export interface RequestProgress {
@@ -252,6 +259,18 @@ export interface RequestProgress {
   subtree: { counts: Record<TaskStatus, number>; total: number; done: number; blocked: number; requests: Record<RequestStatus, number> };
   /** 親子の問題（自分・祖先・子孫） */
   hierarchyIssues: HierarchyIssue[];
+  /** 見直しが必要（候補）の概要（shared/reviewCandidate.ts） */
+  review?: RequestReviewCounts;
+}
+
+/**
+ * 要望の見直し候補の概要。self: 要望自身の診断（対応済・完了済のときだけ）/ tasks: 自分のタスクの候補の数 / below: 自分を除く配下
+ * （子孫の要望自身と、そのタスク）の候補の数。親の件数は集約で、その親自身を候補とは扱わない
+ */
+export interface RequestReviewCounts {
+  self?: ReviewSummary;
+  tasks: number;
+  below: number;
 }
 
 // ---------------------------------------------------------------------------

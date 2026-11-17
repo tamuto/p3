@@ -7,6 +7,17 @@ import { OpRuleError } from "../core/requestOps.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
 import { RequirementInputError } from "../shared/requirementSource.ts";
 import { requirementCommand } from "./requirementCommands.ts";
+import { revisitCommand } from "./revisitCommands.ts";
+import type { RequestProgress } from "../shared/types.ts";
+
+/** 進捗の行の見直し候補の印（要望自身・自分のタスク・配下を分ける。無ければ空） */
+function reviewMark(p: RequestProgress): string {
+  const r = p.review;
+  if (!r) return "";
+  const parts = [r.self?.state === "candidate" ? "要望" : "", r.tasks ? `タスク ${r.tasks}` : "", r.below ? `配下 ${r.below}` : ""].filter(Boolean);
+  return parts.length ? `  ※見直し候補（${parts.join("・")}）` : "";
+}
+import { PremiseInputError } from "../shared/reviewCandidate.ts";
 import { BlockInputError } from "../shared/taskBlock.ts";
 import { taskReviewCommand } from "./taskReviewCommands.ts";
 import { qualityCommand } from "./qualityCommands.ts";
@@ -248,7 +259,7 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
@@ -308,7 +319,7 @@ async function main(argv: string[]): Promise<number> {
                   : "",
                 p.request.tags.map((t) => `#${t}`).join(" "),
                 // 子のある要望は配下の集計（自分の値とは別）、子は親を添える
-                `${p.request.title}${p.blocked ? `  ⏸停止 ${p.blocked}` : ""}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}${p.subtree.blocked > p.blocked ? `・配下の停止 ${p.subtree.blocked - p.blocked}` : ""}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
+                `${p.request.title}${p.blocked ? `  ⏸停止 ${p.blocked}` : ""}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}${p.subtree.blocked > p.blocked ? `・配下の停止 ${p.subtree.blocked - p.blocked}` : ""}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}${reviewMark(p)}`,
               ]);
               return `${head}\n${table(rows)}`;
             })
@@ -403,7 +414,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof PremiseInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );
