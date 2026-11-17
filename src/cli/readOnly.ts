@@ -16,7 +16,12 @@ export function readsOnly(cmd: string, args: string[]): boolean {
     case "resolve":
     case "notes":
     case "drafts":
+    case "clarify":
       return true;
+    case "source":
+    case "sources":
+      // 対象（要望・T001・D1）と基準の ID の後に操作が無ければ読むだけ
+      return !args.some((a) => ["add", "edit", "set", "confirm", "rm", "remove"].includes(a));
     case "request":
     case "req":
       return sub === "ls" || sub === "list" || sub === "show";

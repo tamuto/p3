@@ -5,6 +5,8 @@ import { machineSettingsSource, resolveMachineSettings, SettingsError } from "..
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { OpRuleError } from "../core/requestOps.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
+import { RequirementInputError } from "../shared/requirementSource.ts";
+import { requirementCommand } from "./requirementCommands.ts";
 import { BlockInputError } from "../shared/taskBlock.ts";
 import { taskReviewCommand } from "./taskReviewCommands.ts";
 import { qualityCommand } from "./qualityCommands.ts";
@@ -246,7 +248,7 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
@@ -401,7 +403,7 @@ main(process.argv.slice(2)).then(
       process.stderr.write(`見つかりません: ${e.id}\n`);
       process.exit(2);
     }
-    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
+    process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
     process.exit(1);
   },
 );

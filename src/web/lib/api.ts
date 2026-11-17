@@ -4,6 +4,7 @@ import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
+import type { ClarifyAnswer, CriterionSource, RequestRequirementView, SourceOp } from "../../shared/requirementSource.ts";
 import type { ImprovementDiagnosis, ImprovementSource } from "../../shared/qualityImprovement.ts";
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
@@ -177,6 +178,8 @@ export interface RequestDetail {
   hierarchyIssues?: HierarchyIssue[];
   /** 対応済にできるか（blocker: できない理由、excluded: 見送りで対象外の子） */
   completion?: { blocker?: string; excluded: string[] };
+  /** 要求の出典と確認（無い以前のサーバでは省略。画面は要望から shared の関数で作り直せる） */
+  requirement?: RequestRequirementView;
 }
 
 /** 着手などで添えられる警告（操作は行われている） */
@@ -269,6 +272,12 @@ export const api = {
   /** 要望の更新。配下に未完了ができて祖先を戻したら reopenedAncestors、完了済の祖先は warnings（ancestor_done） */
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>
     call<Request & { reopenedAncestors?: string[]; warnings?: { code: string; target: string; message: string }[] }>("PATCH", `/requests/${rid}`, patch),
+
+  /** 要望の要求の根拠の記録を変える（操作を順に当て、合わなければ 400 requirement_invalid。rev 違いは 409） */
+  saveSources: (rid: string, ops: SourceOp[], rev?: number) => call<{ request: Request; requirement: RequestRequirementView }>("POST", `/requests/${rid}/sources`, { ops, rev }),
+  /** 確認事項に回答する（answer: null で消す。要望に残し、過去の run は書き換えない。再評価は別に始める） */
+  saveAnswer: (rid: string, b: { run: string; question: string; answer: string | null; by?: string; on?: string; source?: string; basis?: string; links?: string[]; rev?: number }) =>
+    call<{ request: Request; answer: ClarifyAnswer | null; requirement: RequestRequirementView }>("POST", `/requests/${rid}/answers`, b),
 
   /** 子の表示順の保存（直下の子を全部、上から順に）。子が変わっていれば 409 code: child_order_invalid（今の並び children）、rev 違いは rev_conflict */
   orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
@@ -363,7 +372,14 @@ export const api = {
     rid: string,
     runId: string,
     key: string,
-    patch: Partial<Omit<ProposedTask, "acceptanceCriteria">> & { acceptanceCriteria?: { id?: string; text: string }[]; expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[] },
+    patch: Partial<Omit<ProposedTask, "acceptanceCriteria" | "acceptanceSources">> & {
+      acceptanceCriteria?: { id?: string; text: string }[];
+      expectedTitle?: string;
+      expectedCriteria?: AcceptanceCriterion[];
+      /** 基準ごとの要求の根拠への操作。expectedSources（編集を始めたときの記録）が要る */
+      sourceOps?: { id: string; source: SourceOp }[];
+      expectedSources?: CriterionSource[];
+    },
   ) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
   /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない。分割の run は mode: children と案の版・問題・途中経過 */

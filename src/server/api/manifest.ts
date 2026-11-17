@@ -80,7 +80,23 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/requests/:rid",
-      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）",
+      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）・" +
+        "要求の出典と確認（requirement: {state, sources, answers, problems}。state は unrecorded / unconfirmed / confirmed / reconfirm / unlinked。申告の記録で P3 の保証ではない）",
+    },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/sources",
+      desc:
+        "要求の根拠の記録を変える {ops: [{op:\"add\", target?, source?, basis?, confirm?:{by, on}} | {op:\"edit\", id, target?, source?, basis?, confirm?} | {op:\"confirm\", id, by, on} | {op:\"remove\", id}], rev?}（CLI の p3 source と同じ。結果は {request, requirement}）。" +
+        "確認には出典・根拠・確かめた人（役割名・アクター名）・YYYY-MM-DD の日が要る。題・本文・記録の内容が変わると確認は再確認が必要になる（元に戻しても戻らない）。" +
+        "規則に合わなければ 400 code: requirement_invalid、rev が違えば 409 rev_conflict（どちらも何も書かない）。要望の根拠・回答は評価対象に入る（変えるとその評価からは採用しない）",
+    },
+    {
+      method: "POST",
+      path: "/api/requests/:rid/answers",
+      desc:
+        "Preflight の確認事項（run の assessment.clarifications）に回答する {run, question, answer（null で消す）, by?, on?, source?, basis?, links?: [根拠の記録の ID], rev?}（CLI の p3 answer と同じ）。" +
+        "回答は要望の clarifyAnswers に残し、過去の run は書き換えない。回答しただけでは根拠の記録を確認記録ありにしない。再評価は別に明示して始める",
     },
     {
       method: "PATCH",
@@ -100,7 +116,7 @@ export const AI_MANIFEST = {
     },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded と受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える。" +
-        "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord, ...}] で順に当て、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
+        "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord|source, ...}] で順に当て（source は {op:\"source\", id: 基準の ID, source: 要求の根拠への操作}。POST sources と同じ操作で、from で要望の記録を写す）、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
         "record の basis は根拠 {kind: unverified|declaration} / {kind: read, reference} / {kind: machine, command, result, target}（作業した側の申告。P3 は検査を実行しない）。" +
         "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
         "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
@@ -159,6 +175,7 @@ export const AI_MANIFEST = {
       desc:
         "タスク案を直す {title?, description?, include?, repo?, acceptanceCriteria?, expectedTitle?, expectedCriteria?}。" +
         "acceptanceCriteria は受け入れ基準の並び全体 [{id?, text}]（id は残し、無い項目に振る。空で基準なし）で、expectedCriteria（編集を始めたときの基準）が要る。違えば 409 rev_conflict。" +
+        "sourceOps: 基準ごとの要求の根拠への操作 [{id: 基準の ID, source: 上の sources と同じ操作（add は from: 要望の記録の ID で写せる）}]。expectedSources（編集を始めたときの acceptanceSources）が要り、違えば 409 rev_conflict。" +
         "expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
         "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
     },

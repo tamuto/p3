@@ -1,3 +1,4 @@
+import { ANSWER_STATE_LABEL, criteriaSourceView, requestRequirementView, SOURCE_STATE_LABEL, type RequestRequirementView, type SourceConfirmation, type SourceView } from "../shared/requirementSource.ts";
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
 import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../shared/acceptance.ts";
@@ -83,20 +84,28 @@ export function formatAcceptance(task: Task, { emptyLine = true } = {}): string[
   const lines = [`受け入れ基準（${acc.met}/${acc.total} を満たしたと申告${kinds.length ? `。根拠: ${kinds.join("・")}` : ""}）:`];
   // 根拠の行: 結果と別に、種類（古い証拠は「種類未記録」）と、読んだもの・検査のコマンド・結果・対象
   const basisLines = (e: AcceptanceEvidence) => [`      根拠: ${basisLabel(e)}`, ...basisDetail(evidenceBasisOf(e).basis).map((d) => `        ${d.label}: ${d.value.split("\n").join("\n          ")}`)];
+  // 要求の出典と確認（実装後の証拠とは別。要望者の申告の記録）
+  const sv = task.acceptanceSources?.length ? criteriaSourceView(task.acceptanceCriteria, task.acceptanceSources) : undefined;
+  const sourceLine = (id: string) => {
+    const it = sv?.items.find((x) => x.id === id);
+    if (!it || !it.sources.length) return [];
+    return [`      出典と確認: ${SOURCE_STATE_LABEL[it.state]}（${it.sources.map((x) => `${x.id}${x.source ? ` ${x.source}` : ""}${x.confirmed ? ` ${x.confirmed.by}・${x.confirmed.on}` : ""}`).join(" / ")}）`];
+  };
   for (const i of acc.items) {
-    lines.push(`  ${i.id}  ${i.text}`, `      ${STATE_MARK[i.state]}`);
+    lines.push(`  ${i.id}  ${i.text}`, `      ${STATE_MARK[i.state]}`, ...sourceLine(i.id));
     if (i.evidence) lines.push(...basisLines(i.evidence));
     if (i.evidence?.evidence) lines.push(...i.evidence.evidence.split("\n").map((l) => `      ${l}`));
     if (i.state === "stale" && i.evidence) lines.push(`      （記録したときの基準: ${i.evidence.criterionText}）`);
   }
   for (const e of acc.orphans)
     lines.push(`  ${e.criterionId}  （基準は消されています: ${e.criterionText}）`, `      ${STATE_MARK[e.result]}`, ...basisLines(e), ...(e.evidence ? e.evidence.split("\n").map((l) => `      ${l}`) : []));
+  for (const x of sv?.orphans ?? []) lines.push(`  ${x.criterionId}  （基準が無い出典と確認の記録 ${x.id}: 対応先不明）`);
   if (acc.shortfalls.length) lines.push("不足:", ...acc.shortfalls.map((s) => `  - ${s}`));
   return lines;
 }
 
 export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
-  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceProblems" | "block" | "blockProblems">;
+  const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceSources" | "acceptanceProblems" | "block" | "blockProblems">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
   // 変更の記録（完了したタスク）。経緯を知るために読む
@@ -104,6 +113,8 @@ export function briefTask(ctx: P3Context, task: Task, marks: Map<string, Superse
   // 受け入れ基準と証拠（着手時に読み、完了時に項目ごとの証拠を残す）
   if (task.acceptanceCriteria?.length) item.acceptanceCriteria = task.acceptanceCriteria;
   if (task.acceptanceEvidence?.length) item.acceptanceEvidence = task.acceptanceEvidence;
+  // 基準ごとの要求の出典と確認（あるときだけ）
+  if (task.acceptanceSources?.length) item.acceptanceSources = task.acceptanceSources;
   if (task.acceptanceProblems?.length) item.acceptanceProblems = task.acceptanceProblems;
   // 停止の今の値と読み取りの問題（履歴は省く）
   if (task.block) item.block = task.block;
@@ -149,7 +160,35 @@ export function briefRequest(ctx: P3Context, r: Request, issue: string | undefin
     .tasksOf(r.id)
     .list()
     .map((t) => ({ id: t.id, ref: t.ref, title: t.title, status: t.status, repo: t.repo, ...(t.block ? { blocked: true } : {}) }));
-  return { item, branches, tasks, ...(issue ? { issue } : {}) };
+  // 要求の出典と確認（記録・回答・読めない値があるときだけ）
+  const req = requestRequirementView(r);
+  const requirement = req.sources.length || req.answers.length || req.problems.length ? req : undefined;
+  return { item, branches, tasks, ...(issue ? { issue } : {}), ...(requirement ? { requirement } : {}) };
+}
+
+const confirmLine = (c: SourceConfirmation) => `${c.by}・${c.on}`;
+
+export function sourceLines(s: SourceView, pad = "  "): string[] {
+  return [
+    `${pad}${s.id}  [${SOURCE_STATE_LABEL[s.state]}${s.confirmed ? `: ${confirmLine(s.confirmed)}` : ""}]${s.from ? `  （要望の ${s.from} を写したもの）` : ""}`,
+    ...(s.target ? [`${pad}  対象: ${s.target}`] : []),
+    ...(s.source ? [`${pad}  出典: ${s.source}`] : []),
+    ...(s.basis ? [`${pad}  根拠: ${s.basis.split("\n").join(`\n${pad}        `)}`] : []),
+    ...(s.history?.length ? [`${pad}  前の確認: ${s.history.map((h) => `${confirmLine(h)}${h.lapsedAt ? `（${h.lapsedAt.slice(0, 10)} に効かなくなった）` : ""}`).join(" / ")}`] : []),
+  ];
+}
+
+/** 要望の根拠と回答（p3 source・p3 show で使う） */
+export function formatRequirement(v: RequestRequirementView): string[] {
+  const lines = [`要求の出典と確認: ${SOURCE_STATE_LABEL[v.state]}（申告の記録。P3 の保証ではありません）`];
+  if (!v.sources.length) lines.push("  記録なし（任意。p3 source add --source <出典> --grounds <根拠> で残せます）");
+  for (const s of v.sources) lines.push(...sourceLines(s));
+  if (v.answers.length) {
+    lines.push("確認事項への回答:");
+    for (const a of v.answers) lines.push(`  ${a.run}/${a.question}  [${ANSWER_STATE_LABEL[a.state]}]  ${a.copy.question}`, `    回答${a.by || a.on ? `（${[a.by, a.on].filter(Boolean).join("・")}）` : ""}: ${a.answer.split("\n").join("\n          ")}`);
+  }
+  for (const p of v.problems) lines.push(`  ※読めない: ${p}（request.md を直してください）`);
+  return lines;
 }
 
 /** 親子の行（祖先と直下の子。無ければ何も出さない） */
@@ -176,6 +215,7 @@ export function formatBriefRequest(view: ReturnType<typeof briefRequest> & Parti
     ...(branchLine ? [] : names.map((n) => `  branch  ${n}: ${branches[n].branch}`)),
     ...(family ? formatFamily(family) : []),
     item.body.trim() ? `\n${item.body.trim()}` : "",
+    ...(view.requirement ? ["", ...formatRequirement(view.requirement)] : []),
     "",
     `タスク (${tasks.length}):`,
     table(tasks.map((t) => [`  ${t.id}`, t.status, t.repo ?? "（作業先なし）", `${t.title}${t.blocked ? "  ⏸停止" : ""}`])) || "  （なし）",

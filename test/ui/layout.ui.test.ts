@@ -185,7 +185,9 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
             [
               ...(await reachByScroll(dialog.locator("table").locator(".."), dialog.getByRole("columnheader", { name: "最後の列" }), "x", "表の最後の列")),
               ...(await codeEndVisible(dialog)),
-              ...(await reachByScroll(body, dialog.getByText("本文の最後の行"), "y", "本文の最後の行")),
+              // 本文の後には基準と、基準の出典と確認（畳んだ欄）が続く。末尾まで送ってその欄に届き、本文の最後の行はその上にある
+              ...(await reachByScroll(body, dialog.getByText("受け入れ基準の出典と確認（任意）"), "y", "末尾（基準の出典と確認）")),
+              ...(await reachable(dialog.getByText("本文の最後の行"), "本文の最後の行")),
             ],
             at("案の詳細の局所スクロール"),
           );

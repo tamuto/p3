@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { InputField, InputMatch, PreflightInput, PreflightRun, Request } from "../../shared/types.ts";
 import { changedLabel, normalizeInput } from "../../shared/preflightInput.ts";
+import { readRequirement, renderRequirement, requestSubject, requirementInputKey, requirementInputOf, type RequirementInput } from "../../shared/requirementSource.ts";
 
 export { normalizeInput };
 
@@ -11,11 +12,27 @@ export { normalizeInput };
  *
  * 比べるのは保存されたタイトルと本文そのもの（rev や lastPreflight では比べない。Preflight 自身の状態の更新や、
  * タグ・期限・ステータスだけの変更では古い評価にしない）。本文を元に戻せば一致に戻る。
+ * 要求の根拠の記録と確認事項への回答（shared/requirementSource.ts）も評価対象に入れる。以前の run（記録なし）は、今の要望にも
+ * 根拠・回答が無ければ同じとみなし、あれば変わったとみなす。
  */
 
 /** run の request.md（人が読む評価対象）。input と同じ内容にする */
 export function renderRequestSnapshot(requestId: string, input: PreflightInput): string {
-  return `# ${requestId} ${input.title}\n\n${input.body}`;
+  const req = renderRequirement(input.requirement, requestSubject(input));
+  return `# ${requestId} ${input.title}\n\n${input.body}${req ? `\n\n<!-- p3: ここから下は P3 が固定した要求の根拠と回答（要望の本文ではありません） -->\n${req}` : ""}`;
+}
+
+/** 要望の評価対象の要求の根拠と回答（無ければ undefined） */
+export const requirementOf = (r: Request): RequirementInput | undefined => requirementInputOf(r);
+
+/** run.json に固定した要求の根拠と回答を読む（壊れていれば理由） */
+function fixedRequirement(v: unknown): RequirementInput | undefined | { error: string } {
+  if (v === undefined || v === null) return undefined;
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : undefined;
+  if (!o || !Array.isArray(o.sources) || !Array.isArray(o.answers)) return { error: "run.json の要求の根拠と回答（input.requirement）が壊れています" };
+  const r = readRequirement({ requirementSources: o.sources, clarifyAnswers: o.answers });
+  if (r.requirementProblems?.length) return { error: `run.json の要求の根拠と回答が読めません: ${r.requirementProblems.join(" / ")}` };
+  return { sources: r.requirementSources ?? [], answers: r.clarifyAnswers ?? [] };
 }
 
 /**
@@ -24,8 +41,11 @@ export function renderRequestSnapshot(requestId: string, input: PreflightInput):
  */
 export async function runInput(run: PreflightRun, runDir: string): Promise<PreflightInput | { error: string }> {
   if (run.input) {
-    const { title, body } = run.input as Partial<PreflightInput>;
-    return typeof title === "string" && typeof body === "string" ? normalizeInput({ title, body }) : { error: "run.json の評価対象（input）が壊れています" };
+    const { title, body, requirement } = run.input as Partial<PreflightInput>;
+    if (typeof title !== "string" || typeof body !== "string") return { error: "run.json の評価対象（input）が壊れています" };
+    const req = fixedRequirement(requirement);
+    if (req && "error" in req) return req;
+    return { ...normalizeInput({ title, body }), ...(req ? { requirement: req } : {}) };
   }
   let text: string;
   try {
@@ -39,9 +59,11 @@ export async function runInput(run: PreflightRun, runDir: string): Promise<Prefl
 }
 
 /** 要望の題と本文の識別子（親の目的・子の要望を run に固定して比べる。正規化してから作る） */
-export function inputHash(r: { title: string; body: string }): string {
+export function inputHash(r: { title: string; body: string; requirementSources?: Request["requirementSources"]; clarifyAnswers?: Request["clarifyAnswers"] }): string {
   const n = normalizeInput(r);
-  return createHash("sha256").update(`${n.title}\n${n.body}`).digest("hex").slice(0, 16);
+  // 根拠・回答の無い要望は以前と同じ値（以前の run の親子の記録と比べられるように）
+  const req = requirementInputKey(requirementInputOf(r));
+  return createHash("sha256").update(`${n.title}\n${n.body}${req ? `\n${req}` : ""}`).digest("hex").slice(0, 16);
 }
 
 /**
@@ -59,11 +81,13 @@ export function compareFamily(saved: PreflightInput | undefined, runId: string, 
   return out;
 }
 
-export function compareInput(saved: PreflightInput | { error: string }, current: { title: string; body: string }): InputMatch {
+export function compareInput(saved: PreflightInput | { error: string }, current: Pick<Request, "title" | "body" | "requirementSources" | "clarifyAnswers" | "requirementProblems">): InputMatch {
   if ("error" in saved) return { status: "unknown", reason: saved.error };
   const now = normalizeInput(current);
-  const changed = (["title", "body"] as const).filter((k) => saved[k] !== now[k]);
-  return changed.length ? { status: "changed", changed: [...changed] } : { status: "same" };
+  const changed: InputField[] = (["title", "body"] as const).filter((k) => saved[k] !== now[k]);
+  // 今の要望の根拠・回答が読めなければ、同じとはみなさない
+  if (current.requirementProblems?.length || requirementInputKey(saved.requirement) !== requirementInputKey(requirementInputOf(current))) changed.push("requirement");
+  return changed.length ? { status: "changed", changed } : { status: "same" };
 }
 
 /** 評価対象が今の要望と違う（か分からない）run からタスク化しようとした */

@@ -111,6 +111,8 @@ export interface Task {
   acceptanceEvidence?: AcceptanceEvidence[];
   /** 基準に振った最後の番号（消した ID を使い直さない） */
   acceptanceSeq?: number;
+  /** 基準ごとの要求の根拠（出典・確かめた人・日・根拠。criterionId で対応。実装後の証拠とは別。shared/requirementSource.ts） */
+  acceptanceSources?: CriterionSource[];
   /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
   acceptanceProblems?: string[];
   /** 止まっている理由（作業中のタスクの属性。状態ではない）。規則は shared/taskBlock.ts */
@@ -196,6 +198,14 @@ export interface Request {
   workstreams?: Record<string, Workstream>;
   /** 最新 preflight run */
   lastPreflight?: string;
+  /** 要求の根拠の記録（任意。出典・確かめた人・日・根拠。shared/requirementSource.ts） */
+  requirementSources?: RequirementSource[];
+  /** 根拠の記録に振った最後の番号 */
+  requirementSeq?: number;
+  /** Preflight の確認事項への回答（元の run と確認事項の ID ごと。過去の run は書き換えない） */
+  clarifyAnswers?: ClarifyAnswer[];
+  /** 直接編集で読めなかった根拠・回答の理由（ファイルには書かない。あれば操作で変えない） */
+  requirementProblems?: string[];
   rev: number;
   createdAt: string;
   updatedAt: string;
@@ -204,6 +214,7 @@ export interface Request {
 }
 
 import type { HierarchyIssue } from "./hierarchy.ts";
+import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
 
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
@@ -284,6 +295,8 @@ export interface ProposedTask {
   acceptanceCriteria?: AcceptanceCriterion[];
   /** 案の基準が読めない理由（案のファイルには書かない。あればその案はタスク化できない。基準を直すと消える） */
   acceptanceProblems?: string[];
+  /** 基準ごとの要求の根拠（タスク化するとタスクに写す。shared/requirementSource.ts） */
+  acceptanceSources?: CriterionSource[];
 }
 
 export interface PreflightAssessment {
@@ -292,7 +305,12 @@ export interface PreflightAssessment {
   validity: { score: number; reasons: string[] };
   feasibility: { score: number; reasons: string[] };
   risks: string[];
+  /** 確認事項（文の並び。以前の run と同じ形で残す） */
   questions: string[];
+  /** 構造化した確認事項（確認先・質問・必要な根拠・判断への影響。無ければ記録なし。shared/requirementSource.ts） */
+  clarifications?: Clarification[];
+  /** 読めなかった確認事項の理由（黙って捨てない） */
+  clarificationProblems?: string[];
   areas: string[];
   /** 判断の根拠（調べた箇所と、推測の明示）。無ければ記録なし（以前の結果） */
   evidence?: Evidence[];
@@ -508,10 +526,12 @@ export interface PreflightInput {
    */
   parent?: { id: string; hash: string };
   children?: { id: string; hash: string }[];
+  /** 始めたときの要求の根拠と確認事項への回答（無ければ無し。以前の run にも無い。shared/requirementSource.ts） */
+  requirement?: RequirementInput;
 }
 
 /** 比べる項目（タイトル・本文・親の目的・子の要望） */
-export type InputField = "title" | "body" | "parent" | "children";
+export type InputField = "title" | "body" | "parent" | "children" | "requirement";
 
 /**
  * run の評価対象と今の要望が同じか。

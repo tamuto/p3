@@ -1,6 +1,7 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
 import { qualityVersion, readQuality } from "../../shared/quality.ts";
+import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
@@ -63,7 +64,7 @@ export const taskKeepRaw = (t: Task): readonly string[] => [...(t.acceptanceProb
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
@@ -83,6 +84,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     tags: strs(d.tags),
     ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
+    ...readRequirement(d),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
@@ -93,8 +95,14 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
   "id", "title", "status", "parent", "childOrder", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
-  "rev", "createdAt", "updatedAt", "updatedBy",
+  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy",
 ];
+
+/** 要望のうちファイルに書かないキー（読んだときの問題） */
+export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems"];
+
+/** 要求の根拠・回答が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/requirementSource.ts） */
+export const requestKeepRaw = (r: Request): readonly string[] => (r.requirementProblems?.length ? REQUIREMENT_KEYS : []);
 
 /** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
 function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {

@@ -97,6 +97,14 @@ const OPTIONS = {
   version: { type: "string" },
   file: { type: "string" },
   "based-on": { type: "string" },
+  // 要求の根拠と確認事項への回答（p3 source / clarify / answer）
+  by: { type: "string" },
+  on: { type: "string" },
+  from: { type: "string" },
+  grounds: { type: "string" },
+  link: { type: "string", multiple: true },
+  "sources-json": { type: "string" },
+  "answer-json": { type: "string" },
 } as const;
 
 /**

@@ -2,12 +2,16 @@ import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
 import { readDraftCriteria } from "../../shared/acceptance.ts";
+import { readCriterionSources } from "../../shared/requirementSource.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 
-/** 案の受け入れ基準（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
-function draftCriteriaOf(raw: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems"> {
-  const { criteria, problems } = readDraftCriteria(raw);
-  return { ...(criteria ? { acceptanceCriteria: criteria } : {}), ...(problems ? { acceptanceProblems: problems } : {}) };
+/** 案の受け入れ基準と要求の根拠（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
+function draftCriteriaOf(raw: unknown, rawSources: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems" | "acceptanceSources"> {
+  const { criteria, problems = [] } = readDraftCriteria(raw);
+  const sourceProblems: string[] = [];
+  const sources = readCriterionSources(rawSources, sourceProblems);
+  const all = [...problems, ...sourceProblems];
+  return { ...(criteria ? { acceptanceCriteria: criteria } : {}), ...(sources ? { acceptanceSources: sources } : {}), ...(all.length ? { acceptanceProblems: all } : {}) };
 }
 import { writeFileAtomic } from "./fsutil.ts";
 
@@ -50,6 +54,18 @@ export class PreflightStore {
     );
   }
 
+  /** 案のファイルの frontmatter の元の値（読めなかった項目を、関係のない更新で消さないため） */
+  async rawDraftField(requestId: string, runId: string, key: string, field: string): Promise<unknown> {
+    const text = await readFile(join(this.runDir(requestId, runId), "drafts", `${key}.md`), "utf8").catch(() => undefined);
+    return text === undefined ? undefined : parseFrontmatter(text).data[field];
+  }
+
+  /** extra: 読めた値の代わりに元の値のまま書く項目 */
+  async saveDraftRaw(requestId: string, runId: string, d: ProposedTask, extra: Record<string, unknown>): Promise<void> {
+    const { description, acceptanceProblems: _p, ...meta } = d;
+    await writeFileAtomic(join(this.runDir(requestId, runId), "drafts", `${d.key}.md`), stringifyFrontmatter({ ...meta, ...extra, include: d.include }, description));
+  }
+
   async loadDrafts(requestId: string, runId: string): Promise<ProposedTask[]> {
     const dir = join(this.runDir(requestId, runId), "drafts");
     const files = await readdir(dir).catch(() => [] as string[]);
@@ -65,7 +81,7 @@ export class PreflightStore {
         supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
         include: data.include !== false,
         ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
-        ...draftCriteriaOf(data.acceptanceCriteria),
+        ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources),
       });
     }
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
