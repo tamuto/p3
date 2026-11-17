@@ -241,6 +241,15 @@ describe("CLI・API・一括完了", () => {
     expect(shown.out).toContain("人の済み");
   });
 
+  it("大きな --json の出力（64KB を超える）もパイプで途中で切れずに渡る", async () => {
+    const { ctx, rid, dataDir } = await setup();
+    await updateRequest(ctx, rid, { body: "長い本文。".repeat(20000) });
+    const r = p3(dataDir, ["show", rid, "--json"]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out.length).toBeGreaterThan(70000);
+    expect(JSON.parse(r.out).item.id).toBe(rid);
+  });
+
   it("API の PATCH で完了すると記録が残り、記録の値をそのまま渡しても受け付けない", async () => {
     const { ctx, rid } = await setup();
     const { task } = await createTask(ctx, rid, { title: "作業" });

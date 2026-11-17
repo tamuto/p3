@@ -349,73 +349,86 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
+/**
+ * 標準出力・標準エラーを書き終えてから終わる。process.exit はパイプへの書き込みを待たないので、大きな出力（--json）を
+ * パイプで渡すと途中で切れることがある
+ */
+function exit(code: number): void {
+  let pending = 2;
+  const done = () => {
+    if (--pending === 0) process.exit(code);
+  };
+  process.stdout.write("", done);
+  process.stderr.write("", done);
+}
+
 main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
+  (code) => exit(code),
   (e: unknown) => {
     if (e instanceof ConflictError) {
       process.stderr.write(`競合: ${e.message}。最新を取得してやり直してください\n`);
-      process.exit(3);
+      return exit(3);
     }
     if (e instanceof UserConfigError) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(1);
+      return exit(1);
     }
     if (e instanceof SettingsError) {
       process.stderr.write(`設定: ${e.message}\n`);
-      process.exit(1);
+      return exit(1);
     }
     if (e instanceof ProjectNotResolvedError || e instanceof DataDirError) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(1);
+      return exit(1);
     }
     // リリースノート: 無い → 2、版の競合・既にある → 3、読めない・ID が使えない → 1
     if (e instanceof ReleaseNoteError) {
       process.stderr.write(`${e.code === "conflict" ? "競合: " : ""}${e.message}\n`);
-      process.exit(e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1);
+      return exit(e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1);
     }
     // 生成を始められない（材料が無い・上限・実行中）。Codex は呼んでいない
     if (e instanceof GenerationRejected) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(1);
+      return exit(1);
     }
     // 要望の親子: ロックを取れない・子の表示順を読んだ後に子の集合が変わった → 3（読み直してやり直す）、規則に合わない → 1
     if (e instanceof HierarchyError) {
       process.stderr.write(`${e.message}\n`);
       const changedSet = e.code === "child_order_invalid" && (e.detail.reason === "not_child" || e.detail.reason === "missing");
-      process.exit(e.code === "hierarchy_busy" || changedSet ? 3 : 1);
+      return exit(e.code === "hierarchy_busy" || changedSet ? 3 : 1);
     }
     // マイルストーンレビュー: 無い → 2、実行中・終わっている・動いている所有者がいる → 3、ほか（目的が無い・上限・ID・読めない）→ 1
     if (e instanceof ReviewRejected || e instanceof ReviewStoreError || e instanceof ReviewCancelRefused) {
       process.stderr.write(`${e.message}\n`);
       const code = e.code;
-      process.exit(code === "not_found" || code === "unknown_milestone" ? 2 : code === "running" || code === "finished" || code === "owner_alive" || code === "exists" ? 3 : 1);
+      return exit(code === "not_found" || code === "unknown_milestone" ? 2 : code === "running" || code === "finished" || code === "owner_alive" || code === "exists" ? 3 : 1);
     }
     // タスクのレビュー: 実行中・材料が変わった → 3、ほか（未完了・比較対象・観点・上限・担当）→ 1
     if (e instanceof TaskReviewRejected) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(e.code === "running" || e.code === "material_changed" ? 3 : 1);
+      return exit(e.code === "running" || e.code === "material_changed" ? 3 : 1);
     }
     // 改善要望: 診断が変わった・登録先がある → 3、無い → 2、ほか → 1
     if (e instanceof ImprovementError) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(e.code === "not_found" ? 2 : e.code === "diagnosis_changed" || e.code === "existing" || e.code === "closed_existing" ? 3 : 1);
+      return exit(e.code === "not_found" ? 2 : e.code === "diagnosis_changed" || e.code === "existing" || e.code === "closed_existing" ? 3 : 1);
     }
     // 品質基準: 版が違う → 3、規則に合わない・読めない → 1
     if (e instanceof QualityInputError) {
       process.stderr.write(`${e.message}\n`);
-      process.exit(e.code === "quality_conflict" ? 3 : 1);
+      return exit(e.code === "quality_conflict" ? 3 : 1);
     }
     // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
     if (e instanceof MilestonesConflictError) {
       process.stderr.write(`競合: ${e.message}\n`);
-      process.exit(3);
+      return exit(3);
     }
     if (e instanceof NotFoundError) {
       process.stderr.write(`見つかりません: ${e.id}\n`);
-      process.exit(2);
+      return exit(2);
     }
     process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof PremiseInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
-    process.exit(1);
+    return exit(1);
   },
 );
 
