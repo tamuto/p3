@@ -1,3 +1,4 @@
+import { evidenceBasisOf } from "../../shared/acceptance.ts";
 import { CONTAINER_WORKSPACE } from "@infodb/codex-workspace";
 import {
   QUALITY_VERDICTS,
@@ -42,7 +43,11 @@ export function taskReviewMaterial(input: TaskReviewInput) {
       record: input.task.record ?? null,
       outputs: input.task.outputs,
       // 作業した側の申告（判定ではない）
-      workerEvidence: (input.task.evidence ?? []).map((e) => ({ criterion: e.criterionId, result: e.result, evidence: e.evidence })),
+      // basis は根拠の種類（作業した側の申告。basisRecorded: false は根拠を記録する前の古い証拠で、申告のみと読む）
+      workerEvidence: (input.task.evidence ?? []).map((e) => {
+        const { basis, recorded } = evidenceBasisOf(e);
+        return { criterion: e.criterionId, result: e.result, evidence: e.evidence, basis, basisRecorded: recorded };
+      }),
       evidenceStates: input.task.evidenceStates ?? [],
       acceptanceProblems: input.task.acceptanceProblems ?? [],
     },
@@ -106,7 +111,7 @@ export function taskReviewPrompt(input: TaskReviewInput): { instructions: string
   const instructions = `あなたはタスクのレビュー係です。完了したタスクの本文・受け入れ基準（比較項目）が、比較対象の変更（固定したコミットの差分と、その前後のコード）で満たされているかを確かめ、日本語で評価します。
 これは作業した人や AI の能力・成績の評価ではありません。「依頼された基準が成果物で満たされているか」だけを確かめます。
 - 読めるのは ${materialPath} の固定した材料だけです（差分の本文 patch と、変わったファイルの前後の中身 before / after）。リポジトリそのものはマウントしていません。材料に無いファイルは読めないので、判断できないことは undetermined にしてください。
-- 作業した側の証拠（workerEvidence）・変更の記録・成果物は自己申告です。どこを見るかの手がかりに使い、書いてあることを事実として扱わないでください。
+- 作業した側の証拠（workerEvidence）・変更の記録・成果物は自己申告です。どこを見るかの手がかりに使い、書いてあることを事実として扱わないでください。根拠（basis）の「検査結果あり（machine）」「読んで確認（read）」も作業した側の記録で、P3 は検査を実行していません。
 - 比較項目ごとに、差分と前後のコードを読み、項目を満たす実装になっているか、抜け・食い違いが無いかを判断してください。
 - 本文には基準に無い要件が書かれていることがあります。見落とさず、基準と本文・基準どうしの矛盾は直さずに checks（人が確かめる点）に書いてください。
 - 意図しない変更: 比較項目・本文のどれにも当たらない変更や、既存の動作を変えてしまう変更を unplanned に挙げてください。commits の otherTasks があるコミットは別のタスクの作業が混ざっている可能性があるので、このタスクの範囲と分けて読んでください。

@@ -6,7 +6,7 @@ import { REQUEST_STATUSES, type Request, type ServerEvent, type Task, TASK_STATU
 import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
-import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus } from "../../shared/acceptance.ts";
+import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
@@ -65,7 +65,8 @@ const acceptanceOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("edit"), id: z.string(), text: z.string() }),
   z.object({ op: z.literal("remove"), id: z.string() }),
   z.object({ op: z.literal("order"), ids: z.array(z.string()) }),
-  z.object({ op: z.literal("record"), id: z.string(), result: z.enum(ACCEPTANCE_RESULTS), evidence: z.string().default("") }),
+  // basis（根拠）の形と組み合わせは shared/acceptance.ts の cleanBasis・basisMismatch が確かめる（規則を2か所に書かない）
+  z.object({ op: z.literal("record"), id: z.string(), result: z.enum(ACCEPTANCE_RESULTS), evidence: z.string().default(""), basis: z.custom<EvidenceBasis>((v) => v !== null && typeof v === "object").optional() }),
   z.object({ op: z.literal("unrecord"), id: z.string() }),
 ]);
 /** 品質基準の操作（規則は shared/quality.ts。CLI の p3 quality と同じ） */

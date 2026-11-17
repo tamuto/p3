@@ -1,4 +1,4 @@
-import type { AcceptanceCriterion, AcceptanceEvidence } from "./acceptance.ts";
+import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "./acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
 import type { QualitySnapshot, QualityState } from "./quality.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
@@ -207,7 +207,10 @@ import type { HierarchyIssue } from "./hierarchy.ts";
 
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
-export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block">;
+export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block"> & {
+  /** 受け入れ基準の証拠の概要（有効な met・申告のみの件数・根拠ごとの件数・読めない値の有無。本文は載せない）。基準も証拠も無ければ省く */
+  evidence?: EvidenceSummary;
+};
 
 export interface RequestProgress {
   request: Request;

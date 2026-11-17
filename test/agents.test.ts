@@ -140,6 +140,13 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
     for (const t of procedures) expect(t).toContain("証拠は自分の申告で、レビューの判定ではない");
     for (const t of procedures) expect(t).toContain("役割が違う");
     for (const t of procedures) expect(t).toContain("`--record -` と標準入力を取り合う");
+    // 根拠の種類: JSON で残し、実際にしたことを選ぶ（読んだだけを検査結果ありにしない）
+    for (const t of procedures) {
+      expect(t).toContain("--evidence-json evidence.json");
+      expect(t).toContain('"kind":"machine"');
+      expect(t).toContain('"kind":"read"');
+      expect(t).toContain("読んだだけのものを検査結果ありにしない");
+    }
   });
 
   it("止まっている理由: 続けられないときだけ付け、保存を確かめて人に伝えて終え、回答で解除して再開すると、どちらも書く", () => {

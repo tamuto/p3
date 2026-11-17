@@ -130,7 +130,7 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         <Item label="作成">{fmtTime(task.createdAt)}</Item>
         <Item label="作業中にした">{fmtTime(task.startedAt) || "—"}</Item>
         <Item label="完了にした">{fmtTime(task.doneAt) || "—"}</Item>
-        {task.checkedAt && <Item label="済みにした">{fmtTime(task.checkedAt)}</Item>}
+        <Item label="人の最終確認">{task.checkedAt ? `確認済み（${fmtTime(task.checkedAt)}）` : "未"}</Item>
         {task.labels.length > 0 && <Item label="ラベル">{task.labels.join(", ")}</Item>}
         {task.areas.length > 0 && <Item label="影響領域">{task.areas.join(", ")}</Item>}
       </dl>

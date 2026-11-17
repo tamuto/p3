@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../shared/acceptance.ts";
-import { AcceptancePanel, shortfallSummary } from "./Acceptance.tsx";
+import { AcceptancePanel, metSummary, shortfallSummary } from "./Acceptance.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { QualityDiffPanel } from "./QualityDiff.tsx";
@@ -283,13 +283,18 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             <div className="space-y-2 rounded-lg bg-emerald-50 px-4 py-2.5 dark:bg-emerald-950/40">
               <div className="flex flex-wrap items-center gap-3">
                 <DoneMark checked={!!task.checkedAt} />
-                <span className="min-w-0 flex-1">{task.checkedAt ? `済み（${fmtTime(task.checkedAt)} に確認）` : "完了しています。成果物と受け入れ基準の証拠を確認したら済みにしてください"}</span>
+                {/* 人の済みは証拠の根拠とは別の、タスクごとの最終確認。済みの後も未達・申告のみは下に出したまま */}
+                <span className="min-w-0 flex-1">
+                  {task.checkedAt ? `人が確認済み（最終確認・${fmtTime(task.checkedAt)}）` : "人の最終確認：未。成果物と受け入れ基準の証拠・根拠を確認したら済みにしてください"}
+                </span>
                 <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty || blockDirty} onClick={() => void toggleChecked()}>
                   {task.checkedAt ? "済みを外す" : "済みにする"}
                 </Button>
               </div>
               {acc ? (
-                <p className={acc.shortfalls.length ? "text-base text-amber-800 dark:text-amber-300" : "text-base text-emerald-800 dark:text-emerald-300"}>受け入れ基準: {shortfallSummary(acc)}</p>
+                <p className={acc.shortfalls.length ? "text-base text-amber-800 dark:text-amber-300" : "text-base text-emerald-800 dark:text-emerald-300"}>
+                  受け入れ基準: {metSummary(acc)}。{shortfallSummary(acc)}
+                </p>
               ) : (
                 <p className="text-base text-slate-500">受け入れ基準なし</p>
               )}

@@ -1,3 +1,4 @@
+import { evidenceSummary } from "../shared/acceptance.ts";
 import { normalizeTaskId } from "../shared/refs.ts";
 import { REQUEST_STATUSES, type RequestProgress, type RequestStatus, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
@@ -125,7 +126,12 @@ export function progress(ctx: P3Context): RequestProgress[] {
       }
       return {
         request,
-        tasks: tasks.map(({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, block }) => ({ id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, ...(block ? { block } : {}) })),
+        tasks: tasks.map((t) => {
+          const { id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, block } = t;
+          // 証拠の小さな概要（本文は載せない。規則は shared/acceptance.ts）
+          const evidence = evidenceSummary(t);
+          return { id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, ...(block ? { block } : {}), ...(evidence ? { evidence } : {}) };
+        }),
         counts,
         total: tasks.length,
         done: done.length,

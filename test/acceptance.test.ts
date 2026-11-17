@@ -60,7 +60,7 @@ describe("基準と証拠の規則（shared）", () => {
     expect(st.met).toBe(1);
     expect(st.items.map((i) => [i.id, i.state])).toEqual([["A1", "met"], ["A2", "stale"]]);
     expect(st.orphans.map((e) => e.criterionId)).toEqual(["A3"]);
-    expect(st.shortfalls).toEqual(["基準を変えた後の再確認が必要: A2", "対応する基準のない証拠: A3"]);
+    expect(st.shortfalls).toEqual(["基準を変えた後の再確認が必要: A2", "申告のみの met（確かめた方法の記録なし）: A1", "対応する基準のない証拠: A3"]);
     // 再記録で今の文言に置き換わる
     s = applyAcceptanceOps(s, [{ op: "record", id: "A2", result: "met", evidence: "テスト B2" }], at);
     expect(acceptanceStatus(s)!.met).toBe(2);
@@ -169,7 +169,7 @@ describe("保存と更新（core）", () => {
     const { task } = await createTask(ctx, rid, { title: "t", criteria: ["一", "二"] });
     const done = await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e" }] });
     expect(done.task.status).toBe("done");
-    expect(acceptanceStatus(done.task)!.shortfalls).toEqual(["証拠なし: A2"]);
+    expect(acceptanceStatus(done.task)!.shortfalls).toEqual(["証拠なし: A2", "申告のみの met（確かめた方法の記録なし）: A1"]);
     await expect(checkStatusChange(ctx.ws, rid, "resolved")).resolves.toBeUndefined();
     const checked = await updateTask(ctx, rid, task.id, { checked: true });
     expect(checked.task.checkedAt).toBeTruthy();
@@ -217,7 +217,7 @@ describe("API", () => {
     });
     expect(patched.status).toBe(200);
     const got = await send(app, "GET", `/requests/${rid}/tasks/${id}`);
-    expect((got.body.acceptance as { shortfalls: string[] }).shortfalls).toEqual(["証拠なし: A2"]);
+    expect((got.body.acceptance as { shortfalls: string[] }).shortfalls).toEqual(["証拠なし: A2", "申告のみの met（確かめた方法の記録なし）: A1"]);
     const bad = await send(app, "PATCH", `/requests/${rid}/tasks/${id}`, { acceptance: [{ op: "record", id: "A2", result: "met", evidence: "" }] });
     expect(bad).toMatchObject({ status: 400, body: { code: "acceptance_invalid" } });
     const conflict = await send(app, "PATCH", `/requests/${rid}/tasks/${id}`, { rev: 1, acceptance: [{ op: "add", text: "三" }] });
@@ -274,16 +274,17 @@ describe("CLI", () => {
     expect(show.acceptance).toMatchObject({ met: 2, total: 3 });
     const brief = JSON.parse(p3(dataDir, ["show", t, ...req, "--brief", "--json"]).out) as { item: { acceptanceCriteria: unknown[] }; acceptance: { shortfalls: string[] } };
     expect(brief.item.acceptanceCriteria).toHaveLength(3);
-    expect(brief.acceptance.shortfalls).toEqual(["未検証: A4"]);
+    expect(brief.acceptance.shortfalls).toEqual(["未検証: A4", "申告のみの met（確かめた方法の記録なし）: A1, A2"]);
     const text = p3(dataDir, ["show", t, ...req]).out;
-    expect(text).toContain("受け入れ基準（2/3 を満たした");
+    expect(text).toContain("受け入れ基準（2/3 を満たしたと申告。根拠: 申告のみ 2）");
+    expect(text).toContain("根拠: 申告のみ");
     expect(text).toContain("375 の端末が無い");
 
     // set: 基準を足す・証拠を残す。evidence rm
     expect(p3(dataDir, ["set", t, ...req, "--criterion", "五", "--evidence", "A4=met:実機で確認"]).code).toBe(0);
     expect(p3(dataDir, ["evidence", t, "rm", "A1", ...req]).code).toBe(0);
     const after = JSON.parse(p3(dataDir, ["criteria", t, ...req, "--json"]).out) as { acceptance: { shortfalls: string[] } };
-    expect(after.acceptance.shortfalls).toEqual(["証拠なし: A1, A5"]);
+    expect(after.acceptance.shortfalls).toEqual(["証拠なし: A1, A5", "申告のみの met（確かめた方法の記録なし）: A2, A4"]);
 
     // 基準のないタスクは「受け入れ基準なし」
     p3(dataDir, ["new", "古い", ...req]);
