@@ -10,6 +10,10 @@ import type { Task } from "./types.ts";
  *     変えたら、その証拠は「再確認が必要」（stale）として達成に数えない。基準を消しても証拠は「対応する基準のない証拠」（orphan）として残す
  *   - 結果は met（満たした）/ unmet（満たせなかった）/ unverified（確かめていない）。met は証拠の本文が要る
  *   - 証拠は作業した側の申告で、レビューの判定ではない。不足があっても完了・済みを拒まない（不足は読めるようにするだけ）
+ *   - 根拠の種類（basis）は結果と別に持つ: 未確認 / 申告のみ / 読んで確認（参照先）/ 検査結果あり（コマンド・結果・対象）。
+ *     どれも作業した側の申告で、P3 は検査を実行しない。読んで確認と検査結果ありは方法の違いで、正しさの上下は付けない。
+ *     人の「済み」はタスクごとの確認（checkedAt）で、根拠の種類には入れない。根拠の無い古い証拠は書き換えず、読むときだけ
+ *     unverified は未確認、ほかは「申告のみ（種類未記録）」として扱う（本文から推し量って格上げしない）
  *   - 直接編集で壊れた項目は黙って消さず、problems として知らせる。problems があるタスクの基準・証拠は操作で変えず、
  *     関係のない更新ではファイルの元の値をそのまま書き戻す（core/store/collection.ts の keepRaw）
  */
@@ -33,6 +37,38 @@ export const ACCEPTANCE_LIMITS = {
   evidence: 20000,
 } as const;
 
+/** 証拠の根拠の種類 */
+export const EVIDENCE_BASIS_KINDS = ["unverified", "declaration", "read", "machine"] as const;
+export type EvidenceBasisKind = (typeof EVIDENCE_BASIS_KINDS)[number];
+export const isEvidenceBasisKind = (v: unknown): v is EvidenceBasisKind => typeof v === "string" && (EVIDENCE_BASIS_KINDS as readonly string[]).includes(v);
+
+/**
+ * 証拠の根拠（作業した側の申告）。read の reference は読んだコード・資料・画面と確かめた内容。machine の target は参照先とコミット
+ * （未コミットならそう書く）、result は成功・失敗のどちらも記録できる（machine だから met とはしない）
+ */
+export type EvidenceBasis =
+  | { kind: "unverified" }
+  | { kind: "declaration" }
+  | { kind: "read"; reference: string }
+  | { kind: "machine"; command: string; result: string; target: string };
+
+export const EVIDENCE_BASIS_LABEL: Record<EvidenceBasisKind, string> = {
+  unverified: "未確認",
+  declaration: "申告のみ",
+  read: "読んで確認",
+  machine: "検査結果あり",
+};
+
+/** 根拠の説明（画面の凡例・CLI の案内で使う） */
+export const EVIDENCE_BASIS_HINT: Record<EvidenceBasisKind, string> = {
+  unverified: "まだ確かめていない",
+  declaration: "満たしたと作業した側が申告しただけ（確かめた方法の記録なし）",
+  read: "作業した側（AI を含む）がコード・資料・画面を読んで確かめた",
+  machine: "作業した側が記録した検査の結果（P3 は実行していない）",
+};
+
+export const BASIS_LIMITS = { reference: 1000, command: 1000, result: 2000, target: 300 } as const;
+
 /** 受け入れ基準の1項目 */
 export interface AcceptanceCriterion {
   /** タスクの中で安定した ID（A1, A2, ...） */
@@ -50,6 +86,8 @@ export interface AcceptanceEvidence {
   result: AcceptanceResult;
   /** 通したテスト・実行したコマンドと結果・画面の確認・成果物へのリンクなど（Markdown） */
   evidence: string;
+  /** 根拠の種類。無いのは根拠を記録する前の古い証拠（読むときだけ evidenceBasisOf で解釈する） */
+  basis?: EvidenceBasis;
   recordedAt: string;
   recordedBy?: string;
 }
@@ -110,15 +148,21 @@ export function readAcceptance(d: Record<string, unknown>): AcceptanceState & { 
         else if (evidence.some((e) => e.criterionId === id)) problems.push(`${id} の証拠が重複しています`);
         else if (!isAcceptanceResult(o.result)) problems.push(`${at} の result が読めません（${ACCEPTANCE_RESULTS.join(" / ")}）`);
         else if (o.result === "met" && !body.trim()) problems.push(`${at} は met ですが証拠が空です`);
-        else
-          evidence.push({
-            criterionId: id,
-            criterionText: text(o.criterionText)?.trim() ?? "",
-            result: o.result,
-            evidence: body.trim(),
-            recordedAt: iso(o.recordedAt) ?? new Date(0).toISOString(),
-            ...(text(o.recordedBy) ? { recordedBy: text(o.recordedBy) } : {}),
-          });
+        else {
+          const basis = o.basis === undefined || o.basis === null ? undefined : readBasis(o.basis);
+          if (typeof basis === "string") problems.push(`${at} の根拠（basis）が読めません: ${basis}`);
+          else if (basis && basisMismatch(o.result, basis)) problems.push(`${at} の根拠（basis）が結果と合いません: ${basisMismatch(o.result, basis)}`);
+          else
+            evidence.push({
+              criterionId: id,
+              criterionText: text(o.criterionText)?.trim() ?? "",
+              result: o.result,
+              evidence: body.trim(),
+              ...(basis ? { basis } : {}),
+              recordedAt: iso(o.recordedAt) ?? new Date(0).toISOString(),
+              ...(text(o.recordedBy) ? { recordedBy: text(o.recordedBy) } : {}),
+            });
+        }
       }
     out.acceptanceEvidence = evidence;
   }
@@ -129,6 +173,76 @@ export function readAcceptance(d: Record<string, unknown>): AcceptanceState & { 
   }
   if (problems.length) out.acceptanceProblems = problems;
   return out;
+}
+
+/** ファイルの根拠を読む（読めなければ理由の文） */
+function readBasis(v: unknown): EvidenceBasis | string {
+  try {
+    return cleanBasis(v);
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * 入力の根拠を確かめて保存する形にする（前後の空白を除く）。知らない種類・要る項目の欠け・長すぎるは AcceptanceInputError
+ */
+export function cleanBasis(v: unknown): EvidenceBasis {
+  if (!v || typeof v !== "object") throw new AcceptanceInputError("根拠は { kind, ... } の形で指定してください");
+  const o = v as Record<string, unknown>;
+  if (!isEvidenceBasisKind(o.kind)) throw new AcceptanceInputError(`根拠の種類は ${EVIDENCE_BASIS_KINDS.join(" / ")} のどれかです: ${String(o.kind)}`);
+  const field = (key: keyof typeof BASIS_LIMITS, label: string) => {
+    const t = (text(o[key]) ?? "").trim();
+    if (!t) throw new AcceptanceInputError(`根拠「${EVIDENCE_BASIS_LABEL[o.kind as EvidenceBasisKind]}」には${label}（${key}）が要ります`);
+    if (t.length > BASIS_LIMITS[key]) throw new AcceptanceInputError(`根拠の${label}（${key}）は ${BASIS_LIMITS[key]} 文字までです（${t.length} 文字）`);
+    return t;
+  };
+  switch (o.kind) {
+    case "unverified":
+    case "declaration":
+      return { kind: o.kind };
+    case "read":
+      return { kind: "read", reference: field("reference", "読んだもの") };
+    case "machine":
+      return { kind: "machine", command: field("command", "検査のコマンド"), result: field("result", "検査の結果"), target: field("target", "対象（参照先とコミット）") };
+  }
+}
+
+/** 結果と根拠の組み合わせが合わなければ理由。met / unmet に未確認は付けない、unverified は未確認だけ */
+export function basisMismatch(result: AcceptanceResult, basis: EvidenceBasis): string | undefined {
+  if (result === "unverified" && basis.kind !== "unverified") return `unverified（未検証）の根拠は「未確認」だけです（${EVIDENCE_BASIS_LABEL[basis.kind]} は付けられません）`;
+  if (result !== "unverified" && basis.kind === "unverified") return `${result}（${ACCEPTANCE_RESULT_LABEL[result]}）に根拠「未確認」は付けられません（確かめていないなら結果を unverified にします）`;
+  return undefined;
+}
+
+/** 根拠を省いた新しい入力の既定（unverified は未確認、ほかは申告のみ） */
+export const defaultBasis = (result: AcceptanceResult): EvidenceBasis => (result === "unverified" ? { kind: "unverified" } : { kind: "declaration" });
+
+/** 読むときの根拠。古い証拠（basis なし）は recorded: false で、unverified は未確認・ほかは申告のみと解釈する */
+export function evidenceBasisOf(e: Pick<AcceptanceEvidence, "result" | "basis">): { basis: EvidenceBasis; recorded: boolean } {
+  return e.basis ? { basis: e.basis, recorded: true } : { basis: defaultBasis(e.result), recorded: false };
+}
+
+/** 根拠の短い表示（例: 「検査結果あり」「申告のみ（種類未記録）」） */
+export function basisLabel(e: Pick<AcceptanceEvidence, "result" | "basis">): string {
+  const { basis, recorded } = evidenceBasisOf(e);
+  return `${EVIDENCE_BASIS_LABEL[basis.kind]}${recorded ? "" : "（種類未記録）"}`;
+}
+
+/** 根拠の詳しい行（参照先・コマンド・結果・対象。CLI の show と画面で同じ並び） */
+export function basisDetail(basis: EvidenceBasis): { label: string; value: string }[] {
+  switch (basis.kind) {
+    case "read":
+      return [{ label: "読んだもの", value: basis.reference }];
+    case "machine":
+      return [
+        { label: "コマンド", value: basis.command },
+        { label: "結果", value: basis.result },
+        { label: "対象", value: basis.target },
+      ];
+    default:
+      return [];
+  }
 }
 
 function qualitySourceOf(v: unknown): AcceptanceCriterion["quality"] | undefined {
@@ -145,7 +259,8 @@ export type AcceptanceOp =
   | { op: "edit"; id: string; text: string; quality?: AcceptanceCriterion["quality"] }
   | { op: "remove"; id: string }
   | { op: "order"; ids: string[] }
-  | { op: "record"; id: string; result: AcceptanceResult; evidence: string }
+  /** basis を省くと、同じ結果の前の証拠があればその根拠を引き継ぎ、無ければ既定（unverified は未確認、ほかは申告のみ） */
+  | { op: "record"; id: string; result: AcceptanceResult; evidence: string; basis?: EvidenceBasis }
   | { op: "unrecord"; id: string };
 
 function cleanText(raw: string, label: string): string {
@@ -212,8 +327,21 @@ export function applyAcceptanceOps(state: AcceptanceState & { acceptanceProblems
         if (op.result === "met" && !body) throw new AcceptanceInputError(`${op.id} を met にするには証拠を書いてください（通したテスト・コマンドと結果・画面の確認・リンクなど）`);
         if (body.length > ACCEPTANCE_LIMITS.evidence) throw new AcceptanceInputError(`${op.id} の証拠は ${ACCEPTANCE_LIMITS.evidence} 文字までです（${body.length} 文字）`);
         const prev = evidence.find((e) => e.criterionId === c.id);
-        if (prev && prev.result === op.result && prev.evidence === body && prev.criterionText === c.text) break;
-        const entry: AcceptanceEvidence = { criterionId: c.id, criterionText: c.text, result: op.result, evidence: body, recordedAt: at.now, ...(at.actor ? { recordedBy: at.actor } : {}) };
+        // 根拠を省いた入力（古い CLI・画面）は、同じ結果の前の証拠の根拠をそのまま使う（無ければ既定）。古い証拠を開いて同じ値で
+        // 保存し直しても、根拠を足したことにはならない
+        const basis = op.basis !== undefined ? cleanBasis(op.basis) : prev && prev.result === op.result ? prev.basis : defaultBasis(op.result);
+        const mismatch = basis && basisMismatch(op.result, basis);
+        if (mismatch) throw new AcceptanceInputError(`${op.id}: ${mismatch}`);
+        if (prev && prev.result === op.result && prev.evidence === body && prev.criterionText === c.text && sameBasis(prev.basis, basis)) break;
+        const entry: AcceptanceEvidence = {
+          criterionId: c.id,
+          criterionText: c.text,
+          result: op.result,
+          evidence: body,
+          ...(basis ? { basis } : {}),
+          recordedAt: at.now,
+          ...(at.actor ? { recordedBy: at.actor } : {}),
+        };
         evidence = prev ? evidence.map((e) => (e === prev ? entry : e)) : [...evidence, entry];
         break;
       }
@@ -233,12 +361,16 @@ export function applyAcceptanceOps(state: AcceptanceState & { acceptanceProblems
   };
 }
 
-/** 基準・証拠の中身が変わったか（並び・文言・結果・証拠。記録の日時と変更者・採番は見ない）。人の「済み」を外す判断に使う */
+/** 保存した根拠の比較の鍵（項目の順によらない） */
+const basisKey = (b: EvidenceBasis | undefined) => (b ? JSON.stringify(Object.entries(b).sort(([x], [y]) => x.localeCompare(y))) : "");
+const sameBasis = (a: EvidenceBasis | undefined, b: EvidenceBasis | undefined) => basisKey(a) === basisKey(b);
+
+/** 基準・証拠の中身が変わったか（並び・文言・結果・証拠・根拠。記録の日時と変更者・採番は見ない）。人の「済み」を外す判断に使う */
 export function acceptanceChanged(a: AcceptanceState, b: AcceptanceState): boolean {
   const key = (s: AcceptanceState) =>
     JSON.stringify([
       (s.acceptanceCriteria ?? []).map((c) => [c.id, c.text]),
-      (s.acceptanceEvidence ?? []).map((e) => [e.criterionId, e.criterionText, e.result, e.evidence]),
+      (s.acceptanceEvidence ?? []).map((e) => [e.criterionId, e.criterionText, e.result, e.evidence, basisKey(e.basis)]),
     ]);
   return key(a) !== key(b);
 }
@@ -251,8 +383,12 @@ export type CriterionState = AcceptanceResult | "missing" | "stale";
 export interface AcceptanceStatus {
   /** 基準の件数 */
   total: number;
-  /** 有効な met（今の文言で記録したもの）の件数 */
+  /** 有効な met（今の文言で記録したもの）の件数。満たしたと申告した数で、確かめた数ではない（根拠は metByBasis） */
   met: number;
+  /** 有効な met の根拠ごとの件数（古い証拠は申告のみに数える。stale・orphan は入れない） */
+  metByBasis: Record<EvidenceBasisKind, number>;
+  /** 有効な met のうち根拠が申告のみの基準の ID（古い証拠を含む） */
+  declarationOnly: string[];
   items: { id: string; text: string; state: CriterionState; evidence?: AcceptanceEvidence }[];
   /** 対応する基準のない証拠（基準を消した） */
   orphans: AcceptanceEvidence[];
@@ -274,15 +410,43 @@ export function acceptanceStatus(t: AcceptanceState & { acceptanceProblems?: str
   });
   const orphans = evidence.filter((e) => !criteria.some((c) => c.id === e.criterionId));
   const ids = (s: CriterionState) => items.filter((i) => i.state === s).map((i) => i.id);
+  const metByBasis = Object.fromEntries(EVIDENCE_BASIS_KINDS.map((k) => [k, 0])) as Record<EvidenceBasisKind, number>;
+  const declarationOnly: string[] = [];
+  for (const i of items) {
+    if (i.state !== "met" || !i.evidence) continue;
+    const kind = evidenceBasisOf(i.evidence).basis.kind;
+    metByBasis[kind] += 1;
+    if (kind === "declaration") declarationOnly.push(i.id);
+  }
   const shortfalls = [
     ...(ids("missing").length ? [`証拠なし: ${ids("missing").join(", ")}`] : []),
     ...(ids("unmet").length ? [`満たせなかった: ${ids("unmet").join(", ")}`] : []),
     ...(ids("unverified").length ? [`未検証: ${ids("unverified").join(", ")}`] : []),
     ...(ids("stale").length ? [`基準を変えた後の再確認が必要: ${ids("stale").join(", ")}`] : []),
+    // 注意（完了・済みは拒まない）: 満たしたと申告しただけで、確かめた方法の記録が無い
+    ...(declarationOnly.length ? [`申告のみの met（確かめた方法の記録なし）: ${declarationOnly.join(", ")}`] : []),
     ...(orphans.length ? [`対応する基準のない証拠: ${orphans.map((e) => e.criterionId).join(", ")}`] : []),
     ...problems.map((p) => `読めない: ${p}`),
   ];
-  return { total: criteria.length, met: ids("met").length, items, orphans, problems, shortfalls };
+  return { total: criteria.length, met: ids("met").length, metByBasis, declarationOnly, items, orphans, problems, shortfalls };
+}
+
+/** 進捗の一覧に載せる小さな概要（本文は載せない）。基準も証拠も問題も無いタスクは undefined */
+export interface EvidenceSummary {
+  /** 有効な met の件数（満たしたと申告した数） */
+  met: number;
+  total: number;
+  /** 申告のみの met の件数 */
+  declarationOnly: number;
+  metByBasis: Record<EvidenceBasisKind, number>;
+  /** 読めない値がある */
+  problems: boolean;
+}
+
+export function evidenceSummary(t: AcceptanceState & { acceptanceProblems?: string[] }): EvidenceSummary | undefined {
+  const s = acceptanceStatus(t);
+  if (!s) return undefined;
+  return { met: s.met, total: s.total, declarationOnly: s.declarationOnly.length, metByBasis: s.metByBasis, problems: s.problems.length > 0 };
 }
 
 // --- CLI の証拠の入力 -----------------------------------------------------------
@@ -321,6 +485,35 @@ export function parseEvidenceFile(src: string): Extract<AcceptanceOp, { op: "rec
   if (!out.length) throw new AcceptanceInputError("証拠のファイルに「## <基準の ID> <結果>」の見出しがありません");
   const dup = out.map((e) => e.id).find((id, i, a) => a.indexOf(id) !== i);
   if (dup) throw new AcceptanceInputError(`証拠のファイルに ${dup} が2回あります`);
+  return out;
+}
+
+/**
+ * 証拠の JSON（構造化）。[{ id, result, evidence?, basis? }] の並びで、record と同じ規則で読む。
+ * 例: [{"id":"A1","result":"met","evidence":"対象のテストが通った","basis":{"kind":"machine","command":"pnpm vitest run test/x.test.ts","result":"終了コード 0","target":"p3:abc1234"}}]
+ */
+export function parseEvidenceJson(src: string): Extract<AcceptanceOp, { op: "record" }>[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(src);
+  } catch (e) {
+    throw new AcceptanceInputError(`証拠の JSON が読めません: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!Array.isArray(raw) || !raw.length) throw new AcceptanceInputError("証拠の JSON は [{ id, result, evidence?, basis? }] の並び（1件以上）にしてください");
+  const out = (raw as unknown[]).map((x, i): Extract<AcceptanceOp, { op: "record" }> => {
+    const at = `証拠の JSON の ${i + 1} 件目`;
+    if (!x || typeof x !== "object" || Array.isArray(x)) throw new AcceptanceInputError(`${at} が { id, result, ... } になっていません`);
+    const o = x as Record<string, unknown>;
+    const unknownKeys = Object.keys(o).filter((k) => !["id", "result", "evidence", "basis"].includes(k));
+    if (unknownKeys.length) throw new AcceptanceInputError(`${at} に知らない項目があります: ${unknownKeys.join(", ")}（id・result・evidence・basis）`);
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    if (!CRITERION_ID_RE.test(id)) throw new AcceptanceInputError(`${at} の id が読めません`);
+    if (!isAcceptanceResult(o.result)) throw new AcceptanceInputError(`${at}（${id}）の result は ${ACCEPTANCE_RESULTS.join(" / ")} のどれかです`);
+    if (o.evidence !== undefined && typeof o.evidence !== "string") throw new AcceptanceInputError(`${at}（${id}）の evidence は文字列です`);
+    return { op: "record", id, result: o.result, evidence: o.evidence ?? "", ...(o.basis !== undefined ? { basis: cleanBasis(o.basis) } : {}) };
+  });
+  const dup = out.map((e) => e.id).find((id, i, a) => a.indexOf(id) !== i);
+  if (dup) throw new AcceptanceInputError(`証拠の JSON に ${dup} が2回あります`);
   return out;
 }
 

@@ -1,6 +1,6 @@
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
-import { acceptanceStatus, type CriterionState } from "../shared/acceptance.ts";
+import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../shared/acceptance.ts";
 import { blockWarnings } from "../shared/taskBlock.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
@@ -79,13 +79,18 @@ export function formatBlock(task: Pick<Task, "status" | "block" | "blockHistory"
 export function formatAcceptance(task: Task, { emptyLine = true } = {}): string[] {
   const acc = acceptanceStatus(task);
   if (!acc) return emptyLine ? ["受け入れ基準なし"] : [];
-  const lines = [`受け入れ基準（${acc.met}/${acc.total} を満たした・作業した側の申告）:`];
+  const kinds = EVIDENCE_BASIS_KINDS.filter((k) => acc.metByBasis[k] > 0).map((k) => `${EVIDENCE_BASIS_LABEL[k]} ${acc.metByBasis[k]}`);
+  const lines = [`受け入れ基準（${acc.met}/${acc.total} を満たしたと申告${kinds.length ? `。根拠: ${kinds.join("・")}` : ""}）:`];
+  // 根拠の行: 結果と別に、種類（古い証拠は「種類未記録」）と、読んだもの・検査のコマンド・結果・対象
+  const basisLines = (e: AcceptanceEvidence) => [`      根拠: ${basisLabel(e)}`, ...basisDetail(evidenceBasisOf(e).basis).map((d) => `        ${d.label}: ${d.value.split("\n").join("\n          ")}`)];
   for (const i of acc.items) {
     lines.push(`  ${i.id}  ${i.text}`, `      ${STATE_MARK[i.state]}`);
+    if (i.evidence) lines.push(...basisLines(i.evidence));
     if (i.evidence?.evidence) lines.push(...i.evidence.evidence.split("\n").map((l) => `      ${l}`));
     if (i.state === "stale" && i.evidence) lines.push(`      （記録したときの基準: ${i.evidence.criterionText}）`);
   }
-  for (const e of acc.orphans) lines.push(`  ${e.criterionId}  （基準は消されています: ${e.criterionText}）`, `      ${STATE_MARK[e.result]}`, ...(e.evidence ? e.evidence.split("\n").map((l) => `      ${l}`) : []));
+  for (const e of acc.orphans)
+    lines.push(`  ${e.criterionId}  （基準は消されています: ${e.criterionText}）`, `      ${STATE_MARK[e.result]}`, ...basisLines(e), ...(e.evidence ? e.evidence.split("\n").map((l) => `      ${l}`) : []));
   if (acc.shortfalls.length) lines.push("不足:", ...acc.shortfalls.map((s) => `  - ${s}`));
   return lines;
 }

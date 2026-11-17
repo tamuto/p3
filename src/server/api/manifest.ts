@@ -75,7 +75,7 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block と証拠の概要 evidence（{met, total, declarationOnly, metByBasis, problems}。本文は載せない。基準も証拠も無ければ省く）" },
     { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
     {
       method: "GET",
@@ -101,6 +101,9 @@ export const AI_MANIFEST = {
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded と受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える。" +
         "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord, ...}] で順に当て、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
+        "record の basis は根拠 {kind: unverified|declaration} / {kind: read, reference} / {kind: machine, command, result, target}（作業した側の申告。P3 は検査を実行しない）。" +
+        "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
+        "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
         "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
         "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
         "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },

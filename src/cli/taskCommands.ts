@@ -13,7 +13,7 @@ import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts
 import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras } from "./showView.ts";
 import { UsageError } from "./project.ts";
 import { NotFoundError } from "../core/store/collection.ts";
-import { parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
+import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
 import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";
 import type { BlockOp } from "../shared/taskBlock.ts";
 import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
@@ -129,9 +129,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
         const add = o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x));
         patch.repoOutputs = addRepoOutputs(patch.repoOutputs ?? col.require(tid).repoOutputs ?? [], add);
       }
-      // 受け入れ基準を足す（--criterion）・証拠を残す（--evidence / --evidence-file）
+      // 受け入れ基準を足す（--criterion）・証拠を残す（--evidence / --evidence-file / --evidence-json）
       const acceptance: AcceptanceOp[] = [...(o.criterion ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...evidenceOps(o)];
-      if (!Object.keys(patch).length && !acceptance.length) throw new UsageError("キー=値 を指定してください（受け入れ基準は --criterion、証拠は --evidence / --evidence-file）");
+      if (!Object.keys(patch).length && !acceptance.length) throw new UsageError("キー=値 を指定してください（受け入れ基準は --criterion、証拠は --evidence / --evidence-file / --evidence-json）");
       const r = await updateTask(ctx, ref.split("/")[0], tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
@@ -157,7 +157,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (o.output?.length) patch.outputs = [...new Set([...cur.outputs, ...o.output])];
       // リポジトリごとの成果物（最後のタスクに、関係するリポジトリの PR を全部残せる）
       if (o["repo-output"]?.length) patch.repoOutputs = addRepoOutputs(cur.repoOutputs ?? [], o["repo-output"].map((x) => parseRepoOutput(ctx.ws, x)));
-      // 完了と同時に項目ごとの証拠を残す（--evidence / --evidence-file。不足があっても完了は拒まない）
+      // 完了と同時に項目ごとの証拠を残す（--evidence / --evidence-file / --evidence-json。不足があっても完了は拒まない）
       const acceptance = evidenceOps(o);
       const r = await updateTask(ctx, cur.request, tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
@@ -358,8 +358,9 @@ async function draftCriteriaCommand({ ctx, out, args, o, requestArg }: CommandEn
 }
 
 /**
- * evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md]  1項目の証拠を残す（再記録は置き換え）
+ * evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md] [--basis 種類 ...]  1項目の証拠を残す（再記録は置き換え）
  * evidence <タスク> --file 証拠.md|-                            見出し「## <ID> <結果>」ごとにまとめて残す
+ * evidence <タスク> --evidence-json 証拠.json|-                 根拠つきでまとめて残す
  * evidence <タスク> rm <ID> [...]                              証拠を消す
  */
 async function evidenceCommand(env: CommandEnv): Promise<number> {
@@ -371,9 +372,11 @@ async function evidenceCommand(env: CommandEnv): Promise<number> {
     return applyAcceptance(env, ref, rest.map((id) => ({ op: "unrecord", id })));
   }
   if (first === undefined) {
-    if (o.file === undefined) throw new UsageError("使い方: p3 evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md]（まとめてなら --file 証拠.md）");
-    return applyAcceptance(env, ref, evidenceOps({ "evidence-file": o.file }));
+    if (o.file === undefined && o["evidence-json"] === undefined) throw new UsageError("使い方: p3 evidence <タスク> <ID> <結果> [--body 本文|- | --file 本文.md] [--basis 種類]（まとめてなら --file 証拠.md か --evidence-json 証拠.json）");
+    if (o.basis !== undefined) throw new UsageError("まとめて残すときの根拠は、--evidence-json の各項目の basis に書いてください（--basis は1項目のときだけ）");
+    return applyAcceptance(env, ref, evidenceOps({ "evidence-file": o.file, "evidence-json": o["evidence-json"] }));
   }
+  if (o["evidence-json"] !== undefined) throw new UsageError("--evidence-json はまとめて残すときだけ使えます（p3 evidence <タスク> --evidence-json 証拠.json）");
   const result = rest[0];
   if (!isAcceptanceResult(result)) throw new UsageError(`結果は ${ACCEPTANCE_RESULTS.join(" / ")} のどれかです: p3 evidence <タスク> ${first} <結果>`);
   if (o.body !== undefined && o.file !== undefined) throw new UsageError("--body と --file はどちらか一方です");
@@ -386,7 +389,8 @@ async function evidenceCommand(env: CommandEnv): Promise<number> {
       throw new UsageError(`証拠のファイルが読めません: ${o.file}`);
     }
   }
-  return applyAcceptance(env, ref, [{ op: "record", id: first, result, evidence }]);
+  const basis = basisFromOptions(o);
+  return applyAcceptance(env, ref, [{ op: "record", id: first, result, evidence, ...(basis ? { basis } : {}) }]);
 }
 
 // --- アーカイブしたタスク（--archived を付けたときだけ。読むだけ） ------------------------------------

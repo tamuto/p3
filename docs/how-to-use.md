@@ -590,6 +590,43 @@ p3 evidence T004 A2 met --file a2.md   # 1項目ずつ（再記録は置き換�
 
 - 結果は `met`（満たした。本文が要る）/ `unmet`（満たせなかった）/ `unverified`（確かめていない）。証拠は作業した側の申告で、
   レビューの判定ではない
+
+#### 根拠の種類
+
+結果とは別に、どうやって確かめたかを **根拠** として残せる。「満たした」が、検査の結果に基づくのか、読んで確かめたのか、
+申告だけなのかを、人が「済み」にする前に見分けるため。
+
+| 根拠 | 意味 | 一緒に書くもの |
+| --- | --- | --- |
+| 未確認（`unverified`） | まだ確かめていない。結果が `unverified` のときだけ | なし |
+| 申告のみ（`declaration`） | 満たしたと作業した側が申告しただけ（確かめた方法の記録なし） | なし |
+| 読んで確認（`read`） | 作業した側（AI を含む）がコード・資料・画面を読んで確かめた | 読んだものと確かめた内容（`reference`） |
+| 検査結果あり（`machine`） | 作業した側が実行した検査の結果。失敗もそのまま記録できる | コマンド（`command`）・結果（`result`）・対象の参照先とコミット（`target`。未コミットならそう書く） |
+
+```bash
+p3 evidence T004 A1 met "保存して再読み込みしても残る" --basis machine \
+  --command "pnpm vitest run test/settings.test.ts" --check-result "終了コード 0（3 件成功）" --target "app:3f2a1c0"
+p3 evidence T004 A2 met "1280 と 375 で確かめた" --basis read --reference "src/Settings.tsx のレイアウトと画面の表示"
+p3 move T004 done --record - --evidence-json evidence.json < record.md   # 根拠つきでまとめて
+```
+
+```json
+[
+  { "id": "A1", "result": "met", "evidence": "対象のテストが通った",
+    "basis": { "kind": "machine", "command": "pnpm vitest run test/settings.test.ts", "result": "終了コード 0", "target": "app:3f2a1c0" } },
+  { "id": "A2", "result": "unverified", "evidence": "375 の端末が無い" }
+]
+```
+
+- P3 は検査を実行しない。検査結果ありも読んで確認も作業した側の記録で、P3 が確かめたものではない。2つは方法の違いで、どちらが
+  正しいという上下は付けない
+- 根拠を省くと（`--evidence`・Markdown の `--evidence-file`・古い画面）、同じ結果の前の証拠があればその根拠を引き継ぎ、無ければ
+  `unverified` は未確認・ほかは申告のみになる。`met` / `unmet` に未確認、`unverified` にほかの根拠は付けられない
+- 根拠を記録する前の古い証拠は書き換えない。表示では「申告のみ（種類未記録）」（`unverified` は「未確認（種類未記録）」）と出る
+- 申告のみの `met` は、不足に「申告のみの met（確かめた方法の記録なし）」と注意で出る。完了・済みは拒まない。`show` の見出しの
+  「満たしたと申告」の数は確かめた数ではなく、根拠ごとの内訳を添える（`--json` の `acceptance.metByBasis`・`declarationOnly`）
+- 人の「済み」は根拠の種類ではなく、タスクごとの最終の確認。タスクの AI レビューの判定は証拠に写さない
+- 根拠を変えると、済みのタスクの済みが外れる（同じ値の再保存では外れない）
 - 基準の文を変えると、その基準の証拠は「再確認が必要」になり、満たした数に入らない（記録し直す）
 - 証拠なし・未達・未検証があっても完了・済み・対応済は拒まない。不足は `show` / `criteria` の「不足」、`--json` の
   `acceptance.shortfalls`、`move ... done` の stderr に出る

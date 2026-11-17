@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { basename, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
 import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment } from "../core/store/attachments.ts";
-import { parseEvidenceArg, parseEvidenceFile, type AcceptanceOp } from "../shared/acceptance.ts";
+import { cleanBasis, EVIDENCE_BASIS_KINDS, isEvidenceBasisKind, parseEvidenceArg, parseEvidenceFile, parseEvidenceJson, type AcceptanceOp, type EvidenceBasis } from "../shared/acceptance.ts";
 import { type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { repoArg } from "../core/workTargets.ts";
@@ -43,6 +43,9 @@ const OPTIONS = {
   criterion: { type: "string", multiple: true },
   evidence: { type: "string", multiple: true },
   "evidence-file": { type: "string" },
+  "evidence-json": { type: "string" },
+  basis: { type: "string" },
+  "check-result": { type: "string" },
   target: { type: "string", multiple: true },
   reason: { type: "string" },
   text: { type: "string" },
@@ -191,25 +194,50 @@ export function date(v: string) {
 }
 
 /**
- * set / move の証拠の入力（--evidence <ID>=<結果>[:本文] を繰り返す / --evidence-file <Markdown>|-）を操作にする。
- * --evidence-file - と --record - は同じ標準入力を取り合うので一緒には使えない
+ * set / move / evidence の証拠の入力を操作にする:
+ *   --evidence <ID>=<結果>[:本文] を繰り返す（根拠は省いた扱い）/ --evidence-file <Markdown>|-（同じ）/ --evidence-json <JSON>|-（根拠つき）
+ * --evidence-file と --evidence-json は一緒に使えない。- は標準入力で、--record - / --body - とは取り合うので一緒に使えない
  */
-export function evidenceOps(o: { evidence?: string[]; "evidence-file"?: string; record?: string; body?: string }): AcceptanceOp[] {
+export function evidenceOps(o: { evidence?: string[]; "evidence-file"?: string; "evidence-json"?: string; record?: string; body?: string }): AcceptanceOp[] {
   const ops: AcceptanceOp[] = (o.evidence ?? []).map(parseEvidenceArg);
-  const file = o["evidence-file"];
+  const md = o["evidence-file"];
+  const json = o["evidence-json"];
+  if (md !== undefined && json !== undefined) throw new UsageError("--evidence-file（Markdown）と --evidence-json（JSON）はどちらか一方です");
+  const file = md ?? json;
   if (file !== undefined) {
-    if (file === "-" && (o.record === "-" || o.body === "-")) throw new UsageError("標準入力（-）は --evidence-file と --record / --body のどちらか一方だけに使えます（もう一方はファイルか文字で渡してください）");
+    const flag = md !== undefined ? "--evidence-file" : "--evidence-json";
+    if (file === "-" && (o.record === "-" || o.body === "-")) throw new UsageError(`標準入力（-）は ${flag} と --record / --body のどちらか一方だけに使えます（もう一方はファイルか文字で渡してください）`);
     let src: string;
     try {
       src = file === "-" ? readFileSync(0, "utf8") : readFileSync(resolvePath(process.cwd(), file), "utf8");
     } catch {
       throw new UsageError(`証拠のファイルが読めません: ${file}`);
     }
-    ops.push(...parseEvidenceFile(src));
+    ops.push(...(md !== undefined ? parseEvidenceFile(src) : parseEvidenceJson(src)));
   }
   const dup = ops.map((x) => (x.op === "record" ? x.id : "")).find((id, i, a) => id && a.indexOf(id) !== i);
   if (dup) throw new UsageError(`${dup} の証拠が2回指定されています`);
   return ops;
+}
+
+/**
+ * evidence <タスク> <ID> <結果> の根拠（--basis 種類 と、read は --reference、machine は --command・--check-result・--target）。
+ * 省けば undefined（根拠を省いた扱い）。種類に合わない項目・種類なしの項目は断る（黙って捨てない）
+ */
+export function basisFromOptions(o: { basis?: string; reference?: string; command?: string; "check-result"?: string; target?: string[] }): EvidenceBasis | undefined {
+  const given = { reference: o.reference, command: o.command, result: o["check-result"], target: o.target?.length ? o.target : undefined };
+  const names: Record<keyof typeof given, string> = { reference: "--reference", command: "--command", result: "--check-result", target: "--target" };
+  const present = (Object.keys(given) as (keyof typeof given)[]).filter((k) => given[k] !== undefined);
+  if (o.basis === undefined) {
+    if (present.length) throw new UsageError(`${present.map((k) => names[k]).join("・")} を使うときは --basis（${EVIDENCE_BASIS_KINDS.join("|")}）も指定してください`);
+    return undefined;
+  }
+  if (!isEvidenceBasisKind(o.basis)) throw new UsageError(`--basis は ${EVIDENCE_BASIS_KINDS.join(" / ")} のどれかです: ${o.basis}`);
+  const allowed: Record<string, (keyof typeof given)[]> = { unverified: [], declaration: [], read: ["reference"], machine: ["command", "result", "target"] };
+  const extra = present.filter((k) => !allowed[o.basis!].includes(k));
+  if (extra.length) throw new UsageError(`--basis ${o.basis} には ${extra.map((k) => names[k]).join("・")} を使いません`);
+  if ((given.target?.length ?? 0) > 1) throw new UsageError("--target は1つだけ指定できます");
+  return cleanBasis({ kind: o.basis, reference: given.reference, command: given.command, result: given.result, target: given.target?.[0] });
 }
 
 export function readBody(v: string | undefined): string {
