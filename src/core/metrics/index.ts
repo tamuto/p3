@@ -1,6 +1,7 @@
 import { MetricsError, type MetricNotice, type MetricScope, type MetricScopeOption, type MetricsReport } from "../../shared/metrics.ts";
 import type { P3Context } from "../context.ts";
 import { METRIC_DEFINITIONS, selectTaskReview, type MetricsInput, type ReviewObservation } from "./definitions.ts";
+import { readManual } from "./manual.ts";
 
 /**
  * 開発の指標の集計（定義は definitions.ts）。CLI の p3 metrics と API の GET /api/metrics が同じこれを使う。
@@ -44,7 +45,9 @@ async function reviewsOf(ctx: P3Context, rid: string, tasks: readonly { id: stri
   return out;
 }
 
-export async function metricsInput(ctx: P3Context, scope: MetricScope): Promise<MetricsInput> {
+export async function metricsInput(ctx: P3Context, scope: MetricScope, manual?: Awaited<ReturnType<typeof readManual>>): Promise<MetricsInput> {
+  const m = manual ?? (await readManual(ctx.ws.dataDir));
+  const scopeKey = scope.kind === "project" ? "project" : scope.id;
   const requests = ctx.ws.requests
     .list()
     .filter((r) => r.status !== "rejected" && (scope.kind === "project" || r.milestone === scope.id))
@@ -57,16 +60,23 @@ export async function metricsInput(ctx: P3Context, scope: MetricScope): Promise<
         return { request, tasks, brokenTasks: [...col.errors.keys()].sort(), reviews: await reviewsOf(ctx, request.id, tasks) };
       }),
     ),
+    manual: { records: m.records.filter((r) => r.scope === scopeKey), ...(m.problem ? { problem: m.problem } : {}) },
   };
 }
 
 export async function metricsReport(ctx: P3Context, scope: MetricScope = { kind: "project" }): Promise<MetricsReport> {
-  const input = await metricsInput(ctx, scope);
+  const manual = await readManual(ctx.ws.dataDir);
+  const input = await metricsInput(ctx, scope, manual);
   const notices: MetricNotice[] = [...ctx.ws.requests.errors.entries()].map(([id, e]) => ({
     code: "broken_request",
     target: `requests/${id}/request.md`,
     message: `要望のファイルが読めないため、範囲に入るか分からず数えていません: ${e}`,
   }));
+  if (manual.problem) notices.push({ code: "manual_unreadable", target: "metrics/manual.json", message: manual.problem });
+  const known = new Set(ctx.ws.project.milestones.map((x) => x.id));
+  for (const r of manual.records.filter((x) => x.scope !== "project" && !known.has(x.scope))) {
+    notices.push({ code: "manual_orphan", target: r.id, message: `${r.id}（${r.metric}・${r.from}〜${r.to}）のマイルストーン ${r.scope} が登録にありません（project.yaml を直接直して消えた？ マイルストーンを戻すか p3 metrics rm ${r.id}）` });
+  }
   const m = scope.kind === "milestone" ? ctx.ws.project.milestones.find((x) => x.id === scope.id) : undefined;
   return {
     scope,
@@ -76,7 +86,7 @@ export async function metricsReport(ctx: P3Context, scope: MetricScope = { kind:
         ? "すべての要望（マイルストーンなしを含む）。見送り・アーカイブは除く"
         : `マイルストーン ${scope.id} に今直接属する要望。見送り・アーカイブは除く（親子が別のマイルストーンならそれぞれの所属で数える）`,
     generatedAt: new Date().toISOString(),
-    metrics: METRIC_DEFINITIONS.map(({ compute, ...def }) => ({ ...def, ...compute(input) })),
+    metrics: METRIC_DEFINITIONS.map(({ compute, manual: _manual, ...def }) => ({ ...def, ...compute(input) })),
     notices,
     scopes: metricScopes(ctx),
   };

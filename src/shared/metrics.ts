@@ -10,9 +10,13 @@
 /** 集計範囲。project はプロジェクト全体（マイルストーンなしの要望を含む）、milestone は登録済みのマイルストーンに直接属する要望 */
 export type MetricScope = { kind: "project" } | { kind: "milestone"; id: string };
 
-export const METRIC_UNITS = ["hours", "count"] as const;
+export const METRIC_UNITS = ["hours", "count", "amount"] as const;
 export type MetricUnit = (typeof METRIC_UNITS)[number];
-export const METRIC_UNIT_LABEL: Record<MetricUnit, string> = { hours: "時間", count: "件" };
+/** amount は通貨ごとの金額（単位は記録ごとの通貨コード） */
+export const METRIC_UNIT_LABEL: Record<MetricUnit, string> = { hours: "時間", count: "件", amount: "金額" };
+
+/** record: p3 の記録から数える / manual: 人が記録した値（p3 metrics record） */
+export type MetricKind = "record" | "manual";
 
 /**
  * 値の状態。ok: 値あり / no_targets: 数える対象が無い / no_data: 対象はあるが記録が欠けて値を出せない /
@@ -42,6 +46,9 @@ export interface MetricDefinitionInfo {
   method: string;
   /** 欠損の扱い */
   missingRule: string;
+  kind: MetricKind;
+  /** 人が記録する指標の記録のしかた（CLI の例） */
+  recordHint?: string;
 }
 
 /** 内訳の1行 */
@@ -72,11 +79,39 @@ export interface MetricResult extends MetricDefinitionInfo {
   denominator?: number;
   breakdown: MetricBreakdown[];
   missingItems: MetricMissing[];
+  /** 人が記録した値（範囲と一致する記録。期間・単位ごとに1行で、合算しない） */
+  rows?: ManualRow[];
 }
+
+/** 人が記録した値1件（範囲は project かマイルストーン ID。指標・範囲・期間・単位で1件） */
+export interface ManualRecord {
+  /** M1, M2, ...（消しても使い直さない） */
+  id: string;
+  metric: string;
+  /** "project" かマイルストーン ID */
+  scope: string;
+  /** 観測の開始日・終了日（YYYY-MM-DD。両端を含む） */
+  from: string;
+  to: string;
+  value: number;
+  /** 通貨コード（JPY・USD など）か「件」 */
+  unit: string;
+  /** 出典（請求書・課金の画面・不具合の管理表など） */
+  source: string;
+  note?: string;
+  rev: number;
+  createdAt: string;
+  createdBy?: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export type ManualRow = Omit<ManualRecord, "metric" | "scope">;
 
 /** 集計の全体への知らせ（所属を判定できない記録など） */
 export interface MetricNotice {
-  code: "broken_request";
+  /** broken_request: 読めない要望 / manual_unreadable: 人の記録のファイルが読めない / manual_orphan: 登録に無いマイルストーンへの人の記録 */
+  code: "broken_request" | "manual_unreadable" | "manual_orphan";
   target: string;
   message: string;
 }
@@ -100,9 +135,17 @@ export interface MetricsReport {
   scopes: MetricScopeOption[];
 }
 
-/** 入力が規則に合わない（知らない範囲など）。CLI は使い方の誤り、API は 400 */
+/**
+ * metrics_invalid: 入力が規則に合わない（知らない指標・範囲・負の値・不正な期間など。CLI は 1、API は 400）/
+ * metrics_conflict: 読んだ版と違う・版を照らさない訂正（CLI は 3）/ metrics_unreadable: 記録のファイルが読めない（CLI は 1）。どれも何も書いていない
+ */
 export class MetricsError extends Error {
-  readonly code = "metrics_invalid";
+  constructor(
+    message: string,
+    readonly code: "metrics_invalid" | "metrics_conflict" | "metrics_unreadable" = "metrics_invalid",
+  ) {
+    super(message);
+  }
 }
 
 /** 中央値（空なら undefined） */

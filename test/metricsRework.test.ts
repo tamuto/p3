@@ -31,6 +31,7 @@ const entry = (id: string, rev: number, cause: ReworkEntry["cause"], reopened: b
 });
 const input = (tasks: Task[], extra: Partial<MetricsInput["requests"][number]> = {}): MetricsInput => ({
   requests: [{ request: { id: "r" } as Request, tasks, brokenTasks: [], reviews: {}, ...extra }],
+  manual: { records: [] },
 });
 
 describe("手戻り", () => {

@@ -1,4 +1,5 @@
 import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../shared/acceptance.ts";
+import { readManual } from "./metrics/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
@@ -174,6 +175,13 @@ export async function checkMilestoneRemoval(ctx: P3Context, next: string[]): Pro
   const reviewed = (await ctx.ws.milestoneReviews.milestones()).filter((id) => removed.includes(id));
   if (reviewed.length) {
     throw new OpRuleError(`レビューの履歴のあるマイルストーンは消せません（ID も変えられません）: ${reviewed.join(", ")}（milestone-reviews/<ID>/ に残っています）`);
+  }
+  // 人が記録した指標の値（読めなければ参照があるか分からないので消さない）
+  const manual = await readManual(ctx.ws.dataDir);
+  if (manual.problem) throw new OpRuleError(`指標の記録（metrics/manual.json）が読めないため、マイルストーンを消せるか分かりません: ${manual.problem}`);
+  const measured = [...new Set(manual.records.filter((r) => removed.includes(r.scope)).map((r) => r.scope))];
+  if (measured.length) {
+    throw new OpRuleError(`指標の値を記録したマイルストーンは消せません（ID も変えられません）: ${measured.join(", ")}（p3 metrics --milestone <ID> で確かめ、要らなければ p3 metrics rm で消してから）`);
   }
 }
 

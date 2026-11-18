@@ -10,6 +10,7 @@ import { requirementCommand } from "./requirementCommands.ts";
 import { revisitCommand } from "./revisitCommands.ts";
 import { retroCommand } from "./retroCommands.ts";
 import { metricsCommand } from "./metricsCommands.ts";
+import { MetricsError } from "../shared/metrics.ts";
 import { RetrospectiveError } from "../shared/retrospective.ts";
 import type { RequestProgress } from "../shared/types.ts";
 
@@ -388,6 +389,11 @@ main(process.argv.slice(2)).then(
     if (e instanceof ReleaseNoteError) {
       process.stderr.write(`${e.code === "conflict" ? "競合: " : ""}${e.message}\n`);
       return exit(e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1);
+    }
+    // 指標: 版の競合 → 3、規則に合わない・読めない → 1（何も書いていない）
+    if (e instanceof MetricsError) {
+      process.stderr.write(`${e.code === "metrics_conflict" ? "競合: " : ""}${e.message}\n`);
+      return exit(e.code === "metrics_conflict" ? 3 : 1);
     }
     // 振り返り: 版の競合 → 3、規則に合わない・読めない → 1（何も書いていない）
     if (e instanceof RetrospectiveError) {

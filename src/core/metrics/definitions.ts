@@ -1,6 +1,6 @@
 import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS_KINDS, type CriterionState } from "../../shared/acceptance.ts";
 import type { CompletionTrigger } from "../../shared/completionRecord.ts";
-import { median, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../../shared/metrics.ts";
+import { median, type ManualRecord, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../../shared/metrics.ts";
 import { REWORK_CAUSE_LABEL, REWORK_CAUSES } from "../../shared/reworkHistory.ts";
 import type { TaskReviewListItem, TaskReviewResult } from "../../shared/taskReview.ts";
 import type { Request, Task } from "../../shared/types.ts";
@@ -46,9 +46,19 @@ export function selectTaskReview(list: readonly TaskReviewListItem[]): { state: 
 
 export interface MetricsInput {
   requests: MetricsRequestInput[];
+  /** 人が記録した値のうち、範囲が一致するもの（core/metrics/manual.ts）。problem はファイルが読めないとき */
+  manual: { records: ManualRecord[]; problem?: string };
+}
+
+/** 人が記録する指標の値の規則（記録は core/metrics/manual.ts が確かめる）。value: amount は 0 以上の数、integer は 0 以上の整数。unit: currency は通貨コード、ほかはその単位だけ */
+export interface ManualSpec {
+  value: "amount" | "integer";
+  unit: "currency" | "件";
 }
 
 export interface MetricDefinition extends MetricDefinitionInfo {
+  /** 人が記録する指標（kind: manual）の値の規則 */
+  manual?: ManualSpec;
   compute: (input: MetricsInput) => Omit<MetricResult, keyof MetricDefinitionInfo>;
 }
 
@@ -306,6 +316,35 @@ const REVIEW_SOURCE = "今完了しているタスクの AI レビュー（reque
 const REVIEW_TARGET = "範囲の要望の直下で今完了しているタスク（レビューの無いタスクも対象に数える）";
 const REVIEW_MISSING = "読めないレビューの記録・完了時刻の無い完了の run があるタスクは、どれを使うか決められないので欠損。レビューの無いタスクは「記録なし」で 0 件にしない";
 
+// --- 人が記録した値 ---------------------------------------------------------------
+
+/** 範囲と一致する人の記録を、期間・単位ごとに1行ずつ出す（合算しない）。値は1行のときだけ value にも入れる */
+function manualMetric(id: string) {
+  return (input: MetricsInput) => {
+    if (input.manual.problem) {
+      return { state: "no_data" as const, value: null, targets: 0, observed: 0, missing: 1, breakdown: [], missingItems: [{ target: "metrics/manual.json", reason: input.manual.problem }], rows: [] };
+    }
+    const rows = input.manual.records
+      .filter((r) => r.metric === id)
+      .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.unit.localeCompare(b.unit))
+      .map(({ metric: _m, scope: _s, ...row }) => row);
+    const units = [...new Set(rows.map((r) => r.unit))];
+    return {
+      state: rows.length ? ("ok" as const) : ("unrecorded" as const),
+      value: rows.length === 1 ? rows[0].value : null,
+      targets: rows.length,
+      observed: rows.length,
+      missing: 0,
+      breakdown: units.map((u) => ({ key: `unit_${u}`, label: `単位 ${u} の記録`, count: rows.filter((r) => r.unit === u).length })),
+      missingItems: [],
+      rows,
+    };
+  };
+}
+
+const MANUAL_TARGET = "この範囲（プロジェクト全体・マイルストーン）に記録した値だけ。範囲の間は合算しない（マイルストーンの記録は全体に足さない）";
+const MANUAL_MISSING = "記録が無ければ「記録なし」で 0 にしない。値 0 の記録は 0。記録のファイルが読めなければ欠損";
+
 const CRITERIA_SOURCE = "完了しているタスクの受け入れ基準（acceptanceCriteria）と証拠（acceptanceEvidence）";
 const CRITERIA_TARGET = "範囲の要望の直下で今完了しているタスク。基準なしのタスクは対象なし";
 const CRITERIA_MISSING = "基準・証拠が読めないタスクと読めないタスクのファイルは欠損（分母に入れない）。対応する基準の無い証拠は分母の外";
@@ -316,6 +355,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "request_to_resolved",
     label: "要望の作成から対応済まで",
     unit: "hours",
+    kind: "record",
     source: "要望の作成日時（createdAt）と完了の記録（completionRecords）の最初の対応済（request_resolved）",
     target: "範囲の要望（見送り・アーカイブを除く。親子の要望もそれぞれ1件）",
     method: "到達した要望の経過時間の中央値（時間）。到達していない要望は数えない",
@@ -326,6 +366,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "request_to_done",
     label: "要望の作成から完了済まで",
     unit: "hours",
+    kind: "record",
     source: "要望の作成日時（createdAt）と完了の記録（completionRecords）の最初の完了済（request_done）",
     target: "範囲の要望（見送り・アーカイブを除く。親子の要望もそれぞれ1件）",
     method: "到達した要望の経過時間の中央値（時間）。到達していない要望は数えない",
@@ -336,6 +377,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "acceptance_unmet",
     label: "未達の受け入れ基準",
     unit: "count",
+    kind: "record",
     source: CRITERIA_SOURCE,
     target: CRITERIA_TARGET,
     method: "今の基準のうち、今の文言で「満たせなかった」と記録した基準の数。分母は数えた基準の合計",
@@ -346,6 +388,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "acceptance_unverified",
     label: "未検証の受け入れ基準",
     unit: "count",
+    kind: "record",
     source: CRITERIA_SOURCE,
     target: CRITERIA_TARGET,
     method: "今の基準のうち、今の文言で「未検証」と記録した基準の数。分母は数えた基準の合計",
@@ -356,6 +399,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "acceptance_no_evidence",
     label: "証拠なしの受け入れ基準",
     unit: "count",
+    kind: "record",
     source: CRITERIA_SOURCE,
     target: CRITERIA_TARGET,
     method: "今の基準のうち、証拠の無い基準の数。分母は数えた基準の合計",
@@ -366,6 +410,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "acceptance_stale",
     label: "再確認が必要な受け入れ基準",
     unit: "count",
+    kind: "record",
     source: CRITERIA_SOURCE,
     target: CRITERIA_TARGET,
     method: "証拠を記録した後に基準の文言を変えた基準の数。分母は数えた基準の合計",
@@ -376,6 +421,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "acceptance_met",
     label: "満たしたと申告した受け入れ基準",
     unit: "count",
+    kind: "record",
     source: CRITERIA_SOURCE,
     target: CRITERIA_TARGET,
     method: "今の基準のうち、今の文言で「満たした」と記録した基準の数（作業した側の申告で、確かめた数ではない）。内訳に根拠の種類（申告のみを含む）。分母は数えた基準の合計",
@@ -386,6 +432,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "rework",
     label: "手戻り",
     unit: "count",
+    kind: "record",
     source: "タスクの手戻りの履歴（reworkHistory。済みの解除・完了からの再開）",
     target: "範囲の要望の直下のタスク（状態を問わない）",
     method: "観測できた手戻りの件数（タスクと履歴 ID の組。1操作1件）。内訳に契機と、手戻りのあったタスク・記録の無いタスク。履歴を始める前の手戻りは含まれず、全期間の完全さは保証しない",
@@ -396,6 +443,7 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "review_missing",
     label: "AI レビューの未達判定",
     unit: "count",
+    kind: "record",
     source: REVIEW_SOURCE,
     target: REVIEW_TARGET,
     method: "選んだ結果の基準ごとの判定のうち「不足」（missing）の件数の合計。判断できない・人が確かめる点は数に入れない。レビュー時点の所見",
@@ -406,10 +454,37 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     id: "review_unplanned",
     label: "AI レビューの意図しない変更の候補",
     unit: "count",
+    kind: "record",
     source: REVIEW_SOURCE,
     target: REVIEW_TARGET,
     method: "選んだ結果の意図しない変更の候補（unplanned）の件数の合計。レビュー時点の所見",
     missingRule: REVIEW_MISSING,
     compute: reviewMetric((r) => r.unplanned.length),
+  },
+  {
+    id: "cost",
+    label: "費用",
+    unit: "amount",
+    kind: "manual",
+    manual: { value: "amount", unit: "currency" },
+    source: "人が記録した値（人の工数・AI の利用料・インフラの費用など。出典つき）",
+    target: MANUAL_TARGET,
+    method: "観測期間と通貨ごとに記録した金額をそのまま出す。通貨・期間の違う値は別の行で、1つに合算しない",
+    missingRule: MANUAL_MISSING,
+    recordHint: "p3 metrics record cost <金額> --unit JPY --from YYYY-MM-DD --to YYYY-MM-DD --source 出典 [--milestone ID] [--note メモ]（訂正は --rev 版）",
+    compute: manualMetric("cost"),
+  },
+  {
+    id: "post_release_defects",
+    label: "リリース後の不具合",
+    unit: "count",
+    kind: "manual",
+    manual: { value: "integer", unit: "件" },
+    source: "人が記録した値（リリース後に見つかった不具合の件数。出典つき）",
+    target: MANUAL_TARGET,
+    method: "観測期間ごとに記録した件数（0 以上の整数）をそのまま出す。期間の違う値は別の行で、合算しない",
+    missingRule: MANUAL_MISSING,
+    recordHint: "p3 metrics record post_release_defects <件数> --from YYYY-MM-DD --to YYYY-MM-DD --source 出典 [--milestone ID] [--note メモ]（訂正は --rev 版）",
+    compute: manualMetric("post_release_defects"),
   },
 ];

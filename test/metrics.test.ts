@@ -27,6 +27,7 @@ const task = (rid: string, id: string, status: Task["status"], extra: Partial<Ta
   ({ id, request: rid, ref: `${rid}/${id}`, title: id, status, labels: [], areas: [], outputs: [], repo: null, body: "", rev: 1, createdAt: at(0), updatedAt: at(0), ...extra }) as Task;
 const input = (requests: Request[], tasks: Record<string, Task[]> = {}, broken: Record<string, string[]> = {}): MetricsInput => ({
   requests: requests.map((request) => ({ request, tasks: tasks[request.id] ?? [], brokenTasks: broken[request.id] ?? [], reviews: {} })),
+  manual: { records: [] },
 });
 const metric = (id: string, i: MetricsInput) => {
   const d = METRIC_DEFINITIONS.find((x) => x.id === id)!;
