@@ -9,6 +9,8 @@ import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
 import { requestRequirementView, RequirementInputError, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { PremiseInputError } from "../../shared/reviewCandidate.ts";
+import { MILESTONE_REVIEW_SECTIONS, RetrospectiveError, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../shared/retrospective.ts";
+import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../core/retrospective.ts";
 import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
@@ -207,6 +209,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof RequirementInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 前提の変更の操作が規則に合わない・対象が無い（何も書いていない）
     if (err instanceof PremiseInputError) return c.json({ error: err.message, code: err.code }, 400);
+    // 振り返り: 候補でない・理由が無い → 400、版の競合・記録が読めない → 409（何も書いていない）
+    if (err instanceof RetrospectiveError) return c.json({ error: err.message, code: err.code }, err.code === "retro_invalid" ? 400 : 409);
     // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
@@ -332,6 +336,27 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const r = await recordPremise(ctx, rid(c), op, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({ change: r.change, rev: r.request.rev });
   });
+  /** 要望の振り返り: 確定した対象・訂正の履歴・候補（採用を終えた run と根拠）。読むだけ */
+  app.get("/requests/:rid/retrospective", async (c) => c.json(await retrospectiveView(ctx, rid(c))));
+  /** 振り返りの対象を確定する {run, reason?（2回目からの訂正で必須）, version?（読んだときの版）} */
+  app.post("/requests/:rid/retrospective/target", async (c) => {
+    const b = z.object({ run: z.string().min(1), reason: z.string().optional(), version: z.number().int().optional() }).parse(await c.req.json());
+    return c.json(await confirmRetrospectiveTarget(ctx, rid(c), { run: b.run, reason: b.reason }, { expectedVersion: b.version, actor: actorOf(c) }));
+  });
+  /** リスクの確認を記録する {risk（0 から）, state, facts?, scope?, reason?, evidence: [根拠の指定], version?}（人の判断。追記） */
+  app.post("/requests/:rid/retrospective/judgments", async (c) => {
+    const ev = z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("task_review"), task: z.string(), run: z.string(), section: z.enum(TASK_REVIEW_SECTIONS), index: z.number().int().optional() }),
+      z.object({ kind: z.literal("milestone_review"), milestone: z.string(), run: z.string(), section: z.enum(MILESTONE_REVIEW_SECTIONS), index: z.number().int().optional(), reason: z.string().optional() }),
+      z.object({ kind: z.literal("rework"), task: z.string(), history: z.string() }),
+      z.object({ kind: z.literal("manual"), reference: z.string(), note: z.string().optional() }),
+    ]);
+    const b = z
+      .object({ risk: z.number().int().min(0), state: z.enum(RISK_STATES), facts: z.string().optional(), scope: z.string().optional(), reason: z.string().optional(), evidence: z.array(ev).default([]), version: z.number().int().optional() })
+      .parse(await c.req.json());
+    const { version, ...input } = b;
+    return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
+  });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
@@ -428,7 +453,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
     // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）
-    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped, reworkSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({
       ...task,
       ...(warnings.length ? { warnings } : {}),
@@ -436,6 +461,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(reopenedAncestors ? { reopenedAncestors } : {}),
       ...(checkCleared ? { checkCleared } : {}),
       ...(completionSkipped ? { completionSkipped } : {}),
+      ...(reworkSkipped ? { reworkSkipped } : {}),
     });
   });
   /** 今の品質基準との差分（読むだけ。タスクは書き換えない） */

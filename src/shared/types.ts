@@ -125,6 +125,10 @@ export interface Task {
   completionRecords?: CompletionRecord[];
   /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
   completionProblems?: string[];
+  /** 手戻りの履歴（済みの解除・完了からの再開。追記だけ。shared/reworkHistory.ts） */
+  reworkHistory?: ReworkEntry[];
+  /** 直接編集で読めなかった手戻りの履歴の理由（ファイルには書かない） */
+  reworkProblems?: string[];
   relations: Relation[];
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
@@ -227,6 +231,7 @@ export interface Request {
 
 import type { HierarchyIssue } from "./hierarchy.ts";
 import type { CompletionRecord } from "./completionRecord.ts";
+import type { ReworkEntry } from "./reworkHistory.ts";
 import type { PremiseChange, ReviewState, ReviewSummary } from "./reviewCandidate.ts";
 import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
 

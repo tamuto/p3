@@ -8,6 +8,8 @@ import { AcceptanceInputError } from "../shared/acceptance.ts";
 import { RequirementInputError } from "../shared/requirementSource.ts";
 import { requirementCommand } from "./requirementCommands.ts";
 import { revisitCommand } from "./revisitCommands.ts";
+import { retroCommand } from "./retroCommands.ts";
+import { RetrospectiveError } from "../shared/retrospective.ts";
 import type { RequestProgress } from "../shared/types.ts";
 
 /** 進捗の行の見直し候補の印（要望自身・自分のタスク・配下を分ける。無ければ空） */
@@ -259,7 +261,7 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
@@ -385,6 +387,11 @@ main(process.argv.slice(2)).then(
     if (e instanceof ReleaseNoteError) {
       process.stderr.write(`${e.code === "conflict" ? "競合: " : ""}${e.message}\n`);
       return exit(e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1);
+    }
+    // 振り返り: 版の競合 → 3、規則に合わない・読めない → 1（何も書いていない）
+    if (e instanceof RetrospectiveError) {
+      process.stderr.write(`${e.code === "retro_conflict" ? "競合: " : ""}${e.message}\n`);
+      return exit(e.code === "retro_conflict" ? 3 : 1);
     }
     // 生成を始められない（材料が無い・上限・実行中）。Codex は呼んでいない
     if (e instanceof GenerationRejected) {

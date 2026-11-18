@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
-import { createExclusive, nowIso, writeFileAtomic } from "./fsutil.ts";
+import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "./fsutil.ts";
 
 export interface Entity {
   id: string;
@@ -56,7 +56,15 @@ export interface CollectionOptions<T extends Entity> {
    * 更新の patch に含めたキーは patch の値を書く
    */
   keepRaw?: (item: T) => readonly string[];
+  /**
+   * 別のプロセス（CLI・serve）と、読み直しから書く・移すまでを1つずつにするロックのファイル（ID ごと）。更新・アーカイブ・作成で取る。
+   * 要望とそのタスクは同じロック（要望ごと）を使うので、タスクの更新と要望のアーカイブが重なっても、移した後のファイルを書き戻さない
+   */
+  lock?: (id: string) => string | undefined;
 }
+
+/** ロックを待ちきれなかったときの案内 */
+const LOCK_BUSY = "別のプロセスがこの要望を保存中です。少し待ってやり直してください";
 
 /** 全件の読み込みの準備（prepareLoad）。commit で読んだ結果を公開し、abort で捨てる */
 export interface PreparedLoad {
@@ -207,6 +215,11 @@ export class MarkdownCollection<T extends Entity> {
 
   /** 作る。省いた項目は normalize の既定値になる */
   async create(input: Partial<Omit<T, "id" | "rev" | "createdAt" | "updatedAt">>, actor?: string): Promise<T> {
+    // タスクは要望のロックの中で作る（要望のアーカイブと重なって、移した後のフォルダに作らない）。要望（ID は新しく作る）は取らない
+    return this.locked("", () => this.createUnlocked(input, actor));
+  }
+
+  private async createUnlocked(input: Partial<Omit<T, "id" | "rev" | "createdAt" | "updatedAt">>, actor?: string): Promise<T> {
     // アーカイブ済みの ID も使わない（アーカイブしたタスクへの関係が新しいタスクを指さないように）
     const existing = [...new Set([...this.items.keys(), ...(await this.layout.scan()), ...((await this.layout.reserved?.()) ?? [])])];
     // 別のプロセス（CLI・AI）と同時に作っても、排他作成で衝突を検出して次の ID にする
@@ -243,6 +256,16 @@ export class MarkdownCollection<T extends Entity> {
    * patch に関数を渡すと、直前に読み直した今の値から patch を作る（基準の操作のように、今の値に当てる変更）。関数が投げたら書かない
    */
   async update(id: string, patch: Partial<T> | ((cur: T) => Partial<T>), opts: { expectedRev?: number; actor?: string } = {}): Promise<T> {
+    return this.locked(id, () => this.updateUnlocked(id, patch, opts));
+  }
+
+  /** ロックの中で動かす（ロックを持たないコレクションはそのまま） */
+  private locked<R>(id: string, fn: () => Promise<R>): Promise<R> {
+    const lock = this.opts.lock?.(id);
+    return lock ? withFileLock(lock, fn, { busyMessage: LOCK_BUSY }) : fn();
+  }
+
+  private async updateUnlocked(id: string, patch: Partial<T> | ((cur: T) => Partial<T>), opts: { expectedRev?: number; actor?: string }): Promise<T> {
     // 外部での編集を取りこぼさないよう、更新の直前にディスクから読み直す。
     // この版が知らない項目（新しい版の p3 が書いた項目）は消さずに書き戻す（古い版の更新で親子などが消えないように）
     const r = await this.read(id);
@@ -272,6 +295,12 @@ export class MarkdownCollection<T extends Entity> {
 
   /** 物理削除はせず .archive/ へ移す */
   async archive(id: string): Promise<void> {
+    return this.locked(id, () => this.archiveUnlocked(id));
+  }
+
+  private async archiveUnlocked(id: string): Promise<void> {
+    // ロックの中で読み直す（別のプロセスが先に移した・消したなら無い）
+    this.apply(id, await this.read(id));
     this.require(id);
     const { from, to } = this.layout.archive(id);
     // 既にアーカイブに同じ ID があれば上書きしない（rename は黙って置き換えるので先に確かめる）

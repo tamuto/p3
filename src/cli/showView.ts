@@ -3,6 +3,7 @@ import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
 import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../shared/acceptance.ts";
 import { blockWarnings } from "../shared/taskBlock.ts";
+import { REWORK_CAUSE_LABEL, reworkLine } from "../shared/reworkHistory.ts";
 import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type RefCapture } from "../shared/completionRecord.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
@@ -162,6 +163,15 @@ export function formatCompletionDetail(x: Pick<Task, "completionRecords" | "comp
   }
   for (const p of x.completionProblems ?? []) lines.push(`  ※読めない: ${p}（ファイルの completionRecords を直すまで新しい記録は足しません）`);
   return lines;
+}
+
+/** 手戻りの履歴（済みの解除・完了からの再開）の行 */
+export function formatRework(t: Pick<Task, "reworkHistory" | "reworkProblems">): string[] {
+  return [
+    "手戻りの履歴（済みの解除・完了からの再開）:",
+    ...(t.reworkHistory ?? []).map((e) => `  ${reworkLine(e)}  ${REWORK_CAUSE_LABEL[e.cause]}  ${e.at}  ${e.by ?? "（主体なし）"}  rev ${e.rev}`),
+    ...(t.reworkProblems ?? []).map((p) => `  ※読めない: ${p}（ファイルの reworkHistory を直すまで新しい履歴は足しません）`),
+  ];
 }
 
 /** 完了の記録の行（今の値とは別の、そのときの記録） */

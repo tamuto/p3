@@ -135,6 +135,8 @@ export class Workspace {
       keyOrder: REQUEST_KEY_ORDER,
       derived: REQUEST_DERIVED,
       keepRaw: requestKeepRaw,
+      // 要望ごとのロック（タスクと同じ。要望のフォルダの外に置くので、アーカイブで一緒に動かない）
+      lock: (id) => (id ? this.requestLock(id) : undefined),
     });
     this.preflight = new PreflightStore(this.requestsDir);
     this.notes = new NoteStore(this.requestsDir);
@@ -146,6 +148,14 @@ export class Workspace {
 
   get requestsDir() {
     return join(this.dataDir, "requests");
+  }
+
+  /**
+   * 要望とそのタスクの保存のロック（requests/.locks/<要望ID>.lock）。読み直してから書く・移すまでを、別のプロセスと1つずつにする。
+   * ロックの順: 親子の操作のロック（.hierarchy.lock）→ この要望のロック。このロックの中で別の要望・タスクのロックは取らない
+   */
+  requestLock(rid: string): string {
+    return join(this.requestsDir, ".locks", `${rid}.lock`);
   }
 
   /** このマシンのパスを変えた（個人設定に書いた後に呼ぶ） */
@@ -249,6 +259,7 @@ export class Workspace {
         derived: TASK_DERIVED,
         keepRaw: taskKeepRaw,
         beforeWrite: (prev, next) => stampStatus(prev, next),
+        lock: () => this.requestLock(requestId),
       });
       this.taskCollections.set(requestId, col);
     }
@@ -430,6 +441,9 @@ export class Workspace {
       if (!TASK_ID.test(id)) return;
       await this.tasksOf(rid).reload(id);
       this.emit({ type: "changed", kind: "task", request: rid, ref: `${rid}/${id}` });
+    } else if (kind === "retrospective.json") {
+      // 振り返りの記録（ほかのプロセスの確定・確認）
+      this.emit({ type: "changed", kind: "request", request: rid });
     } else if (kind === "preflight") {
       this.emit({ type: "changed", kind: "preflight", request: rid });
     } else if (kind === "notes") {

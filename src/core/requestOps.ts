@@ -20,6 +20,7 @@ import {
 import { defaultRepo } from "../shared/workTarget.ts";
 import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../shared/completionRecord.ts";
 import { captureRefs } from "./completionRefs.ts";
+import { appendRework, reworkOf, REWORK_SKIPPED } from "../shared/reworkHistory.ts";
 import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../shared/reviewCandidate.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
@@ -57,6 +58,8 @@ export interface TaskResult {
   checkCleared?: string;
   /** 完了の記録が壊れているため、今回の記録を足せなかった（状態は変えた） */
   completionSkipped?: string;
+  /** 手戻りの履歴が壊れているため、今回の履歴を足せなかった（状態は変えた） */
+  reworkSkipped?: string;
 }
 
 /** 品質基準の取り込み方（auto: 作業先に当てはまるもの / none: 取り込まない / ID の並び: 明示したもの） */
@@ -214,7 +217,7 @@ export async function createTask(
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, ...plain } = input;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = input;
   // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
   const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
   const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
@@ -248,7 +251,7 @@ export async function updateTask(
   const { checked, acceptance, blockOp, ...rest } = patch;
   // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, ...plain } = rest;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = rest;
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
@@ -262,6 +265,7 @@ export async function updateTask(
   const warnings = startWarnings(ctx.ws, cur.ref, cur.status, next.status);
   let checkCleared: string | undefined;
   let completionSkipped: string | undefined;
+  let reworkSkipped: string | undefined;
   // 完了・済みになりうる更新なら、参照先を書く前に取る（ロックの外。取得時刻を残す）
   const refs = next.status === "done" || checked === true ? await captureRefs(ctx.ws.refs()) : undefined;
   // 停止の操作だけで何も変わらない（同じ内容の付け直し・付いていない解除）なら書かない（rev を上げない）
@@ -288,7 +292,15 @@ export async function updateTask(
           if (final.status !== "done") final.checkedAt = undefined;
           const r = taskCompletionPatch(ctx, rid, fresh, final, fresh.rev + 1, contentChanged, { at: now, by: opts.actor, refs });
           completionSkipped = r.skipped;
-          return { ...o, ...r.patch };
+          // 手戻り（済みの解除・完了からの再開）。書く直前の値と保存する値で決める
+          const rw = reworkOf(fresh, final, { explicitUncheck: checked === false, acceptanceChanged: contentChanged });
+          let history: Partial<Task> = {};
+          if (rw) {
+            const list = appendRework(fresh, { at: now, ...(opts.actor ? { by: opts.actor } : {}), rev: fresh.rev + 1, ...rw });
+            if (list) history = { reworkHistory: list };
+            else reworkSkipped = REWORK_SKIPPED;
+          }
+          return { ...o, ...r.patch, ...history };
         };
         if (!acceptance?.length) return withRecords(out, false);
         const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor, requestSources: ctx.ws.requests.get(rid)?.requirementSources ?? [] });
@@ -306,7 +318,7 @@ export async function updateTask(
   });
   if (unchanged && task === unchanged) return { task, warnings };
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
-  return { task, warnings: [...warnings, ...ancestorWarnings], ...after, ...(checkCleared ? { checkCleared } : {}), ...(completionSkipped ? { completionSkipped } : {}) };
+  return { task, warnings: [...warnings, ...ancestorWarnings], ...after, ...(checkCleared ? { checkCleared } : {}), ...(completionSkipped ? { completionSkipped } : {}), ...(reworkSkipped ? { reworkSkipped } : {}) };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */

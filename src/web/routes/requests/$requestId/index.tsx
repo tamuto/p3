@@ -26,6 +26,7 @@ import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx
 import { DirectTaskLink } from "../../../components/request/DirectTaskLink.tsx";
 import { RequirementPanel } from "../../../components/request/RequirementPanel.tsx";
 import { RequestReviewNotice } from "../../../components/request/RequestReviewNotice.tsx";
+import { RetrospectivePanel } from "../../../components/request/Retrospective.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -359,6 +360,8 @@ function RequestPanel({
         notes
       )}
 
+      {/* 振り返り（実装の後に、採用した評価のリスクが起きたかを残す）。上の履歴で別の run を開いても対象は変わらない */}
+      <RetrospectivePanel ctx={ctx} data={data} />
     </div>
   );
 }
