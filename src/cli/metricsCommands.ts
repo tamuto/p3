@@ -41,6 +41,6 @@ export async function metricsCommand(cmd: string, env: CommandEnv): Promise<numb
     if (e instanceof MetricsError) throw new UsageError(e.message);
     throw e;
   }
-  const r = metricsReport(ctx, scope);
+  const r = await metricsReport(ctx, scope);
   return out.result(r, () => formatMetrics(r));
 }

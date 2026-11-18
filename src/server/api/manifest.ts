@@ -105,8 +105,8 @@ export const AI_MANIFEST = {
       path: "/api/metrics[?milestone=<ID>]",
       desc:
         "開発の指標（p3 metrics と同じ）。範囲は省けばプロジェクト全体（マイルストーンなしを含む）、milestone は登録済みのマイルストーンに直接属する要望（見送り・アーカイブは除く。登録に無い ID は 400 metrics_invalid）。" +
-        "{scope, scopeLabel, scopeRule, metrics: [{id, label, unit: hours|count, source, target, method, missingRule, state: ok|no_targets|no_data|not_reached, value（ok 以外は null）, targets, observed, missing, denominator?, breakdown, missingItems}], notices, scopes}。" +
-        "記録の欠けは 0 にせず missing に数える。読むだけ",
+        "{scope, scopeLabel, scopeRule, metrics: [{id, label, unit: hours|count, source, target, method, missingRule, state: ok|no_targets|no_data|not_reached|unrecorded, value（ok 以外は null）, targets, observed, missing, denominator?, breakdown, missingItems}], notices, scopes}。" +
+        "記録の欠けは 0 にせず missing に数える。読むだけ（レビューは実行しない）",
     },
     {
       method: "GET",

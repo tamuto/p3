@@ -16,15 +16,16 @@ export const METRIC_UNIT_LABEL: Record<MetricUnit, string> = { hours: "時間", 
 
 /**
  * 値の状態。ok: 値あり / no_targets: 数える対象が無い / no_data: 対象はあるが記録が欠けて値を出せない /
- * not_reached: 対象はあるがまだどれも到達していない（所要時間の指標）
+ * not_reached: 対象はあるがまだどれも到達していない（所要時間の指標） / unrecorded: 対象はあるが記録がまだ無い（レビューをしていない・値を記録していない）
  */
-export const METRIC_STATES = ["ok", "no_targets", "no_data", "not_reached"] as const;
+export const METRIC_STATES = ["ok", "no_targets", "no_data", "not_reached", "unrecorded"] as const;
 export type MetricState = (typeof METRIC_STATES)[number];
 export const METRIC_STATE_LABEL: Record<MetricState, string> = {
   ok: "値あり",
   no_targets: "対象なし",
   no_data: "記録の欠損で出せない",
   not_reached: "まだ到達していない",
+  unrecorded: "記録なし",
 };
 
 /** 指標の定義（説明。計算の関数は core にある） */

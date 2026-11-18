@@ -1,6 +1,6 @@
 import { MetricsError, type MetricNotice, type MetricScope, type MetricScopeOption, type MetricsReport } from "../../shared/metrics.ts";
 import type { P3Context } from "../context.ts";
-import { METRIC_DEFINITIONS, type MetricsInput } from "./definitions.ts";
+import { METRIC_DEFINITIONS, selectTaskReview, type MetricsInput, type ReviewObservation } from "./definitions.ts";
 
 /**
  * 開発の指標の集計（定義は definitions.ts）。CLI の p3 metrics と API の GET /api/metrics が同じこれを使う。
@@ -24,21 +24,44 @@ export function metricScopeOf(ctx: P3Context, milestone: string | undefined): Me
   return { kind: "milestone", id: milestone };
 }
 
-export function metricsInput(ctx: P3Context, scope: MetricScope): MetricsInput {
+/** 今完了しているタスクのレビューを、selectTaskReview の規則で1件選んで読む（読むだけ） */
+async function reviewsOf(ctx: P3Context, rid: string, tasks: readonly { id: string; status: string }[]): Promise<Record<string, ReviewObservation>> {
+  const out: Record<string, ReviewObservation> = {};
+  for (const t of tasks) {
+    if (t.status !== "done") continue;
+    const key = `${rid}/${t.id}`;
+    try {
+      const sel = selectTaskReview(await ctx.ws.taskReviews.list(key));
+      if (sel.state !== "ok") out[t.id] = sel;
+      else {
+        const rec = await ctx.ws.taskReviews.get(key, sel.run);
+        out[t.id] = rec.result ? { state: "ok", run: sel.run, result: rec.result } : { state: "missing", reason: `${sel.run} の結果がありません` };
+      }
+    } catch (e) {
+      out[t.id] = { state: "missing", reason: `レビューの記録が読めません: ${(e as Error).message}` };
+    }
+  }
+  return out;
+}
+
+export async function metricsInput(ctx: P3Context, scope: MetricScope): Promise<MetricsInput> {
   const requests = ctx.ws.requests
     .list()
     .filter((r) => r.status !== "rejected" && (scope.kind === "project" || r.milestone === scope.id))
     .sort((a, b) => a.id.localeCompare(b.id));
   return {
-    requests: requests.map((request) => {
-      const col = ctx.ws.tasksOf(request.id);
-      return { request, tasks: col.list(), brokenTasks: [...col.errors.keys()].sort() };
-    }),
+    requests: await Promise.all(
+      requests.map(async (request) => {
+        const col = ctx.ws.tasksOf(request.id);
+        const tasks = col.list();
+        return { request, tasks, brokenTasks: [...col.errors.keys()].sort(), reviews: await reviewsOf(ctx, request.id, tasks) };
+      }),
+    ),
   };
 }
 
-export function metricsReport(ctx: P3Context, scope: MetricScope = { kind: "project" }): MetricsReport {
-  const input = metricsInput(ctx, scope);
+export async function metricsReport(ctx: P3Context, scope: MetricScope = { kind: "project" }): Promise<MetricsReport> {
+  const input = await metricsInput(ctx, scope);
   const notices: MetricNotice[] = [...ctx.ws.requests.errors.entries()].map(([id, e]) => ({
     code: "broken_request",
     target: `requests/${id}/request.md`,

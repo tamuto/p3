@@ -1132,12 +1132,17 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
   CLI の `metrics`・API の `GET /api/metrics` は `core/metrics/index.ts` の `metricsReport` を通り、同じ値を返す
 - **範囲**: プロジェクト全体（所属なし・登録に無いマイルストーンの要望を含む）か、`project.yaml` に登録したマイルストーンに今直接属する要望。
   見送り・アーカイブの要望は除く。タスクは要望の直下だけ。読めない要望は `notices`
-- **値の状態**: `ok`・`no_targets`（対象なし）・`no_data`（欠損だけ）・`not_reached`（まだ到達していない）。値は `ok` のときだけで、ほかは `null`（0 にしない）
+- **値の状態**: `ok`・`no_targets`（対象なし）・`no_data`（欠損だけ）・`not_reached`（まだ到達していない）・`unrecorded`（記録なし）。値は `ok` のときだけで、ほかは `null`（0 にしない）
 - **到達時間**: 要望の `createdAt` から `completionRecords` の最初の `request_resolved`・`request_done` までの中央値。記録・日時が読めない・逆転・
   今の状態から到達済みと分かるのに記録が無いものは欠損。完了済の記録だけで対応済の記録が無いものは直接の遷移（対応済に未到達）、
   記録の1つも無い完了済は「到達したか分からない」（欠損）。`updatedAt`・`doneAt` で推し量らない
 - **受け入れ基準**: 今完了しているタスクの今の基準を `acceptanceStatus` で照らす。分母は数えた基準の合計。基準なしは対象なし、`acceptanceProblems` と
   読めないタスクのファイルは欠損、対応する基準の無い証拠は分母の外
+- **手戻り**: タスクの `reworkHistory` の件数（同じタスクの同じ `rev` は1件）。`reworkProblems` と読めないタスクのファイルは欠損、履歴の無いタスクは内訳の
+  「記録が無い」。履歴より前は分からない（観測の始まりを保存していないので、全期間の完全さは保証しない）
+- **タスクレビュー**: 今完了しているタスクごとに、`selectTaskReview` で完了した run を1件選ぶ（`finishedAt` の新しい順、同時刻は run ID の大きい方。
+  読めない記録・`finishedAt` の無い完了の run があれば欠損）。選んだ結果の `items` の `missing` と `unplanned` を別の指標に数える。`undetermined`・`checks` は
+  内訳だけ。レビューの無いタスクばかりなら `unrecorded`。読むのは `taskReviews.list`・`get` だけで、run を作らない。マイルストーンレビューの所見は今後の候補
 
 ### 完了の記録
 

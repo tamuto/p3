@@ -363,7 +363,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
-  app.get("/metrics", (c) => c.json(metricsReport(ctx, metricScopeOf(ctx, c.req.query("milestone")))));
+  app.get("/metrics", async (c) => c.json(await metricsReport(ctx, metricScopeOf(ctx, c.req.query("milestone")))));
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
     return c.json(reviewCandidates(ctx, request ? { request } : {}));

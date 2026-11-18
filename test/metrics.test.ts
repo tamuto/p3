@@ -26,7 +26,7 @@ const req = (id: string, status: Request["status"], records?: CompletionRecord[]
 const task = (rid: string, id: string, status: Task["status"], extra: Partial<Task> = {}): Task =>
   ({ id, request: rid, ref: `${rid}/${id}`, title: id, status, labels: [], areas: [], outputs: [], repo: null, body: "", rev: 1, createdAt: at(0), updatedAt: at(0), ...extra }) as Task;
 const input = (requests: Request[], tasks: Record<string, Task[]> = {}, broken: Record<string, string[]> = {}): MetricsInput => ({
-  requests: requests.map((request) => ({ request, tasks: tasks[request.id] ?? [], brokenTasks: broken[request.id] ?? [] })),
+  requests: requests.map((request) => ({ request, tasks: tasks[request.id] ?? [], brokenTasks: broken[request.id] ?? [], reviews: {} })),
 });
 const metric = (id: string, i: MetricsInput) => {
   const d = METRIC_DEFINITIONS.find((x) => x.id === id)!;
@@ -147,13 +147,13 @@ describe("範囲と CLI・API", () => {
 
   it("マイルストーンは今の直接の所属で、親子のタスクは一度ずつ。プロジェクト全体は所属なしを含み、見送り・アーカイブは除く", async () => {
     const { ctx } = await setup();
-    const pick = (scope: Parameters<typeof metricsReport>[1], id: string) => metricsReport(ctx, scope).metrics.find((m) => m.id === id)!;
-    expect(pick({ kind: "milestone", id: "m1" }, "acceptance_unmet")).toMatchObject({ value: 0, denominator: 1, targets: 1 });
-    expect(pick({ kind: "milestone", id: "m2" }, "acceptance_unmet")).toMatchObject({ value: 1, denominator: 1, targets: 1 });
-    expect(pick({ kind: "project" }, "acceptance_unmet")).toMatchObject({ value: 1, denominator: 3, targets: 3 });
-    expect(pick({ kind: "project" }, "request_to_resolved")).toMatchObject({ state: "ok", targets: 3, observed: 1 });
+    const pick = async (scope: Parameters<typeof metricsReport>[1], id: string) => (await metricsReport(ctx, scope)).metrics.find((m) => m.id === id)!;
+    expect(await pick({ kind: "milestone", id: "m1" }, "acceptance_unmet")).toMatchObject({ value: 0, denominator: 1, targets: 1 });
+    expect(await pick({ kind: "milestone", id: "m2" }, "acceptance_unmet")).toMatchObject({ value: 1, denominator: 1, targets: 1 });
+    expect(await pick({ kind: "project" }, "acceptance_unmet")).toMatchObject({ value: 1, denominator: 3, targets: 3 });
+    expect(await pick({ kind: "project" }, "request_to_resolved")).toMatchObject({ state: "ok", targets: 3, observed: 1 });
     expect(() => metricScopeOf(ctx, "nope")).toThrow(/登録されていません/);
-    expect(metricsReport(ctx).scopes.map((s) => s.label)).toEqual(["プロジェクト全体", "m1 一", "m2 二"]);
+    expect((await metricsReport(ctx)).scopes.map((s) => s.label)).toEqual(["プロジェクト全体", "m1 一", "m2 二"]);
   });
 
   it("読めない要望は所属が分からないので知らせ、数えない", async () => {
@@ -162,7 +162,7 @@ describe("範囲と CLI・API", () => {
     const file = join(dataDir, "requests", bad.id, "request.md");
     await writeFile(file, (await readFile(file, "utf8")).replace(/^---\n/, "---\n: [broken\n"));
     await ctx.ws.load();
-    const r = metricsReport(ctx, { kind: "milestone", id: "m1" });
+    const r = await metricsReport(ctx, { kind: "milestone", id: "m1" });
     expect(r.notices).toEqual([expect.objectContaining({ code: "broken_request", target: `requests/${bad.id}/request.md` })]);
   });
 

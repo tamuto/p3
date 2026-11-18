@@ -1,6 +1,8 @@
 import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS_KINDS, type CriterionState } from "../../shared/acceptance.ts";
 import type { CompletionTrigger } from "../../shared/completionRecord.ts";
 import { median, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../../shared/metrics.ts";
+import { REWORK_CAUSE_LABEL, REWORK_CAUSES } from "../../shared/reworkHistory.ts";
+import type { TaskReviewListItem, TaskReviewResult } from "../../shared/taskReview.ts";
 import type { Request, Task } from "../../shared/types.ts";
 
 /**
@@ -20,6 +22,26 @@ export interface MetricsRequestInput {
   tasks: Task[];
   /** 読めないタスクのファイル（ID） */
   brokenTasks: string[];
+  /** 今完了しているタスクの AI レビュー（タスク ID → selectTaskReview で選んだ結果） */
+  reviews: Record<string, ReviewObservation>;
+}
+
+/** タスク1件の AI レビューの観測。none: 完了した run が無い / missing: 選べない・読めない / ok: 選んだ1件 */
+export type ReviewObservation = { state: "none" } | { state: "missing"; reason: string } | { state: "ok"; run: string; result: TaskReviewResult };
+
+/**
+ * タスクの完了したレビューから集計に使う1件を選ぶ（一覧は core/taskReview/store.ts の list）。完了時刻（finishedAt）の新しいもの、
+ * 同時刻なら run ID の大きいもの。読めない run（どれが最新か分からない）・完了時刻の無い完了の run があれば欠損にする
+ */
+export function selectTaskReview(list: readonly TaskReviewListItem[]): { state: "none" } | { state: "missing"; reason: string } | { state: "ok"; run: string } {
+  const broken = list.filter((x) => x.state === "broken");
+  if (broken.length) return { state: "missing", reason: `読めないレビューの記録があります（${broken.map((b) => b.id).join(", ")}）` };
+  const done = list.flatMap((x) => (x.state === "ok" && x.run.status === "completed" ? [x.run] : []));
+  if (!done.length) return { state: "none" };
+  const noTime = done.filter((r) => !time(r.finishedAt));
+  if (noTime.length) return { state: "missing", reason: `完了時刻の無い完了したレビューがあります（${noTime.map((r) => r.id).join(", ")}）` };
+  const pick = [...done].sort((a, b) => time(b.finishedAt)! - time(a.finishedAt)! || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))[0];
+  return { state: "ok", run: pick.id };
 }
 
 export interface MetricsInput {
@@ -182,6 +204,108 @@ function criteriaMetric(state: CriterionState) {
   };
 }
 
+// --- 手戻り -------------------------------------------------------------------
+
+/**
+ * タスクの手戻りの履歴（reworkHistory）。履歴1件が1操作（済みの完了から戻した操作は、再開と済みの解除を示す1件）。同じタスクで同じ rev の
+ * 履歴が重なっていても同じ書き込みなので1件に数える。履歴の無いタスクは「手戻りの記録なし」で、履歴を始める前の手戻りは分からない
+ */
+function reworkMetric(input: MetricsInput) {
+  let targets = 0;
+  let entries = 0;
+  let withRework = 0;
+  let without = 0;
+  const byCause = Object.fromEntries(REWORK_CAUSES.map((c) => [c, 0])) as Record<string, number>;
+  const missingItems: MetricMissing[] = [];
+  for (const { request, tasks, brokenTasks } of input.requests) {
+    targets += brokenTasks.length;
+    for (const id of brokenTasks) missingItems.push({ target: `${request.id}/${id}`, reason: "タスクのファイルが読めません" });
+    for (const t of tasks) {
+      targets += 1;
+      if (t.reworkProblems?.length) {
+        missingItems.push({ target: t.ref, reason: `手戻りの履歴が読めません（${t.reworkProblems.join(" / ")}）` });
+        continue;
+      }
+      const seen = new Set<number>();
+      const list = (t.reworkHistory ?? []).filter((e) => !seen.has(e.rev) && seen.add(e.rev));
+      if (!list.length) without += 1;
+      else withRework += 1;
+      entries += list.length;
+      for (const e of list) byCause[e.cause] += 1;
+    }
+  }
+  const observed = withRework + without;
+  const state: MetricState = observed ? "ok" : missingItems.length ? "no_data" : "no_targets";
+  return {
+    state,
+    value: state === "ok" ? entries : null,
+    targets,
+    observed,
+    missing: missingItems.length,
+    breakdown: [
+      ...REWORK_CAUSES.map((c) => ({ key: `cause_${c}`, label: `契機: ${REWORK_CAUSE_LABEL[c]}`, count: byCause[c] })),
+      { key: "tasks_with_rework", label: "手戻りのあったタスク", count: withRework },
+      { key: "tasks_without_history", label: "手戻りの記録が無いタスク", count: without },
+      { key: "tasks_missing", label: "履歴・ファイルが読めないタスク（欠損）", count: missingItems.length },
+    ],
+    missingItems,
+  };
+}
+
+// --- タスクの AI レビュー -----------------------------------------------------------
+
+/** 今完了しているタスクの、選んだレビューの結果からの件数。レビュー時点の所見（今のコードの状態ではない） */
+function reviewMetric(pick: (r: TaskReviewResult) => number) {
+  return (input: MetricsInput) => {
+    let targets = 0;
+    let reviewed = 0;
+    let none = 0;
+    let zero = 0;
+    let value = 0;
+    let undetermined = 0;
+    let checks = 0;
+    const missingItems: MetricMissing[] = [];
+    for (const { request, tasks, reviews } of input.requests) {
+      for (const t of tasks) {
+        if (t.status !== "done") continue;
+        targets += 1;
+        const o = reviews[t.id] ?? { state: "none" };
+        if (o.state === "none") none += 1;
+        else if (o.state === "missing") missingItems.push({ target: `${request.id}/${t.id}`, reason: o.reason });
+        else {
+          reviewed += 1;
+          const n = pick(o.result);
+          value += n;
+          if (!n) zero += 1;
+          undetermined += o.result.items.filter((i) => i.verdict === "undetermined").length;
+          checks += o.result.checks.length;
+        }
+      }
+    }
+    const state: MetricState = reviewed ? "ok" : !targets ? "no_targets" : missingItems.length ? "no_data" : "unrecorded";
+    return {
+      state,
+      value: state === "ok" ? value : null,
+      targets,
+      observed: reviewed,
+      missing: missingItems.length,
+      breakdown: [
+        { key: "tasks_reviewed", label: "レビュー済みの完了タスク", count: reviewed },
+        { key: "tasks_zero", label: "うち所見が 0 件", count: zero },
+        { key: "tasks_not_reviewed", label: "レビューの無い完了タスク", count: none },
+        { key: "tasks_missing", label: "レビューの記録が読めない・選べない（欠損）", count: missingItems.length },
+        { key: "undetermined", label: "判断できない基準（数に入れない）", count: undetermined },
+        { key: "checks", label: "人が確かめる点（数に入れない）", count: checks },
+      ],
+      missingItems,
+    };
+  };
+}
+
+const REVIEW_SOURCE = "今完了しているタスクの AI レビュー（requests/<要望>/task-reviews/）の、完了した最新の1回の結果";
+const REVIEW_TARGET = "範囲の要望の直下で今完了しているタスク（レビューの無いタスクも対象に数える）";
+const REVIEW_MISSING = "読めないレビューの記録・完了時刻の無い完了の run があるタスクは、どれを使うか決められないので欠損。レビューの無いタスクは「記録なし」で 0 件にしない";
+
 const CRITERIA_SOURCE = "完了しているタスクの受け入れ基準（acceptanceCriteria）と証拠（acceptanceEvidence）";
 const CRITERIA_TARGET = "範囲の要望の直下で今完了しているタスク。基準なしのタスクは対象なし";
 const CRITERIA_MISSING = "基準・証拠が読めないタスクと読めないタスクのファイルは欠損（分母に入れない）。対応する基準の無い証拠は分母の外";
@@ -257,5 +381,35 @@ export const METRIC_DEFINITIONS: readonly MetricDefinition[] = [
     method: "今の基準のうち、今の文言で「満たした」と記録した基準の数（作業した側の申告で、確かめた数ではない）。内訳に根拠の種類（申告のみを含む）。分母は数えた基準の合計",
     missingRule: CRITERIA_MISSING,
     compute: criteriaMetric("met"),
+  },
+  {
+    id: "rework",
+    label: "手戻り",
+    unit: "count",
+    source: "タスクの手戻りの履歴（reworkHistory。済みの解除・完了からの再開）",
+    target: "範囲の要望の直下のタスク（状態を問わない）",
+    method: "観測できた手戻りの件数（タスクと履歴 ID の組。1操作1件）。内訳に契機と、手戻りのあったタスク・記録の無いタスク。履歴を始める前の手戻りは含まれず、全期間の完全さは保証しない",
+    missingRule: "手戻りの履歴が読めないタスクと読めないタスクのファイルは欠損。履歴の無いタスクは記録なしとして内訳に出す",
+    compute: reworkMetric,
+  },
+  {
+    id: "review_missing",
+    label: "AI レビューの未達判定",
+    unit: "count",
+    source: REVIEW_SOURCE,
+    target: REVIEW_TARGET,
+    method: "選んだ結果の基準ごとの判定のうち「不足」（missing）の件数の合計。判断できない・人が確かめる点は数に入れない。レビュー時点の所見",
+    missingRule: REVIEW_MISSING,
+    compute: reviewMetric((r) => r.items.filter((i) => i.verdict === "missing").length),
+  },
+  {
+    id: "review_unplanned",
+    label: "AI レビューの意図しない変更の候補",
+    unit: "count",
+    source: REVIEW_SOURCE,
+    target: REVIEW_TARGET,
+    method: "選んだ結果の意図しない変更の候補（unplanned）の件数の合計。レビュー時点の所見",
+    missingRule: REVIEW_MISSING,
+    compute: reviewMetric((r) => r.unplanned.length),
   },
 ];
