@@ -168,7 +168,7 @@ describe("CLI と API", () => {
     const ok = p3(dataDir, ["retro", rid, "confirm", r1, "--json"]);
     expect(ok.code, ok.err).toBe(0);
     expect(JSON.parse(ok.out).target).toMatchObject({ run: r1, by: "human:test" });
-    expect(p3(dataDir, ["retro", rid]).out).toContain("リスク 2: 既存の CSV が壊れる");
+    expect(p3(dataDir, ["retro", rid]).out).toContain("2. [未確認] 既存の CSV が壊れる");
     const conflict = p3(dataDir, ["retro", rid, "confirm", r1, "--reason", "x", "--rev", "0"]);
     expect(conflict.code).toBe(3);
     const app = apiRoutes(ctx);

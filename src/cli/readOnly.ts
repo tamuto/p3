@@ -21,7 +21,7 @@ export function readsOnly(cmd: string, args: string[]): boolean {
       return true;
     case "retro":
     case "retrospective":
-      return !args.includes("confirm");
+      return !args.includes("confirm") && !args.includes("judge");
     case "premise":
     case "premises":
       return !args.some((a) => a === "add" || a === "ack");

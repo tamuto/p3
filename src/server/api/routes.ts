@@ -9,8 +9,8 @@ import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
 import { requestRequirementView, RequirementInputError, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { PremiseInputError } from "../../shared/reviewCandidate.ts";
-import { RetrospectiveError } from "../../shared/retrospective.ts";
-import { confirmRetrospectiveTarget, retrospectiveView } from "../../core/retrospective.ts";
+import { MILESTONE_REVIEW_SECTIONS, RetrospectiveError, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../shared/retrospective.ts";
+import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../core/retrospective.ts";
 import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
@@ -342,6 +342,20 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   app.post("/requests/:rid/retrospective/target", async (c) => {
     const b = z.object({ run: z.string().min(1), reason: z.string().optional(), version: z.number().int().optional() }).parse(await c.req.json());
     return c.json(await confirmRetrospectiveTarget(ctx, rid(c), { run: b.run, reason: b.reason }, { expectedVersion: b.version, actor: actorOf(c) }));
+  });
+  /** リスクの確認を記録する {risk（0 から）, state, facts?, scope?, reason?, evidence: [根拠の指定], version?}（人の判断。追記） */
+  app.post("/requests/:rid/retrospective/judgments", async (c) => {
+    const ev = z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("task_review"), task: z.string(), run: z.string(), section: z.enum(TASK_REVIEW_SECTIONS), index: z.number().int().optional() }),
+      z.object({ kind: z.literal("milestone_review"), milestone: z.string(), run: z.string(), section: z.enum(MILESTONE_REVIEW_SECTIONS), index: z.number().int().optional(), reason: z.string().optional() }),
+      z.object({ kind: z.literal("rework"), task: z.string(), history: z.string() }),
+      z.object({ kind: z.literal("manual"), reference: z.string(), note: z.string().optional() }),
+    ]);
+    const b = z
+      .object({ risk: z.number().int().min(0), state: z.enum(RISK_STATES), facts: z.string().optional(), scope: z.string().optional(), reason: z.string().optional(), evidence: z.array(ev).default([]), version: z.number().int().optional() })
+      .parse(await c.req.json());
+    const { version, ...input } = b;
+    return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
   app.get("/revisit", (c) => {

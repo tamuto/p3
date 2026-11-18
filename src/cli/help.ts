@@ -147,6 +147,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 
   retro [<要望>]                振り返り: 対象（確定した採用済みの Preflight とリスクの原文）と候補（採用を終えた run と作ったタスク・子の根拠）
                                confirm <run> [--reason 訂正の理由]  対象を確定する（最新の実行・採用では変わらない。訂正は理由が要る。--rev で版）
+                               judge <番号> --state occurred|not_occurred|unchecked  リスクの確認（人の判断）。起きた → --facts 事実、
+                                 起きなかった → --scope 確認した範囲、どちらも根拠が要る。判断を変える・戻すには --reason
+                               --evidence review:T001:<run>:<項目>[:<位置>] | milestone:<ID>:<run>:<項目>[:<位置>][:<理由>] | rework:T001:R1 | manual:<参照>
   revisit [<要望>] [--all]      見直しが必要（候補）: 完了の記録（完了・済みにしたときの条件）と今の条件の差（品質基準・受け入れ基準・
                                要求の根拠・前提の変更）。完了済みも含む。候補を出すだけで状態・済みは変えない。確かめたら済みにし直す
   premise [<要望>]              前提の変更の一覧 / add --target <要望 ID|T001|S1>（繰り返し可）--reason 理由 --condition 新しい条件・版

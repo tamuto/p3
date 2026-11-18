@@ -1111,7 +1111,16 @@ P3 は AI の実装を動かさず、成績も測らない。
 - **確定**（`confirmTarget`）: 候補の run だけ。`assessmentVersion`（評価の内容の hash）・リスクの位置と原文・採用の根拠・確定者と日時を写した `V<n>` を追記する。
   2件目からは訂正の理由（`reason`）が要り、前の対象を `replaces` に残す。同じ run と同じ評価の版は確定し直さない。今の対象は最後の1件
 - 対象は人の明示の操作でだけ変わる（Preflight の実行・タスク化・分割の採用・画面の run の切り替えでは変えない）。入口: CLI の `retro`、
-  API の `GET /api/requests/:rid/retrospective`・`POST .../retrospective/target`
+  API の `GET /api/requests/:rid/retrospective`・`POST .../retrospective/target`・`POST .../retrospective/judgments`
+- **リスクの確認**（`addJudgment`）: `judgments` に `J<n>`（対象 ID・リスクの位置・原文の写し・状態・事実・範囲・根拠・理由・日時・主体）を追記する。
+  リスクは対象 ID と位置で見分ける（同文のリスクも別）。今の確認は対象とリスクの最後の1件。`occurred` は事実と根拠、`not_occurred` は範囲と根拠が要り、
+  `unchecked` は根拠を結び付けるだけ。決めた確認（`unchecked` 以外）を変えるには理由が要る。今の対象のリスクだけに足せ、件数（`riskCounts`）も今の対象だけ
+- **根拠**（`core/retrospective.ts` の `resolveEvidence`）: 保存するときに今の記録と照らし、参照先と抜粋（1000 文字まで）と結果の版を写す。
+  タスクレビューはこの要望のタスク（今の・アーカイブ）の完了した run の `overall`・`items`・`quality`・`unplanned`・`checks` の位置。
+  マイルストーンレビューは固定した材料（`input.requests`）にこの要望が直接あるものだけで、所見の `evidence` に要望 ID か `<要望ID>/T…` が無ければ
+  結び付く理由が要る（実行中の材料の変更 `inputChanged` も写す）。手戻りはタスクの `reworkHistory` の ID。人の参照は確かめない
+- **照合**（`checkEvidence`）: 読むたびに、保存した参照先で今の記録を引き、結果の版が同じなら `ok`、違えば `changed`、無ければ `missing`。
+  要望の付け替え・タスクのアーカイブの後も、保存した要望 ID・タスク ID で引く。親子の間で確認や根拠は継承しない
 
 ### 完了の記録
 

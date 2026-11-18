@@ -64,11 +64,128 @@ export interface RetroTarget {
   replaces?: string;
 }
 
+// --- リスクの確認 ---------------------------------------------------------------
+
+/** 確認の状態。occurred: 起きた / not_occurred: 起きなかった / unchecked: 確かめていない */
+export const RISK_STATES = ["occurred", "not_occurred", "unchecked"] as const;
+export type RiskState = (typeof RISK_STATES)[number];
+export const isRiskState = (v: unknown): v is RiskState => typeof v === "string" && (RISK_STATES as readonly string[]).includes(v);
+
+export const RISK_STATE_LABEL: Record<RiskState, string> = { occurred: "起きた", not_occurred: "起きなかった", unchecked: "未確認" };
+
+/** タスクレビューの所見の場所（結果の項目と位置） */
+export const TASK_REVIEW_SECTIONS = ["overall", "items", "quality", "unplanned", "checks"] as const;
+export type TaskReviewSection = (typeof TASK_REVIEW_SECTIONS)[number];
+/** マイルストーンレビューの所見の場所 */
+export const MILESTONE_REVIEW_SECTIONS = ["overall", "units", "quality", "unplanned"] as const;
+export type MilestoneReviewSection = (typeof MILESTONE_REVIEW_SECTIONS)[number];
+
+/**
+ * 確認の根拠（保存したときの参照先と抜粋を残す。後で所属・記録が変わっても、この参照と抜粋で読む）。
+ *   task_review: 要望のタスクの AI レビューの所見（run と結果の版・位置）/ milestone_review: マイルストーンレビューの所見（固定した材料で
+ *   この要望が直接の対象だったもの。全体の所見はこの要望と結び付く理由が要る）/ rework: タスクの手戻りの履歴 / manual: 人が書く参照（成果物・検証結果など）
+ */
+export type RetroEvidence =
+  | { kind: "task_review"; request: string; task: string; run: string; section: TaskReviewSection; index: number; resultVersion: string; excerpt: string }
+  | { kind: "milestone_review"; milestone: string; run: string; section: MilestoneReviewSection; index: number; resultVersion: string; excerpt: string; inputChanged?: boolean; reason?: string }
+  | { kind: "rework"; request: string; task: string; history: string; excerpt: string }
+  | { kind: "manual"; reference: string; note?: string };
+
+export const RETRO_EVIDENCE_LABEL: Record<RetroEvidence["kind"], string> = {
+  task_review: "タスクの AI レビュー",
+  milestone_review: "マイルストーンレビュー",
+  rework: "手戻り",
+  manual: "人が書いた参照",
+};
+
+/** 根拠の今の照合（読むときに確かめる）。ok: 今も同じ / changed: 記録が差し替わった / missing: 今は見つからない / manual: 確かめない（人の参照） */
+export type EvidenceCheck = "ok" | "changed" | "missing" | "manual";
+
+export const EVIDENCE_CHECK_LABEL: Record<EvidenceCheck, string> = { ok: "照合済み", changed: "記録が差し替わった", missing: "今は見つからない", manual: "人の参照（照合しない）" };
+
+/** リスクの確認1件（追記だけ。同じ対象とリスクの最後の1件が今の確認） */
+export interface RiskJudgment {
+  /** J1, J2, ... */
+  id: string;
+  /** 確定した対象（V1）とリスクの位置 */
+  target: string;
+  risk: number;
+  /** 確認したときのリスクの原文 */
+  riskText: string;
+  state: RiskState;
+  /** 確認した事実（起きたとき必須） */
+  facts?: string;
+  /** 確認した範囲（対象の成果・時点・範囲。起きなかったとき必須） */
+  scope?: string;
+  evidence: RetroEvidence[];
+  /** 判断を変える・未確認に戻すときの理由 */
+  reason?: string;
+  at: string;
+  by?: string;
+}
+
+export const JUDGMENT_LIMITS = { text: 4000, evidence: 30, excerpt: 1000 } as const;
+
 /** retrospective.json の中身 */
 export interface RetrospectiveFile {
   /** 保存するたびに 1 ずつ上がる版（無ければ 0） */
   version: number;
   targets: RetroTarget[];
+  /** リスクの確認（追記だけ。無ければ空） */
+  judgments?: RiskJudgment[];
+}
+
+/** 対象とリスクの今の確認（無ければ undefined = 未確認） */
+export const latestJudgment = (f: RetrospectiveFile, target: string, risk: number): RiskJudgment | undefined =>
+  [...(f.judgments ?? [])].reverse().find((j) => j.target === target && j.risk === risk);
+
+/** 今の対象の三状態の件数（確認の無いリスクは未確認） */
+export function riskCounts(f: RetrospectiveFile): Record<RiskState, number> {
+  const counts: Record<RiskState, number> = { occurred: 0, not_occurred: 0, unchecked: 0 };
+  const t = currentTarget(f);
+  for (const r of t?.risks ?? []) counts[latestJudgment(f, t!.id, r.index)?.state ?? "unchecked"]++;
+  return counts;
+}
+
+/**
+ * リスクの確認を足す（足した値を返す）。対象は今の確定した対象だけ。起きた → 確認した事実と根拠、起きなかった → 確認した範囲と根拠が要る。
+ * 根拠を結び付けるだけなら未確認のまま。決めた確認を変える・未確認に戻すには理由が要る。規則に合わなければ RetrospectiveError（何も当てない）
+ */
+export function addJudgment(
+  file: RetrospectiveFile,
+  input: { risk: number; state: RiskState; facts?: string; scope?: string; reason?: string; evidence: RetroEvidence[] },
+  ctx: { now: string; actor?: string },
+): RetrospectiveFile {
+  const t = currentTarget(file);
+  if (!t) throw new RetrospectiveError("retro_invalid", "振り返りの対象が確定していません（先に p3 retro confirm <run>）");
+  const risk = t.risks.find((r) => r.index === input.risk);
+  if (!risk) throw new RetrospectiveError("retro_invalid", `対象 ${t.id}（${t.run}）にリスク ${input.risk + 1} はありません（リスクは ${t.risks.length} 件）`);
+  if (!isRiskState(input.state)) throw new RetrospectiveError("retro_invalid", `状態は ${RISK_STATES.join(" / ")} です`);
+  const facts = input.facts?.trim() || undefined;
+  const scope = input.scope?.trim() || undefined;
+  const reason = input.reason?.trim() || undefined;
+  for (const [k, v] of [["事実", facts], ["範囲", scope], ["理由", reason]] as const) if (v && v.length > JUDGMENT_LIMITS.text) throw new RetrospectiveError("retro_invalid", `${k}は ${JUDGMENT_LIMITS.text} 文字までです`);
+  if (input.evidence.length > JUDGMENT_LIMITS.evidence) throw new RetrospectiveError("retro_invalid", `根拠は ${JUDGMENT_LIMITS.evidence} 件までです`);
+  if (input.state === "occurred" && (!facts || !input.evidence.length)) throw new RetrospectiveError("retro_invalid", "「起きた」には確認した事実（facts）と根拠（evidence）が要ります");
+  if (input.state === "not_occurred" && (!scope || !input.evidence.length)) throw new RetrospectiveError("retro_invalid", "「起きなかった」には確認した範囲（scope）と根拠（evidence）が要ります");
+  const prev = latestJudgment(file, t.id, input.risk);
+  if (prev && prev.state !== "unchecked" && !reason) throw new RetrospectiveError("retro_invalid", `リスク ${input.risk + 1} は「${RISK_STATE_LABEL[prev.state]}」と確認済みです。変える・未確認に戻すには理由（reason）を書いてください`);
+  if (input.state === "unchecked" && !input.evidence.length && !prev) throw new RetrospectiveError("retro_invalid", "未確認のままにするなら、結び付ける根拠を1つ以上指定してください");
+  const n = Math.max(0, ...(file.judgments ?? []).map((j) => Number(j.id.slice(1)))) + 1;
+  const j: RiskJudgment = {
+    id: `J${n}`,
+    target: t.id,
+    risk: input.risk,
+    riskText: risk.text,
+    state: input.state,
+    ...(facts ? { facts } : {}),
+    ...(scope ? { scope } : {}),
+    evidence: input.evidence,
+    ...(reason ? { reason } : {}),
+    at: ctx.now,
+    ...(ctx.actor ? { by: ctx.actor } : {}),
+  };
+  return { ...file, version: file.version + 1, judgments: [...(file.judgments ?? []), j] };
 }
 
 export class RetrospectiveError extends Error {
@@ -228,5 +345,55 @@ export function readRetrospective(raw: unknown): RetrospectiveFile {
     if (typeof r === "string") throw new RetrospectiveError("retro_unreadable", `retrospective.json: ${r}`);
     targets.push(r);
   }
-  return { ...o, version, targets };
+  const judgments: RiskJudgment[] = [];
+  for (const [i, j] of (Array.isArray(o.judgments) ? (o.judgments as unknown[]) : []).entries()) {
+    const r = readJudgment(j, `リスクの確認 ${i + 1} 件目`);
+    if (typeof r === "string") throw new RetrospectiveError("retro_unreadable", `retrospective.json: ${r}`);
+    judgments.push(r);
+  }
+  return { ...o, version, targets, ...(judgments.length ? { judgments } : {}) };
+}
+
+function readEvidence(v: unknown): RetroEvidence | undefined {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const idx = Number.isInteger(o.index) ? (o.index as number) : undefined;
+  if (o.kind === "task_review" && str(o.request) && str(o.task) && str(o.run) && (TASK_REVIEW_SECTIONS as readonly unknown[]).includes(o.section) && idx !== undefined && str(o.resultVersion) && typeof o.excerpt === "string")
+    return { kind: "task_review", request: str(o.request)!, task: str(o.task)!, run: str(o.run)!, section: o.section as TaskReviewSection, index: idx, resultVersion: str(o.resultVersion)!, excerpt: o.excerpt };
+  if (o.kind === "milestone_review" && str(o.milestone) && str(o.run) && (MILESTONE_REVIEW_SECTIONS as readonly unknown[]).includes(o.section) && idx !== undefined && str(o.resultVersion) && typeof o.excerpt === "string")
+    return {
+      kind: "milestone_review",
+      milestone: str(o.milestone)!,
+      run: str(o.run)!,
+      section: o.section as MilestoneReviewSection,
+      index: idx,
+      resultVersion: str(o.resultVersion)!,
+      excerpt: o.excerpt,
+      ...(o.inputChanged === true ? { inputChanged: true } : {}),
+      ...(str(o.reason) ? { reason: str(o.reason) } : {}),
+    };
+  if (o.kind === "rework" && str(o.request) && str(o.task) && str(o.history) && typeof o.excerpt === "string") return { kind: "rework", request: str(o.request)!, task: str(o.task)!, history: str(o.history)!, excerpt: o.excerpt };
+  if (o.kind === "manual" && str(o.reference)) return { kind: "manual", reference: str(o.reference)!, ...(str(o.note) ? { note: str(o.note) } : {}) };
+  return undefined;
+}
+
+function readJudgment(v: unknown, at: string): RiskJudgment | string {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const id = str(o.id) ?? "";
+  if (!/^J\d+$/.test(id)) return `${at} の id が読めません（J1, J2, ...）`;
+  const evidence = Array.isArray(o.evidence) ? (o.evidence as unknown[]).map(readEvidence) : undefined;
+  if (!evidence || evidence.some((e) => !e)) return `${at}（${id}）の evidence が読めません`;
+  if (!str(o.target) || !Number.isInteger(o.risk) || typeof o.riskText !== "string" || !isRiskState(o.state) || !str(o.at)) return `${at}（${id}）には target・risk・riskText・state・at が要ります`;
+  return {
+    id,
+    target: str(o.target)!,
+    risk: o.risk as number,
+    riskText: o.riskText,
+    state: o.state,
+    ...(str(o.facts) ? { facts: str(o.facts) } : {}),
+    ...(str(o.scope) ? { scope: str(o.scope) } : {}),
+    evidence: evidence as RetroEvidence[],
+    ...(str(o.reason) ? { reason: str(o.reason) } : {}),
+    at: str(o.at)!,
+    ...(str(o.by) ? { by: str(o.by) } : {}),
+  };
 }

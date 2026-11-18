@@ -96,7 +96,9 @@ export const AI_MANIFEST = {
       path: "/api/requests/:rid/retrospective[/target]",
       desc:
         "要望の振り返り。GET は {version, target?（今の対象）, targets（確定と訂正の履歴）, candidates（採用を終えた run: {run, kind: tasks|split|legacy, latest, basis: [{key?, target, state}], risks}）, none?}。" +
-        "POST /target {run, reason?, version?} で対象を確定する（候補の run だけ。評価の版とリスクの原文を写す。2回目からの訂正は reason が要る）。候補でない・理由が無い → 400 retro_invalid、版が違う → 409 retro_conflict（何も書かない）",
+        "POST /target {run, reason?, version?} で対象を確定する（候補の run だけ。評価の版とリスクの原文を写す。2回目からの訂正は reason が要る）。候補でない・理由が無い → 400 retro_invalid、版が違う → 409 retro_conflict（何も書かない）。" +
+        "GET は今の対象のリスクと確認 risks: [{index, text, state, judgment?, history}]・三状態の件数 counts・全部の確認 judgments・根拠の今の照合 checks（ok|changed|missing|manual）も返す。" +
+        "POST /judgments {risk（0 から）, state: occurred|not_occurred|unchecked, facts?, scope?, reason?, evidence: [{kind: task_review, task, run, section, index?} | {kind: milestone_review, milestone, run, section, index?, reason?} | {kind: rework, task, history} | {kind: manual, reference, note?}], version?} でリスクの確認を追記する（人の判断。起きた → facts と根拠、起きなかった → scope と根拠、判断を変える → reason。範囲外の根拠は 400）",
     },
     {
       method: "GET",
