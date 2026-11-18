@@ -106,6 +106,8 @@ const OPTIONS = {
   by: { type: "string" },
   on: { type: "string" },
   from: { type: "string" },
+  to: { type: "string" },
+  unit: { type: "string" },
   grounds: { type: "string" },
   link: { type: "string", multiple: true },
   "sources-json": { type: "string" },

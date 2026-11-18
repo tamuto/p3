@@ -1,3 +1,4 @@
+import type { MetricsReport } from "../../shared/metrics.ts";
 import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
@@ -340,6 +341,8 @@ export const api = {
   removeAttachment: (rid: string, id: string) => call("DELETE", `/requests/${rid}/attachments/${id}`),
 
   /** マイルストーンのリリースノート */
+  /** 開発の指標（milestone を省けばプロジェクト全体） */
+  metrics: (milestone?: string) => call<MetricsReport>("GET", `/metrics${milestone ? `?milestone=${encodeURIComponent(milestone)}` : ""}`),
   releaseNotes: () => call<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }>("GET", "/release-notes"),
   releaseNote: (mid: string) => call<ReleaseNoteDetail>("GET", `/release-notes/${encodeURIComponent(mid)}`),
   /** マイルストーンの対応済の要望を一括で完了済にする（basedOn は表示したときの completion.basedOn）。途中で止まったら 409 partial */

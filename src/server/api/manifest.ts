@@ -102,6 +102,14 @@ export const AI_MANIFEST = {
     },
     {
       method: "GET",
+      path: "/api/metrics[?milestone=<ID>]",
+      desc:
+        "開発の指標（p3 metrics と同じ）。範囲は省けばプロジェクト全体（マイルストーンなしを含む）、milestone は登録済みのマイルストーンに直接属する要望（見送り・アーカイブは除く。登録に無い ID は 400 metrics_invalid）。" +
+        "{scope, scopeLabel, scopeRule, metrics: [{id, label, kind: record|manual, unit: hours|count|amount, source, target, method, missingRule, recordHint?, state: ok|no_targets|no_data|not_reached|unrecorded, value（ok 以外は null。manual は1行のときだけ）, targets, observed, missing, denominator?, breakdown, missingItems, rows?（manual: 範囲が一致する人の記録 {id, from, to, value, unit, source, note?, rev, ...}。合算しない）}], notices（broken_request|manual_unreadable|manual_orphan）, scopes}。" +
+        "記録の欠けは 0 にせず missing に数える。読むだけ（レビューは実行しない。人の記録を書くのは CLI の p3 metrics record だけ）",
+    },
+    {
+      method: "GET",
       path: "/api/revisit[?request=<要望ID>]",
       desc:
         "見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む）。各項目は {target, state, record, qualityVersion, reasons: [{code, target, was?, now?, related?}], unreadable?}。" +

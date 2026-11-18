@@ -19,6 +19,8 @@ export function readsOnly(cmd: string, args: string[]): boolean {
     case "clarify":
     case "revisit":
       return true;
+    case "metrics":
+      return sub !== "record" && sub !== "rm" && sub !== "remove";
     case "retro":
     case "retrospective":
       return !args.includes("confirm") && !args.includes("judge");

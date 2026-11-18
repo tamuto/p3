@@ -64,6 +64,13 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                できるか・対象・hash は show で見る。材料が変わっていれば何も変えずに終了コード 3、途中で止まったら非ゼロ
                                例: p3 release-notes generate v0.2 > draft.md → 直す → p3 release-notes save v0.2 --file draft.md
                                    p3 release-notes export v0.2 > RELEASE.md
+  metrics [--milestone <ID>]   開発の指標（要望の作成から対応済・完了済までの時間、受け入れ基準の未達・未検証・証拠なし・再確認、
+                               手戻り、AI レビューの未達判定・意図しない変更の候補）。
+                               値・単位・対象・欠損・算出の方法を出す（読むだけ。記録の欠けは 0 にせず欠損と出す。成績の評価には使わない）
+  metrics record <指標> <値>    人が記録する値: cost（--unit JPY など通貨ごと）/ post_release_defects（0 以上の整数）
+                               --from YYYY-MM-DD --to YYYY-MM-DD --source 出典 [--milestone ID（省くと全体）] [--note メモ]
+                               同じ指標・範囲・期間・単位の再送は何もしない。値を変える訂正は --rev 版（無い・違えば競合で終了コード 3）
+  metrics records / rm <M1>     人の記録の全部 / 消す（--rev 版）
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
                                --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）

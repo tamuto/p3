@@ -13,6 +13,7 @@ import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
  *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
  *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
  *   /release-notes?tab=                 マイルストーンの管理（既定）/ notes リリースノート（?m=）/ review レビュー
+ *   /metrics?m=                         開発の指標（m はマイルストーン。省けばプロジェクト全体）
  *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
@@ -29,6 +30,7 @@ export const Route = createRootRoute({
 const NAV = [
   { to: "/", label: "進捗", hint: "要望ごとの状況" },
   { to: "/release-notes", label: "リリースノート", hint: "マイルストーンごとの機能の要約" },
+  { to: "/metrics", label: "開発の指標", hint: "記録から出す到達時間・受け入れ基準・手戻りなど（改善の振り返りの材料）" },
   { to: "/settings", label: "設定", hint: "個人・プロジェクトの基本・参照先" },
 ] as const;
 

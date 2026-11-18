@@ -842,6 +842,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
 | タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
 | 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `shared/retrospective.ts`（保存は `core/retrospective.ts`） |
+| 開発の指標（定義・対象・算出・欠損の扱い・範囲）と人が記録する値 | `core/metrics/definitions.ts` の `METRIC_DEFINITIONS`（範囲と材料は `core/metrics/index.ts`、人の記録の保存は `core/metrics/manual.ts`、型は `shared/metrics.ts`） |
 | 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
 | 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
 | 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `shared/reviewCandidate.ts`（読み取り・集計は `core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
@@ -1121,6 +1122,32 @@ P3 は AI の実装を動かさず、成績も測らない。
   結び付く理由が要る（実行中の材料の変更 `inputChanged` も写す）。手戻りはタスクの `reworkHistory` の ID。人の参照は確かめない
 - **照合**（`checkEvidence`）: 読むたびに、保存した参照先で今の記録を引き、結果の版が同じなら `ok`、違えば `changed`、無ければ `missing`。
   要望の付け替え・タスクのアーカイブの後も、保存した要望 ID・タスク ID で引く。親子の間で確認や根拠は継承しない
+
+### 開発の指標
+
+外部の評価への対応: AI 開発の成果をコードの量ではなく、到達の時間・品質（手戻り・基準の未達）などで振り返る材料として、記録から指標を出す。
+P3 は AI の実装を動かして測らない。成績の評価・順位には使わない。
+
+- **定義**: `core/metrics/definitions.ts` の `METRIC_DEFINITIONS` の1か所。各定義は ID・名前・単位・出典・対象・算出・欠損の扱いと `compute(input)`。
+  CLI の `metrics`・API の `GET /api/metrics` は `core/metrics/index.ts` の `metricsReport` を通り、同じ値を返す
+- **範囲**: プロジェクト全体（所属なし・登録に無いマイルストーンの要望を含む）か、`project.yaml` に登録したマイルストーンに今直接属する要望。
+  見送り・アーカイブの要望は除く。タスクは要望の直下だけ。読めない要望は `notices`
+- **値の状態**: `ok`・`no_targets`（対象なし）・`no_data`（欠損だけ）・`not_reached`（まだ到達していない）・`unrecorded`（記録なし）。値は `ok` のときだけで、ほかは `null`（0 にしない）
+- **到達時間**: 要望の `createdAt` から `completionRecords` の最初の `request_resolved`・`request_done` までの中央値。記録・日時が読めない・逆転・
+  今の状態から到達済みと分かるのに記録が無いものは欠損。完了済の記録だけで対応済の記録が無いものは直接の遷移（対応済に未到達）、
+  記録の1つも無い完了済は「到達したか分からない」（欠損）。`updatedAt`・`doneAt` で推し量らない
+- **受け入れ基準**: 今完了しているタスクの今の基準を `acceptanceStatus` で照らす。分母は数えた基準の合計。基準なしは対象なし、`acceptanceProblems` と
+  読めないタスクのファイルは欠損、対応する基準の無い証拠は分母の外
+- **手戻り**: タスクの `reworkHistory` の件数（同じタスクの同じ `rev` は1件）。`reworkProblems` と読めないタスクのファイルは欠損、履歴の無いタスクは内訳の
+  「記録が無い」。履歴より前は分からない（観測の始まりを保存していないので、全期間の完全さは保証しない）
+- **タスクレビュー**: 今完了しているタスクごとに、`selectTaskReview` で完了した run を1件選ぶ（`finishedAt` の新しい順、同時刻は run ID の大きい方。
+  読めない記録・`finishedAt` の無い完了の run があれば欠損）。選んだ結果の `items` の `missing` と `unplanned` を別の指標に数える。`undetermined`・`checks` は
+  内訳だけ。レビューの無いタスクばかりなら `unrecorded`。読むのは `taskReviews.list`・`get` だけで、run を作らない。マイルストーンレビューの所見は今後の候補
+- **人が記録する値**（`kind: manual`。定義の `manual` に値の規則）: `core/metrics/manual.ts`。`<data>/metrics/manual.json`（`{version: 1, seq, records}`）に持ち、
+  `metrics/.manual.lock` のロックの中で読み直してから置き換えで書く。識別は指標・範囲（`project` かマイルストーン ID）・期間・単位で、同じ内容は書かない。
+  値・出典・メモの訂正は記録の `rev` を照らす（渡さない・違えば `metrics_conflict`）。壊れたファイルは空とみなさず `metrics_unreadable`（読む側は欠損と `notices`）。
+  表示は範囲が一致する記録だけを期間・単位ごとの `rows` に出し、範囲の間・通貨・期間をまたいで合算しない（`value` は1行のときだけ）。書くのは CLI だけ。
+  記録のあるマイルストーンは `checkMilestoneRemoval` で消さず、登録に無いマイルストーンへの記録は `manual_orphan`
 
 ### 完了の記録
 
