@@ -11,11 +11,11 @@ import {
   riskCounts,
   TASK_REVIEW_SECTIONS,
   type EvidenceCheck,
-  type MilestoneReviewSection,
+  type EvidenceRef,
   type RetroEvidence,
-  type RiskJudgment,
+  type RetroRiskView,
+  type RetrospectiveView,
   type RiskState,
-  type TaskReviewSection,
   confirmTarget,
   currentTarget,
   readRetrospective,
@@ -23,8 +23,9 @@ import {
   RetrospectiveError,
   type RetroCandidate,
   type RetrospectiveFile,
-  type RetroTarget,
 } from "../shared/retrospective.ts";
+
+export type { EvidenceRef, RetrospectiveView } from "../shared/retrospective.ts";
 import type { P3Context } from "./context.ts";
 import { getArchivedTask, listArchivedTasks } from "./store/archivedTasks.ts";
 import { NotFoundError } from "./store/collection.ts";
@@ -73,34 +74,6 @@ export async function retrospectiveCandidates(ctx: P3Context, rid: string): Prom
   return { ...retroCandidates(rid, request.status, runs, lookup), runs };
 }
 
-/** 今の対象のリスクごとの確認（今の確認と、そのリスクの確認の履歴） */
-export interface RetroRiskView {
-  index: number;
-  text: string;
-  state: RiskState;
-  judgment?: RiskJudgment;
-  history: RiskJudgment[];
-}
-
-export interface RetrospectiveView {
-  version: number;
-  /** 今の対象のリスクと確認（対象が無ければ空） */
-  risks: RetroRiskView[];
-  /** 今の対象の三状態の件数（確認の無いリスクは未確認） */
-  counts: Record<RiskState, number>;
-  /** 全部の確認（前の対象の分も。古い順） */
-  judgments: RiskJudgment[];
-  /** 確認ごとの根拠の今の照合（確認 ID → 根拠の順） */
-  checks: Record<string, EvidenceCheck[]>;
-  /** 今の対象（無ければ未確定） */
-  target?: RetroTarget;
-  /** 確定と訂正の履歴（古い順） */
-  targets: RetroTarget[];
-  candidates: RetroCandidate[];
-  /** 候補が無い理由 */
-  none?: string;
-}
-
 export async function retrospectiveView(ctx: P3Context, rid: string): Promise<RetrospectiveView> {
   const file = await loadRetrospective(ctx, rid);
   const { candidates, none } = await retrospectiveCandidates(ctx, rid);
@@ -116,13 +89,6 @@ export async function retrospectiveView(ctx: P3Context, rid: string): Promise<Re
 }
 
 // --- リスクの確認の根拠 -----------------------------------------------------------
-
-/** 根拠の指定（CLI・API から。保存するときに今の記録と照らし、抜粋と版を写す） */
-export type EvidenceRef =
-  | { kind: "task_review"; task: string; run: string; section: TaskReviewSection; index?: number }
-  | { kind: "milestone_review"; milestone: string; run: string; section: MilestoneReviewSection; index?: number; reason?: string }
-  | { kind: "rework"; task: string; history: string }
-  | { kind: "manual"; reference: string; note?: string };
 
 const bad = (m: string) => new RetrospectiveError("retro_invalid", m);
 const clip = (s: string) => (s.length > JUDGMENT_LIMITS.excerpt ? `${s.slice(0, JUDGMENT_LIMITS.excerpt)}…` : s);

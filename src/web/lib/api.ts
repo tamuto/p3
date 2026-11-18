@@ -6,6 +6,7 @@ import type { AcceptanceCriterion, AcceptanceOp } from "../../shared/acceptance.
 import type { BlockOp } from "../../shared/taskBlock.ts";
 import type { ClarifyAnswer, CriterionSource, RequestRequirementView, SourceOp } from "../../shared/requirementSource.ts";
 import type { ReviewDiagnosis, ReviewSummary } from "../../shared/reviewCandidate.ts";
+import type { EvidenceRef, RetrospectiveView, RiskState } from "../../shared/retrospective.ts";
 import type { ImprovementDiagnosis, ImprovementSource } from "../../shared/qualityImprovement.ts";
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
@@ -83,6 +84,9 @@ export function failureOf(e: unknown): ApiFailure {
   if (code === "blocked") return "other";
   return code === "stale_input" ? "stale_input" : "rev_conflict";
 }
+
+/** API のエラーの code（無ければ undefined） */
+export const errorCode = (e: unknown): string | undefined => (e instanceof ApiError ? ((e.body as { code?: string } | null)?.code ?? undefined) : undefined);
 
 /** アーカイブのファイルが読めない（無いのではない） */
 export const archiveUnreadable = (e: unknown) => e instanceof ApiError && (e.body as { code?: string } | null)?.code === "archive_unreadable";
@@ -280,6 +284,13 @@ export const api = {
   /** 要望の要求の根拠の記録を変える（操作を順に当て、合わなければ 400 requirement_invalid。rev 違いは 409） */
   saveSources: (rid: string, ops: SourceOp[], rev?: number) => call<{ request: Request; requirement: RequestRequirementView }>("POST", `/requests/${rid}/sources`, { ops, rev }),
   /** 確認事項に回答する（answer: null で消す。要望に残し、過去の run は書き換えない。再評価は別に始める） */
+  /** 要望の振り返り（確定した対象・リスクの確認・候補） */
+  retrospective: (rid: string) => call<RetrospectiveView>("GET", `/requests/${rid}/retrospective`),
+  /** 振り返りの対象を確定する（2回目からの訂正は reason が要る。version は読んだときの版） */
+  confirmRetrospective: (rid: string, b: { run: string; reason?: string; version: number }) => call<RetrospectiveView>("POST", `/requests/${rid}/retrospective/target`, b),
+  /** リスクの確認を記録する（人の判断。追記） */
+  judgeRisk: (rid: string, b: { risk: number; state: RiskState; facts?: string; scope?: string; reason?: string; evidence: EvidenceRef[]; version: number }) =>
+    call<RetrospectiveView>("POST", `/requests/${rid}/retrospective/judgments`, b),
   saveAnswer: (rid: string, b: { run: string; question: string; answer: string | null; by?: string; on?: string; source?: string; basis?: string; links?: string[]; rev?: number }) =>
     call<{ request: Request; answer: ClarifyAnswer | null; requirement: RequestRequirementView }>("POST", `/requests/${rid}/answers`, b),
 
