@@ -11,6 +11,9 @@ import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
 import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras } from "./showView.ts";
+import { formatReview } from "./revisitCommands.ts";
+import { taskReview } from "../core/reviewCandidates.ts";
+import { reviewSummary } from "../shared/reviewCandidate.ts";
 import { UsageError } from "./project.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
@@ -36,7 +39,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
         throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
       }
-      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked };
+      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked, review: o.review };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       const marks = supersededMarks(ctx.ws);
       const items = tasks.map((t) => (marks.has(t.ref) ? { ...t, superseded: marks.get(t.ref) } : t));
@@ -49,9 +52,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
             t.status,
             ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
             t.title,
-            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), replacedBy(t, marks)].filter(Boolean).join("  "),
+            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), replacedBy(t, marks), taskReview(ctx, t)?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  "),
           ]),
-        ) || (o.blocked ? "止まっているタスクはありません" : "タスクはありません"),
+        ) || (o.blocked ? "止まっているタスクはありません" : o.review ? "見直しが必要（候補）のタスクはありません" : "タスクはありません"),
       );
     }
 
@@ -63,16 +66,22 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (!ref.includes("/")) return requestCommand(ctx, out, ["show", ref], o, actor, requestArg, expectedRev);
       const item = ctx.ws.requireTask(ref);
       const marks = supersededMarks(ctx.ws);
+      const review = taskReview(ctx, item);
       if (o.brief) {
-        const view = briefTask(ctx, item, marks);
-        return out.result(view, () => formatBriefTask(view));
+        // 見直しの概要は候補のときだけ（記録なし・差分なしは短い出力に出さない）
+        const view = { ...briefTask(ctx, item, marks), ...(review?.state === "candidate" ? { review: reviewSummary(review) } : {}) };
+        return out.result(view, () => [formatBriefTask(view), ...(review?.state === "candidate" ? ["", ...formatReview(review)] : [])].join("\n"));
       }
       const file = relative(cwd, split(ref).col.path(item.id));
       const { superseded, dependencies, warnings } = taskExtras(ctx, item, marks);
       const dependents = dependentsOf(ctx, item).map((t) => ({ ref: t.ref, title: t.title, status: t.status }));
       const acceptance = acceptanceStatus(item) ?? null;
-      return out.result({ item, file, superseded, dependencies, dependents, warnings, acceptance }, () =>
-        [superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "", formatEntity(ctx, item, file)].join(""),
+      return out.result({ item, file, superseded, dependencies, dependents, warnings, acceptance, review: review ?? null }, () =>
+        [
+          superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "",
+          formatEntity(ctx, item, file),
+          review ? `\n\n${formatReview(review).join("\n")}` : "",
+        ].join(""),
       );
     }
 
@@ -136,6 +145,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { task: next, warnings } = r;
       warn(warnings);
       checkClearedNote(r.checkCleared);
+      completionSkippedNote(r.completionSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
@@ -163,6 +173,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const { task: next, warnings } = r;
       warn(warnings);
       checkClearedNote(r.checkCleared);
+      completionSkippedNote(r.completionSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
       if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
@@ -174,7 +185,8 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
     case "check": {
       const ref = taskArg(args[0]);
       const { tid } = split(ref);
-      const { task: next } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
+      const { task: next, completionSkipped } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
+      completionSkippedNote(completionSkipped);
       return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
@@ -237,6 +249,11 @@ async function blockCommand(cmd: "block" | "unblock", { ctx, out, args, o, actor
 // --- 受け入れ基準と証拠 -------------------------------------------------------------
 
 function checkClearedNote(msg: string | undefined) {
+  if (msg) process.stderr.write(`${msg}\n`);
+}
+
+/** 完了の記録を足せなかった（壊れた記録）ことを知らせる */
+export function completionSkippedNote(msg: string | undefined) {
   if (msg) process.stderr.write(`${msg}\n`);
 }
 

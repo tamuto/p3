@@ -17,7 +17,11 @@ export function readsOnly(cmd: string, args: string[]): boolean {
     case "notes":
     case "drafts":
     case "clarify":
+    case "revisit":
       return true;
+    case "premise":
+    case "premises":
+      return !args.some((a) => a === "add" || a === "ack");
     case "source":
     case "sources":
       // 対象（要望・T001・D1）と基準の ID の後に操作が無ければ読むだけ

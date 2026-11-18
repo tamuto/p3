@@ -8,6 +8,8 @@ import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
 import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
 import { requestRequirementView, RequirementInputError, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
+import { PremiseInputError } from "../../shared/reviewCandidate.ts";
+import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
@@ -27,7 +29,7 @@ import { repoRoutes } from "./repoRoutes.ts";
 import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
 import { milestoneReviewRoutes } from "./milestoneReviewRoutes.ts";
 import { taskReviewRoutes } from "./taskReviewRoutes.ts";
-import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality, saveClarifyAnswer, updateRequirement } from "../../core/requestOps.ts";
+import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality, saveClarifyAnswer, updateRequirement, recordPremise } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { StaleInputError } from "../../core/preflight/input.ts";
 import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
@@ -203,6 +205,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 要求の根拠・回答の操作が規則に合わない（何も書いていない）
     if (err instanceof RequirementInputError) return c.json({ error: err.message, code: err.code }, 400);
+    // 前提の変更の操作が規則に合わない・対象が無い（何も書いていない）
+    if (err instanceof PremiseInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
@@ -289,6 +293,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       // 親子（parent・ancestors・children・hierarchyIssues）と、対応済にできるか（blocker・見送りで対象外の子 excluded）
       ...(await hierarchyView(ws, id)),
       completion: completionCheckOf(ws, hierarchyNow(ws), id),
+      // 見直しが必要（候補）: 要望自身（対応済・完了済）・タスクごとの概要・配下の件数（読むだけ。shared/reviewCandidate.ts）
+      review: requestReview(ctx, id),
       // 置き換えられたタスクの印（T001 → 置き換えた側）
       superseded: Object.fromEntries(
         [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
@@ -310,6 +316,27 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
    * Preflight の確認事項に回答する（CLI の p3 answer と同じ）。answer: null で回答を消す。回答は要望に残し、過去の run は書き換えない。
    * 回答しただけでは根拠の記録を確認記録ありにしない。再評価は別に明示して始める
    */
+  /**
+   * 前提の変更（外部の規則の変更など）を記録する。add: {op: "add", targets, reason, condition} / ack: {op: "ack", id, target, condition}。
+   * 過去の完了の記録・状態・済みは変えない。対象が無い・規則に合わなければ 400 premise_invalid、rev が違えば 409（何も書かない）
+   */
+  app.get("/requests/:rid/premises", (c) => c.json(ws.requests.require(rid(c)).premiseChanges ?? []));
+  app.post("/requests/:rid/premises", async (c) => {
+    const b = z
+      .discriminatedUnion("op", [
+        z.object({ op: z.literal("add"), targets: z.array(z.string()), reason: z.string(), condition: z.string(), rev: z.number().int().optional() }),
+        z.object({ op: z.literal("ack"), id: z.string(), target: z.string(), condition: z.string(), rev: z.number().int().optional() }),
+      ])
+      .parse(await c.req.json());
+    const { rev, ...op } = b;
+    const r = await recordPremise(ctx, rid(c), op, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({ change: r.change, rev: r.request.rev });
+  });
+  /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
+  app.get("/revisit", (c) => {
+    const request = c.req.query("request");
+    return c.json(reviewCandidates(ctx, request ? { request } : {}));
+  });
   app.post("/requests/:rid/answers", async (c) => {
     const b = z
       .object({
@@ -375,8 +402,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   // --- tasks（要望の中） --------------------------------------------------------
   app.get("/requests/:rid/tasks", (c) => {
-    const { status, area, q, blocked } = c.req.query();
-    return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q, blocked: blocked === "true" }));
+    const { status, area, q, blocked, review } = c.req.query();
+    return c.json(listTasks(ctx, { request: rid(c), status: status?.split(","), area, q, blocked: blocked === "true", review: review === "true" }));
   });
   app.post("/requests/:rid/tasks", async (c) => {
     const raw = taskCreate.parse(await c.req.json());
@@ -388,7 +415,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
-    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [], acceptance: acceptanceStatus(task) ?? null });
+    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [], acceptance: acceptanceStatus(task) ?? null, review: taskReview(ctx, task) ?? null });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
     const { rev, checked, acceptance, blockOp: bop, ...patch } = taskPatch.parse(await c.req.json());
@@ -400,8 +427,16 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(acceptance?.length ? { acceptance } : {}),
     };
     // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
-    const { task, warnings, reopened, reopenedAncestors, checkCleared } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
-    return c.json({ ...task, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(checkCleared ? { checkCleared } : {}) });
+    // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）
+    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    return c.json({
+      ...task,
+      ...(warnings.length ? { warnings } : {}),
+      ...(reopened ? { reopened } : {}),
+      ...(reopenedAncestors ? { reopenedAncestors } : {}),
+      ...(checkCleared ? { checkCleared } : {}),
+      ...(completionSkipped ? { completionSkipped } : {}),
+    });
   });
   /** 今の品質基準との差分（読むだけ。タスクは書き換えない） */
   app.get("/requests/:rid/tasks/:tid/quality-diff", (c) => {
@@ -586,8 +621,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
 
   // --- 横断 --------------------------------------------------------------
   app.get("/tasks", (c) => {
-    const { status, area, q, blocked } = c.req.query();
-    return c.json(listTasks(ctx, { status: status?.split(","), area, q, blocked: blocked === "true" }));
+    const { status, area, q, blocked, review } = c.req.query();
+    return c.json(listTasks(ctx, { status: status?.split(","), area, q, blocked: blocked === "true", review: review === "true" }));
   });
   /** 参照・タイトルから対象を特定する（?request= で今の要望を優先） */
   app.get("/resolve", (c) => c.json(resolve(ctx, c.req.query("q") ?? "", c.req.query("request"))));

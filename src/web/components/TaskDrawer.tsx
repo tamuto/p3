@@ -5,6 +5,8 @@ import { CriteriaSources } from "./RequirementSources.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { QualityDiffPanel } from "./QualityDiff.tsx";
+import { CompletionRecords, ReviewPanel } from "./CompletionReview.tsx";
+import type { ReviewDiagnosis } from "../../shared/reviewCandidate.ts";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -43,6 +45,8 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
   const [superseded, setSuperseded] = useState<SupersededMark[]>([]);
+  // 見直しの診断（API の共通の結果。取り直しに失敗したら前の表示のまま知らせ、「候補なし」に置き換えない）
+  const [review, setReview] = useState<ReviewDiagnosis | null>(null);
   // 入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で。lib/draft.ts）
   const [draft, setDraft] = useState<DraftState<Fields>>();
   /** 外で削除・アーカイブされた（入力は残し、保存しない） */
@@ -71,6 +75,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       if (r === STALE) return;
       setTask(r.task);
       setSuperseded(r.superseded);
+      setReview(r.review ?? null);
       setGone(false);
       const server = toDraft(r.task);
       setDraft((d) => {
@@ -305,6 +310,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               {(dirty || accDirty || blockDirty || srcDirty) && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
+          {/* 見直しが必要（候補）: 人の済みとは別の注意。表示しただけでは済み・状態は変わらない */}
+          {task.status === "done" && review && <ReviewPanel review={review} />}
+          {(task.completionRecords?.length || task.completionProblems?.length) && <CompletionRecords records={task.completionRecords} problems={task.completionProblems} />}
           <Section title="受け入れ基準と作業した側の証拠">
             <QualityDiffPanel
               task={task}

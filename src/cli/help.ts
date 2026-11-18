@@ -94,6 +94,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --repo <参照先>|none（作業先）  --all（全要望）
                                --blocked 止まっているタスクだけ（ほかの条件と AND。--archived とは一緒に使えない）
+                               --review 見直しが必要（候補）の完了したタスクだけ（ほかの条件と AND）
   show <T003|要望|語句>          詳細と関係（依存・置き換え）
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
@@ -144,6 +145,10 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   source <T003|D1> [<A1> 操作]   受け入れ基準ごとの記録（D1 はタスク案。--run PF-...）。add --from S1 で要望の記録を写す（確認は引き継がない）
                                --sources-json 操作.json|-  まとめて（[{"criterion":"A1","op":"add","source":"…","basis":"…"}]）
 
+  revisit [<要望>] [--all]      見直しが必要（候補）: 完了の記録（完了・済みにしたときの条件）と今の条件の差（品質基準・受け入れ基準・
+                               要求の根拠・前提の変更）。完了済みも含む。候補を出すだけで状態・済みは変えない。確かめたら済みにし直す
+  premise [<要望>]              前提の変更の一覧 / add --target <要望 ID|T001|S1>（繰り返し可）--reason 理由 --condition 新しい条件・版
+                               ack <P1> --target <ID> --condition 確かめた条件  変更を確かめたことを残す（過去の記録・状態は変えない）
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
                                前回の結果とまだ渡していないメモを引き継ぐ

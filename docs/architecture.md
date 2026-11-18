@@ -840,6 +840,8 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
+| 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
+| 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `shared/reviewCandidate.ts`（読み取り・集計は `core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
@@ -1074,6 +1076,53 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
 - 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### 完了の記録
+
+タスクの完了（`task_done`）・人の済み（`task_checked`）・要望の対応済（`request_resolved`）・完了済（`request_done`）のとき、
+そのときの条件の写しを `completionRecords` に追記する（`shared/completionRecord.ts`）。今の値（`doneAt`・`checkedAt` は再開で消える）とは別に持ち、
+後から「当時どの条件で完了・確認したか」を比べる材料にする。
+
+- 状態と同じ更新（同じ rev）で同じファイルに書く。片方だけが保存されることはない。`expectedRev` の競合では何も書かない
+- 契機は書く直前に読み直した値と書いた後の値から決める（`taskTriggers`・`requestTriggers`）。タスクは完了でないものが完了になったら
+  `task_done`、完了で済みが付いたら `task_checked`（済みのまま基準・証拠・基準の根拠を変えて済みを付け直したときも足す）。
+  同じ状態の再保存・成果物の追記・済みの付け直しでは足さない。再開・済みの解除でも消さない
+- 写す値は、同じ操作で変えた基準・証拠を当てた後のもの。品質は完了したときの最新の値（設定全体の版・作業先に当てはまる項目と除外）で、
+  取り込んだときの版は基準の `quality.version` に残る。要望の記録は題と `requestSubject`（題と本文の hash）を持ち、本文は写さない
+- 要望の記録の `tasks`・`children` は判定に使った直下のタスクと子の要望（ID・rev・状態・その時点の最新の記録 ID）。子だけの親も子の記録から辿れる
+- 参照先は書く前（ロックの外）に `core/completionRefs.ts` が取る: `git rev-parse HEAD` と、参照先のフォルダに限った `git status --porcelain`。
+  状態は `ok`・`not_git`・`unregistered`・`missing`・`notdir`・`failed` で、理由にはこのマシンのパスを入れない。完了になりうる更新
+  （状態を完了にする・済みを付ける・対応済・完了済にする）のときだけ取る。Preflight の評価対象にはコミットの固定が無いので、run から補わない
+- 入口: `createTask`（完了で作る）・`updateTask`（CLI の move・set・check、API の PATCH、品質の取り込み）・`updateRequest`（CLI の request set、
+  API の PATCH、マイルストーンの一括完了）。どれも記録の値を受け付けず（`completionRecords` は捨てる）、P3 が作る
+- 記録の無い古いデータは補わない。読めない記録は `completionProblems` にして `keepRaw` で元の値を書き戻し、新しい記録は足さない
+  （状態は変え、`completionSkipped` で知らせる）。読めない品質・基準・根拠は `problems` として写し、完了は拒まない
+- ファイルの並びでは最後（`updatedBy` の後）に書く。人が読む項目を上に残すため
+- 一覧（進捗・タスクの一覧）にも今は全部が載る（要望・タスクの値をそのまま返すため）。進捗のタスクの印は記録を載せず、見直しの状態だけを持つ
+
+### 見直し候補
+
+外部の評価（課題 C）への対応: 過去に正しいと判断したものが、仕様や環境の変化で正しくなくなることがある。判断を間違いと決めつけず、
+当時の条件（完了の記録）と今の条件の差を「見直しが必要（候補）」として示す（`shared/reviewCandidate.ts`）。状態は増やさない。
+
+- **基点**: タスク・要望の最新の完了の記録。人がもう一度済み・完了にすれば新しい記録が基点になる。記録が無い・読めないときは
+  `no_record`・`unreadable` で、差分なし（`none`）とも候補（`candidate`）とも分ける
+- **対象**: 完了したタスク（済みの有無を問わない）と、対応済・完了済の要望自身。要望の詳細・進捗には配下の候補の件数（`tasks`・`below`）を
+  添えるが、親自身を候補にはしない。`below` は子孫の要望自身とそのタスクを1回ずつ数える。アーカイブは見ない
+- **品質**: `standardsFor` で作業先に当てはまる項目を当時（記録の `quality.standards`）と今で比べる（`quality_added`・`quality_changed`
+  （`standardHash`）・`quality_removed`・`quality_exempted`）。設定全体の版（`qualityVersion`）の違いだけでは候補にしない。
+  今が未設定・読めないなら `quality_state`、当時が読めないなら比べない。要望の記録は項目を写さないので状態だけを比べる
+- **基準と根拠**: 基準は ID で比べる（`criterion_added`・`criterion_changed`・`criterion_removed`）。基準ごとの根拠は (基準 ID, 記録 ID)、
+  基準が写した要望の根拠（`from`）は当時の元と今の元を比べる（`source_changed`・`source_removed`・`source_unconfirmed`）。要望自身は要望の根拠の全部
+- **前提の変更**: 要望の `premiseChanges`（`[{id: P1, targets, reason, condition, at, by, acks?}]`。追記だけ）。対象は要望 ID・この要望の
+  タスク ID・要望の根拠の ID で、記録するときに有るものだけ。基点より後の変更で、対象に変更より後の確認（`acks`）が無いものを `premise_changed`
+  にする。タスクはタスク ID と、基準が写した要望の根拠の ID の変更を見る。要望自身は要望 ID と要望の根拠の ID。既存の `source` 操作で表せる
+  根拠の変更は、根拠の差として自動で出る（前提の変更は外部の変化を表すときに使う）
+- 理由は同じ種類と対象で1件にする。各理由は当時（`was`）・今（`now`）の短い値と関係する対象（`related`）を持つ。`then` は Promise と
+  取り違えられるので使わない
+- 診断は読み込んだ値だけで行い、ファイルを書かず git も実行しない（参照先のコミットは比べない）。入口: CLI の `revisit`・`ls --review`・`show`・
+  `progress`、API の `GET /api/revisit`・`?review=true`・要望とタスクの詳細の `review`・進捗の `review`
+- 証拠の「再確認が必要」（`stale`）・基準や証拠の明示の編集による済みの解除とは別の意味として残す
 
 ### 受け入れ基準と証拠
 
