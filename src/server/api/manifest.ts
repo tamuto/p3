@@ -92,6 +92,13 @@ export const AI_MANIFEST = {
         "基点の完了の記録より後の変更で、確認の無い対象は見直し候補の理由になる。過去の完了の記録・状態・済みは変えない。対象が無い・規則に合わなければ 400 premise_invalid、rev が違えば 409（何も書かない）",
     },
     {
+      method: "GET|POST",
+      path: "/api/requests/:rid/retrospective[/target]",
+      desc:
+        "要望の振り返り。GET は {version, target?（今の対象）, targets（確定と訂正の履歴）, candidates（採用を終えた run: {run, kind: tasks|split|legacy, latest, basis: [{key?, target, state}], risks}）, none?}。" +
+        "POST /target {run, reason?, version?} で対象を確定する（候補の run だけ。評価の版とリスクの原文を写す。2回目からの訂正は reason が要る）。候補でない・理由が無い → 400 retro_invalid、版が違う → 409 retro_conflict（何も書かない）",
+    },
+    {
       method: "GET",
       path: "/api/revisit[?request=<要望ID>]",
       desc:

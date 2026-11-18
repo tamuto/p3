@@ -441,6 +441,9 @@ export class Workspace {
       if (!TASK_ID.test(id)) return;
       await this.tasksOf(rid).reload(id);
       this.emit({ type: "changed", kind: "task", request: rid, ref: `${rid}/${id}` });
+    } else if (kind === "retrospective.json") {
+      // 振り返りの記録（ほかのプロセスの確定・確認）
+      this.emit({ type: "changed", kind: "request", request: rid });
     } else if (kind === "preflight") {
       this.emit({ type: "changed", kind: "preflight", request: rid });
     } else if (kind === "notes") {

@@ -841,6 +841,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
 | タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
+| 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `shared/retrospective.ts`（保存は `core/retrospective.ts`） |
 | 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
 | 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
 | 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `shared/reviewCandidate.ts`（読み取り・集計は `core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
@@ -1095,6 +1096,22 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 先に移したなら後の更新は「無い」になり、移した後のファイルを書き戻さない（先に更新したなら、その履歴ごと移る）。
 ロックは同じマシンのプロセスの間だけ。異常終了で残ったロックは 60 秒で古いものとして取り直す（30 秒待っても取れなければ失敗にし、やり直せる）。
 ロックの順は、親子の操作のロック（`.hierarchy.lock`）→ 要望のロック。要望のロックの中で別の要望・タスクのロックは取らない
+
+### 振り返り
+
+外部の評価への対応: 蓄積した記録で開発を振り返る一例として、Preflight で心配したリスクが実装の後に起きたかを追う（`shared/retrospective.ts`）。
+P3 は AI の実装を動かさず、成績も測らない。
+
+- **記録**: 要望のフォルダの `retrospective.json`（`{version, targets: [...]}`）。要望と一緒にアーカイブ・共有する。保存は要望のロック
+  （`requestLock`）の中で読み直して `version` を照らし（違えば `retro_conflict`）、1 上げて書く。ロックの中で要望が無ければ書かない（アーカイブの後に作り直さない）。
+  壊れていれば空とみなさず `retro_unreadable`
+- **候補**（`retroCandidates`）: `status: completed` で評価のある run のうち、`materialization.done`（`created` のタスクが今ある・アーカイブ済み・無いを照らす）、
+  `adoption.done`（`reserved` の子の `splitFrom` が `<run>/<案>` で親がこの要望かを照らす）、`materialization` の無い `materialized`（旧記録）。
+  途中の採用は候補にしない。見送りの要望は候補なし。並びは run の新しい順で、先頭が `latest`
+- **確定**（`confirmTarget`）: 候補の run だけ。`assessmentVersion`（評価の内容の hash）・リスクの位置と原文・採用の根拠・確定者と日時を写した `V<n>` を追記する。
+  2件目からは訂正の理由（`reason`）が要り、前の対象を `replaces` に残す。同じ run と同じ評価の版は確定し直さない。今の対象は最後の1件
+- 対象は人の明示の操作でだけ変わる（Preflight の実行・タスク化・分割の採用・画面の run の切り替えでは変えない）。入口: CLI の `retro`、
+  API の `GET /api/requests/:rid/retrospective`・`POST .../retrospective/target`
 
 ### 完了の記録
 
