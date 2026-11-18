@@ -2,6 +2,7 @@ import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
 import { COMPLETION_KEYS, readCompletion } from "../../shared/completionRecord.ts";
 import { PREMISE_KEYS, readPremises } from "../../shared/reviewCandidate.ts";
+import { readRework, REWORK_KEYS } from "../../shared/reworkHistory.ts";
 import { qualityVersion, readQuality } from "../../shared/quality.ts";
 import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
@@ -51,6 +52,7 @@ export const normalizeTaskIn =
     ...readAcceptance(d),
     ...readBlock(d),
     ...readCompletion(d),
+    ...readRework(d),
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -60,18 +62,19 @@ export const normalizeTaskIn =
   });
 
 /** タスクのうちファイルに書かないキー（場所から決まるもの・読んだときの問題） */
-export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems", "completionProblems"];
+export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems", "completionProblems", "reworkProblems"];
 
 /** 基準・証拠が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/acceptance.ts） */
 export const taskKeepRaw = (t: Task): readonly string[] => [
   ...(t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []),
   ...(t.blockProblems?.length ? BLOCK_KEYS : []),
   ...(t.completionProblems?.length ? COMPLETION_KEYS : []),
+  ...(t.reworkProblems?.length ? REWORK_KEYS : []),
 ];
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "completionRecords",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "reworkHistory", "completionRecords",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {

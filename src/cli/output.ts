@@ -5,7 +5,7 @@ import { type P3Context } from "../core/context.ts";
 import { resolve, titleOf } from "../core/ops.ts";
 import { type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
-import { formatAcceptance, formatBlock, formatCompletionDetail, formatRequirement } from "./showView.ts";
+import { formatAcceptance, formatBlock, formatCompletionDetail, formatRequirement, formatRework } from "./showView.ts";
 import { taskWork } from "../core/workTargets.ts";
 import { DIRECT_TASK_NOTE, LATER_PREFLIGHT_NOTE } from "../shared/directTask.ts";
 
@@ -30,7 +30,7 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
   const home = "ref" in item ? item.request : item.id;
   const lines = [`${head}  ${item.title}`, ""];
   if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
-  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceProblems", "block", "blockHistory", "blockProblems", "requirementSources", "requirementSeq", "clarifyAnswers", "requirementProblems", "completionRecords", "completionProblems"]);
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceProblems", "block", "blockHistory", "blockProblems", "requirementSources", "requirementSeq", "clarifyAnswers", "requirementProblems", "completionRecords", "completionProblems", "reworkHistory", "reworkProblems"]);
   for (const [k, v] of Object.entries(item)) {
     if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);
@@ -46,6 +46,7 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
     const req = requestRequirementView(item);
     if (req.sources.length || req.answers.length || req.problems.length) lines.push("", ...formatRequirement(req));
   }
+  if ("ref" in item && (item.reworkHistory?.length || item.reworkProblems?.length)) lines.push("", ...formatRework(item));
   if (item.completionRecords?.length || item.completionProblems?.length) lines.push("", ...formatCompletionDetail(item));
   if ("ref" in item) {
     const out = item.relations.map((r) => `  → ${pad(relationRole(r.type, "out"))} ${r.target} ${titleOf(ctx, `${home}/${r.target}`)}`);

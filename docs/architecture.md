@@ -840,6 +840,8 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
 | タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
+| タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
+| 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
 | 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
 | 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `shared/reviewCandidate.ts`（読み取り・集計は `core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
@@ -1076,6 +1078,23 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 - 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
 - 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
   要望の詳細と タスクの GET は印 `superseded` を返す。
+
+### 手戻りの履歴と保存のロック
+
+タスクの済みの解除と完了からの再開を `reworkHistory`（`[{id: R1, at, by, rev, cause, unchecked, reopened, from, to}]`。追記だけ）に残す
+（`shared/reworkHistory.ts`）。後で「Preflight で心配したことが手戻りになったか」を追うときの材料にする。
+
+- `updateTask` が、書く直前に読み直した値と保存する値（状態・済み。完了から戻すと済みも外れる）を比べて決め、状態と同じ1回の書き込みに入れる。
+  `cause` は `reopen`（完了から戻した）・`explicit`（済みを外すと明示した）・`acceptance`（基準・証拠・基準の根拠の中身が変わって済みが外れた）。
+  済みの完了を戻した1操作は `unchecked` と `reopened` の両方を持つ1件
+- 同じ値の再保存・済みを保ったままの変更・成果物の追記では足さない。履歴の値は CLI・API から受け付けない。直接編集からは作らず、過去の分は補わない
+- 壊れた履歴は `reworkProblems` と `keepRaw` で元の値を残し、新しい履歴は足さずに `reworkSkipped` で知らせる（状態の変更は拒まない）
+
+**保存のロック**: 要望とそのタスクの更新・作成・アーカイブは、要望ごとのロック（`requests/.locks/<要望ID>.lock`。要望のフォルダの外なので、
+アーカイブで一緒に動かない）の中で、読み直してから書く・移す。別のプロセスのタスクの更新と、タスク・要望のアーカイブが重なっても、
+先に移したなら後の更新は「無い」になり、移した後のファイルを書き戻さない（先に更新したなら、その履歴ごと移る）。
+ロックは同じマシンのプロセスの間だけ。異常終了で残ったロックは 60 秒で古いものとして取り直す（30 秒待っても取れなければ失敗にし、やり直せる）。
+ロックの順は、親子の操作のロック（`.hierarchy.lock`）→ 要望のロック。要望のロックの中で別の要望・タスクのロックは取らない
 
 ### 完了の記録
 
