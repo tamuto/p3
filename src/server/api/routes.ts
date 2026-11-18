@@ -11,6 +11,8 @@ import { requestRequirementView, RequirementInputError, type CriterionSource, ty
 import { PremiseInputError } from "../../shared/reviewCandidate.ts";
 import { MILESTONE_REVIEW_SECTIONS, RetrospectiveError, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../shared/retrospective.ts";
 import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../core/retrospective.ts";
+import { metricScopeOf, metricsReport } from "../../core/metrics/index.ts";
+import { MetricsError } from "../../shared/metrics.ts";
 import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
 import { BlockInputError } from "../../shared/taskBlock.ts";
 import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
@@ -46,6 +48,7 @@ import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftC
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
+ *   /metrics[?milestone=<ID>]              開発の指標（core/metrics。読むだけ）
  *   /milestones/:mid/review[s...]          マイルストーンレビュー（milestoneReviewRoutes.ts）
  *   /requests/:rid/tasks/:tid/review[s...] タスクの AI レビュー（taskReviewRoutes.ts）
  */
@@ -211,6 +214,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     if (err instanceof PremiseInputError) return c.json({ error: err.message, code: err.code }, 400);
     // 振り返り: 候補でない・理由が無い → 400、版の競合・記録が読めない → 409（何も書いていない）
     if (err instanceof RetrospectiveError) return c.json({ error: err.message, code: err.code }, err.code === "retro_invalid" ? 400 : 409);
+    // 指標: 知らない範囲（登録されていないマイルストーン）
+    if (err instanceof MetricsError) return c.json({ error: err.message, code: err.code }, 400);
     // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
     if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
     // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
@@ -358,6 +363,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
+  app.get("/metrics", (c) => c.json(metricsReport(ctx, metricScopeOf(ctx, c.req.query("milestone")))));
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
     return c.json(reviewCandidates(ctx, request ? { request } : {}));

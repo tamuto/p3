@@ -18,6 +18,7 @@ export function readsOnly(cmd: string, args: string[]): boolean {
     case "drafts":
     case "clarify":
     case "revisit":
+    case "metrics":
       return true;
     case "retro":
     case "retrospective":

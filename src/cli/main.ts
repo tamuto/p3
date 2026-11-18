@@ -9,6 +9,7 @@ import { RequirementInputError } from "../shared/requirementSource.ts";
 import { requirementCommand } from "./requirementCommands.ts";
 import { revisitCommand } from "./revisitCommands.ts";
 import { retroCommand } from "./retroCommands.ts";
+import { metricsCommand } from "./metricsCommands.ts";
 import { RetrospectiveError } from "../shared/retrospective.ts";
 import type { RequestProgress } from "../shared/types.ts";
 
@@ -261,7 +262,7 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env)) ?? (await metricsCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
