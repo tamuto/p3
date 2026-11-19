@@ -25,24 +25,44 @@ export function metricScopeOf(ctx: P3Context, milestone: string | undefined): Me
   return { kind: "milestone", id: milestone };
 }
 
-/** 今完了しているタスクのレビューを、selectTaskReview の規則で1件選んで読む（読むだけ） */
-async function reviewsOf(ctx: P3Context, rid: string, tasks: readonly { id: string; status: string }[]): Promise<Record<string, ReviewObservation>> {
-  const out: Record<string, ReviewObservation> = {};
-  for (const t of tasks) {
-    if (t.status !== "done") continue;
-    const key = `${rid}/${t.id}`;
+/** 1回のレポートで同時に読む完了タスクのレビューの数の上限（要望をまたいでレポート全体で数える） */
+export const REVIEW_READ_CONCURRENCY = 8;
+
+/** 同時に動かす数を n までにする（待っているものは来た順に始める。終わったものの枠をそのまま次に渡す） */
+function limiter(n: number) {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (running < n) running += 1;
+    else await new Promise<void>((go) => waiting.push(go));
+    try {
+      return await fn();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
+  };
+}
+
+/**
+ * 今完了しているタスクのレビューを、selectTaskReview の規則で1件選んで読む（読むだけ）。タスクごとに一覧・選択・結果の取得を
+ * limit の中で並行に行い、結果はタスク ID に結ぶ（読み終わった順に関係なく、集計は要望・タスクの順で読む）
+ */
+async function reviewsOf(ctx: P3Context, rid: string, tasks: readonly { id: string; status: string }[], limit: ReturnType<typeof limiter>): Promise<Record<string, ReviewObservation>> {
+  const one = async (key: string): Promise<ReviewObservation> => {
     try {
       const sel = selectTaskReview(await ctx.ws.taskReviews.list(key));
-      if (sel.state !== "ok") out[t.id] = sel;
-      else {
-        const rec = await ctx.ws.taskReviews.get(key, sel.run);
-        out[t.id] = rec.result ? { state: "ok", run: sel.run, result: rec.result } : { state: "missing", reason: `${sel.run} の結果がありません` };
-      }
+      if (sel.state !== "ok") return sel;
+      const rec = await ctx.ws.taskReviews.get(key, sel.run);
+      return rec.result ? { state: "ok", run: sel.run, result: rec.result } : { state: "missing", reason: `${sel.run} の結果がありません` };
     } catch (e) {
-      out[t.id] = { state: "missing", reason: `レビューの記録が読めません: ${(e as Error).message}` };
+      return { state: "missing", reason: `レビューの記録が読めません: ${(e as Error).message}` };
     }
-  }
-  return out;
+  };
+  const done = tasks.filter((t) => t.status === "done");
+  const results = await Promise.all(done.map((t) => limit(() => one(`${rid}/${t.id}`))));
+  return Object.fromEntries(done.map((t, i) => [t.id, results[i]]));
 }
 
 export async function metricsInput(ctx: P3Context, scope: MetricScope, manual?: Awaited<ReturnType<typeof readManual>>): Promise<MetricsInput> {
@@ -52,12 +72,14 @@ export async function metricsInput(ctx: P3Context, scope: MetricScope, manual?: 
     .list()
     .filter((r) => r.status !== "rejected" && (scope.kind === "project" || r.milestone === scope.id))
     .sort((a, b) => a.id.localeCompare(b.id));
+  // レビューの読み取りの上限は、このレポートの全部の要望で1つ
+  const limit = limiter(REVIEW_READ_CONCURRENCY);
   return {
     requests: await Promise.all(
       requests.map(async (request) => {
         const col = ctx.ws.tasksOf(request.id);
         const tasks = col.list();
-        return { request, tasks, brokenTasks: [...col.errors.keys()].sort(), reviews: await reviewsOf(ctx, request.id, tasks) };
+        return { request, tasks, brokenTasks: [...col.errors.keys()].sort(), reviews: await reviewsOf(ctx, request.id, tasks, limit) };
       }),
     ),
     manual: { records: m.records.filter((r) => r.scope === scopeKey), ...(m.problem ? { problem: m.problem } : {}) },
