@@ -10,7 +10,9 @@ import { DOCKER_LIMITS, DockerAbortError, DockerCommandError, dockerExec } from 
  * - p3 がコンテナの中で動いている: 自分のコンテナを確かめ、そのマウント（bind）からホストのパスを求める（auto）
  *   - 自分のコンテナの ID は、このマシンの /proc/self/mountinfo（Docker が /etc/hostname などを置くマウント）から得て、
  *     同じ接続先（DOCKER_HOST・DOCKER_CONTEXT・選んでいる context。docker の CLI にそのまま任せる）の docker inspect で確かめる。
- *     ホスト名だけ・候補の先頭だけでは決めない
+ *     ホスト名だけ・候補の先頭だけでは決めない。見つけたコンテナの bind の Source と、このマシンの mountinfo のマウントの元が
+ *     合わなければ自分と扱わない（Compose の network_mode: service:X・--network container:X では /etc/hostname などが共有元 X の
+ *     ものになり、X を自分と取り違えて X のホストのパスを選んでしまうため。261120-ezdk4）
  *   - 対象の実体（シンボリックリンクを辿った先）を含む一番深いマウントが bind のときだけ、その Source に残りを足す。
  *     volume・tmpfs・コンテナの層（どのマウントにも当たらない）は、親の bind に逃げずに止める
  * - 個人設定の codex.pathMap（手で書いた対応）は今までどおり前から順の境界一致で、自動より先に使う。自動で求めたものと食い違えば
@@ -31,7 +33,7 @@ export type HostPathReason =
   | "self-ambiguous"
   /** 接続先のデーモンに自分のコンテナが無い（リモート・別のデーモン） */
   | "self-not-found"
-  /** docker inspect の結果が自分と合わない（ホスト名など） */
+  /** docker inspect の結果が自分と合わない（ホスト名・マウントの元。ネットワークを共有する構成で共有元を自分と取り違えたときなど） */
   | "self-mismatch"
   /** docker inspect が失敗した・時間切れ */
   | "inspect-failed"
@@ -264,7 +266,38 @@ async function identify(probe: HostPathProbe, signal?: AbortSignal): Promise<Sel
     return {
       env: { kind: "container-unknown", reason: "self-mismatch", detail: "docker inspect で見つけたコンテナのホスト名が、このマシンのホスト名と合いません" },
     };
+  if (mountsDisagree(c, parseMountinfo(mountinfo ?? ""), probe))
+    return {
+      env: {
+        kind: "container-unknown",
+        reason: "self-mismatch",
+        detail: `docker inspect で見つけたコンテナのマウントの元が、このマシンのマウントと合いません（${SHARED_HINT}）`,
+      },
+    };
   return { env: { kind: "container", containerId: c.Id }, container: c };
+}
+
+/** ネットワークを共有する構成の説明（止める理由に添える） */
+const SHARED_HINT = "Compose の network_mode: service:・--network container: でネットワークを共有するコンテナでは、共有元を自分と取り違えることがあります";
+
+/**
+ * 見つけたコンテナの bind が、このマシンのマウントと合わないか。mountinfo の root（マウントの元のファイルシステムの中のパス）は、
+ * bind の Source の末尾と一致するはず（ファイルシステムの丸ごとの bind は root が / なので比べない）。マウント先が mountinfo に
+ * 無いもの（/var/run → /run のようにリンクを辿っても見つからないもの）は比べない。ホストでシンボリックリンクを通して bind すると
+ * Source はリンクのまま・root は実体になり、合わないと判定する（自動では決めず、手で書いてもらう。取り違えて別のフォルダを
+ * マウントするより安全な側に倒す）
+ */
+function mountsDisagree(c: InspectedContainer, mounts: readonly MountEntry[], probe: HostPathProbe): boolean {
+  for (const m of c.Mounts ?? []) {
+    if (m.Type !== "bind" || !m.Destination || !m.Source?.startsWith("/")) continue;
+    const at = probe.realpath(trimSlash(m.Destination));
+    const mine = mounts.findLast((x) => x.mountPoint === at);
+    if (!mine || mine.root === "/") continue;
+    const root = trimSlash(mine.root);
+    const src = trimSlash(m.Source);
+    if (src !== root && !src.endsWith(root)) return true;
+  }
+  return false;
 }
 
 type Auto = { ok: true; host: string; destination: string } | { ok: false; reason: HostPathReason; detail: string };
@@ -276,6 +309,13 @@ function fromMounts(local: string, mounts: readonly MountEntry[], c: InspectedCo
   if (!m || m.mountPoint === "/")
     return { ok: false, reason: "container-layer", detail: "このフォルダはホストのフォルダ（bind マウント）の下にありません（コンテナの中だけにある）" };
   const mount = (c.Mounts ?? []).find((x) => x.Destination && trimSlash(x.Destination) === m.mountPoint);
+  // ファイルシステムの一部を付けたマウント（bind の形）なのに、自分のコンテナの Mounts に無い: 共有元を自分と取り違えている
+  if (!mount && m.root !== "/")
+    return {
+      ok: false,
+      reason: "self-mismatch",
+      detail: `このフォルダのマウントが、docker inspect で見つけたコンテナのマウントにありません（${SHARED_HINT}）`,
+    };
   if (!mount)
     return {
       ok: false,
