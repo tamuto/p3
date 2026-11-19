@@ -8,7 +8,7 @@
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）。manifest と実行時の import に workspace の
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      help / guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      help / observer status（tasks の登録の前）/ guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -150,6 +150,15 @@ try {
     return "使い方を表示";
   });
 
+  await step("p3 observer status（tasks の登録の前。個人設定・データを作らない）", () => {
+    const installed = JSON.parse(readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8"));
+    const s = p3json(["observer", "status"]);
+    check(s.product === "observer" && s.state === "ready" && s.version === installed.version, `observer の起動状態が違います: ${JSON.stringify(s)}`);
+    check(!existsSync(join(home, ".config", "infodb-p3")), "observer status が個人設定の場所を作りました");
+    check(!existsSync(join(repo, ".p3")), "observer status が tasks のデータのフォルダを作りました");
+    return `${s.product} ${s.version} ${s.state}`;
+  });
+
   await step("p3 guide（登録の前・配布物の原本と版）", () => {
     const installed = join(prefix, "node_modules", "@infodb", "p3");
     const g = p3json(["guide"]);
@@ -193,7 +202,9 @@ try {
     check(w.project === "sample", `プロジェクトが違います: ${JSON.stringify(w)}`);
     // init --agents で置いた入口は、配布物の入口と同じ（最新）と診断される
     check(w.agents?.ok === true, `置いた入口の診断が最新になっていません: ${JSON.stringify(w.agents)}`);
-    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}`;
+    // 併用: 同じ p3 から observer も呼べる（tasks を登録した後も、tasks のデータに触れない）
+    check(p3json(["observer", "status"]).state === "ready", "tasks を登録した後に observer status が動きません");
+    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}・observer ready`;
   });
 
   // 前の版が書いたのと同じ形式のファイル（CLI を通さずに置く）を、入れた版で読めること。版を上げてもデータを書き直さずに使い続けられる

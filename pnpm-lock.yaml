@@ -288,6 +288,9 @@ importers:
       '@infodb/p3-kit':
         specifier: workspace:*
         version: link:../kit
+      '@infodb/p3-observer':
+        specifier: workspace:*
+        version: link:../observer
       '@infodb/p3-tasks':
         specifier: workspace:*
         version: link:../tasks

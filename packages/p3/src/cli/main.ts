@@ -17,6 +17,7 @@ import { readsOnly } from "@infodb/p3-tasks/cli/readOnly.ts";
 import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
+import { observerCommand } from "@infodb/p3-observer/cli/observerCli.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -28,6 +29,9 @@ import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/pr
  *
  * 作業の単位は要望。タスクの操作は「今の要望」に対して行う。今の要望は --req、P3_REQUEST、
  * または要望の作業ツリー（ブランチ req/<要望ID>-...）から決まる。
+ *
+ * 製品ごとの呼び方: 名前空間の無いコマンド（p3 ls・p3 request ... など）は今までどおり tasks。observer は p3 observer <サブコマンド> で、
+ * tasks のプロジェクトの解決・個人設定を経ずに動かす（docs/architecture.md「p3-observer」）
  */
 
 /**
@@ -138,6 +142,13 @@ async function main(argv: string[]): Promise<number> {
         repoName: o["repo-name"],
       }),
     );
+    return 0;
+  }
+
+  // observer の名前空間。tasks のプロジェクトの解決・個人設定の読み込みより前に振り分ける（登録が無くても動き、tasks のデータ・登録を作らない）
+  if (cmd === "observer") {
+    const r = observerCommand(args);
+    out.result(r.data, () => r.text);
     return 0;
   }
 

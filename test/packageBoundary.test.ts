@@ -76,7 +76,7 @@ describe("パッケージの境界", () => {
   it("入口 → 製品（tasks・observer）→ kit の一方向だけ。逆向き・製品の間・相対パスでの迂回は無い", () => {
     const { uses, violations } = scan();
     expect(violations).toEqual([]);
-    expect(uses).toEqual(["observer→kit", "p3→kit", "p3→tasks", "tasks→kit"]);
+    expect(uses).toEqual(["observer→kit", "p3→kit", "p3→observer", "p3→tasks", "tasks→kit"]);
     // 製品どうしは読まない（連携が要るなら kit の小さな約束事を通す）
     expect(uses.filter((u) => u === "tasks→observer" || u === "observer→tasks")).toEqual([]);
   });
