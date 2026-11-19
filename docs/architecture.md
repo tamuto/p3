@@ -1226,7 +1226,9 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
   内訳だけ。レビューの無いタスクばかりなら `unrecorded`。読むのは `taskReviews.list`・`get` だけで、run を作らない。マイルストーンレビューの所見は今後の候補
 - **人が記録する値**（`kind: manual`。定義の `manual` に値の規則）: `features/metrics/core/manual.ts`。`<data>/metrics/manual.json`（`{version: 1, seq, records}`）に持ち、
   `metrics/.manual.lock` のロックの中で読み直してから置き換えで書く。識別は指標・範囲（`project` かマイルストーン ID）・期間・単位で、同じ内容は書かない。
-  値・出典・メモの訂正は記録の `rev` を照らす（渡さない・違えば `metrics_conflict`）。壊れたファイルは空とみなさず `metrics_unreadable`（読む側は欠損と `notices`）。
+  値・出典・メモの訂正は記録の `rev` を照らす（渡さない・違えば `metrics_conflict`）。訂正の `updatedBy` はその訂正の主体で、主体を記録できない
+  訂正では省く（前の更新者を残すと、その人が訂正したように読めるため）。`createdBy`・`createdAt` は作ったときのまま。同じ内容の再送と競合は
+  更新者・更新日時・版を変えない。壊れたファイルは空とみなさず `metrics_unreadable`（読む側は欠損と `notices`）。
   表示は範囲が一致する記録だけを期間・単位ごとの `rows` に出し、範囲の間・通貨・期間をまたいで合算しない（`value` は1行のときだけ）。書くのは CLI だけ。
   記録のあるマイルストーンは `checkMilestoneRemoval` で消さず、登録に無いマイルストーンへの記録は `manual_orphan`
 

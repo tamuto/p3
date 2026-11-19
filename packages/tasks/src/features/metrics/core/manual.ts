@@ -12,7 +12,8 @@ import { METRIC_DEFINITIONS, type ManualSpec } from "./definitions.ts";
  *   <data>/metrics/.manual.lock  書くときのロック（同じマシンのプロセスの間）
  *
  *   - 1件は 指標・範囲（project かマイルストーン ID）・観測期間（開始日・終了日）・単位 で決まる。同じ内容の再送は何も変えない。値・出典・メモを
- *     変える訂正は、読んだ版（rev）を渡したときだけ（渡さない・違えば競合で何も書かない）
+ *     変える訂正は、読んだ版（rev）を渡したときだけ（渡さない・違えば競合で何も書かない）。訂正の updatedBy はその訂正の主体で、主体が
+ *     分からない訂正では省く（前の更新者を残さない）。createdBy・createdAt は作ったときのまま
  *   - 値は0以上（不具合は整数）。費用は通貨コードごとで、通貨・期間の違う値を1つに合算しない。範囲の間（全体とマイルストーン）も合算しない
  *   - ロックの中で読み直してから書き、置き換えで書く（途中の状態を読ませない）。壊れたファイルは空とみなさず、読めないと知らせて書かない
  *   - 記録のあるマイルストーンは通常の削除で消さない（core/requestOps.ts の checkMilestoneRemoval）。直接編集で消えたら知らせる
@@ -165,7 +166,8 @@ export async function recordManual(ctx: P3Context, input: ManualInput, opts: { e
       throw new MetricsError(`${hit.id} に同じ指標・範囲・期間・単位の記録があります（値 ${hit.value} ${hit.unit}・版 ${hit.rev}）。訂正するなら --rev ${hit.rev} を付けてください`, "metrics_conflict");
     }
     if (opts.expectedRev !== hit.rev) throw new MetricsError(`${hit.id} は他で変わりました（読んだ版 ${opts.expectedRev}・今の版 ${hit.rev}）。p3 metrics で確かめてからやり直してください`, "metrics_conflict");
-    const { note: _n, ...rest } = hit;
+    // 更新者はこの訂正をした人だけ（主体が分からない訂正では前の人を残さず省く）。作った人・日時は残す
+    const { note: _n, updatedBy: _u, ...rest } = hit;
     const record: ManualRecord = { ...rest, value: v.value, source: v.source, ...(v.note ? { note: v.note } : {}), rev: hit.rev + 1, updatedAt: now, ...(opts.actor ? { updatedBy: opts.actor } : {}) };
     await writeManual(dataDir, { version: 1, seq: cur.seq, records: cur.records.map((r) => (r.id === hit.id ? record : r)) });
     return { record, changed: true, created: false };
