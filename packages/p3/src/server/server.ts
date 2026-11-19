@@ -33,7 +33,7 @@ export interface ServeOptions {
   /** マシンごとの設定（省くと環境変数と個人設定から、Preflight を始めるたびに読む） */
   settings?: MachineSettings | SettingsSource;
   /**
-   * この serve で使う製品（p3 serve --products。省くと tasks だけ）。tasks を含まなければ、プロジェクトを開かず（dataDir・allProjects を使わない）、
+   * この serve で使う製品（p3 serve --products。省くと全部の製品）。tasks を含まなければ、プロジェクトを開かず（dataDir・allProjects を使わない）、
    * tasks の API・監視・Preflight の回復を動かさない。選ばなかった製品の API は付けず、/api の下の 404 の JSON になる（画面の HTML に流さない）
    */
   products?: readonly Product[];
@@ -47,8 +47,11 @@ export interface RunningServer {
   close(opts?: { timeoutMs?: number }): Promise<{ pending: number }>;
 }
 
-/** 1つのプロジェクトの API（通常の serve）。/api の下 */
-export function singleProjectApp(ctx: P3Context, products: readonly Product[] = DEFAULT_PRODUCTS) {
+/**
+ * 1つのプロジェクトの API（通常の serve）。/api の下。products は /api/mode で返すこの serve の製品（observer の API は startServer が付ける。
+ * この部品だけを使うときは observer を付けないので tasks だけ）
+ */
+export function singleProjectApp(ctx: P3Context, products: readonly Product[] = ["tasks"]) {
   const app = new Hono();
   app.get("/mode", (c) => c.json({ mode: "single", project: ctx.projectName ?? null, products }));
   app.route("/", apiRoutes(ctx));

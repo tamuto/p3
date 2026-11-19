@@ -9,7 +9,7 @@
 //      同じ ID の分離・添付・Docker のソケットが無いときのエンジンの状態（Preflight を使えない理由）・Mock の Preflight を
 //      2つ同時に動かして片方を取り消す・データのフォルダの欠落と復旧・再起動のあとも残る・SIGTERM（docker stop）で止まる
 //   4. コマンドを明示すると通常の serve（1つのプロジェクト）になる
-//   5. 製品の選び方（--products）: observer だけ（プロジェクトを開かず、tasks の API は 404）と、プロジェクトを跨ぐ serve で両方
+//   5. 製品の選び方: 既定は両方（tasks と observer）。--products で指定した製品だけ（tasks だけ・observer だけ）
 //
 // コンテナは root で動かし（イメージの既定）、--work をコンテナの中の同じパスにマウントする。
 // DevContainer の中では、--work に Docker のホストから見えるフォルダを渡し、環境変数 P3_CODEX_PATH_MAP（このマシンのパス=ホストのパス）
@@ -167,8 +167,8 @@ try {
     run(`${tag}-all`);
     const mode = await waitReady();
     check(mode.mode === "all-projects", `モードが違います: ${JSON.stringify(mode)}`);
-    check(mode.products?.join() === "tasks", `既定の製品が tasks だけではありません: ${JSON.stringify(mode)}`);
-    check((await api("GET", "/observer/status")).status === 404, "既定の起動で observer の API が動いています");
+    check(mode.products?.join() === "tasks,observer", `既定の製品が両方ではありません: ${JSON.stringify(mode)}`);
+    check((await api("GET", "/observer/status")).body?.state === "ready", "既定の起動で observer の API が動きません");
     const l = (await api("GET", "/projects")).body;
     check(l.projects.map((p) => p.name).join(",") === "alpha,beta", `一覧が違います: ${JSON.stringify(l)}`);
     return l.projects.map((p) => `${p.name}(${p.state})`).join(", ");
@@ -268,12 +268,13 @@ try {
     return `${took}ms・終了コード 0・止めた run は ${run.status}${run.error ? `（${run.error}）` : ""}`;
   });
 
-  await step("コマンドを明示すると、通常の serve（1つのプロジェクト）になる", async () => {
+  await step("コマンドを明示すると、通常の serve（1つのプロジェクト）になる。--products tasks なら observer の API は 404", async () => {
     port = await freePort();
-    run(`${tag}-single`, [], ["serve", "--dir", dataOf("alpha"), "--host", "0.0.0.0"]);
+    run(`${tag}-single`, [], ["serve", "--dir", dataOf("alpha"), "--products", "tasks", "--host", "0.0.0.0"]);
     const mode = await waitReady();
-    check(mode.mode === "single", `モードが違います: ${JSON.stringify(mode)}`);
+    check(mode.mode === "single" && mode.products?.join() === "tasks", `モードが違います: ${JSON.stringify(mode)}`);
     check((await api("GET", "/requests")).status === 200, "通常の API が使えません");
+    check((await api("GET", "/observer/status")).status === 404, "--products tasks で observer の API が動いています");
     return JSON.stringify(mode);
   });
 
@@ -287,17 +288,6 @@ try {
     const r = await api("GET", "/requests");
     check(r.status === 404 && r.body?.code === "product_disabled", `tasks の API が 404 になっていません: ${JSON.stringify(r)}`);
     return `${JSON.stringify(mode)}・${s.body.version}`;
-  });
-
-  await step("--all-projects --products tasks,observer: 2つのプロジェクトと observer の API が並ぶ", async () => {
-    port = await freePort();
-    run(`${tag}-both`, [], ["serve", "--all-projects", "--products", "tasks,observer", "--host", "0.0.0.0"]);
-    const mode = await waitReady();
-    check(mode.mode === "all-projects" && mode.products?.join() === "tasks,observer", `モードが違います: ${JSON.stringify(mode)}`);
-    const l = (await api("GET", "/projects")).body;
-    check(l.projects.map((p) => p.name).join(",") === "alpha,beta", `一覧が違います: ${JSON.stringify(l)}`);
-    check((await api("GET", "/observer/status")).body?.products?.join() === "tasks,observer", "observer の API が動きません");
-    return JSON.stringify(mode);
   });
 } catch {
   // 失敗は step が記録した

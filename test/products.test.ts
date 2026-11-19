@@ -10,7 +10,7 @@ import { p3 } from "./cliHelpers.ts";
 
 /**
  * serve の製品の選び方（p3 serve --products。docs/architecture.md「p3-observer」）の API。
- * 3つの起動の構成（tasks だけ・observer だけ・両方）と、プロジェクトを跨ぐ serve との組み合わせを区別できること。
+ * 既定（--products を省く）は両方。--products で指定したときは指定した製品だけ（tasks だけ・observer だけ）。プロジェクトを跨ぐ serve との組み合わせも区別できること。
  * 画面（導線・直リンク・ブラウザが要求するもの）は test/ui/products.ui.test.ts、配布物は scripts/verify-pack.mjs・verify-docker.mjs
  */
 const servers: RunningServer[] = [];
@@ -48,9 +48,10 @@ async function project() {
 }
 
 describe("--products の解釈", () => {
-  it("省くと tasks だけ。並びは製品の順にそろえ、重複はまとめる。知らない名前・空は理由を返す", () => {
+  it("省くと両方。並びは製品の順にそろえ、重複はまとめる。知らない名前・空は理由を返す", () => {
     expect(parseProducts(undefined)).toEqual({ products: [...DEFAULT_PRODUCTS] });
-    expect(DEFAULT_PRODUCTS).toEqual(["tasks"]);
+    expect(DEFAULT_PRODUCTS).toEqual(["tasks", "observer"]);
+    expect(parseProducts("tasks")).toEqual({ products: ["tasks"] });
     expect(parseProducts("observer,tasks,observer")).toEqual({ products: ["tasks", "observer"] });
     expect(parseProducts(" observer ")).toEqual({ products: ["observer"] });
     expect(parseProducts("")).toMatchObject({ error: expect.stringContaining("製品を指定") });
@@ -73,9 +74,17 @@ describe("--products の解釈", () => {
 });
 
 describe("serve の3つの起動の構成", () => {
-  it("tasks だけ（既定）: 今までの API が動き、/api/mode の products は tasks だけ。observer の API は 404 の JSON（画面に流さない）", async () => {
+  it("既定（--products を省く）: tasks と observer の両方の API が動く", async () => {
     const { dataDir } = await project();
     const s = await serve({ dataDir, projectName: "app" });
+    expect((await s.get("/mode")).body).toEqual({ mode: "single", project: "app", products: ["tasks", "observer"] });
+    expect((await s.get("/requests")).status).toBe(200);
+    expect((await s.get("/observer/status")).body).toMatchObject({ product: "observer", products: ["tasks", "observer"] });
+  });
+
+  it("--products tasks: tasks の API だけが動き、/api/mode の products は tasks だけ。observer の API は 404 の JSON（画面に流さない）", async () => {
+    const { dataDir } = await project();
+    const s = await serve({ dataDir, projectName: "app", products: ["tasks"] });
     expect((await s.get("/mode")).body).toEqual({ mode: "single", project: "app", products: ["tasks"] });
     expect((await s.get("/requests")).status).toBe(200);
     const obs = await s.get("/observer/status");
@@ -100,7 +109,7 @@ describe("serve の3つの起動の構成", () => {
     }
   });
 
-  it("両方: 同じ serve で tasks の API と observer の API が動く", async () => {
+  it("--products tasks,observer（両方を明示）: 既定と同じく両方の API が動く", async () => {
     const { dataDir } = await project();
     const s = await serve({ dataDir, projectName: "app", products: ["tasks", "observer"] });
     expect((await s.get("/mode")).body).toEqual({ mode: "single", project: "app", products: ["tasks", "observer"] });
@@ -109,7 +118,7 @@ describe("serve の3つの起動の構成", () => {
     expect((await s.get("/observer/nothing")).status).toBe(404);
   });
 
-  it("プロジェクトを跨ぐ serve と両方: 一覧・プロジェクトの API と observer の API が並ぶ。observer を選ばなければ observer は 404", async () => {
+  it("プロジェクトを跨ぐ serve: 既定で一覧・プロジェクトの API と observer の API が並ぶ。--products tasks なら observer は 404", async () => {
     const { dataDir } = await project();
     const root = tempDir("p3-products-all-");
     const prev = process.env.XDG_CONFIG_HOME;
@@ -118,12 +127,12 @@ describe("serve の3つの起動の構成", () => {
     await writeFile(join(root, "cfg", "infodb-p3", "config.yaml"), `projects:\n  alpha:\n    dir: ${dataDir}\n`);
     try {
       const settings = resolveMachineSettings({ settings: {} }, {});
-      const both = await serve({ allProjects: true, settings, products: ["tasks", "observer"] });
+      const both = await serve({ allProjects: true, settings });
       expect((await both.get("/mode")).body).toEqual({ mode: "all-projects", products: ["tasks", "observer"] });
       expect((await both.get("/projects")).body).toMatchObject({ projects: [expect.objectContaining({ name: "alpha" })] });
       expect((await both.get("/projects/alpha/requests")).status).toBe(200);
       expect((await both.get("/observer/status")).status).toBe(200);
-      const tasksOnly = await serve({ allProjects: true, settings });
+      const tasksOnly = await serve({ allProjects: true, settings, products: ["tasks"] });
       expect((await tasksOnly.get("/mode")).body).toEqual({ mode: "all-projects", products: ["tasks"] });
       expect((await tasksOnly.get("/observer/status")).status).toBe(404);
     } finally {

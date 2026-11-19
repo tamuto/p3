@@ -9,7 +9,7 @@
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
 //      help / observer status と serve --products observer（tasks の登録の前）/ guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts /
-//      serve（HTML・資産・API。tasks だけと、--products tasks,observer の両方）
+//      serve（HTML・資産・API。既定の両方と、--products tasks の tasks だけ）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -275,9 +275,10 @@ try {
       const requests = JSON.parse(await fetchText(`${base}/api/requests`));
       check(JSON.stringify(requests).includes(rid), "API に要望がありません");
       check(JSON.stringify(requests).includes(legacyId), "API に既存形式の要望がありません");
-      // 既定は tasks だけ。observer の API は付けない（404 の JSON）
-      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks", "既定の serve の products が tasks だけではありません");
-      check((await fetch(`${base}/api/observer/status`)).status === 404, "既定の serve で observer の API が動いています");
+      // 既定は両方。同じ serve で observer の API とページも動く
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks,observer", "既定の serve の products が両方ではありません");
+      check(JSON.parse(await fetchText(`${base}/api/observer/status`)).products?.join() === "tasks,observer", "既定の serve で observer の API が動きません");
+      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
       return `${base}  ${asset}`;
     } catch (e) {
       throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
@@ -286,12 +287,12 @@ try {
     }
   });
 
-  await step("p3 serve --products tasks,observer（同じ serve で両方の API とページ）", () =>
-    withServe(["--products", "tasks,observer"], async (base) => {
-      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks,observer", "/api/mode の products が両方になっていません");
-      check(JSON.stringify(JSON.parse(await fetchText(`${base}/api/requests`))).includes(rid), "両方の serve で tasks の API に要望がありません");
-      check(JSON.parse(await fetchText(`${base}/api/observer/status`)).products?.join() === "tasks,observer", "両方の serve で observer の API が動きません");
-      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
+  await step("p3 serve --products tasks（tasks だけ。observer の API は 404）", () =>
+    withServe(["--products", "tasks"], async (base) => {
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks", "/api/mode の products が tasks だけになっていません");
+      check(JSON.stringify(JSON.parse(await fetchText(`${base}/api/requests`))).includes(rid), "tasks だけの serve で tasks の API に要望がありません");
+      const obs = await fetch(`${base}/api/observer/status`);
+      check(obs.status === 404 && /json/.test(obs.headers.get("content-type") ?? ""), `tasks だけの serve で observer の API が 404 の JSON ではありません: ${obs.status}`);
       return base;
     }),
   );

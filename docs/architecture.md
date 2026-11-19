@@ -948,13 +948,13 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今回の準備では連携しない）。保存を足すときは、入れ物（`.p3/observer/`）の
 形と移行を先に決める。
 
-**起動の構成**（製品は入口のビルドのときに組み込んだもの。起動のときに、そのうちのどれを使うかを選ぶ）
+**起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は既定で全部を起動し、`--products` で指定したときは指定した製品だけを起動する）
 
 | 構成 | CLI | serve |
 | --- | --- | --- |
-| tasks だけ（既定） | 今までどおり（`p3 <コマンド>`） | `p3 serve`・`p3 serve --all-projects`（今までどおり） |
+| 両方（既定） | 同じ `p3` から両方のコマンドを呼ぶ | `p3 serve`・`p3 serve --all-projects` |
+| tasks だけ | 名前空間の無いコマンド（`p3 <コマンド>`） | `p3 serve --products tasks`（`--all-projects` も一緒に使える） |
 | observer だけ | `p3 observer status`（プロジェクトの登録が無くても動く） | `p3 serve --products observer` |
-| 両方 | 同じ `p3` から両方のコマンドを呼ぶ | `p3 serve --products tasks,observer`（`--all-projects` も一緒に使える） |
 
 **CLI の振り分け**: 入口の `cli/main.ts` が、名前空間 `observer` を tasks のプロジェクトの解決・個人設定の読み込みより前に observer の
 `cli/observerCli.ts` へ渡す。名前空間の無いコマンドは今までどおり tasks（`runTasksCommand`）で、呼び方・出力・終了コードは変えない。
@@ -962,16 +962,16 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 
 **serve と画面の製品の選び方**
 
-- 入口の `shared/products.ts` が組み込んだ製品と `--products` の解釈を持ち（省くと tasks だけ）、serve（`server/server.ts`）と画面（`web/Boot.tsx`）が
+- 入口の `shared/products.ts` が組み込んだ製品と `--products` の解釈を持ち（省くと全部の製品。指定したときは指定した製品だけ）、serve（`server/server.ts`）と画面（`web/Boot.tsx`）が
   同じ選択を使う。serve は選択を `/api/mode` の `products` で返し、画面は開いたときに一度だけ読む（`web/shell.ts`）
-- API: observer を選んだときだけ `/api/observer`（observer の `server/api/routes.ts`）を付ける。tasks を選ばない serve はプロジェクトを開かず、
+- API: observer を起動したときだけ `/api/observer`（observer の `server/api/routes.ts`）を付ける。tasks を選ばない serve はプロジェクトを開かず、
   tasks の API・監視・Preflight の回復を動かさない（`/api/mode` の `mode` は `none`）。選んでいない製品の API は、どの構成でも `/api` の下の
   404 の JSON になる（画面の HTML を成功として返さない。tasks を選ばないときは `code: product_disabled`）
 - 画面: `/observer`（observer の `web/routes/observer.tsx`）はプロジェクトに属さない URL で、tasks の URL（`/`・`/requests/...`・
   `/projects/<名前>/...`）と重ならない。Boot は `/observer` では tasks のプロジェクトを決めず、`AppDataProvider`（tasks のプロジェクト情報・設定・
-  イベント）を作らない。observer を選んでいなければ「この起動では使えません」と出し、observer の API を読まない。observer だけの serve では
+  イベント）を作らない。observer を起動していなければ（`--products tasks`）「この起動では使えません」と出し、observer の API を読まない。observer だけの serve では
   ほかの URL を `/observer` へ移す
-- ナビゲーション: observer を選んだ serve では tasks の画面に「観測基盤」を出し、observer の画面からは tasks の各ページ（プロジェクトを跨ぐ
+- ナビゲーション: 両方を起動した serve では tasks の画面に「観測基盤」を出し、observer の画面からは tasks の各ページ（プロジェクトを跨ぐ
   serve ではプロジェクトの選択 `/`）へ戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
 - 共通の資材と公開の範囲: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含み、どの構成でも同じ静的な資材を配る
   （選ばなかった製品のページのコードもブラウザから取れるが、そのページは API を読まずに無効と出す）。製品の選択で変わるのは API と画面の振る舞い。
@@ -979,7 +979,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 
 **できること・できないこと（モジュラー化の範囲）**
 
-- できる: ビルドのときに入口へ組み込んだ製品（tasks・observer）を、起動のときに選ぶ（CLI は名前空間、serve は `--products`）。選ばなかった製品の
+- できる: ビルドのときに入口へ組み込んだ製品（tasks・observer）を、全部まとめて起動する（serve の既定）か、起動のときに選ぶ（CLI は名前空間、serve は `--products`）。選ばなかった製品の
   処理（tasks のプロジェクトの解決・初期化・監視、observer の API）は動かさない
 - できない: 配布した後に製品を足す・外す（別の npm パッケージを入れると現れる、など）。そうするには、入口が製品を見つけて読み込む登録の仕組み
   （製品の一覧の置き場所・読み込みの約束・版の互換の確かめ方）と、画面のルート一覧を実行時に組み立てる仕組みが別に要る（今は作らない。

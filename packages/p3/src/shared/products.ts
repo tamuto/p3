@@ -1,11 +1,11 @@
 /**
  * 入口が組み込んでいる製品（ビルドのときに決まる。探して読み込む仕組みは作らない）と、起動のときの選び方。
- * serve は --products で選ぶ（省くと tasks だけ。今までどおり）。画面は /api/mode の products で同じ選択を読む
+ * serve は既定で全部の製品（tasks・observer）を起動し、--products で指定したときは指定した製品だけを起動する。画面は /api/mode の products で同じ選択を読む
  */
 export const PRODUCTS = ["tasks", "observer"] as const;
 export type Product = (typeof PRODUCTS)[number];
-/** 選ばなかったときの製品（今までの p3 serve と同じ） */
-export const DEFAULT_PRODUCTS: readonly Product[] = ["tasks"];
+/** --products を省いたときの製品（全部） */
+export const DEFAULT_PRODUCTS: readonly Product[] = PRODUCTS;
 
 export const isProduct = (v: string): v is Product => (PRODUCTS as readonly string[]).includes(v);
 

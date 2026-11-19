@@ -77,7 +77,7 @@ async function main(argv: string[]): Promise<number> {
 
   // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
   if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
-  // --products は serve だけ。省くと tasks だけ（今までどおり）
+  // --products は serve だけ。省くと全部の製品（tasks・observer）を起動し、指定したときは指定した製品だけ
   if (o.products !== undefined && cmd !== "serve") throw new UsageError("--products は p3 serve でだけ使えます（例: p3 serve --products tasks,observer）");
   const chosen = parseProducts(o.products);
   if ("error" in chosen) throw new UsageError(chosen.error);

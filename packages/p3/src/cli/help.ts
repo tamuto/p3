@@ -74,8 +74,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   whoami                       操作するプロジェクト・変更者・今の要望
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
                                --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）
-                               --products tasks|observer|tasks,observer  使う製品（既定 tasks。observer だけならプロジェクトを決めず /observer を開く。
-                                 両方なら画面のナビゲーションで行き来する。--all-projects と一緒に使うときは tasks を含める）
+                               --products tasks|observer|tasks,observer  起動する製品（省くと両方。画面のナビゲーションで行き来する）。
+                                 指定した製品だけを起動する。observer だけならプロジェクトを決めず /observer を開く。--all-projects と一緒なら tasks を含める
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）

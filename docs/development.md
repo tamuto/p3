@@ -328,8 +328,8 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs
 スモークで確かめること: 起動の約束（ENTRYPOINT・既定の CMD・入れた道具）・2つのプロジェクトの一覧・登録世代つきの作成と手元の
 ファイル・同じ ID の分離・添付・ソケットが無いときのエンジンの状態・Mock の Preflight の同時実行と片方の取消・再起動のあとに残る
 こと・データのフォルダの欠落と復旧・`docker stop`（SIGTERM）で実行中の Preflight を取り消して止まること・コマンドの明示で通常の
-serve になること・製品の選び方（既定は tasks だけで observer の API は 404、`--products observer` はプロジェクトを開かずに observer の API だけ、
-`--all-projects --products tasks,observer` は両方）。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
+serve になること・製品の選び方（既定は両方で observer の API も動く、`--products tasks` は observer の API が 404、`--products observer` はプロジェクトを開かずに
+observer の API だけ）。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
 確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
 
 マウントするパスの自動の決め方（`packages/tasks/src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で

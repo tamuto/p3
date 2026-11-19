@@ -1,4 +1,4 @@
-// serve の製品の選び方（p3 serve --products）の画面: tasks だけ・observer だけ・両方（通常の serve とプロジェクトを跨ぐ serve）。
+// serve の製品の選び方の画面: 既定の両方（通常の serve とプロジェクトを跨ぐ serve）と、--products で指定した tasks だけ・observer だけ。
 // ナビゲーションの導線、observer のページの直リンクと再読み込み、選んでいない製品のページ、observer の画面が tasks の API を要求しないこと。
 import { afterEach, describe, expect, inject, it } from "vitest";
 import type { Page } from "playwright-core";
@@ -26,8 +26,8 @@ describe.skipIf(!inject("chromium").available)("serve の製品の選び方", ()
     s = undefined;
   });
 
-  it("tasks だけ（既定）: 今までの画面で observer の導線が無く、/observer を直接開いても無効と出て observer の API を読まない", async () => {
-    s = await openScenario("tasks だけ");
+  it("--products tasks: observer の導線が無く、/observer を直接開いても無効と出て observer の API を読まない", async () => {
+    s = await openScenario("tasks だけ", { serveArgs: ["--products", "tasks"] });
     const { page, step } = s;
     await step("進捗が開き、ナビゲーションに観測基盤が無い", async () => {
       await page.goto("/");
@@ -64,8 +64,8 @@ describe.skipIf(!inject("chromium").available)("serve の製品の選び方", ()
     });
   });
 
-  it("両方（通常の serve）: ナビゲーションで行き来でき、/observer を直リンクで開いて再読み込みしても起動確認のページが出る", async () => {
-    s = await openScenario("両方", { serveArgs: ["--products", "tasks,observer"] });
+  it("既定の両方（通常の serve）: ナビゲーションで行き来でき、/observer を直リンクで開いて再読み込みしても起動確認のページが出る", async () => {
+    s = await openScenario("両方");
     const { page, step } = s;
     await step("tasks の進捗から観測基盤へ移る", async () => {
       await page.goto("/");
@@ -94,8 +94,8 @@ describe.skipIf(!inject("chromium").available)("serve の製品の選び方", ()
     });
   });
 
-  it("両方（プロジェクトを跨ぐ serve）: プロジェクトの画面から観測基盤へ移り、戻る導線で今までのプロジェクトの選択が使える", async () => {
-    s = await openScenario("両方・プロジェクトを跨ぐ", { serveArgs: ["--all-projects", "--products", "tasks,observer"] });
+  it("既定の両方（プロジェクトを跨ぐ serve）: プロジェクトの画面から観測基盤へ移り、戻る導線で今までのプロジェクトの選択が使える", async () => {
+    s = await openScenario("両方・プロジェクトを跨ぐ", { serveArgs: ["--all-projects"] });
     const { page, step } = s;
     await step("プロジェクトを開き（登録が1つなら一覧を飛ばす）、観測基盤へ移る", async () => {
       await page.goto("/");

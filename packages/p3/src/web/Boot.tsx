@@ -3,7 +3,7 @@ import { App } from "./App.tsx";
 import { ProjectChooser, type ProjectListing } from "./components/ProjectChooser.tsx";
 import { fixScope, listRequested, projectFromPath, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { isObserverPath, OBSERVER_PAGE } from "@infodb/p3-observer/shared/status.ts";
-import { DEFAULT_PRODUCTS, isProduct, type Product } from "../shared/products.ts";
+import { isProduct, type Product } from "../shared/products.ts";
 import { fixShell } from "./shell.ts";
 
 type BootState =
@@ -32,10 +32,9 @@ async function getJson<T>(url: string): Promise<T> {
  *   そのプロジェクトへ移る。ほかは一覧（選ぶだけ）。登録に無い・開けないときは一覧に理由を出す
  */
 async function boot(): Promise<BootState> {
-  const info = await getJson<{ mode: string; products?: string[] }>("/api/mode");
+  const info = await getJson<{ mode: string; products: string[] }>("/api/mode");
   const mode = info.mode === "all-projects" ? "all-projects" : info.mode === "none" ? "none" : "single";
-  // products の無い古い serve は tasks だけ
-  const products = info.products ? info.products.filter(isProduct) : [...DEFAULT_PRODUCTS];
+  const products = info.products.filter(isProduct);
   if (isObserverPath(location.pathname)) {
     if (!products.includes("observer")) return { kind: "disabled", product: "observer", products };
     fixShell({ products, tasks: false, mode });
@@ -108,9 +107,10 @@ function DisabledProduct({ product, products }: { product: Product; products: re
     <div className="mx-auto max-w-xl space-y-3 p-10">
       <h1 className="text-xl font-bold">{PRODUCT_LABEL[product]}はこの起動では使えません</h1>
       <p role="alert">
-        この p3 serve で使える製品は {products.map((p) => PRODUCT_LABEL[p]).join("・")} です。使うには、
+        この p3 serve で使える製品は {products.map((p) => PRODUCT_LABEL[p]).join("・")} です（--products で選んで起動しています）。使うには、
+        --products を外すか、
         <code className="mx-1 rounded bg-slate-100 px-1 dark:bg-slate-800">--products {[...products, product].join(",")}</code>
-        を付けて起動し直してください。
+        で起動し直してください。
       </p>
       <a href="/" className="underline">
         トップへ戻る
