@@ -1,9 +1,8 @@
+import { apiError } from "../../core/errorOutcome.ts";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { P3Context } from "../../core/context.ts";
-import { ReviewCancelRefused, ReviewStoreError } from "../../core/reviewRuns.ts";
 import { NotFoundError } from "../../core/store/collection.ts";
-import { TaskReviewRejected } from "../../core/taskReview/material.ts";
 import { previewOf } from "../../shared/taskReview.ts";
 
 /**
@@ -33,18 +32,12 @@ export function taskReviewRoutes(ctx: P3Context) {
   const app = new Hono();
   const svc = () => ctx.taskReview;
 
+  // エラーの状態と code は core/errorOutcome.ts の表。この API では見つからないにも code を付ける
   app.onError((err, c) => {
     if (err instanceof NotFoundError) return c.json({ error: err.message, code: "not_found" }, 404);
-    if (err instanceof ReviewStoreError) {
-      const status = err.code === "not_found" ? 404 : err.code === "bad_id" ? 400 : err.code === "broken" ? 422 : 409;
-      return c.json({ error: err.message, code: err.code }, status);
-    }
-    if (err instanceof TaskReviewRejected) {
-      const status = err.code === "running" || err.code === "material_changed" ? 409 : 400;
-      return c.json({ error: err.message, code: err.code, ...(err.running ? { run: err.running } : {}) }, status);
-    }
-    if (err instanceof ReviewCancelRefused) return c.json({ error: err.message, code: err.code }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
+    const r = apiError(err);
+    if (r) return c.json(r.body, r.status);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });

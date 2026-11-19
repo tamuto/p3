@@ -831,6 +831,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | Preflight の分割（子の案の検証・子の本文・案の版・採用） | `core/preflight/split.ts`・`core/preflight/service.ts` の `adopt` |
 | 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
+| エラーから CLI の終了コード・標準エラーと API の状態・code への対応 | `core/errorOutcome.ts` の `errorOutcome`（CLI は `cliExit`、API の各アプリは `apiError` で写す。契約は `test/errorContract.test.ts`） |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
 | リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |

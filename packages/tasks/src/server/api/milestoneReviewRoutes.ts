@@ -1,9 +1,9 @@
+import { apiError } from "../../core/errorOutcome.ts";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { P3Context } from "../../core/context.ts";
 import { extractReviewInput } from "../../core/milestoneReview/material.ts";
-import { ReviewCancelRefused, ReviewRejected } from "../../core/milestoneReview/service.ts";
-import { checkReviewMilestoneId, ReviewStoreError } from "../../core/milestoneReview/store.ts";
+import { checkReviewMilestoneId } from "../../core/milestoneReview/store.ts";
 
 /**
  * マイルストーンレビュー（画面のため）。規則と保存は core/milestoneReview（CLI の p3 milestone review と同じ）。
@@ -23,17 +23,11 @@ export function milestoneReviewRoutes(ctx: P3Context) {
   const app = new Hono();
   const svc = () => ctx.milestoneReview;
 
+  // エラーの状態と code は core/errorOutcome.ts の表
   app.onError((err, c) => {
-    if (err instanceof ReviewStoreError) {
-      const status = err.code === "not_found" ? 404 : err.code === "bad_id" ? 400 : err.code === "broken" ? 422 : 409;
-      return c.json({ error: err.message, code: err.code }, status);
-    }
-    if (err instanceof ReviewRejected) {
-      const status = err.code === "running" || err.code === "material_changed" ? 409 : err.code === "unknown_milestone" ? 404 : 400;
-      return c.json({ error: err.message, code: err.code, ...(err.running ? { run: err.running } : {}) }, status);
-    }
-    if (err instanceof ReviewCancelRefused) return c.json({ error: err.message, code: err.code }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
+    const r = apiError(err);
+    if (r) return c.json(r.body, r.status);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });

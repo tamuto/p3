@@ -181,6 +181,15 @@
 - **まとめる候補**: エラーが自分の分類（と code）を持ち、CLI・API はそれを写すだけにする
 - **差（残す）**: API が応答に添えるもの（競合の今の値 `current`・`plan`・`existing`・`inputMatch`）、`ConflictError` の今の値の取り方、標準エラーの前置き
   （`競合: `・`設定: `・`見つかりません: `・`エラー: ` の有無）
+- **まとめたもの（T006）**: `core/errorOutcome.ts` の 1 つの表（`errorOutcome`）に、エラーごとの CLI の終了コードと標準エラーの文、API の状態と
+  code・添える項目を並べ、CLI の `reportError`（`cliExit`）と API の 4 つのアプリの `onError`（`apiError`）はそれを写すだけにした。CLI と API で値が
+  違うもの（例: 親子の規則は CLI 1・API 409、振り返りの記録が読めないのは CLI 1・API 409、リリースノートが読めないのは CLI 1・API 422）は、表の同じ行に
+  両方を書いて違いが見えるようにした
+- **各入口に残したもの**: 入力の解釈（CLI の引数と `cli/args.ts`、API の zod と `invalid input`）、テキストの表示、版の競合で今の値を読む処理（要望・タスクは
+  `routes.ts`、リリースノートは `releaseNoteRoutes.ts`。その場で読む必要がある）、タスクの AI レビューの API だけが見つからないにも code を付けること、
+  CLI のリリースノートの一括完了の断り（`releaseNotesCommands.ts` が計画を出す）、画面の失敗の表示と読み直し（`web/lib/api.ts` の `failureOf`）
+- **振る舞いの差**: 表に載ったエラーは、どの API のアプリで起きても同じ状態になる（以前はそのアプリが扱わないエラーは 400 だった。各アプリの範囲の
+  エラーの応答は同じ）
 
 ### 5. 完了の時点と今の記録の参照
 

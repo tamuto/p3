@@ -1,10 +1,10 @@
+import { apiError } from "../../core/errorOutcome.ts";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { P3Context } from "../../core/context.ts";
-import { GenerationRejected } from "../../core/releaseNotes/generate.ts";
 import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote, startGeneration } from "../../core/releaseNotes/service.ts";
 import { ReleaseNoteError } from "../../core/releaseNotes/store.ts";
-import { completeMilestoneRequests, CompletionRejected } from "../../core/releaseNotes/completeRequests.ts";
+import { completeMilestoneRequests } from "../../core/releaseNotes/completeRequests.ts";
 
 /**
  * リリースノート（画面のため）。規則と保存は core/releaseNotes（CLI の p3 release-notes と同じ）。
@@ -35,19 +35,14 @@ const actorOf = (c: Context) => c.req.header("x-p3-actor") ?? "human:web";
 export function releaseNoteRoutes(ctx: P3Context) {
   const app = new Hono();
 
+  // エラーの状態と code は core/errorOutcome.ts の表。版の競合・既にあるときは今のノート（読めれば）を添える（画面は入力を残したまま見比べる）
   app.onError(async (err, c) => {
-    if (err instanceof ReleaseNoteError) {
-      const mid = err.milestone;
-      if (err.code === "not_found") return c.json({ error: err.message, code: "not_found" }, 404);
-      if (err.code === "bad_id") return c.json({ error: err.message, code: "bad_id" }, 400);
-      if (err.code === "invalid") return c.json({ error: err.message, code: "invalid" }, 422);
-      // 版の競合・既にある: 今のノート（読めれば）を添える。画面は入力を残したまま見比べる
-      const current = await ctx.ws.releaseNotes.read(mid).catch(() => null);
-      return c.json({ error: err.message, code: "rev_conflict", reason: err.code, current }, 409);
-    }
-    if (err instanceof CompletionRejected) return c.json({ error: err.message, code: err.code, plan: err.plan }, 409);
-    if (err instanceof GenerationRejected) return c.json({ error: err.message, code: err.code }, err.code === "running" ? 409 : 400);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
+    const r = apiError(err);
+    if (r) {
+      if (err instanceof ReleaseNoteError && (err.code === "conflict" || err.code === "exists")) r.body.current = await ctx.ws.releaseNotes.read(err.milestone).catch(() => null);
+      return c.json(r.body, r.status);
+    }
     console.error(err);
     return c.json({ error: err.message }, 400);
   });
