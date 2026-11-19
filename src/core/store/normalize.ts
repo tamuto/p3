@@ -74,7 +74,7 @@ export const taskKeepRaw = (t: Task): readonly string[] => [
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "reworkHistory", "completionRecords",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceSourceSeq", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "reworkHistory", "completionRecords",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {

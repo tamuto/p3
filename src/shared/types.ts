@@ -113,6 +113,8 @@ export interface Task {
   acceptanceSeq?: number;
   /** 基準ごとの要求の根拠（出典・確かめた人・日・根拠。criterionId で対応。実装後の証拠とは別。shared/requirementSource.ts） */
   acceptanceSources?: CriterionSource[];
+  /** 基準ごとの要求の根拠に振った最後の番号（S1, S2…。基準をまたいでタスクで1つ。消した ID を使い直さない。p3 が書く） */
+  acceptanceSourceSeq?: number;
   /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
   acceptanceProblems?: string[];
   /** 止まっている理由（作業中のタスクの属性。状態ではない）。規則は shared/taskBlock.ts */
@@ -330,6 +332,8 @@ export interface ProposedTask {
   acceptanceProblems?: string[];
   /** 基準ごとの要求の根拠（タスク化するとタスクに写す。shared/requirementSource.ts） */
   acceptanceSources?: CriterionSource[];
+  /** 根拠に振った最後の番号（消した ID を使い直さない。タスク化するとタスクに引き継ぐ。p3 が書く） */
+  acceptanceSourceSeq?: number;
 }
 
 export interface PreflightAssessment {
