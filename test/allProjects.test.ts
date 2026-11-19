@@ -212,7 +212,7 @@ describe("ProjectRegistry: 個人設定の一覧", () => {
 describe("プロジェクトを跨ぐ API", () => {
   it("一覧・モード。プロジェクトを書かないデータの API は断り、変える操作は登録世代が要る", async () => {
     const { call, at, gen } = await setup(["alpha", "beta"]);
-    expect((await call("GET", "/mode")).body).toEqual({ mode: "all-projects" });
+    expect((await call("GET", "/mode")).body).toEqual({ mode: "all-projects", products: ["tasks"] });
     expect((await call("GET", "/projects")).body.projects.map((p: { name: string }) => p.name)).toEqual(["alpha", "beta"]);
     expect(await call("GET", "/requests")).toMatchObject({ status: 404, body: { code: "project_required" } });
     expect(await call("POST", "/projects/alpha/requests", { title: "x" })).toMatchObject({ status: 428, body: { code: "generation_required" } });
@@ -314,7 +314,8 @@ describe("ProjectRegistry: 落ちたプロセスが残した Preflight", () => {
     console.error = (m: string) => void logs.push(m);
     try {
       const ctx = await s.registry.open("alpha");
-      for (let i = 0; i < 100 && (await ctx.ws.preflight.get(rid, run.id))?.status === "running"; i++) await new Promise((r) => setTimeout(r, 20));
+      // recover は開いた後に裏で動き、run を中断にしてから要望の状態を戻し、最後にログを出す。run の状態だけを待つと、負荷が高いときに要望を戻す前に読んでしまう
+      for (let i = 0; i < 250 && !logs.join("\n").includes(`中断にしました: ${rid}/${run.id}`); i++) await new Promise((r) => setTimeout(r, 20));
       expect(await ctx.ws.preflight.get(rid, run.id)).toMatchObject({ status: "failed", interrupted: { reason: expect.any(String) } });
       await ctx.ws.requests.reload(rid);
       expect(ctx.ws.requests.get(rid)?.status).toBe("draft");
@@ -372,7 +373,7 @@ describe("通常の serve の API", () => {
     const { dataDir } = await makeRepo();
     const ctx: P3Context = { ...(await openTestProject(dataDir)), projectName: "app" };
     const app = singleProjectApp(ctx);
-    expect(await (await app.request("/mode")).json()).toEqual({ mode: "single", project: "app" });
+    expect(await (await app.request("/mode")).json()).toEqual({ mode: "single", project: "app", products: ["tasks"] });
     const res = await app.request("/no-such-api");
     expect(res.status).toBe(404);
     expect(await res.json()).toMatchObject({ error: expect.stringContaining("API がありません") });

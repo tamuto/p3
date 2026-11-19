@@ -16,6 +16,7 @@ const OPTIONS = {
   dir: { type: "string" },
   project: { type: "string" },
   "all-projects": { type: "boolean" },
+  products: { type: "string" },
   req: { type: "string" },
   request: { type: "string" },
   json: { type: "boolean" },

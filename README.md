@@ -44,6 +44,9 @@ Claude Code などの AI エージェントや人が行い、p3 はその前後�
 
 P3 を Docker のコンテナで動かすこともできる（[導入ガイド: Docker で動かす](docs/installation.md#docker-で動かすプロジェクトを跨ぐ-serve)）。
 
+観測基盤 **p3-observer**（準備中。今は起動の確認だけ）も同じ `p3` に入っている。`p3 serve` は両方を起動し、
+`p3 serve --products tasks`（tasks だけ）・`p3 serve --products observer`（observer だけ）で指定した製品だけを起動する（[使い方: 製品](docs/how-to-use.md#製品tasks-と-observer)・[設計: p3-observer](docs/architecture.md#p3-observer)）。
+
 ## 文書
 
 | 読みたいこと | 文書 |
@@ -59,7 +62,8 @@ P3 を Docker のコンテナで動かすこともできる（[導入ガイド: 
 | P3 そのものの開発・ソースの構成・配布物 | [開発ガイド](docs/development.md) |
 | 設計の方針と規則（なぜそうするか） | [docs/architecture.md](docs/architecture.md) |
 | 開発の工程ごとに P3 が受け持つこと・意図して持たないこと | [設計: 開発の工程と P3 の受け持ち](docs/architecture.md#開発の工程と-p3-の受け持ち) |
-| パッケージの構成（入口・tasks・kit）と製品ごとの設計の置き場所・機能の棚卸し | [設計: パッケージの構成](docs/architecture.md#パッケージの構成)・[機能の棚卸し](docs/feature-inventory.md) |
+| パッケージの構成（入口・製品・kit）と製品ごとの設計の置き場所・機能の棚卸し | [設計: パッケージの構成](docs/architecture.md#パッケージの構成)・[機能の棚卸し](docs/feature-inventory.md) |
+| 観測基盤 p3-observer（準備中）の所有の境界・起動の構成（既定の両方・tasks だけ・observer だけ）・観測の実装を置く範囲 | [設計: p3-observer](docs/architecture.md#p3-observer) |
 | ChatGPT のサインインの設計 | [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md) |
 | npm への公開の手順 | [docs/publishing.md](docs/publishing.md) |
 

@@ -10,6 +10,9 @@ import { chatgptAccount } from "@infodb/p3-tasks/core/chatgpt.ts";
 import { openProject, type P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { machineSettingsSource, type MachineSettings, type SettingsSource } from "@infodb/p3-tasks/core/machineSettings.ts";
 import { ProjectRegistry } from "../core/projectRegistry.ts";
+import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
+import { userThemeScriptRoute } from "@infodb/p3-tasks/features/settings/server/userThemeRoutes.ts";
+import { DEFAULT_PRODUCTS, type Product } from "../shared/products.ts";
 
 /** p3 本体（配布するパッケージ）のルート。画面のビルド（dist/web）を探す（src/server・lib/server のどちらからも2つ上） */
 const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -29,6 +32,11 @@ export interface ServeOptions {
   static: boolean;
   /** マシンごとの設定（省くと環境変数と個人設定から、Preflight を始めるたびに読む） */
   settings?: MachineSettings | SettingsSource;
+  /**
+   * この serve で使う製品（p3 serve --products。省くと全部の製品）。tasks を含まなければ、プロジェクトを開かず（dataDir・allProjects を使わない）、
+   * tasks の API・監視・Preflight の回復を動かさない。選ばなかった製品の API は付けず、/api の下の 404 の JSON になる（画面の HTML に流さない）
+   */
+  products?: readonly Product[];
 }
 
 export interface RunningServer {
@@ -39,33 +47,53 @@ export interface RunningServer {
   close(opts?: { timeoutMs?: number }): Promise<{ pending: number }>;
 }
 
-/** 1つのプロジェクトの API（通常の serve）。/api の下 */
-export function singleProjectApp(ctx: P3Context) {
+/**
+ * 1つのプロジェクトの API（通常の serve）。/api の下。products は /api/mode で返すこの serve の製品（observer の API は startServer が付ける。
+ * この部品だけを使うときは observer を付けないので tasks だけ）
+ */
+export function singleProjectApp(ctx: P3Context, products: readonly Product[] = ["tasks"]) {
   const app = new Hono();
-  app.get("/mode", (c) => c.json({ mode: "single", project: ctx.projectName ?? null }));
+  app.get("/mode", (c) => c.json({ mode: "single", project: ctx.projectName ?? null, products }));
   app.route("/", apiRoutes(ctx));
   // 無い API は画面（index.html）に流さない
   app.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));
   return app;
 }
 
+/**
+ * tasks を選ばない serve の API（/api の下。今は observer だけ）。tasks のプロジェクト・個人設定の一覧・監視を使わない。
+ * 画面のテーマ（個人設定のテーマだけを埋め込む最初のスクリプト）は、どの製品の画面でも同じ見た目にするため返す
+ */
+export function productsOnlyApp(products: readonly Product[]) {
+  const app = new Hono();
+  app.get("/mode", (c) => c.json({ mode: "none", products }));
+  app.route("/user-theme.js", userThemeScriptRoute());
+  app.all("*", (c) => c.json({ error: `この serve では tasks を使いません（--products ${products.join(",")}）: ${c.req.method} ${new URL(c.req.url).pathname}`, code: "product_disabled" }, 404));
+  return app;
+}
+
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   const app = new Hono();
+  const products = opts.products ?? DEFAULT_PRODUCTS;
   let ctx: P3Context | undefined;
   let registry: ProjectRegistry | undefined;
-  if (opts.allProjects) {
+  // 製品の API は入口が知っているものを選んだときだけ付ける（tasks の API の 404 より先に付ける）
+  if (products.includes("observer")) app.route("/api/observer", observerRoutes({ products }));
+  if (!products.includes("tasks")) {
+    app.route("/api", productsOnlyApp(products));
+  } else if (opts.allProjects) {
     const settings = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : { path: "", get: async () => opts.settings as MachineSettings };
     registry = new ProjectRegistry({ settings, chatgpt: chatgptAccount() });
     await registry.refresh();
-    app.route("/api", projectsRoutes(registry));
+    app.route("/api", projectsRoutes(registry, { products }));
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));
-    app.route("/api", singleProjectApp(ctx));
+    app.route("/api", singleProjectApp(ctx, products));
   }
   if (opts.static) {
     // serveStatic の root はカレントからの相対で解釈される
@@ -86,7 +114,10 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
       console.log(`  data     ${opts.dataDir}`);
       console.log(`  repos    ${ctx.ws.project.repos.map((r) => r.name).join(", ") || "（なし）"}`);
       console.log(`  engines  ${ctx.preflight.availableEngines().join(", ")} (default: ${ctx.preflight.defaultEngine})`);
+    } else {
+      console.log("p3: tasks を使わない serve（プロジェクトを開かない）");
     }
+    console.log(`  products ${products.join(", ")}`);
     console.log(`  listen   http://${opts.host}:${opts.port}${opts.static ? "" : "  (api only)"}`);
     if (opts.static && !existsSync(`${P3_ROOT}dist/web/index.html`)) {
       console.log(`  ⚠ 画面がビルドされていません。${P3_ROOT} で \`pnpm build\` を実行してください`);

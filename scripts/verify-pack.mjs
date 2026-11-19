@@ -3,12 +3,13 @@
 //
 //   node scripts/verify-pack.mjs [--tgz <tarball>] [--docker [--render-dir <フォルダ>]] [--keep]
 //
-//   1. pnpm build（画面と CLI・serve。入口・tasks・kit を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
+//   1. pnpm build（画面と CLI・serve。入口・製品（tasks・observer）・kit を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
 //      --tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）。manifest と実行時の import に workspace の
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      guide / init --agents / init --agents codex と p3 agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      help / observer status と serve --products observer（tasks の登録の前）/ guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts /
+//      serve（HTML・資産・API。既定の両方と、--products tasks の tasks だけ）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -89,7 +90,7 @@ try {
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
     // CLI・serve はビルド済みの JavaScript（入口は lib/、同梱した tasks・kit は lib/tasks・lib/kit）。TypeScript のソース（src/・packages/）は入れない
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md"]) {
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|packages\/|node_modules\/|build-src\/)/.test(f) || f.endsWith(".ts"));
@@ -107,7 +108,7 @@ try {
     // 実行時に TypeScript を変換しない（tsx と、それが使う esbuild のビルドのスクリプトを利用者に許可させない）
     for (const d of ["tsx", "esbuild"]) check(!existsSync(join(prefix, "node_modules", d)), `実行時に要らない ${d} まで入っています`);
     // 同梱した kit・tasks を別のパッケージとして取りに行かない。manifest と実行時の import に workspace のパッケージ・手元のフォルダの参照が残らない
-    for (const d of ["p3-tasks", "p3-kit"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
+    for (const d of ["p3-tasks", "p3-observer", "p3-kit"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
     const manifestText = readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8");
     check(!/workspace:|link:|file:|@infodb\/p3-/.test(manifestText), "入れた @infodb/p3 の manifest に workspace のパッケージ・手元のフォルダの参照が残っています");
     check(installed.devDependencies === undefined && installed.scripts === undefined, "入れた @infodb/p3 の manifest に開発だけの項目（devDependencies・scripts）が残っています");
@@ -141,6 +142,37 @@ try {
     sh("git", ["-c", "user.name=verify", "-c", "user.email=verify@example.com", "commit", "-q", "-m", "init"], { cwd: repo });
     return repo;
   });
+
+  await step("p3 help と p3 --help（登録の前）", () => {
+    for (const argv of [["help"], ["--help"]]) {
+      const out = p3(argv);
+      check(/使い方: p3 <コマンド>/.test(out), `p3 ${argv.join(" ")} の出力が使い方ではありません: ${out.slice(0, 200)}`);
+    }
+    return "使い方を表示";
+  });
+
+  await step("p3 observer status（tasks の登録の前。個人設定・データを作らない）", () => {
+    const installed = JSON.parse(readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8"));
+    const s = p3json(["observer", "status"]);
+    check(s.product === "observer" && s.state === "ready" && s.version === installed.version, `observer の起動状態が違います: ${JSON.stringify(s)}`);
+    check(!existsSync(join(home, ".config", "infodb-p3")), "observer status が個人設定の場所を作りました");
+    check(!existsSync(join(repo, ".p3")), "observer status が tasks のデータのフォルダを作りました");
+    return `${s.product} ${s.version} ${s.state}`;
+  });
+
+  await step("p3 serve --products observer（tasks の登録の前。observer の API とページ、tasks の API は 404）", () =>
+    withServe(["--products", "observer"], async (base) => {
+      const mode = JSON.parse(await fetchText(`${base}/api/mode`));
+      check(JSON.stringify(mode) === JSON.stringify({ mode: "none", products: ["observer"] }), `/api/mode が observer だけになっていません: ${JSON.stringify(mode)}`);
+      const s = JSON.parse(await fetchText(`${base}/api/observer/status`));
+      check(s.state === "ready" && s.products?.join() === "observer", `observer の起動状態が違います: ${JSON.stringify(s)}`);
+      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
+      const tasksApi = await fetch(`${base}/api/requests`);
+      check(tasksApi.status === 404 && /json/.test(tasksApi.headers.get("content-type") ?? ""), `tasks の API が 404 の JSON ではありません: ${tasksApi.status}`);
+      check(!existsSync(join(repo, ".p3")) && !existsSync(join(home, ".config", "infodb-p3")), "observer だけの serve が tasks のデータ・個人設定を作りました");
+      return base;
+    }),
+  );
 
   await step("p3 guide（登録の前・配布物の原本と版）", () => {
     const installed = join(prefix, "node_modules", "@infodb", "p3");
@@ -185,7 +217,30 @@ try {
     check(w.project === "sample", `プロジェクトが違います: ${JSON.stringify(w)}`);
     // init --agents で置いた入口は、配布物の入口と同じ（最新）と診断される
     check(w.agents?.ok === true, `置いた入口の診断が最新になっていません: ${JSON.stringify(w.agents)}`);
-    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}`;
+    // 併用: 同じ p3 から observer も呼べる（tasks を登録した後も、tasks のデータに触れない）
+    check(p3json(["observer", "status"]).state === "ready", "tasks を登録した後に observer status が動きません");
+    return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}・observer ready`;
+  });
+
+  // 前の版が書いたのと同じ形式のファイル（CLI を通さずに置く）を、入れた版で読めること。版を上げてもデータを書き直さずに使い続けられる
+  const legacyId = "261001-legcy";
+  await step("既存形式の要望の参照（前の版の形式のファイルを request show・ls で読む）", () => {
+    const dir = join(work, "data", "requests", legacyId);
+    mkdirSync(join(dir, "tasks"), { recursive: true });
+    writeFileSync(
+      join(dir, "request.md"),
+      `---\nid: ${legacyId}\ntitle: 既存形式の要望\nstatus: active\nrev: 3\ncreatedAt: 2026-10-01T00:00:00.000Z\nupdatedAt: 2026-10-02T00:00:00.000Z\nupdatedBy: human:verify\n---\n前の版で書いた要望の本文\n`,
+    );
+    writeFileSync(
+      join(dir, "tasks", "T001.md"),
+      "---\nid: T001\ntitle: 既存形式のタスク\nstatus: done\noutputs:\n  - docs/how-to-use.md\nrev: 2\ncreatedAt: 2026-10-01T00:00:00.000Z\nupdatedAt: 2026-10-02T00:00:00.000Z\n---\n前の版で書いたタスクの本文\n",
+    );
+    const shown = p3json(["request", "show", legacyId, "--brief"]);
+    check(shown.item?.title === "既存形式の要望" && shown.item.status === "active" && shown.item.rev === 3, `既存形式の要望を読めません: ${JSON.stringify(shown.item)}`);
+    check(shown.tasks?.length === 1 && shown.tasks[0].status === "done", `既存形式のタスクが一覧にありません: ${JSON.stringify(shown.tasks)}`);
+    const tasks = p3json(["ls", "--req", legacyId]);
+    check(tasks[0]?.outputs?.[0] === "docs/how-to-use.md" && tasks[0].body.includes("前の版で書いたタスクの本文"), `既存形式のタスクの中身を読めません: ${JSON.stringify(tasks)}`);
+    return `${legacyId}・T001`;
   });
 
   let rid = "";
@@ -219,6 +274,11 @@ try {
       check((await fetchText(`${base}${asset}`)).length > 1000, `${asset} が読めません`);
       const requests = JSON.parse(await fetchText(`${base}/api/requests`));
       check(JSON.stringify(requests).includes(rid), "API に要望がありません");
+      check(JSON.stringify(requests).includes(legacyId), "API に既存形式の要望がありません");
+      // 既定は両方。同じ serve で observer の API とページも動く
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks,observer", "既定の serve の products が両方ではありません");
+      check(JSON.parse(await fetchText(`${base}/api/observer/status`)).products?.join() === "tasks,observer", "既定の serve で observer の API が動きません");
+      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
       return `${base}  ${asset}`;
     } catch (e) {
       throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
@@ -226,6 +286,16 @@ try {
       child.kill();
     }
   });
+
+  await step("p3 serve --products tasks（tasks だけ。observer の API は 404）", () =>
+    withServe(["--products", "tasks"], async (base) => {
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks", "/api/mode の products が tasks だけになっていません");
+      check(JSON.stringify(JSON.parse(await fetchText(`${base}/api/requests`))).includes(rid), "tasks だけの serve で tasks の API に要望がありません");
+      const obs = await fetch(`${base}/api/observer/status`);
+      check(obs.status === 404 && /json/.test(obs.headers.get("content-type") ?? ""), `tasks だけの serve で observer の API が 404 の JSON ではありません: ${obs.status}`);
+      return base;
+    }),
+  );
 
   if (flag("docker")) {
     await step("p3 codex update（本物の Docker。未登録・未認証のまま）", () => {
@@ -267,6 +337,24 @@ function freePort() {
     });
     s.on("error", rej);
   });
+}
+
+/** 入れた p3 の serve を引数つきで起こし、待ち受けたら f(base) を動かして止める */
+async function withServe(argv, f) {
+  const port = await freePort();
+  const child = spawn(join(prefix, "node_modules", ".bin", "p3"), ["serve", ...argv, "--port", String(port), "--host", "127.0.0.1"], { cwd: repo, env, stdio: ["ignore", "pipe", "pipe"] });
+  let log = "";
+  child.stdout.on("data", (d) => (log += d));
+  child.stderr.on("data", (d) => (log += d));
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    await retry(() => fetchText(`${base}/api/mode`));
+    return await f(base);
+  } catch (e) {
+    throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
+  } finally {
+    child.kill();
+  }
 }
 
 async function fetchText(url) {

@@ -3,6 +3,8 @@ import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
 import { buttonCls, cx, Empty } from "@infodb/p3-tasks/web/components/ui.tsx";
 import { useAppCtx } from "@infodb/p3-tasks/web/lib/appCtx.ts";
 import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
+import { OBSERVER_PAGE } from "@infodb/p3-observer/shared/status.ts";
+import { currentShell } from "../shell.ts";
 
 /**
  * 全画面の共通部分。ページは src/web/routes/ にファイルを置けば足りる（ルート一覧 routeTree.gen.ts は自動生成）。
@@ -17,9 +19,12 @@ import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
  *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
+ *
+ * 製品（Boot.tsx が決める shell.ts）: tasks の画面は下の Layout（tasks のプロジェクト・データを使う）。observer のページ（/observer）は
+ * ProductLayout で、tasks のデータを読まない。製品の間の移動は a 要素でページごと移る（observer を選んだ serve だけ「観測基盤」を出す）
  */
 export const Route = createRootRoute({
-  component: Layout,
+  component: () => (currentShell().tasks ? <Layout /> : <ProductLayout />),
   notFoundComponent: () => (
     <div className="mx-auto max-w-xl p-10">
       <Empty>ページが見つかりません</Empty>
@@ -79,6 +84,11 @@ function Layout() {
               {n.label}
             </Link>
           ))}
+          {currentShell().products.includes("observer") && (
+            <a href={OBSERVER_PAGE} title={OBSERVER_HINT} className={cx(navCls, navIdle)}>
+              観測基盤
+            </a>
+          )}
         </nav>
         <RefreshButton running={ctx.refreshing.running} onClick={() => void ctx.refresh()} />
         {/* 狭い画面では「＋」だけにして、ナビゲーションの幅を空ける */}
@@ -113,6 +123,44 @@ function Layout() {
 
       {/* スクロールする枠は relative にする。基準の無い絶対配置（sr-only の入力・見出しなど）は画面の左上を基準にし、
           枠の中の位置まで文書を縦に伸ばして、枠とページの2つの縦スクロールを出す */}
+      <main className="relative min-h-0 flex-1 overflow-auto">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+const OBSERVER_HINT = "p3-observer の起動状態（準備中）";
+
+/**
+ * tasks のデータを読まない画面（observer のページ）の外枠。tasks を選んだ serve なら tasks へ戻る導線を出す:
+ * 通常の serve は tasks の各ページ、プロジェクトを跨ぐ serve はプロジェクトの選択（/。今までの一覧・登録が1つなら開く）
+ */
+function ProductLayout() {
+  const shell = currentShell();
+  const tasksNav = !shell.products.includes("tasks")
+    ? []
+    : shell.mode === "all-projects"
+      ? [{ to: "/", label: "タスク管理", hint: "プロジェクトを選んでタスク管理の画面へ" }]
+      : NAV.map((n) => ({ to: n.to as string, label: n.label as string, hint: n.hint as string }));
+  return (
+    <div className="flex h-screen flex-col">
+      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-2.5 sm:gap-6 dark:border-slate-800 dark:bg-slate-900">
+        <a href={OBSERVER_PAGE} className="flex min-w-0 items-center gap-3" title="infodb p3">
+          <Logo />
+        </a>
+        <nav className="flex min-w-0 shrink gap-1 overflow-x-auto">
+          {tasksNav.map((n) => (
+            <a key={n.to} href={n.to} title={n.hint} className={cx(navCls, navIdle)}>
+              {n.label}
+            </a>
+          ))}
+          {/* observer だけの serve でも、今いる製品をナビゲーションに出す */}
+          <a href={OBSERVER_PAGE} title={OBSERVER_HINT} aria-current="page" className={cx(navCls, navActive)}>
+            観測基盤
+          </a>
+        </nav>
+      </header>
       <main className="relative min-h-0 flex-1 overflow-auto">
         <Outlet />
       </main>

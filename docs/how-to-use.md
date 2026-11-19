@@ -1279,6 +1279,32 @@ Clipboard API が無い）ときはそう出るので、ID をクリックして
 戻ったときも1回読み直す）。ブラウザのリロードはしないので、入力中の内容は残る。画面同士の変更は自動で届く。
 入力中に同じものがほかで変わったときは、入力を残して知らせ、保存は競合として止める（「入力を捨てて最新にする」で最新を見る）。
 
+### 製品（tasks と observer）
+
+`p3` には2つの製品が入っている。この文書のほかの節は全部 **tasks**（要望・タスク・Preflight など）の使い方。**observer**（観測基盤）は
+準備中で、今は起動の確認だけができる（観測データの収集・保存はまだ無い）。2つは別々に使っても、同じ `p3` から一緒に使ってもよい。
+版は共通（`p3 observer status` の版と `p3 guide --json` の `cliVersion` は同じ）。
+
+| 製品 | CLI の呼び方 | 既定の挙動 |
+| --- | --- | --- |
+| tasks | `p3 <コマンド>`（`p3 ls`・`p3 request ...` など、名前空間を付けない今までの呼び方） | 今いる場所・個人設定から操作するプロジェクトを決める（[プロジェクトと今の要望](#プロジェクトと今の要望)） |
+| observer | `p3 observer status [--json]` | プロジェクトを決めず、個人設定も読まない。tasks の登録が無くても動き、何も作らない。`--json` は `product`・`version`・`state`・`dataDir`（今は `null`） |
+
+```bash
+p3 observer status          # p3-observer 0.14.0 / state ready
+p3 whoami                   # 同じ p3 で tasks も使える
+```
+
+画面（`p3 serve`）は、既定で両方の製品を起動する。`--products` を付けると、指定した製品だけを起動する。
+
+| 起動 | コマンド | 画面 |
+| --- | --- | --- |
+| 両方（既定） | `p3 serve`・`p3 serve --all-projects` | ヘッダーの「観測基盤」で observer へ、observer の画面から tasks の各ページ（プロジェクトを跨ぐ serve ではプロジェクトの選択）へ戻る |
+| tasks だけ | `p3 serve --products tasks`（`--all-projects` も付けられる） | 「観測基盤」は出ない（`/observer` を開いても使えないと出る） |
+| observer だけ | `p3 serve --products observer` | プロジェクトを決めない（登録が無くても起動する）。http://localhost:4310 を開くと `/observer`（起動状態・共通の版・有効な製品） |
+
+所有の境界と起動の構成は [設計: p3-observer](architecture.md#p3-observer)。
+
 ### 短い出力・JSON・終了コード
 
 - `--json` で機械可読な出力（AI 向け）。`--brief` は作業に要る項目だけの短い出力（本文は切り詰めない）:
@@ -1460,3 +1486,4 @@ CLI が返す手順（下の `p3 guide`）にある。CLI が新しくなれば�
 | `p3 preflight` / `p3 notes` / `p3 drafts` / `p3 accept` | Preflight の実行（`--note`。手元のエージェントなら `--prepare` / `--complete`。中断は `--cancel --run`）/ メモ / 評価とタスク案 / タスク化 |
 | `p3 attach` / `p3 render` | 添付 / 画面イメージの描画 |
 | `p3 chatgpt` / `p3 codex update` / `p3 serve` | ChatGPT の接続 / Codex のイメージ / 画面（`--all-projects` で登録したプロジェクトを跨ぐ） |
+| `p3 observer status` | p3-observer（準備中）の起動状態と共通の版（[製品（tasks と observer）](#製品tasks-と-observer)） |

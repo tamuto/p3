@@ -1,8 +1,9 @@
 // 配布物を作る（pnpm build から呼ぶ。画面は先に vite build で packages/p3/dist/web に出しておく）。利用者の環境では tsx（と esbuild）を使わずに動かすため、
-// 入口（packages/p3）・tasks・kit の Node で動く部分を 1 つのパッケージ @infodb/p3 の JavaScript にまとめる（kit・tasks は公開しない。同梱する）。
+// 入口（packages/p3）・製品（tasks・observer）・kit の Node で動く部分を 1 つのパッケージ @infodb/p3 の JavaScript にまとめる（kit・製品は公開しない。同梱する）。
 //   1. 一時のフォルダ（packages/p3/build-src）に、配布物と同じ並びでソースを集める:
-//        入口の src/{cli,core,server} → cli・core・server、tasks の src/{cli,core,server,shared,features}（画面の web/ を除く）→ tasks/、kit の src → kit/
-//      パッケージ名の import（@infodb/p3-tasks/... ・@infodb/p3-kit/...）は、集めた先への相対パスに書き換える
+//        入口の src/{cli,core,server,shared} → cli・core・server・shared、製品の src/{cli,core,server,shared,features}（画面の web/ を除く）→ tasks/・observer/、kit の src → kit/
+//      パッケージ名の import（@infodb/p3-tasks/... ・@infodb/p3-observer/... ・@infodb/p3-kit/...）は、集めた先への相対パスに書き換える。
+//      製品を足すときは PRODUCTS と SPEC に足す（同梱の一覧はここだけ。tarball の中身の確認は scripts/verify-pack.mjs と test/pack.test.ts）
 //   2. tsc で packages/p3/lib に 1:1 で出す（相対の import の .ts は .js に書き換わる）。.ts 以外の資材（描画のイメージ・Mock の画面・起動の補助・
 //      guide.md）は同じ場所に写す。入口の lib/{cli,server} は src と同じ深さなので、import.meta.url からの相対の参照
 //      （../../package.json・../../dist/web・skills）はそのまま効く。tasks の資材はそのファイルと同じフォルダだけを参照する
@@ -21,15 +22,17 @@ const staging = join(entry, "build-src");
 const out = join(entry, "lib");
 const pack = join(root, "dist", "package");
 
+/** 同梱する製品（packages/<名前>。パッケージ名は @infodb/p3-<名前>）。入口が知っている製品だけ（探して読み込む仕組みは作らない） */
+const PRODUCTS = ["tasks", "observer"];
 /** 集める元と先（先は staging からの相対） */
 const SOURCES = [
-  ...["cli", "core", "server"].map((l) => [join(entry, "src", l), l]),
-  ...["cli", "core", "server", "shared", "features"].map((l) => [join(root, "packages", "tasks", "src", l), join("tasks", l)]),
+  ...["cli", "core", "server", "shared"].map((l) => [join(entry, "src", l), l]),
+  ...PRODUCTS.flatMap((p) => ["cli", "core", "server", "shared", "features"].map((l) => [join(root, "packages", p, "src", l), join(p, l)])),
   [join(root, "packages", "kit", "src"), "kit"],
 ];
 /** パッケージ名 → staging の中の置き場所 */
-const NAMES = { "@infodb/p3-tasks": "tasks", "@infodb/p3-kit": "kit" };
-const SPEC = /((?:^|\s)(?:import|export)\s[^"';]*?from\s*|import\s*\(\s*|^\s*import\s*)(["'])(@infodb\/p3-(?:tasks|kit))\/([^"']+)\2/gm;
+const NAMES = { ...Object.fromEntries(PRODUCTS.map((p) => [`@infodb/p3-${p}`, p])), "@infodb/p3-kit": "kit" };
+const SPEC = /((?:^|\s)(?:import|export)\s[^"';]*?from\s*|import\s*\(\s*|^\s*import\s*)(["'])(@infodb\/p3-(?:tasks|observer|kit))\/([^"']+)\2/gm;
 
 const walk = (dir) => (existsSync(dir) ? readdirSync(dir) : []).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)).map((f) => join(name, f)) : [name]));
 /** 画面（web/。機能の features/<機能>/web/ も）は vite でビルドするので、Node の JavaScript には入れない */
@@ -80,7 +83,7 @@ for (const f of walk(staging)) {
   copied++;
 }
 rmSync(staging, { recursive: true, force: true });
-console.log(`packages/p3/lib/: 入口・tasks・kit の CLI・serve を JavaScript にしました（パッケージ名の import ${rewritten} 件を書き換え、資材 ${copied} 件を写しました）`);
+console.log(`packages/p3/lib/: 入口・${PRODUCTS.join("・")}・kit の CLI・serve を JavaScript にしました（パッケージ名の import ${rewritten} 件を書き換え、資材 ${copied} 件を写しました）`);
 
 // 公開する中身。画面（packages/p3/dist/web）は vite build で先に作る。--require-web（pnpm build）では無ければ止め、無いまま組み立てるのは
 // テスト（test/pack.test.ts。pnpm -s check はテストの後に画面をビルドする）だけ

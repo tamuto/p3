@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './../../../tasks/src/web/routes/index'
 import { Route as MetricsRouteImport } from './../../../tasks/src/web/routes/metrics'
+import { Route as ObserverRouteImport } from './../../../observer/src/web/routes/observer'
 import { Route as ReleaseNotesRouteImport } from './../../../tasks/src/web/routes/release-notes'
 import { Route as SettingsRouteImport } from './../../../tasks/src/web/routes/settings'
 import { Route as RequestsRequestIdRouteImport } from './../../../tasks/src/web/routes/requests/$requestId'
@@ -28,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const MetricsRoute = MetricsRouteImport.update({
   id: '/metrics',
   path: '/metrics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ObserverRoute = ObserverRouteImport.update({
+  id: '/observer',
+  path: '/observer',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
@@ -75,6 +81,7 @@ const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
+  '/observer': typeof ObserverRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
@@ -87,6 +94,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
+  '/observer': typeof ObserverRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/new': typeof RequestsNewRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
+  '/observer': typeof ObserverRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/metrics'
+    | '/observer'
     | '/release-notes'
     | '/settings'
     | '/requests/$requestId'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/metrics'
+    | '/observer'
     | '/release-notes'
     | '/settings'
     | '/requests/new'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/metrics'
+    | '/observer'
     | '/release-notes'
     | '/settings'
     | '/requests/$requestId'
@@ -149,6 +161,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MetricsRoute: typeof MetricsRoute
+  ObserverRoute: typeof ObserverRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
   SettingsRoute: typeof SettingsRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRouteWithChildren
@@ -169,6 +182,13 @@ declare module '@tanstack/react-router' {
       path: '/metrics'
       fullPath: '/metrics'
       preLoaderRoute: typeof MetricsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/observer': {
+      id: '/observer'
+      path: '/observer'
+      fullPath: '/observer'
+      preLoaderRoute: typeof ObserverRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/release-notes': {
@@ -250,6 +270,7 @@ const RequestsRequestIdRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MetricsRoute: MetricsRoute,
+  ObserverRoute: ObserverRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
   SettingsRoute: SettingsRoute,
   RequestsRequestIdRoute: RequestsRequestIdRouteWithChildren,
