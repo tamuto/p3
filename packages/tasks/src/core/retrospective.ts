@@ -1,5 +1,8 @@
 import { join } from "node:path";
 import { reworkLine } from "../shared/reworkHistory.ts";
+
+/** タスク（今かアーカイブ）の手戻りの履歴の 1 件（根拠を保存するときと、保存した根拠を照らすときで同じ引き方） */
+const reworkEntry = (t: Task | undefined, id: string) => t?.reworkHistory?.find((e) => e.id === id);
 import type { Task } from "../shared/types.ts";
 import {
   addJudgment,
@@ -147,7 +150,7 @@ export async function resolveEvidence(ctx: P3Context, rid: string, ref: Evidence
   if (ref.kind === "rework") {
     const t = await taskOf(ctx, rid, ref.task);
     if (!t) throw bad(`${rid}/${ref.task} はこの要望のタスクにありません`);
-    const h = t.reworkHistory?.find((e) => e.id === ref.history);
+    const h = reworkEntry(t, ref.history);
     if (!h) throw bad(`${t.id} の手戻りの履歴に ${ref.history} はありません`);
     return { kind: "rework", request: rid, task: t.id, history: h.id, excerpt: clip(reworkLine(h)) };
   }
@@ -186,7 +189,7 @@ export async function resolveEvidence(ctx: P3Context, rid: string, ref: Evidence
 /** 保存した根拠を今の記録と照らす（ファイルは書かない） */
 export async function checkEvidence(ctx: P3Context, e: RetroEvidence): Promise<EvidenceCheck> {
   if (e.kind === "manual") return "manual";
-  if (e.kind === "rework") return (await taskOf(ctx, e.request, e.task))?.reworkHistory?.some((h) => h.id === e.history) ? "ok" : "missing";
+  if (e.kind === "rework") return reworkEntry(await taskOf(ctx, e.request, e.task), e.history) ? "ok" : "missing";
   const rec = e.kind === "task_review" ? await ctx.ws.taskReviews.get(`${e.request}/${e.task}`, e.run).catch(() => undefined) : await ctx.ws.milestoneReviews.get(e.milestone, e.run).catch(() => undefined);
   if (!rec?.result) return "missing";
   return assessmentVersion(rec.result) === e.resultVersion ? "ok" : "changed";

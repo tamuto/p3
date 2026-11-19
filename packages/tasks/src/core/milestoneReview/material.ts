@@ -36,8 +36,7 @@ import { reviewCode } from "./code.ts";
  */
 export async function extractReviewInput(dataDir: string, mid: string, refs: readonly ResolvedRef[] = []): Promise<ReviewInput> {
   const extractedAt = new Date().toISOString();
-  const snap = new Workspace(dataDir);
-  await snap.load();
+  const snap = await Workspace.snapshot(dataDir);
   const records = reviewInputOf(snap, mid, extractedAt);
   const { code, warnings } = await reviewCode(refs, records.requests, dataDir);
   return withCode(records, code, warnings);

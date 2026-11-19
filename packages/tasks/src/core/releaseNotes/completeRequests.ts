@@ -97,8 +97,7 @@ export async function completeMilestoneRequests(ctx: P3Context, mid: string, bas
 /** ディスクから読み直した状態で、材料と判定を作る。project.yaml に無く、ノートも無いマイルストーンは not_found */
 async function snapshot(ctx: P3Context, mid: string) {
   checkMilestoneId(mid);
-  const snap = new Workspace(ctx.ws.dataDir);
-  await snap.load();
+  const snap = await Workspace.snapshot(ctx.ws.dataDir);
   const material = materialOf(snap, mid);
   if (!material.milestone.known && !(await ctx.ws.releaseNotes.ids()).includes(mid)) {
     throw new ReleaseNoteError("not_found", mid, `マイルストーンがありません: ${mid}`);

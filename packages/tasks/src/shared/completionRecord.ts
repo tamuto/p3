@@ -293,6 +293,9 @@ export function nextCompletionId(list: readonly CompletionRecord[] | undefined):
 }
 
 /** 最新の記録（無ければ undefined） */
+/** 契機ごとの最初の記録（開発の指標の到達の時点など。無ければ undefined） */
+export const firstCompletion = (records: readonly CompletionRecord[] | undefined, trigger: CompletionTrigger): CompletionRecord | undefined => (records ?? []).find((c) => c.trigger === trigger);
+
 export const latestCompletion = (list: readonly CompletionRecord[] | undefined): CompletionRecord | undefined => list?.at(-1);
 
 /**

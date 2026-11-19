@@ -1,7 +1,7 @@
 import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS_KINDS, type CriterionState } from "../../shared/acceptance.ts";
-import type { CompletionTrigger } from "../../shared/completionRecord.ts";
+import { firstCompletion, type CompletionTrigger } from "../../shared/completionRecord.ts";
 import { median, type ManualRecord, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../../shared/metrics.ts";
-import { REWORK_CAUSE_LABEL, REWORK_CAUSES } from "../../shared/reworkHistory.ts";
+import { REWORK_CAUSE_LABEL, REWORK_CAUSES, reworkPerRev } from "../../shared/reworkHistory.ts";
 import type { TaskReviewListItem, TaskReviewResult } from "../../shared/taskReview.ts";
 import type { Request, Task } from "../../shared/types.ts";
 
@@ -85,7 +85,7 @@ type Reach = { kind: "reached"; hours: number } | { kind: "not_reached" } | { ki
 function reachOf(r: Request, trigger: Extract<CompletionTrigger, "request_resolved" | "request_done">): Reach {
   if (r.completionProblems?.length) return { kind: "missing", reason: `完了の記録が読めません（${r.completionProblems.join(" / ")}）` };
   const records = r.completionRecords ?? [];
-  const first = records.find((c) => c.trigger === trigger);
+  const first = firstCompletion(records, trigger);
   if (first) {
     const at = time(first.at);
     const created = time(r.createdAt);
@@ -97,7 +97,7 @@ function reachOf(r: Request, trigger: Extract<CompletionTrigger, "request_resolv
   if (trigger === "request_resolved") {
     if (r.status === "resolved") return { kind: "missing", reason: "対応済ですが対応済の記録がありません（記録を始める前のデータ）" };
     if (r.status === "done") {
-      if (records.some((c) => c.trigger === "request_done")) return { kind: "not_reached" };
+      if (firstCompletion(records, "request_done")) return { kind: "not_reached" };
       return { kind: "missing", reason: "完了済ですが記録が無く、対応済を経たか分かりません", unknown: true };
     }
     return { kind: "not_reached" };
@@ -236,8 +236,7 @@ function reworkMetric(input: MetricsInput) {
         missingItems.push({ target: t.ref, reason: `手戻りの履歴が読めません（${t.reworkProblems.join(" / ")}）` });
         continue;
       }
-      const seen = new Set<number>();
-      const list = (t.reworkHistory ?? []).filter((e) => !seen.has(e.rev) && seen.add(e.rev));
+      const list = reworkPerRev(t.reworkHistory);
       if (!list.length) without += 1;
       else withRework += 1;
       entries += list.length;

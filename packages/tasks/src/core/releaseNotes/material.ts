@@ -21,8 +21,7 @@ import { Workspace } from "../store/workspace.ts";
  * 抽出のたびにディスクから読み直した別の Workspace を使い、その時点の状態を固定して返す（画面・CLI のキャッシュに左右されない）。
  */
 export async function extractMaterial(dataDir: string, milestone: string): Promise<ReleaseMaterial> {
-  const snap = new Workspace(dataDir);
-  await snap.load();
+  const snap = await Workspace.snapshot(dataDir);
   return materialOf(snap, milestone);
 }
 

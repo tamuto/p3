@@ -132,8 +132,7 @@ export function bodyItems(body: string): TaskReviewItem[] {
  */
 export async function extractTaskReview(dataDir: string, rid: string, tid: string, refs: readonly ResolvedRef[], opts: ExtractOptions = {}): Promise<ExtractedTaskReview> {
   const extractedAt = new Date().toISOString();
-  const snap = new Workspace(dataDir);
-  await snap.load();
+  const snap = await Workspace.snapshot(dataDir);
   const request = snap.requests.get(rid);
   if (!request) throw new NotFoundError(rid);
   const task = snap.tasksOf(rid).get(tid);

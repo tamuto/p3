@@ -58,6 +58,12 @@ function readState(v: unknown): ReworkState | undefined {
   return { status: o.status, checked: o.checked };
 }
 
+/** 1 つの更新（rev）に 1 件として数える履歴（直接編集で同じ rev が重なっても 1 件。開発の指標） */
+export function reworkPerRev(list: readonly ReworkEntry[] | undefined): ReworkEntry[] {
+  const seen = new Set<number>();
+  return (list ?? []).filter((e) => !seen.has(e.rev) && seen.add(e.rev));
+}
+
 /** frontmatter の reworkHistory を読む（無ければ何も足さない。古いタスクは移行しない） */
 export function readRework(d: Record<string, unknown>): { reworkHistory?: ReworkEntry[]; reworkProblems?: string[] } {
   if (d.reworkHistory === undefined || d.reworkHistory === null) return {};

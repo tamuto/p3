@@ -179,6 +179,13 @@ export class Workspace {
     return resolveRefs(this.project, { localRepos: this.localRepos });
   }
 
+  /** ディスクから読み直した別の Workspace（材料の取り出しなど。画面・CLI のキャッシュに左右されない。複数のファイルを同じ時点で読んだとは保証しない） */
+  static async snapshot(dataDir: string): Promise<Workspace> {
+    const snap = new Workspace(dataDir);
+    await snap.load();
+    return snap;
+  }
+
   async load(): Promise<void> {
     await this.loadAll(false);
   }
