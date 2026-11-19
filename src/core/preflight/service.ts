@@ -21,7 +21,7 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
+import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
 import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { qualityCriteria, qualitySnapshot } from "../../shared/quality.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "../store/fsutil.ts";
@@ -835,6 +835,17 @@ export class PreflightService {
     },
     opts: { expectedTitle?: string; expectedCriteria?: AcceptanceCriterion[]; expectedSources?: CriterionSource[]; actor?: string } = {},
   ) {
+    // 読み直し・競合の確認・根拠の採番・保存を同じ排他の中で行う
+    return this.ws.preflight.withDraftLock(requestId, runId, key, () => this.updateDraftLocked(requestId, runId, key, patch, opts));
+  }
+
+  private async updateDraftLocked(
+    requestId: string,
+    runId: string,
+    key: string,
+    patch: Parameters<PreflightService["updateDraft"]>[3],
+    opts: Parameters<PreflightService["updateDraft"]>[4] = {},
+  ) {
     const run = await this.ws.preflight.get(requestId, runId);
     const draft = run?.drafts.find((d) => d.key === key);
     if (!run || !draft) throw new Error(`${runId}/${key} not found`);
@@ -846,28 +857,36 @@ export class PreflightService {
     // 作業先は作業先にできる参照先だけ（変える前に断る）
     if ("repo" in patch) checkRepoTarget(this.ws, patch.repo);
     // 基準は並び全体の置き換え（id は残し、無い項目に振る。空の並びは基準なし）。直せば読めなかった理由も消える
-    const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, sourceOps, ...rest } = patch;
+    // 根拠の採番（acceptanceSourceSeq）は p3 が振る。patch から上書きしない
+    const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, acceptanceSourceSeq: _sq, sourceOps, ...rest } = patch;
     const criteria = rawCriteria !== undefined ? tidyDraftCriteria(rawCriteria) : undefined;
     // 根拠の記録が読めないとき: 操作は断り、関係のない更新ではファイルの元の値のまま書き戻す
     const rawSources = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSources");
+    const rawSourceSeq = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSourceSeq");
     const sourceProblems: string[] = [];
     readCriterionSources(rawSources, sourceProblems);
+    readSourceSeq(rawSourceSeq, sourceProblems);
     if (sourceProblems.length && sourceOps?.length) throw new AcceptanceInputError(`${key} の要求の根拠の記録が読めないため変えられません。ファイルを直してください: ${sourceProblems.join(" / ")}`);
     const now = new Date().toISOString();
     const finalCriteria = rawCriteria !== undefined ? (criteria!.length ? criteria : undefined) : draft.acceptanceCriteria;
     let sources = draft.acceptanceSources;
-    if (sourceOps?.length) sources = applyDraftSourceOps(finalCriteria, sources, sourceOps, { now, actor: opts.actor, requestSources: this.ws.requests.get(requestId)?.requirementSources ?? [] });
-    else if (rawCriteria !== undefined) sources = settleDraftSources(finalCriteria, sources, now);
+    let sourceSeqNext = draft.acceptanceSourceSeq;
+    if (sourceOps?.length) {
+      const r = applyDraftSourceOps(finalCriteria, sources, sourceOps, { now, actor: opts.actor, requestSources: this.ws.requests.get(requestId)?.requirementSources ?? [] }, draft.acceptanceSourceSeq);
+      sources = r.sources;
+      sourceSeqNext = r.seq > 0 ? r.seq : undefined;
+    } else if (rawCriteria !== undefined) sources = settleDraftSources(finalCriteria, sources, now);
     const next: ProposedTask = {
       ...draft,
       ...rest,
       key,
       ...(rawCriteria !== undefined ? { acceptanceCriteria: finalCriteria, acceptanceProblems: undefined } : {}),
       acceptanceSources: sources?.length ? sources : undefined,
+      acceptanceSourceSeq: sourceSeqNext,
     };
-    if (sourceProblems.length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, { acceptanceSources: rawSources });
+    if (sourceProblems.length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, { acceptanceSources: rawSources, acceptanceSourceSeq: rawSourceSeq });
     else await this.ws.preflight.saveDraft(requestId, runId, next);
-    return sourceProblems.length ? { ...next, acceptanceSources: undefined, acceptanceProblems: [...(next.acceptanceProblems ?? []), ...sourceProblems] } : next;
+    return sourceProblems.length ? { ...next, acceptanceSources: undefined, acceptanceSourceSeq: undefined, acceptanceProblems: [...(next.acceptanceProblems ?? []), ...sourceProblems] } : next;
   }
 
   /**
@@ -1134,7 +1153,7 @@ export class PreflightService {
             outputs: [],
             relations: supersedes(d),
             // 案の受け入れ基準を ID ごと写し、作業先に当てはまる品質基準（始めたときの版）を出典つきで足す（採用した案だけ。やり直しで作ったタスクは上書きしない）
-            ...withQuality(criteriaForTask(d.acceptanceCriteria, d.acceptanceSources, request.requirementSources), run.quality, draftRepo(d)),
+            ...withQuality(criteriaForTask(d.acceptanceCriteria, d.acceptanceSources, request.requirementSources, undefined, d.acceptanceSourceSeq), run.quality, draftRepo(d)),
             body: `${d.description}\n\n${marker}`,
           },
           actor,

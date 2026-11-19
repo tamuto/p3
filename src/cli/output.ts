@@ -30,7 +30,7 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
   const home = "ref" in item ? item.request : item.id;
   const lines = [`${head}  ${item.title}`, ""];
   if ("ref" in item) lines.push(`  ${"作業先".padEnd(11)} ${workHint(ctx, item).replace(/^作業先: /, "")}`);
-  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceProblems", "block", "blockHistory", "blockProblems", "requirementSources", "requirementSeq", "clarifyAnswers", "requirementProblems", "completionRecords", "completionProblems", "reworkHistory", "reworkProblems"]);
+  const skip = new Set(["id", "ref", "request", "title", "body", "relations", "repo", "record", "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceSourceSeq", "acceptanceProblems", "block", "blockHistory", "blockProblems", "requirementSources", "requirementSeq", "clarifyAnswers", "requirementProblems", "completionRecords", "completionProblems", "reworkHistory", "reworkProblems"]);
   for (const [k, v] of Object.entries(item)) {
     if (skip.has(k) || v === undefined || (Array.isArray(v) && !v.length)) continue;
     lines.push(`  ${k.padEnd(13)} ${typeof v === "object" ? JSON.stringify(v) : v}`);

@@ -1,5 +1,5 @@
 import type { Task } from "./types.ts";
-import { applySourceOps, criterionSubject, readCriterionSources, RequirementInputError, settleSources, sourcesKey, type CriterionSource, type RequirementSource, type SourceOp } from "./requirementSource.ts";
+import { applySourceOps, criterionSubject, readCriterionSources, RequirementInputError, settleSources, sourceSeq, sourcesKey, type CriterionSource, type RequirementSource, type SourceOp } from "./requirementSource.ts";
 
 /**
  * タスクの受け入れ基準（acceptanceCriteria）と、作業した側が項目ごとに残す証拠（acceptanceEvidence）の規則。
@@ -94,10 +94,10 @@ export interface AcceptanceEvidence {
 }
 
 /** タスクの基準・証拠の持ち物（Task の一部） */
-export type AcceptanceState = Pick<Task, "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceSeq" | "acceptanceSources">;
+export type AcceptanceState = Pick<Task, "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceSeq" | "acceptanceSources" | "acceptanceSourceSeq">;
 
 /** ファイルに書く基準・証拠の項目（壊れていたら元の値のまま書き戻す） */
-export const ACCEPTANCE_KEYS = ["acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources"] as const;
+export const ACCEPTANCE_KEYS = ["acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceSourceSeq"] as const;
 
 /** 直接編集で書いたものも読めるよう、A<番号> 以外の英数字の id も受け付ける。新しく振るのは A<番号> だけ */
 export const CRITERION_ID_RE = /^[A-Za-z0-9._-]{1,32}$/;
@@ -175,8 +175,27 @@ export function readAcceptance(d: Record<string, unknown>): AcceptanceState & { 
   // 基準ごとの要求の根拠（shared/requirementSource.ts）
   const sources = readCriterionSources(d.acceptanceSources, problems);
   if (sources) out.acceptanceSources = sources;
+  const sourceSeqValue = readSourceSeq(d.acceptanceSourceSeq, problems);
+  if (sourceSeqValue !== undefined) out.acceptanceSourceSeq = sourceSeqValue;
   if (problems.length) out.acceptanceProblems = problems;
   return out;
+}
+
+/** 根拠に振った最後の番号（acceptanceSourceSeq）を読む。無ければ undefined、読めなければ problems に理由 */
+export function readSourceSeq(v: unknown, problems: string[]): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  const n = Number(v);
+  if (Number.isInteger(n) && n >= 0) return n;
+  problems.push("acceptanceSourceSeq が読めません");
+  return undefined;
+}
+
+/**
+ * 基準ごとの根拠の次の番号の起点（振った最後の番号）: 保存した番号・今ある記録・floor（旧データの完了の記録の写しに残る番号など）の最大。
+ * 消して記録にも写しにも残っていない番号は分からない（使い直しうる）
+ */
+export function lastSourceSeq(s: Pick<AcceptanceState, "acceptanceSources" | "acceptanceSourceSeq">, floor = 0): number {
+  return sourceSeq(s.acceptanceSources ?? [], Math.max(s.acceptanceSourceSeq ?? 0, floor));
 }
 
 /** ファイルの根拠を読む（読めなければ理由の文） */
@@ -289,7 +308,7 @@ function lastSeq(s: AcceptanceState): number {
 export function applyAcceptanceOps(
   state: AcceptanceState & { acceptanceProblems?: string[] },
   ops: readonly AcceptanceOp[],
-  at: { now: string; actor?: string; requestSources?: readonly RequirementSource[] },
+  at: { now: string; actor?: string; requestSources?: readonly RequirementSource[]; sourceSeqFloor?: number },
 ): AcceptanceState {
   if (state.acceptanceProblems?.length) {
     throw new AcceptanceInputError(`受け入れ基準・証拠のファイルの値が読めないため変えられません。ファイルを直してください: ${state.acceptanceProblems.join(" / ")}`);
@@ -298,6 +317,7 @@ export function applyAcceptanceOps(
   let evidence = [...(state.acceptanceEvidence ?? [])];
   let sources = [...(state.acceptanceSources ?? [])];
   let seq = lastSeq(state);
+  let sourceSeqNow = lastSourceSeq(state, at.sourceSeqFloor);
   const subjectOf = (s: RequirementSource) => {
     const c = criteria.find((x) => x.id === (s as CriterionSource).criterionId);
     return c ? criterionSubject(c.text) : undefined;
@@ -372,7 +392,9 @@ export function applyAcceptanceOps(
           throw new AcceptanceInputError(`${c.id} に根拠の記録 ${target} はありません${sources.some((x) => x.criterionId === c.id) ? `（${sources.filter((x) => x.criterionId === c.id).map((x) => x.id).join(", ")}）` : ""}`);
         }
         try {
-          sources = applySourceOps(sources, [op.source], { now: at.now, actor: at.actor, subjectOf, requestSources: at.requestSources ?? [], criterionId: c.id }).list;
+          const r = applySourceOps(sources, [op.source], { now: at.now, actor: at.actor, subjectOf, requestSources: at.requestSources ?? [], criterionId: c.id, seq: sourceSeqNow });
+          sources = r.list;
+          sourceSeqNow = r.seq;
         } catch (e) {
           if (e instanceof RequirementInputError) throw new AcceptanceInputError(`${c.id}: ${e.message}`);
           throw e;
@@ -390,8 +412,20 @@ export function applyAcceptanceOps(
     acceptanceEvidence: evidence.length ? evidence : undefined,
     acceptanceSeq: seq > 0 ? seq : undefined,
     acceptanceSources: sources.length ? sources : undefined,
+    acceptanceSourceSeq: sourceSeqNow > 0 ? sourceSeqNow : undefined,
   };
 }
+
+/**
+ * 旧データの根拠の採番の下限: 完了の記録の写し（acceptance.sources）に残る番号。採番を保存する前のタスクで、消した記録の番号を
+ * 使い直さないため（写しにも残っていない番号は分からない）
+ */
+export const recordedSourceSeq = (records: readonly { acceptance?: { sources?: readonly RequirementSource[] } }[] | undefined): number =>
+  (records ?? []).reduce((n, r) => sourceSeq(r.acceptance?.sources ?? [], n), 0);
+
+/** 採番（基準・根拠の振った最後の番号）が変わったか。中身（acceptanceChanged）とは別に保存するかを決める */
+export const acceptanceSeqChanged = (a: AcceptanceState, b: AcceptanceState): boolean =>
+  (a.acceptanceSeq ?? 0) !== (b.acceptanceSeq ?? 0) || (a.acceptanceSourceSeq ?? 0) !== (b.acceptanceSourceSeq ?? 0);
 
 /** 保存した根拠の比較の鍵（項目の順によらない） */
 const basisKey = (b: EvidenceBasis | undefined) => (b ? JSON.stringify(Object.entries(b).sort(([x], [y]) => x.localeCompare(y))) : "");
@@ -616,6 +650,7 @@ export function criteriaForTask(
   sources?: readonly CriterionSource[],
   requestSources?: readonly RequirementSource[],
   now = new Date().toISOString(),
+  sourceSeqSaved?: number,
 ): AcceptanceState {
   if (!criteria?.length) return {};
   const ids = new Set(criteria.map((c) => c.id));
@@ -632,10 +667,13 @@ export function criteriaForTask(
     return c ? criterionSubject(c.text) : undefined;
   };
   const settled = settleSources(copied, subjectOf, now);
+  // 根拠の番号は案で振った最後の番号を引き継ぐ（写さなかった記録・案で消した記録の番号も使い直さない）
+  const lastSource = lastSourceSeq({ acceptanceSources: [...(sources ?? [])], acceptanceSourceSeq: sourceSeqSaved });
   return {
     acceptanceCriteria: criteria.map((c) => ({ ...c })),
     acceptanceSeq: lastSeq({ acceptanceCriteria: [...criteria] }) || undefined,
     ...(settled.length ? { acceptanceSources: settled } : {}),
+    ...(lastSource > 0 ? { acceptanceSourceSeq: lastSource } : {}),
   };
 }
 
@@ -647,9 +685,14 @@ export function applyDraftSourceOps(
   sources: readonly CriterionSource[] | undefined,
   ops: readonly { id: string; source: SourceOp }[],
   at: { now: string; actor?: string; requestSources?: readonly RequirementSource[] },
-): CriterionSource[] {
-  const next = applyAcceptanceOps({ acceptanceCriteria: [...(criteria ?? [])], acceptanceSources: [...(sources ?? [])] }, ops.map((o) => ({ op: "source" as const, ...o })), at);
-  return next.acceptanceSources ?? [];
+  sourceSeqSaved?: number,
+): { sources: CriterionSource[]; seq: number } {
+  const next = applyAcceptanceOps(
+    { acceptanceCriteria: [...(criteria ?? [])], acceptanceSources: [...(sources ?? [])], acceptanceSourceSeq: sourceSeqSaved },
+    ops.map((o) => ({ op: "source" as const, ...o })),
+    at,
+  );
+  return { sources: next.acceptanceSources ?? [], seq: next.acceptanceSourceSeq ?? 0 };
 }
 
 /** タスク案の基準を直した後の根拠の記録（文を変えた基準の確認は効かなくなる。消した基準の記録は対応先不明として残す） */

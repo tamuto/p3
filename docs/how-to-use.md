@@ -235,10 +235,10 @@ p3 request set k7m3x status=done               # 要望を完了済にする（�
 
 | 登録が1つだけで決まったとき | コマンド |
 | --- | --- |
-| 警告して続ける | `whoami`・`progress`・`ls`・`show`・`find`・`notes`・`drafts`、`request ls / show`、`milestone`（一覧）、`config`（表示）、`repo`（一覧）、`attach`（一覧）、`release-notes ls / show / export` |
-| 止まる | 上のほか全部。要望・タスク・マイルストーン・設定・参照先の変更、`preflight`（`--note-only` も）、`accept`、`attach add / get / rm`（`get` はファイルを書く）、`release-notes generate / save`（`generate` は保存しなくても生成を始める）、`serve`（画面から変えられる） |
+| 警告して続ける | `whoami`・`progress`・`ls`・`show`・`find`・`resolve`・`notes`・`drafts`・`clarify`・`revisit`、`request ls / show`、`milestone`（一覧）、`config`（表示）、`repo`（一覧）、`attach`（一覧）、`quality`（表示・`templates`・`template`）、`release-notes ls / show / export`、`metrics`（集計）・`metrics records`、`retro`（表示）、`premise`（一覧）、`source`（根拠の一覧: 要望・タスク・案とその基準。`ls` / `show` / 操作なし） |
+| 止まる | 上のほか全部。要望・タスク・マイルストーン・設定・参照先の変更、`preflight`（`--note-only` も）、`accept`、`answer`、`attach add / get / rm`（`get` はファイルを書く）、`release-notes generate / save`（`generate` は保存しなくても生成を始める）、`metrics record / rm`、`retro confirm / judge`、`premise add / ack`、`source` の操作（`add`・`edit`・`confirm`・`rm` と、操作の語が無くても `--sources-json` でまとめて当てるとき。ファイル・標準入力を読む前に止まる）、`serve`（画面から変えられる） |
 
-`init`・`project`・`user-config`・`chatgpt`・`codex`・`render` はプロジェクトを選ばないので対象外。
+`init`・`project`・`user-config`・`chatgpt`・`codex`・`render`・`guide` はプロジェクトを選ばないので対象外。
 
 決まったプロジェクトの **データのフォルダと `project.yaml` が無い** と、CLI のどのコマンドも `serve` も、空のプロジェクトとして
 開かずに終了コード 1 で止まる（何も作らない。`--json` でも空の結果は返さず、案内は標準エラーに出る）。フォルダの移動・共有ドライブの
@@ -719,7 +719,9 @@ p3 show T003 --json     # item.completionRecords に全部
 - 記録は P3 が作る。CLI・API から記録の値を渡しても受け付けない
 - この機能より前に完了したもの・ファイルの直接編集で完了にしたものは「記録なし」のまま（後から補わない）。記録を直接編集で
   読めない値にすると「読めない」と出て、直すまで新しい記録を足さない（完了・済みは拒まず、足せなかったことを知らせる。
-  ほかの更新では元の値が残る）
+  ほかの更新では元の値が残る）。手戻りの履歴（`reworkHistory`）も同じ。知らせは標準エラーに出し、`move`・`set` の `--json` では
+  結果のトップレベルの `completionSkipped`（完了の記録）・`reworkSkipped`（手戻りの履歴）にも入れる（API のタスクの PATCH と同じ項目名と文。
+  残せたときは項目ごと無い）
 - 規則の詳細: [architecture.md の完了の記録](architecture.md#完了の記録)
 
 ### 振り返り（Preflight のリスクは起きたか）

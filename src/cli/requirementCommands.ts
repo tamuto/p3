@@ -34,7 +34,8 @@ import { formatRequirement, sourceLines } from "./showView.ts";
  *   answer [<要望>] <Q> rm                            回答を消す
  */
 
-const SOURCE_SUBS = new Set(["ls", "show", "add", "edit", "set", "confirm", "rm", "remove"]);
+/** source の操作の語（対象・基準の ID と見分ける。読むだけの判定 readOnly.ts も使う） */
+export const SOURCE_SUBS = new Set(["ls", "show", "add", "edit", "set", "confirm", "rm", "remove"]);
 
 /** 標準入力（-）は1つの項目にだけ */
 function readText(v: string | undefined, flag: string, used: { stdin?: string }): string | undefined {

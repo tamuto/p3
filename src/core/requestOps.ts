@@ -1,4 +1,4 @@
-import { acceptanceChanged, applyAcceptanceOps, type AcceptanceOp } from "../shared/acceptance.ts";
+import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../shared/acceptance.ts";
 import { readManual } from "./metrics/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
@@ -225,7 +225,7 @@ export async function createTask(
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = input;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceSourceSeq: _ass, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = input;
   // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
   const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
   const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
@@ -259,7 +259,7 @@ export async function updateTask(
   const { checked, acceptance, blockOp, ...rest } = patch;
   // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = rest;
+  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceSourceSeq: _ass, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = rest;
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
@@ -311,8 +311,13 @@ export async function updateTask(
           return { ...o, ...r.patch, ...history };
         };
         if (!acceptance?.length) return withRecords(out, false);
-        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor, requestSources: ctx.ws.requests.get(rid)?.requirementSources ?? [] });
-        if (!acceptanceChanged(fresh, changedTo)) return withRecords(out, false);
+        // 根拠の番号は、保存した番号・今ある記録・完了の記録の写しに残る番号の続き（旧データでも写しに残る番号は使い直さない）
+        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor, requestSources: ctx.ws.requests.get(rid)?.requirementSources ?? [], sourceSeqFloor: recordedSourceSeq(fresh.completionRecords) });
+        if (!acceptanceChanged(fresh, changedTo)) {
+          // 中身は同じでも（同じ操作の中で足して消したなど）採番が進んだら、採番だけを書く（済み・完了の記録・手戻りは中身の変化として扱わない）
+          const seqOnly = acceptanceSeqChanged(fresh, changedTo) ? { acceptanceSeq: changedTo.acceptanceSeq, acceptanceSourceSeq: changedTo.acceptanceSourceSeq } : {};
+          return withRecords({ ...out, ...seqOnly }, false);
+        }
         // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
         const clear = !!fresh.checkedAt && !("checkedAt" in next);
         if (clear) checkCleared = CHECK_CLEARED_BY_ACCEPTANCE;

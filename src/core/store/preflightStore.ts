@@ -1,19 +1,25 @@
 import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
-import { readDraftCriteria } from "../../shared/acceptance.ts";
+import { readDraftCriteria, readSourceSeq } from "../../shared/acceptance.ts";
 import { readCriterionSources } from "../../shared/requirementSource.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 
 /** 案の受け入れ基準と要求の根拠（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
-function draftCriteriaOf(raw: unknown, rawSources: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems" | "acceptanceSources"> {
+function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems" | "acceptanceSources" | "acceptanceSourceSeq"> {
   const { criteria, problems = [] } = readDraftCriteria(raw);
   const sourceProblems: string[] = [];
   const sources = readCriterionSources(rawSources, sourceProblems);
+  const seq = readSourceSeq(rawSourceSeq, sourceProblems);
   const all = [...problems, ...sourceProblems];
-  return { ...(criteria ? { acceptanceCriteria: criteria } : {}), ...(sources ? { acceptanceSources: sources } : {}), ...(all.length ? { acceptanceProblems: all } : {}) };
+  return {
+    ...(criteria ? { acceptanceCriteria: criteria } : {}),
+    ...(sources ? { acceptanceSources: sources } : {}),
+    ...(seq !== undefined ? { acceptanceSourceSeq: seq } : {}),
+    ...(all.length ? { acceptanceProblems: all } : {}),
+  };
 }
-import { writeFileAtomic } from "./fsutil.ts";
+import { withFileLock, writeFileAtomic } from "./fsutil.ts";
 
 /**
  * requests/<要望ID>/preflight/<RUN-ID>/
@@ -54,6 +60,11 @@ export class PreflightStore {
     );
   }
 
+  /** 案を読んで直して書くまでを、同じ案の他の更新と重ねない（同じマシンのプロセスの間。根拠の採番を同じ番号で払い出さない） */
+  withDraftLock<T>(requestId: string, runId: string, key: string, fn: () => Promise<T>): Promise<T> {
+    return withFileLock(join(this.runDir(requestId, runId), "drafts", `.${key}.lock`), fn);
+  }
+
   /** 案のファイルの frontmatter の元の値（読めなかった項目を、関係のない更新で消さないため） */
   async rawDraftField(requestId: string, runId: string, key: string, field: string): Promise<unknown> {
     const text = await readFile(join(this.runDir(requestId, runId), "drafts", `${key}.md`), "utf8").catch(() => undefined);
@@ -81,7 +92,7 @@ export class PreflightStore {
         supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
         include: data.include !== false,
         ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
-        ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources),
+        ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources, data.acceptanceSourceSeq),
       });
     }
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
