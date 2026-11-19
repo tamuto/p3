@@ -1,6 +1,6 @@
 {
   "name": "@infodb/p3-kit",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "private": true,
   "description": "p3 の入口と製品が使う最小限の共通処理（配布は @infodb/p3 に同梱）",
   "license": "MIT",
