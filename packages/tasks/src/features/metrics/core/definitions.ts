@@ -150,6 +150,17 @@ interface CriteriaCount {
   missingItems: MetricMissing[];
 }
 
+/**
+ * 基準の集計を材料ごとに1回だけ行う（5つの基準の指標が同じ結果を使う）。材料（MetricsInput）はレポートごとに作るので、
+ * 集計もそのレポートの中だけで使われ、材料が要らなくなれば一緒に消える（WeakMap）
+ */
+const criteriaCounts = new WeakMap<MetricsInput, CriteriaCount>();
+function sharedCriteria(input: MetricsInput): CriteriaCount {
+  let c = criteriaCounts.get(input);
+  if (!c) criteriaCounts.set(input, (c = countCriteria(input)));
+  return c;
+}
+
 /** 今完了しているタスクの、今の基準と保存された証拠の照合（shared/acceptance.ts の acceptanceStatus） */
 function countCriteria(input: MetricsInput): CriteriaCount {
   const c: CriteriaCount = {
@@ -197,7 +208,7 @@ const CRITERION_LABEL: Record<CriterionState, string> = {
 
 function criteriaMetric(state: CriterionState) {
   return (input: MetricsInput) => {
-    const c = countCriteria(input);
+    const c = sharedCriteria(input);
     const brokenTasks = c.missingItems.length;
     const value = c.byState[state];
     // 数えた基準が無いとき、欠損があれば「欠損で出せない」、無ければ「対象なし」（0 件とは言わない）

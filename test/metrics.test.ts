@@ -182,6 +182,21 @@ describe("範囲と CLI・API", () => {
       expect(c.status, c.stderr).toBe(0);
       const api = (await (await app.request(`/metrics${q}`)).json()) as { metrics: MetricResult[] };
       expect(shape(JSON.parse(c.stdout))).toEqual(shape(api));
+      // 指標の ID と並びは固定（両方の入口で同時に並びが変わる回帰も見つける）
+      expect(api.metrics.map((m) => m.id)).toEqual([
+        "request_to_resolved",
+        "request_to_done",
+        "acceptance_unmet",
+        "acceptance_unverified",
+        "acceptance_no_evidence",
+        "acceptance_stale",
+        "acceptance_met",
+        "rework",
+        "review_missing",
+        "review_unplanned",
+        "cost",
+        "post_release_defects",
+      ]);
     }
     expect(cli(["metrics"]).stdout).toContain("未達の受け入れ基準  [acceptance_unmet]  1 件 / 基準 3 件");
     expect(cli(["metrics", "--milestone", "nope"]).status).toBe(1);
