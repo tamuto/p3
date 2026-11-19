@@ -13,6 +13,29 @@ CI は使わず、手元で確かめてから公開する。Docker のイメー�
 | 中身 | ソース（`packages/*/src`）を tsx で動かす | 入口の `bin/`・`lib/`（tasks は `lib/tasks/`、kit は `lib/kit/` に同梱）・`dist/web`、ルートの `skills/`・`docs/`・README・LICENSE |
 | 作り方 | `pnpm install` | `pnpm build`（`vite build` と `scripts/build-cli.mjs --require-web`）→ `npm pack ./dist/package` / `npm publish ./dist/package` |
 
+### 版と Git タグの対応
+
+1つの版は1つのコミットに対応し、npm・Docker・Git のタグはすべて同じ版の番号を使う（同梱する内部パッケージごとに別の版やタグを付けない）。
+
+| 版 `<版>` を出すとき | 対応するもの |
+| --- | --- |
+| Git | タグ `v<版>`（リリースのブランチをマージしたコミット。4 つの manifest の `version` が `<版>`） |
+| npm | `@infodb/p3@<版>`（そのコミットの `pnpm build` の後の `dist/package`） |
+| Docker Hub | `tamuto/p3:<版>` と `latest`（同じコミットの Dockerfile。中の p3 は npm に出すのと同じ tarball） |
+
+ある版の配布物を作り直して確かめるときは、タグを指定してクリーンに取り出し、2.・3.・6. のスモークを通す:
+
+```bash
+git clone --branch v<版> <このリポジトリ> /tmp/p3-v<版> && cd /tmp/p3-v<版>   # 隣に llmcs が無い場所で
+pnpm install --frozen-lockfile && pnpm -s check
+node scripts/verify-pack.mjs --docker            # npm の tarball（DevContainer では --render-dir と P3_CODEX_PATH_MAP）
+node scripts/verify-docker.mjs                   # 同じコミットから作った Docker のイメージ（既定の複数プロジェクトの起動と、明示した1つのプロジェクトの起動）
+```
+
+内部パッケージ（`packages/*` の kit・tasks など）を足しても、公開するのは入口の `@infodb/p3` と `tamuto/p3` だけで、上の手順は変わらない。
+変わるのは同梱の対象と検査の一覧（`scripts/build-cli.mjs`・`Dockerfile`・`scripts/verify-pack.mjs` の tarball の中身・`test/pack.test.ts`・`test/package.test.ts` の版の同期）で、
+足すときはそれらを同じ変更で直す。
+
 ## 1. 外部のパッケージ
 
 - [ ] P3 が使う llmcs の部品（`@infodb/codex-workspace`・`@infodb/chatgpt-plan`）の必要な版が npm に公開されている

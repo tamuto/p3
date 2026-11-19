@@ -314,7 +314,8 @@ describe("ProjectRegistry: 落ちたプロセスが残した Preflight", () => {
     console.error = (m: string) => void logs.push(m);
     try {
       const ctx = await s.registry.open("alpha");
-      for (let i = 0; i < 100 && (await ctx.ws.preflight.get(rid, run.id))?.status === "running"; i++) await new Promise((r) => setTimeout(r, 20));
+      // recover は開いた後に裏で動き、run を中断にしてから要望の状態を戻し、最後にログを出す。run の状態だけを待つと、負荷が高いときに要望を戻す前に読んでしまう
+      for (let i = 0; i < 250 && !logs.join("\n").includes(`中断にしました: ${rid}/${run.id}`); i++) await new Promise((r) => setTimeout(r, 20));
       expect(await ctx.ws.preflight.get(rid, run.id)).toMatchObject({ status: "failed", interrupted: { reason: expect.any(String) } });
       await ctx.ws.requests.reload(rid);
       expect(ctx.ws.requests.get(rid)?.status).toBe("draft");

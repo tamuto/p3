@@ -8,7 +8,7 @@
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）。manifest と実行時の import に workspace の
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      guide / init --agents / init --agents codex と p3 agents / whoami / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      help / guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -142,6 +142,14 @@ try {
     return repo;
   });
 
+  await step("p3 help と p3 --help（登録の前）", () => {
+    for (const argv of [["help"], ["--help"]]) {
+      const out = p3(argv);
+      check(/使い方: p3 <コマンド>/.test(out), `p3 ${argv.join(" ")} の出力が使い方ではありません: ${out.slice(0, 200)}`);
+    }
+    return "使い方を表示";
+  });
+
   await step("p3 guide（登録の前・配布物の原本と版）", () => {
     const installed = join(prefix, "node_modules", "@infodb", "p3");
     const g = p3json(["guide"]);
@@ -188,6 +196,27 @@ try {
     return `${w.project} → ${w.dataDir ?? ""}・入口 ${w.agents.entries.map((e) => `${e.path}=${e.status}`).join(" ")}`;
   });
 
+  // 前の版が書いたのと同じ形式のファイル（CLI を通さずに置く）を、入れた版で読めること。版を上げてもデータを書き直さずに使い続けられる
+  const legacyId = "261001-legcy";
+  await step("既存形式の要望の参照（前の版の形式のファイルを request show・ls で読む）", () => {
+    const dir = join(work, "data", "requests", legacyId);
+    mkdirSync(join(dir, "tasks"), { recursive: true });
+    writeFileSync(
+      join(dir, "request.md"),
+      `---\nid: ${legacyId}\ntitle: 既存形式の要望\nstatus: active\nrev: 3\ncreatedAt: 2026-10-01T00:00:00.000Z\nupdatedAt: 2026-10-02T00:00:00.000Z\nupdatedBy: human:verify\n---\n前の版で書いた要望の本文\n`,
+    );
+    writeFileSync(
+      join(dir, "tasks", "T001.md"),
+      "---\nid: T001\ntitle: 既存形式のタスク\nstatus: done\noutputs:\n  - docs/how-to-use.md\nrev: 2\ncreatedAt: 2026-10-01T00:00:00.000Z\nupdatedAt: 2026-10-02T00:00:00.000Z\n---\n前の版で書いたタスクの本文\n",
+    );
+    const shown = p3json(["request", "show", legacyId, "--brief"]);
+    check(shown.item?.title === "既存形式の要望" && shown.item.status === "active" && shown.item.rev === 3, `既存形式の要望を読めません: ${JSON.stringify(shown.item)}`);
+    check(shown.tasks?.length === 1 && shown.tasks[0].status === "done", `既存形式のタスクが一覧にありません: ${JSON.stringify(shown.tasks)}`);
+    const tasks = p3json(["ls", "--req", legacyId]);
+    check(tasks[0]?.outputs?.[0] === "docs/how-to-use.md" && tasks[0].body.includes("前の版で書いたタスクの本文"), `既存形式のタスクの中身を読めません: ${JSON.stringify(tasks)}`);
+    return `${legacyId}・T001`;
+  });
+
   let rid = "";
   await step("要望を作り、Mock で Preflight", () => {
     rid = p3json(["request", "new", "通知機能", "--body", "- 送信基盤\n- 設定画面"]).id;
@@ -219,6 +248,7 @@ try {
       check((await fetchText(`${base}${asset}`)).length > 1000, `${asset} が読めません`);
       const requests = JSON.parse(await fetchText(`${base}/api/requests`));
       check(JSON.stringify(requests).includes(rid), "API に要望がありません");
+      check(JSON.stringify(requests).includes(legacyId), "API に既存形式の要望がありません");
       return `${base}  ${asset}`;
     } catch (e) {
       throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
