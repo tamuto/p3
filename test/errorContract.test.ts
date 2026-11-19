@@ -7,7 +7,7 @@ import { UserConfigError } from "../packages/tasks/src/core/userConfig.ts";
 import { SettingsError } from "../packages/tasks/src/core/machineSettings.ts";
 import { DataDirError, ProjectNotResolvedError } from "../packages/tasks/src/core/store/locate.ts";
 import { ReleaseNoteError } from "../packages/tasks/src/core/releaseNotes/store.ts";
-import { MetricsError } from "../packages/tasks/src/shared/metrics.ts";
+import { MetricsError } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import { RetrospectiveError } from "../packages/tasks/src/shared/retrospective.ts";
 import { GenerationRejected } from "../packages/tasks/src/core/releaseNotes/generate.ts";
 import { HierarchyError } from "../packages/tasks/src/core/hierarchy.ts";

@@ -1,9 +1,9 @@
-import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS_KINDS, type CriterionState } from "../../shared/acceptance.ts";
-import { firstCompletion, type CompletionTrigger } from "../../shared/completionRecord.ts";
-import { median, type ManualRecord, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../../shared/metrics.ts";
-import { REWORK_CAUSE_LABEL, REWORK_CAUSES, reworkPerRev } from "../../shared/reworkHistory.ts";
-import type { TaskReviewListItem, TaskReviewResult } from "../../shared/taskReview.ts";
-import type { Request, Task } from "../../shared/types.ts";
+import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS_KINDS, type CriterionState } from "../../../shared/acceptance.ts";
+import { firstCompletion, type CompletionTrigger } from "../../../shared/completionRecord.ts";
+import { median, type ManualRecord, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../shared/metrics.ts";
+import { REWORK_CAUSE_LABEL, REWORK_CAUSES, reworkPerRev } from "../../../shared/reworkHistory.ts";
+import type { TaskReviewListItem, TaskReviewResult } from "../../../shared/taskReview.ts";
+import type { Request, Task } from "../../../shared/types.ts";
 
 /**
  * 開発の指標の定義（何から・どう数えるか）。指標を足すときは METRIC_DEFINITIONS に1件足す（CLI の p3 metrics・API の /api/metrics・

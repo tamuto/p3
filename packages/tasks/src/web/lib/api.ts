@@ -1,4 +1,4 @@
-import type { MetricsReport } from "../../shared/metrics.ts";
+import type { MetricsReport } from "../../features/metrics/shared/metrics.ts";
 import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";

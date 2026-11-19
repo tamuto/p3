@@ -1,5 +1,5 @@
-import { MetricsError, type MetricNotice, type MetricScope, type MetricScopeOption, type MetricsReport } from "../../shared/metrics.ts";
-import type { P3Context } from "../context.ts";
+import { MetricsError, type MetricNotice, type MetricScope, type MetricScopeOption, type MetricsReport } from "../shared/metrics.ts";
+import type { P3Context } from "../../../core/context.ts";
 import { METRIC_DEFINITIONS, selectTaskReview, type MetricsInput, type ReviewObservation } from "./definitions.ts";
 import { readManual } from "./manual.ts";
 

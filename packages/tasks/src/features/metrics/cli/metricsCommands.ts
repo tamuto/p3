@@ -1,8 +1,8 @@
-import { metricScopeOf, metricsReport } from "../core/metrics/index.ts";
-import { readManual, recordManual, removeManual } from "../core/metrics/manual.ts";
+import { metricScopeOf, metricsReport } from "../core/index.ts";
+import { readManual, recordManual, removeManual } from "../core/manual.ts";
 import { MetricsError, METRIC_STATE_LABEL, METRIC_UNIT_LABEL, type ManualRecord, type ManualRow, type MetricResult, type MetricsReport } from "../shared/metrics.ts";
 import { UsageError } from "@infodb/p3-kit/usage.ts";
-import type { CommandEnv } from "./args.ts";
+import type { CommandEnv } from "../../../cli/args.ts";
 
 /**
  * 開発の指標（定義は core/metrics/definitions.ts）。読むだけ。

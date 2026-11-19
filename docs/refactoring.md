@@ -221,6 +221,25 @@
   git の呼び出しはタスクの AI レビュー（`taskReview/material.ts`）とマイルストーンレビュー（`milestoneReview/code.ts`・`review.ts`）にそれぞれあるが、
   時間切れ・出力の上限・パスの書き方・標準入力が違い、揃えると材料（と hash）が変わりうるので、まとめていない
 
+## モジュール構成
+
+tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `server` / `web`）の共通の土台と、機能のまとまり
+（`features/<機能>/{shared,core,cli,server,web}`）に分ける。1 つの機能のコードは、その機能のフォルダの中で層に分かれる。
+
+- **読んでよいもの**: 機能の `shared/`（型と判定の純粋な契約）はどこからでも読める。機能の中身（`core`・`cli`・`server`・`web`）を読めるのは、
+  その機能自身と、組み立ての場所（`test/featureBoundary.test.ts` の `ASSEMBLY`。理由と一緒に列挙）と、画面のルートの宣言（`web/routes/`）だけ。
+  機能どうしの読み込みは循環しない（同じテスト）。層の向き（shared ← core ← server / cli、web → shared）は機能の中でも同じ（`test/layers.test.ts`）
+- **組み立ての場所（入口と製品の接点）**: CLI はコマンドの振り分け（`cli/tasksCli.ts`）が機能の `cli/` を呼ぶ。API は `server/api/routes.ts` が機能の
+  `server/` のアプリ（Hono）を `app.route` でつなぐ。画面は `web/routes/` のファイルがルートの宣言（URL と検索の値）だけを持ち、ページの中身は機能の
+  `web/` から読む（物理のルートのフォルダは入口の `__root.tsx` の下にそのまま付く）。プロジェクトを開くとき（`core/context.ts`）に各機能の
+  サービスを作り、保存の入口（`core/store/workspace.ts`）が各機能の記録のストアを持つ
+- **配布**: `scripts/build-cli.mjs` は tasks の `features/` も Node の JavaScript に入れる（`web/` を除く）。画面は入口で vite がビルドし、Tailwind は
+  tasks の `src` 全体のクラスを拾う
+
+| 段階 | 移した機能 |
+| --- | --- |
+| T007 | 開発の指標（`features/metrics`: `shared/metrics.ts`・`core/{definitions,index,manual}.ts`・`cli/metricsCommands.ts`・`server/metricsRoutes.ts`（API から切り出した）・`web/MetricsPage.tsx`（ルートの宣言は `web/routes/metrics.tsx`）） |
+
 ## 契約と既存のテストの対応
 
 まとめるときに変えない契約と、それを確かめるテスト。基準の時点で足りなかったものは、この要望で足した（下の「足したもの」）。各段階は、

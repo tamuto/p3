@@ -3,10 +3,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { metricsReport } from "../packages/tasks/src/core/metrics/index.ts";
-import { manualFile, recordManual } from "../packages/tasks/src/core/metrics/manual.ts";
+import { metricsReport } from "../packages/tasks/src/features/metrics/core/index.ts";
+import { manualFile, recordManual } from "../packages/tasks/src/features/metrics/core/manual.ts";
 import { checkMilestoneRemoval } from "../packages/tasks/src/core/requestOps.ts";
-import type { MetricResult, MetricsReport } from "../packages/tasks/src/shared/metrics.ts";
+import type { MetricResult, MetricsReport } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import { makeProject, openTestProject, tempDir } from "./helpers.ts";
 
 /**

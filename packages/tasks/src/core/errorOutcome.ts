@@ -1,6 +1,6 @@
 import { UsageError } from "@infodb/p3-kit/usage.ts";
 import { AcceptanceInputError } from "../shared/acceptance.ts";
-import { MetricsError } from "../shared/metrics.ts";
+import { MetricsError } from "../features/metrics/shared/metrics.ts";
 import { QualityInputError } from "../shared/quality.ts";
 import { RequirementInputError } from "../shared/requirementSource.ts";
 import { RetrospectiveError } from "../shared/retrospective.ts";

@@ -4,7 +4,7 @@ import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts"
 import { requirementCommand } from "./requirementCommands.ts";
 import { revisitCommand } from "./revisitCommands.ts";
 import { retroCommand } from "./retroCommands.ts";
-import { metricsCommand } from "./metricsCommands.ts";
+import { metricsCommand } from "../features/metrics/cli/metricsCommands.ts";
 import type { RequestProgress } from "../shared/types.ts";
 import { taskReviewCommand } from "./taskReviewCommands.ts";
 import { qualityCommand } from "./qualityCommands.ts";

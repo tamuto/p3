@@ -53,8 +53,13 @@ function locate(abs: string): { pkg: keyof typeof SRCS; rel: string } | undefine
   return undefined;
 }
 
-const layerOf = (loc: { pkg: keyof typeof SRCS; rel: string } | undefined): Layer | undefined =>
-  !loc ? undefined : loc.pkg === "kit" ? "kit" : LAYERS.find((l) => loc.rel.startsWith(`${l}/`));
+/** 層（機能のフォルダ features/<機能>/ の中も同じ層に分ける） */
+const layerOf = (loc: { pkg: keyof typeof SRCS; rel: string } | undefined): Layer | undefined => {
+  if (!loc) return undefined;
+  if (loc.pkg === "kit") return "kit";
+  const rel = loc.rel.replace(/^features\/[^/]+\//, "");
+  return LAYERS.find((l) => rel.startsWith(`${l}/`));
+};
 
 /** パッケージ名の指定（@infodb/p3-tasks/core/x.ts）を、そのパッケージの src の中のファイルにする */
 function bareTarget(spec: string): string | undefined {
@@ -71,7 +76,7 @@ function violations(): string[] {
       const loc = locate(file)!;
       const rel = `${loc.pkg}/${loc.rel}`;
       const from = layerOf(loc);
-      if (!from || CONTAINER_ONLY.some((p) => loc.rel.startsWith(p))) continue;
+      if (!from || CONTAINER_ONLY.some((p) => loc.rel.replace(/^features\/[^/]+\//, "").startsWith(p))) continue;
       for (const spec of specifiers(readFileSync(file, "utf8"))) {
         const internal = spec.startsWith(".") ? resolve(dirname(file), spec) : bareTarget(spec);
         if (internal) {

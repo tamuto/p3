@@ -1,6 +1,6 @@
 import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
 import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../shared/acceptance.ts";
-import { readManual } from "./metrics/manual.ts";
+import { readManual } from "../features/metrics/core/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";

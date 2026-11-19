@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { pageOverflow, reachable } from "./layout.ts";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
-import type { MetricsReport } from "../../packages/tasks/src/shared/metrics.ts";
+import type { MetricsReport } from "../../packages/tasks/src/features/metrics/shared/metrics.ts";
 
 const ids = { a: "" };
 

@@ -1,7 +1,7 @@
 // 配布物を作る（pnpm build から呼ぶ。画面は先に vite build で packages/p3/dist/web に出しておく）。利用者の環境では tsx（と esbuild）を使わずに動かすため、
 // 入口（packages/p3）・tasks・kit の Node で動く部分を 1 つのパッケージ @infodb/p3 の JavaScript にまとめる（kit・tasks は公開しない。同梱する）。
 //   1. 一時のフォルダ（packages/p3/build-src）に、配布物と同じ並びでソースを集める:
-//        入口の src/{cli,core,server} → cli・core・server、tasks の src/{cli,core,server,shared} → tasks/、kit の src → kit/
+//        入口の src/{cli,core,server} → cli・core・server、tasks の src/{cli,core,server,shared,features}（画面の web/ を除く）→ tasks/、kit の src → kit/
 //      パッケージ名の import（@infodb/p3-tasks/... ・@infodb/p3-kit/...）は、集めた先への相対パスに書き換える
 //   2. tsc で packages/p3/lib に 1:1 で出す（相対の import の .ts は .js に書き換わる）。.ts 以外の資材（描画のイメージ・Mock の画面・起動の補助・
 //      guide.md）は同じ場所に写す。入口の lib/{cli,server} は src と同じ深さなので、import.meta.url からの相対の参照
@@ -24,20 +24,22 @@ const pack = join(root, "dist", "package");
 /** 集める元と先（先は staging からの相対） */
 const SOURCES = [
   ...["cli", "core", "server"].map((l) => [join(entry, "src", l), l]),
-  ...["cli", "core", "server", "shared"].map((l) => [join(root, "packages", "tasks", "src", l), join("tasks", l)]),
+  ...["cli", "core", "server", "shared", "features"].map((l) => [join(root, "packages", "tasks", "src", l), join("tasks", l)]),
   [join(root, "packages", "kit", "src"), "kit"],
 ];
 /** パッケージ名 → staging の中の置き場所 */
 const NAMES = { "@infodb/p3-tasks": "tasks", "@infodb/p3-kit": "kit" };
 const SPEC = /((?:^|\s)(?:import|export)\s[^"';]*?from\s*|import\s*\(\s*|^\s*import\s*)(["'])(@infodb\/p3-(?:tasks|kit))\/([^"']+)\2/gm;
 
-const walk = (dir) => readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)).map((f) => join(name, f)) : [name]));
+const walk = (dir) => (existsSync(dir) ? readdirSync(dir) : []).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)).map((f) => join(name, f)) : [name]));
+/** 画面（web/。機能の features/<機能>/web/ も）は vite でビルドするので、Node の JavaScript には入れない */
+const nodeSide = (f) => !f.split(/[\\/]/).includes("web");
 
 rmSync(staging, { recursive: true, force: true });
 rmSync(out, { recursive: true, force: true });
 let rewritten = 0;
 for (const [from, to] of SOURCES) {
-  for (const f of walk(from)) {
+  for (const f of walk(from).filter(nodeSide)) {
     const dest = join(staging, to, f);
     mkdirSync(dirname(dest), { recursive: true });
     if (!/\.(ts|mjs)$/.test(f)) {

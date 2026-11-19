@@ -11,7 +11,7 @@ import { ACCEPTANCE_RESULTS, acceptanceStatus, type EvidenceBasis } from "../../
 import { requestRequirementView, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
 import { MILESTONE_REVIEW_SECTIONS, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../shared/retrospective.ts";
 import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../core/retrospective.ts";
-import { metricScopeOf, metricsReport } from "../../core/metrics/index.ts";
+import { metricsRoutes } from "../../features/metrics/server/metricsRoutes.ts";
 import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
 import { taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
@@ -43,7 +43,7 @@ import { CancelRefusedError, PulseInputError } from "../../core/preflight/servic
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
- *   /metrics[?milestone=<ID>]              開発の指標（core/metrics。読むだけ）
+ *   /metrics[?milestone=<ID>]              開発の指標（features/metrics。読むだけ）
  *   /milestones/:mid/review[s...]          マイルストーンレビュー（milestoneReviewRoutes.ts）
  *   /requests/:rid/tasks/:tid/review[s...] タスクの AI レビュー（taskReviewRoutes.ts）
  */
@@ -327,7 +327,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
-  app.get("/metrics", async (c) => c.json(await metricsReport(ctx, metricScopeOf(ctx, c.req.query("milestone")))));
+  app.route("/", metricsRoutes(ctx));
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
     return c.json(reviewCandidates(ctx, request ? { request } : {}));
