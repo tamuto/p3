@@ -1,8 +1,8 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/core/releaseNotes/completeRequests.ts";
-import { releaseNoteDetail, saveReleaseNote } from "../packages/tasks/src/core/releaseNotes/service.ts";
+import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/features/releaseNotes/core/completeRequests.ts";
+import { releaseNoteDetail, saveReleaseNote } from "../packages/tasks/src/features/releaseNotes/core/service.ts";
 import { archiveRequest } from "../packages/tasks/src/core/requestOps.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";

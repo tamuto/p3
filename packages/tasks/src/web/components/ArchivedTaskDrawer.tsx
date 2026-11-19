@@ -7,7 +7,7 @@ import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { AcceptanceView } from "../../features/requirements/web/Acceptance.tsx";
 import { CriteriaSources } from "../../features/requirements/web/RequirementSources.tsx";
-import { TaskReviewPanel } from "./TaskReview.tsx";
+import { TaskReviewPanel } from "../../features/taskReview/web/TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { Outputs } from "./Outputs.tsx";

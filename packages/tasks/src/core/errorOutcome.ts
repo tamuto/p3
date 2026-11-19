@@ -8,20 +8,20 @@ import { PremiseInputError } from "../features/records/shared/reviewCandidate.ts
 import { BlockInputError } from "../shared/taskBlock.ts";
 import { HierarchyError } from "./hierarchy.ts";
 import { SettingsError } from "./machineSettings.ts";
-import { ReviewRejected } from "./milestoneReview/service.ts";
+import { ReviewRejected } from "../features/milestoneReview/core/service.ts";
 import { StaleInputError } from "./preflight/input.ts";
 import { ChildConflictError, ChildDraftsChangedError, DraftConflictError } from "./preflight/service.ts";
 import { ImprovementError } from "../features/quality/core/qualityImprovement.ts";
-import { CompletionRejected } from "./releaseNotes/completeRequests.ts";
-import { GenerationRejected } from "./releaseNotes/generate.ts";
-import { ReleaseNoteError } from "./releaseNotes/store.ts";
+import { CompletionRejected } from "../features/releaseNotes/core/completeRequests.ts";
+import { GenerationRejected } from "../features/releaseNotes/core/generate.ts";
+import { ReleaseNoteError } from "../features/releaseNotes/core/store.ts";
 import { OpRuleError } from "./requestOps.ts";
 import { ReviewCancelRefused, ReviewStoreError } from "./reviewRuns.ts";
 import { ArchivedTaskReadError } from "./store/archivedTasks.ts";
 import { ConflictError, NotFoundError } from "./store/collection.ts";
 import { DataDirError, ProjectNotResolvedError } from "./store/locate.ts";
 import { MilestonesConflictError, ProjectInputError, ReloadError } from "./store/workspace.ts";
-import { TaskReviewRejected } from "./taskReview/material.ts";
+import { TaskReviewRejected } from "../features/taskReview/core/material.ts";
 import { UserConfigError } from "./userConfig.ts";
 
 /**

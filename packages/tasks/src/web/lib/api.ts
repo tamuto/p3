@@ -10,8 +10,8 @@ import type { ReviewDiagnosis, ReviewSummary } from "../../features/records/shar
 import type { EvidenceRef, RetrospectiveView, RiskState } from "../../features/retro/shared/retrospective.ts";
 import type { ImprovementDiagnosis, ImprovementSource } from "../../features/quality/shared/qualityImprovement.ts";
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../features/quality/shared/quality.ts";
-import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../shared/taskReview.ts";
-import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../shared/milestoneReview.ts";
+import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../features/taskReview/shared/taskReview.ts";
+import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../features/milestoneReview/shared/milestoneReview.ts";
 import type {
   AdoptionResult,
   ArchivedTask,

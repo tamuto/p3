@@ -6,7 +6,7 @@ import { metricsReport } from "../packages/tasks/src/features/metrics/core/index
 import { updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import type { MetricResult } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import type { ReworkEntry } from "../packages/tasks/src/features/records/shared/reworkHistory.ts";
-import type { TaskReviewListItem, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/shared/taskReview.ts";
+import type { TaskReviewListItem, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import type { Request, Task } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 

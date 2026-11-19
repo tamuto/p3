@@ -238,7 +238,9 @@ tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `
 - **配布**: `scripts/build-cli.mjs` は tasks の `features/` も Node の JavaScript に入れる（`web/` を除く）。画面は入口で vite がビルドし、Tailwind は
   tasks の `src` 全体のクラスを拾う
 
-共通の土台に残したもの: 要望とタスクの本体（`shared/types.ts`・保存 `core/store/`・変更の手順 `core/requestOps.ts`・読み取り `core/ops.ts`・親子 `core/hierarchy.ts`・
+共通の土台に残したもの: Preflight と AI の実行（`core/preflight/`。評価・案・子の案・評価対象の固定・画面資料の描画と添付・Codex と ChatGPT の接続・Docker と
+ホストのパス・run の所有者・エンジンの型。`shared/types.ts`・保存・添付・2 つのエンジンが互いに読み合う p3-tasks の中心の流れで、機能に分けると多くの依存を
+逆向きにする必要があるため。レビューの run の骨組み `core/reviewRuns.ts` も、複数の機能が使う共通として残した）、要望とタスクの本体（`shared/types.ts`・保存 `core/store/`・変更の手順 `core/requestOps.ts`・読み取り `core/ops.ts`・親子 `core/hierarchy.ts`・
 状態 `core/requestStatus.ts`・停止・作業先・置き換え）と、入口も使う基盤（個人設定 `core/userConfig.ts`・マシンごとの設定 `core/machineSettings.ts`・
 プロジェクトの決め方 `core/store/locate.ts`）、CLI の振り分けと共通の出力、API の組み立て、画面の共通の部品と処理。
 
@@ -246,6 +248,7 @@ tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `
 | --- | --- |
 | T007 | 開発の指標（`features/metrics`: `shared/metrics.ts`・`core/{definitions,index,manual}.ts`・`cli/metricsCommands.ts`・`server/metricsRoutes.ts`（API から切り出した）・`web/MetricsPage.tsx`（ルートの宣言は `web/routes/metrics.tsx`）） |
 | T008 | 完了の記録・手戻り・見直し候補・前提（`features/records`）、品質基準・テンプレート・改善要望（`features/quality`）、振り返り（`features/retro`）、要求の根拠・確認事項と回答・受け入れ基準と証拠（`features/requirements`。基準の根拠が要求の根拠と同じ記録なので、受け入れ基準と 1 つのまとまりにした）、参照先・テーマ・マシンごとの設定の書き換え（`features/settings`） |
+| T009 | タスクの AI レビュー（`features/taskReview`）、マイルストーンレビュー（`features/milestoneReview`）、リリースノートと要約・要望の一括完了（`features/releaseNotes`）。2 つのレビューがリリースノートの要約の型（`Summarizer`）を読んでいたのを、AI の実行の共通（`core/preflight/engine.ts`）に移し、タスクの AI レビューがマイルストーンレビューのコードの材料から読んでいた成果物のコミットの取り出しを `shared/commitRefs.ts` に移した（機能の core どうしを読まないため） |
 
 ## 契約と既存のテストの対応
 

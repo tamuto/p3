@@ -15,9 +15,9 @@ import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile, writeQualityFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
-import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
-import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
-import { TASK_REVIEWS_DIR, TaskReviewStore } from "../taskReview/store.ts";
+import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../../features/releaseNotes/core/store.ts";
+import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../../features/milestoneReview/core/store.ts";
+import { TASK_REVIEWS_DIR, TaskReviewStore } from "../../features/taskReview/core/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 

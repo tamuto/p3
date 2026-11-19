@@ -12,12 +12,12 @@ import { PreflightService } from "../packages/tasks/src/core/preflight/service.t
 import { writeProjectFile, writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
 import type { RepoRef } from "../packages/tasks/src/shared/repos.ts";
 import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
-import { ReleaseGenerator, type Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
-import { MockSummarizer } from "../packages/tasks/src/core/releaseNotes/mockSummarizer.ts";
-import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
-import { MockReviewer } from "../packages/tasks/src/core/milestoneReview/mockReviewer.ts";
-import { TaskReviewService } from "../packages/tasks/src/core/taskReview/service.ts";
-import { MockTaskReviewer } from "../packages/tasks/src/core/taskReview/mockReviewer.ts";
+import { ReleaseGenerator, type Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
+import { MockSummarizer } from "../packages/tasks/src/features/releaseNotes/core/mockSummarizer.ts";
+import { MilestoneReviewService } from "../packages/tasks/src/features/milestoneReview/core/service.ts";
+import { MockReviewer } from "../packages/tasks/src/features/milestoneReview/core/mockReviewer.ts";
+import { TaskReviewService } from "../packages/tasks/src/features/taskReview/core/service.ts";
+import { MockTaskReviewer } from "../packages/tasks/src/features/taskReview/core/mockReviewer.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする

@@ -6,14 +6,14 @@ import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/c
 import { UserConfigError } from "../packages/tasks/src/core/userConfig.ts";
 import { SettingsError } from "../packages/tasks/src/core/machineSettings.ts";
 import { DataDirError, ProjectNotResolvedError } from "../packages/tasks/src/core/store/locate.ts";
-import { ReleaseNoteError } from "../packages/tasks/src/core/releaseNotes/store.ts";
+import { ReleaseNoteError } from "../packages/tasks/src/features/releaseNotes/core/store.ts";
 import { MetricsError } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import { RetrospectiveError } from "../packages/tasks/src/features/retro/shared/retrospective.ts";
-import { GenerationRejected } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { GenerationRejected } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { HierarchyError } from "../packages/tasks/src/core/hierarchy.ts";
-import { ReviewRejected } from "../packages/tasks/src/core/milestoneReview/service.ts";
+import { ReviewRejected } from "../packages/tasks/src/features/milestoneReview/core/service.ts";
 import { ReviewCancelRefused, ReviewStoreError } from "../packages/tasks/src/core/reviewRuns.ts";
-import { TaskReviewRejected } from "../packages/tasks/src/core/taskReview/material.ts";
+import { TaskReviewRejected } from "../packages/tasks/src/features/taskReview/core/material.ts";
 import { ImprovementError } from "../packages/tasks/src/features/quality/core/qualityImprovement.ts";
 import { QualityInputError } from "../packages/tasks/src/features/quality/shared/quality.ts";
 import { MilestonesConflictError, ProjectInputError, ReloadError } from "../packages/tasks/src/core/store/workspace.ts";
@@ -24,9 +24,9 @@ import { PremiseInputError } from "../packages/tasks/src/features/records/shared
 import { BlockInputError } from "../packages/tasks/src/shared/taskBlock.ts";
 import { ArchivedTaskReadError } from "../packages/tasks/src/core/store/archivedTasks.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { taskReviewRoutes } from "../packages/tasks/src/server/api/taskReviewRoutes.ts";
-import { milestoneReviewRoutes } from "../packages/tasks/src/server/api/milestoneReviewRoutes.ts";
-import { releaseNoteRoutes } from "../packages/tasks/src/server/api/releaseNoteRoutes.ts";
+import { taskReviewRoutes } from "../packages/tasks/src/features/taskReview/server/taskReviewRoutes.ts";
+import { milestoneReviewRoutes } from "../packages/tasks/src/features/milestoneReview/server/milestoneReviewRoutes.ts";
+import { releaseNoteRoutes } from "../packages/tasks/src/features/releaseNotes/server/releaseNoteRoutes.ts";
 import { makeProject } from "./helpers.ts";
 
 /**

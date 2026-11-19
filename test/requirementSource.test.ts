@@ -23,9 +23,9 @@ import { StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
 import type { PreflightEngine, PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";
 import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { createTask, saveClarifyAnswer, updateRequest, updateRequirement, updateTask } from "../packages/tasks/src/core/requestOps.ts";
-import { taskReviewMaterial } from "../packages/tasks/src/core/taskReview/review.ts";
+import { taskReviewMaterial } from "../packages/tasks/src/features/taskReview/core/review.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
-import { extractTaskReview } from "../packages/tasks/src/core/taskReview/material.ts";
+import { extractTaskReview } from "../packages/tasks/src/features/taskReview/core/material.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 

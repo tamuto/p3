@@ -10,7 +10,7 @@ import type { EngineOutcome, PreflightEngine } from "../packages/tasks/src/core/
 import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { currentOwner } from "../packages/tasks/src/core/preflight/owner.ts";
 import { ProjectRegistry, RegistryError } from "../packages/p3/src/core/projectRegistry.ts";
-import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import type { Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { checkDataDir } from "../packages/tasks/src/core/store/locate.ts";
 import { GENERATION_HEADER, projectsRoutes } from "../packages/p3/src/server/api/projectsRoutes.ts";
 import { singleProjectApp, startServer } from "../packages/p3/src/server/server.ts";

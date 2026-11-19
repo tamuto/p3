@@ -4,10 +4,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { extractReviewInput, reviewUnits } from "../packages/tasks/src/core/milestoneReview/material.ts";
-import { MilestoneReviewStore, ReviewStoreError, newReviewRunId } from "../packages/tasks/src/core/milestoneReview/store.ts";
+import { extractReviewInput, reviewUnits } from "../packages/tasks/src/features/milestoneReview/core/material.ts";
+import { MilestoneReviewStore, ReviewStoreError, newReviewRunId } from "../packages/tasks/src/features/milestoneReview/core/store.ts";
 import { archiveRequest, checkMilestoneRemoval } from "../packages/tasks/src/core/requestOps.ts";
-import type { ReviewRun } from "../packages/tasks/src/shared/milestoneReview.ts";
+import type { ReviewRun } from "../packages/tasks/src/features/milestoneReview/shared/milestoneReview.ts";
 import { git, makeProject, newRequest, newTask } from "./helpers.ts";
 
 const MS = [{ id: "v1", title: "最初", purpose: "在庫の確認を速くする", goals: [{ id: "G1", text: "在庫の一覧" }, { id: "G2", text: "通知" }] }, { id: "v2", title: "次" }];

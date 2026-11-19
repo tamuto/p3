@@ -6,7 +6,7 @@ import { revisitCommand } from "../features/records/cli/revisitCommands.ts";
 import { retroCommand } from "../features/retro/cli/retroCommands.ts";
 import { metricsCommand } from "../features/metrics/cli/metricsCommands.ts";
 import type { RequestProgress } from "../shared/types.ts";
-import { taskReviewCommand } from "./taskReviewCommands.ts";
+import { taskReviewCommand } from "../features/taskReview/cli/taskReviewCommands.ts";
 import { qualityCommand } from "../features/quality/cli/qualityCommands.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { VIA_LABEL } from "../core/store/locate.ts";
@@ -21,7 +21,7 @@ import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
 import { taskCommand } from "./taskCommands.ts";
 import { preflightCommand } from "./preflightCommands.ts";
-import { releaseNotesCommand } from "./releaseNotesCommands.ts";
+import { releaseNotesCommand } from "../features/releaseNotes/cli/releaseNotesCommands.ts";
 import type { ResolvedProject } from "../core/store/locate.ts";
 import type { MachineSettings } from "../core/machineSettings.ts";
 

@@ -17,8 +17,8 @@ import {
 } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import { progress } from "../packages/tasks/src/core/ops.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
-import { extractTaskReview, taskReviewInputHash } from "../packages/tasks/src/core/taskReview/material.ts";
-import { taskReviewMaterial } from "../packages/tasks/src/core/taskReview/review.ts";
+import { extractTaskReview, taskReviewInputHash } from "../packages/tasks/src/features/taskReview/core/material.ts";
+import { taskReviewMaterial } from "../packages/tasks/src/features/taskReview/core/review.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeProject, newRequest, tempDir } from "./helpers.ts";
 

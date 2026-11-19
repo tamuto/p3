@@ -14,8 +14,8 @@ import {
   savedNote,
   syncNote,
   type NoteState,
-} from "../packages/tasks/src/web/lib/releaseNoteDraft.ts";
-import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+} from "../packages/tasks/src/features/releaseNotes/web/lib/releaseNoteDraft.ts";
+import type { Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 /** 画面の API（app.request で呼ぶ。serve は起動しない） */

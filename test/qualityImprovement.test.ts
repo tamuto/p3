@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
 import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement, tokenTag } from "../packages/tasks/src/features/quality/core/qualityImprovement.ts";
 import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
-import { newTaskReviewRunId } from "../packages/tasks/src/core/taskReview/store.ts";
+import { newTaskReviewRunId } from "../packages/tasks/src/features/taskReview/core/store.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import type { TaskReviewInput, TaskReviewResult } from "../packages/tasks/src/shared/taskReview.ts";
+import type { TaskReviewInput, TaskReviewResult } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import { makeProject, newRequest, tempDir } from "./helpers.ts";
 
 const source = { type: "project" } as const;

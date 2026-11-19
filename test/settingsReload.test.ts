@@ -12,9 +12,9 @@ import { CodexWorkspaceEngine, codexConfig } from "../packages/tasks/src/core/pr
 import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
 import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
-import { ReleaseGenerator } from "../packages/tasks/src/core/releaseNotes/generate.ts";
-import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
-import { TaskReviewService } from "../packages/tasks/src/core/taskReview/service.ts";
+import { ReleaseGenerator } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
+import { MilestoneReviewService } from "../packages/tasks/src/features/milestoneReview/core/service.ts";
+import { TaskReviewService } from "../packages/tasks/src/features/taskReview/core/service.ts";
 import { makeRepo, newRequest, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));

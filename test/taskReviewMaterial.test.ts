@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
-import { bodyItems, extractTaskReview, safeRelPath, TASK_REVIEW_LIMITS, TaskReviewRejected } from "../packages/tasks/src/core/taskReview/material.ts";
+import { bodyItems, extractTaskReview, safeRelPath, TASK_REVIEW_LIMITS, TaskReviewRejected } from "../packages/tasks/src/features/taskReview/core/material.ts";
 import { git, gitInit, makeProject, newRequest, tempDir } from "./helpers.ts";
 
 /**

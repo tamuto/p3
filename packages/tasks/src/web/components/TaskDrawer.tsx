@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../features/requirements/shared/acceptance.ts";
 import { AcceptancePanel, metSummary, shortfallSummary } from "../../features/requirements/web/Acceptance.tsx";
 import { CriteriaSources } from "../../features/requirements/web/RequirementSources.tsx";
-import { TaskReviewPanel } from "./TaskReview.tsx";
+import { TaskReviewPanel } from "../../features/taskReview/web/TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { QualityDiffPanel } from "../../features/quality/web/QualityDiff.tsx";
 import { CompletionRecords, ReviewPanel } from "../../features/records/web/CompletionReview.tsx";

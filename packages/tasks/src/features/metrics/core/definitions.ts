@@ -2,7 +2,7 @@ import { acceptanceStatus, evidenceBasisOf, EVIDENCE_BASIS_LABEL, EVIDENCE_BASIS
 import { firstCompletion, type CompletionTrigger } from "../../records/shared/completionRecord.ts";
 import { median, type ManualRecord, type MetricBreakdown, type MetricDefinitionInfo, type MetricMissing, type MetricResult, type MetricState } from "../shared/metrics.ts";
 import { REWORK_CAUSE_LABEL, REWORK_CAUSES, reworkPerRev } from "../../records/shared/reworkHistory.ts";
-import type { TaskReviewListItem, TaskReviewResult } from "../../../shared/taskReview.ts";
+import type { TaskReviewListItem, TaskReviewResult } from "../../taskReview/shared/taskReview.ts";
 import type { Request, Task } from "../../../shared/types.ts";
 
 /**
