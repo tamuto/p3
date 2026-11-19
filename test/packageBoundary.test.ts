@@ -7,14 +7,17 @@ import { describe, expect, it } from "vitest";
  * パッケージの境界（docs/architecture.md「パッケージの構成」）。
  *   入口 @infodb/p3（packages/p3）: 起動・CLI の振り分け・init / join / agents・serve の組み立て・画面の外枠。tasks と kit を読める
  *   @infodb/p3-tasks（packages/tasks）: 今の p3 の機能。kit だけを読める（入口を読まない。入口からは値と関数で受け取る）
+ *   @infodb/p3-observer（packages/observer）: 観測基盤（準備中）。kit だけを読める。製品どうし（tasks ⇔ observer）は読まない
  *   @infodb/p3-kit（packages/kit）: 入口と製品が使う最小限の共通処理。何も読まない
  * パッケージの間はパッケージ名（@infodb/p3-tasks/... ）で読み、相対パスで別のパッケージのファイルを指さない。読むパッケージは manifest に書く
  */
 const PACKAGES = fileURLToPath(new URL("../packages/", import.meta.url));
-type Pkg = "p3" | "tasks" | "kit";
-const DIRS: Record<Pkg, string> = { p3: join(PACKAGES, "p3"), tasks: join(PACKAGES, "tasks"), kit: join(PACKAGES, "kit") };
-const NAME: Record<Pkg, string> = { p3: "@infodb/p3", tasks: "@infodb/p3-tasks", kit: "@infodb/p3-kit" };
-const ALLOWED: Record<Pkg, Pkg[]> = { p3: ["p3", "tasks", "kit"], tasks: ["tasks", "kit"], kit: ["kit"] };
+type Pkg = "p3" | "tasks" | "observer" | "kit";
+/** 製品（入口が知っていて組み込むもの） */
+const PRODUCTS = ["tasks", "observer"] as const;
+const DIRS: Record<Pkg, string> = { p3: join(PACKAGES, "p3"), tasks: join(PACKAGES, "tasks"), observer: join(PACKAGES, "observer"), kit: join(PACKAGES, "kit") };
+const NAME: Record<Pkg, string> = { p3: "@infodb/p3", tasks: "@infodb/p3-tasks", observer: "@infodb/p3-observer", kit: "@infodb/p3-kit" };
+const ALLOWED: Record<Pkg, Pkg[]> = { p3: ["p3", ...PRODUCTS, "kit"], tasks: ["tasks", "kit"], observer: ["observer", "kit"], kit: ["kit"] };
 const PKGS = Object.keys(DIRS) as Pkg[];
 
 function files(dir: string): string[] {
@@ -70,10 +73,23 @@ const manifest = (pkg: Pkg) => JSON.parse(readFileSync(join(DIRS[pkg], "package.
 const declaredRange = (pkg: Pkg, dep: Pkg) => manifest(pkg).dependencies?.[NAME[dep]] ?? manifest(pkg).devDependencies?.[NAME[dep]];
 
 describe("パッケージの境界", () => {
-  it("入口 → tasks → kit の一方向だけ。逆向き・製品の間・相対パスでの迂回は無い", () => {
+  it("入口 → 製品（tasks・observer）→ kit の一方向だけ。逆向き・製品の間・相対パスでの迂回は無い", () => {
     const { uses, violations } = scan();
     expect(violations).toEqual([]);
-    expect(uses).toEqual(["p3→kit", "p3→tasks", "tasks→kit"]);
+    expect(uses).toEqual(["observer→kit", "p3→kit", "p3→tasks", "tasks→kit"]);
+    // 製品どうしは読まない（連携が要るなら kit の小さな約束事を通す）
+    expect(uses.filter((u) => u === "tasks→observer" || u === "observer→tasks")).toEqual([]);
+  });
+
+  it("製品の間の直接の読み込みと、相対パスでの迂回を見つける（確かめ方そのもの）", () => {
+    const check = (from: Pkg, file: string, spec: string) => {
+      const to = spec.startsWith(".") ? pkgOfPath(resolve(dirname(file), spec)) : pkgOfName(spec);
+      return to !== undefined && to !== from && !ALLOWED[from].includes(to);
+    };
+    expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "@infodb/p3-tasks/core/context.ts")).toBe(true);
+    expect(check("tasks", join(DIRS.tasks, "src", "core", "x.ts"), "@infodb/p3-observer/core/status.ts")).toBe(true);
+    expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "../../../tasks/src/core/context.ts")).toBe(true);
+    expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "@infodb/p3-kit/appInfo.ts")).toBe(false);
   });
 
   it("読むパッケージを manifest に workspace の参照で書き、読まないパッケージは書かない", () => {
@@ -84,25 +100,25 @@ describe("パッケージの境界", () => {
       expect(PKGS.filter((p) => p !== pkg && declaredRange(pkg, p)).sort(), pkg).toEqual(reads.sort());
       for (const p of reads as Pkg[]) expect(declaredRange(pkg, p)).toBe("workspace:*");
     }
-    // 配布するのは入口だけ。kit・tasks は同梱する（公開しない）。入口の実行時の依存に workspace のパッケージを書かない
-    expect([manifest("kit").private, manifest("tasks").private, manifest("p3").private]).toEqual([true, true, undefined]);
+    // 配布するのは入口だけ。kit・製品は同梱する（公開しない）。入口の実行時の依存に workspace のパッケージを書かない
+    expect([manifest("kit").private, manifest("tasks").private, manifest("observer").private, manifest("p3").private]).toEqual([true, true, true, undefined]);
     expect(Object.keys(manifest("p3").dependencies ?? {}).filter((d) => d.startsWith("@infodb/p3"))).toEqual([]);
   });
 
-  it("kit の処理はどれも入口か tasks から使われている（使い手の無いものを先回りして置かない）", () => {
+  it("kit の処理はどれも入口か製品から使われている（使い手の無いものを先回りして置かない）", () => {
     const users = new Map<string, Set<Pkg>>(files(join(DIRS.kit, "src")).map((f) => [relative(join(DIRS.kit, "src"), f), new Set()]));
-    for (const from of ["p3", "tasks"] as const)
+    for (const from of ["p3", ...PRODUCTS] as const)
       for (const file of sources(from))
         for (const spec of specifiers(readFileSync(file, "utf8")))
           if (spec.startsWith(`${NAME.kit}/`)) users.get(spec.slice(NAME.kit.length + 1))?.add(from);
     expect([...users].filter(([, s]) => s.size === 0).map(([f]) => f)).toEqual([]);
-    // CLI の使い方の誤り・パス・git の小物と、動いている版は、入口と tasks の両方が使う
-    expect([...users.get("usage.ts")!].sort()).toEqual(["p3", "tasks"]);
-    expect([...users.get("appInfo.ts")!].sort()).toEqual(["p3", "tasks"]);
+    // CLI の使い方の誤り・パス・git の小物と、動いている版（製品に共通の版）は、入口と製品が使う
+    expect([...users.get("usage.ts")!].sort()).toEqual(["observer", "p3", "tasks"]);
+    expect([...users.get("appInfo.ts")!].sort()).toEqual(["observer", "p3", "tasks"]);
   });
 
-  it("将来の製品（observer）は名前だけ。パッケージはまだ作らない", () => {
-    expect(readdirSync(PACKAGES).sort()).toEqual(["kit", "p3", "tasks"]);
+  it("workspace のパッケージは入口・製品・kit だけ（増やすときはこの境界の一覧に足す）", () => {
+    expect(readdirSync(PACKAGES).sort()).toEqual(["kit", "observer", "p3", "tasks"]);
   });
 
   it("確かめ方そのものが、型だけ・再 export・動的 import も拾う", () => {

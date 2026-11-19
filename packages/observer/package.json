@@ -1,0 +1,19 @@
+{
+  "name": "@infodb/p3-observer",
+  "version": "0.14.0",
+  "private": true,
+  "description": "p3-observer: 観測基盤（準備中。今は起動の確認だけ。配布は @infodb/p3 に同梱）",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@infodb/p3-kit": "workspace:*",
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "^1.170.41",
+    "react": "^19.3.0"
+  }
+}

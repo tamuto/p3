@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * 層と依存の向き（docs/architecture.md「規則の置き場所」）。入口（packages/p3）と tasks（packages/tasks）の src は同じ層に分ける。
+ * 層と依存の向き（docs/architecture.md「規則の置き場所」）。入口（packages/p3）と製品（packages/tasks・packages/observer）の src は同じ層に分ける。
  * パッケージの間の向き（入口 → tasks → kit）は test/packageBoundary.test.ts。ここではパッケージ名で読み込んだ先も層で照らす。
  *   shared: 型と判定。何も読み込まない（node: も外のパッケージも。画面からも読む）
  *   core:   中核（保存の層・規則・requestOps・Preflight など）。shared と kit だけ。HTTP（hono）は使わない
@@ -14,8 +14,8 @@ import { describe, expect, it } from "vitest";
  *   kit:    入口と製品が使う最小限の共通処理（packages/kit/src。node: は使ってよい。画面からは読まない）
  */
 const PACKAGES = fileURLToPath(new URL("../packages/", import.meta.url));
-const SRCS = { p3: join(PACKAGES, "p3/src"), tasks: join(PACKAGES, "tasks/src"), kit: join(PACKAGES, "kit/src") };
-const NAMES: Record<string, keyof typeof SRCS> = { "@infodb/p3-tasks": "tasks", "@infodb/p3-kit": "kit" };
+const SRCS = { p3: join(PACKAGES, "p3/src"), tasks: join(PACKAGES, "tasks/src"), observer: join(PACKAGES, "observer/src"), kit: join(PACKAGES, "kit/src") };
+const NAMES: Record<string, keyof typeof SRCS> = { "@infodb/p3-tasks": "tasks", "@infodb/p3-observer": "observer", "@infodb/p3-kit": "kit" };
 type Layer = "shared" | "core" | "server" | "cli" | "web" | "kit";
 const LAYERS: Layer[] = ["shared", "core", "server", "cli", "web"];
 
@@ -104,10 +104,16 @@ describe("層と依存の向き", () => {
   });
 
   it("server は HTTP の API と配信だけ（中核は core）", () => {
-    for (const src of [SRCS.p3, SRCS.tasks]) {
+    for (const src of [SRCS.p3, SRCS.tasks, SRCS.observer]) {
       const server = files(join(src, "server")).map((f) => relative(join(src, "server"), f));
       expect(server.filter((f) => !f.startsWith("api/") && f !== "server.ts")).toEqual([]);
     }
+  });
+
+  it("observer の src も同じ層に分かれ、層の検査の対象になる", () => {
+    const layers = new Set(files(SRCS.observer).map((f) => layerOf(locate(f))));
+    expect(layers.has(undefined)).toBe(false);
+    expect([...layers].map(String).sort((a, b) => a.localeCompare(b))).toEqual(["cli", "core", "server", "shared"]);
   });
 
   it("確かめ方そのものが違反を見つける", () => {

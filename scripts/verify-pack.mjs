@@ -89,7 +89,7 @@ try {
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
     // CLI・serve はビルド済みの JavaScript（入口は lib/、同梱した tasks・kit は lib/tasks・lib/kit）。TypeScript のソース（src/・packages/）は入れない
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md"]) {
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|packages\/|node_modules\/|build-src\/)/.test(f) || f.endsWith(".ts"));
@@ -107,7 +107,7 @@ try {
     // 実行時に TypeScript を変換しない（tsx と、それが使う esbuild のビルドのスクリプトを利用者に許可させない）
     for (const d of ["tsx", "esbuild"]) check(!existsSync(join(prefix, "node_modules", d)), `実行時に要らない ${d} まで入っています`);
     // 同梱した kit・tasks を別のパッケージとして取りに行かない。manifest と実行時の import に workspace のパッケージ・手元のフォルダの参照が残らない
-    for (const d of ["p3-tasks", "p3-kit"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
+    for (const d of ["p3-tasks", "p3-observer", "p3-kit"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
     const manifestText = readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8");
     check(!/workspace:|link:|file:|@infodb\/p3-/.test(manifestText), "入れた @infodb/p3 の manifest に workspace のパッケージ・手元のフォルダの参照が残っています");
     check(installed.devDependencies === undefined && installed.scripts === undefined, "入れた @infodb/p3 の manifest に開発だけの項目（devDependencies・scripts）が残っています");

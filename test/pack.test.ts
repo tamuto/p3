@@ -10,7 +10,7 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * npm pack の中身だけで動くか（files の漏れが無いか）を、ネットワーク無しで確かめる。
- * 公開する中身は scripts/build-cli.mjs が dist/package に組み立てる（入口・tasks・kit を同梱した lib/、skills・docs・README・LICENSE、開発だけの項目を外した manifest）。
+ * 公開する中身は scripts/build-cli.mjs が dist/package に組み立てる（入口・製品（tasks・observer）・kit を同梱した lib/、skills・docs・README・LICENSE、開発だけの項目を外した manifest）。
  * 配布物はソース（src/・packages/）を含まないので、bin はビルドした lib/ を動かす（tsx を使わない）。依存は入口のパッケージ（packages/p3）の node_modules を借りる。
  * 実行時の依存だけでレジストリから入れる確認は scripts/verify-pack.mjs
  */
@@ -24,8 +24,8 @@ describe("npm pack の中身だけで動く", () => {
     execFileSync("tar", ["xzf", tgz, "-C", work]);
     const pkg = join(work, "package");
     const files: string[] = JSON.parse(out)[0].files.map((f: { path: string }) => f.path);
-    // 入口・同梱した tasks・kit の JavaScript と資材が lib/ に入る
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/cli/guide.md", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/mock-ui.png", "lib/tasks/core/preflight/mock-ui.html", "lib/tasks/core/preflight/launcher.mjs"]) {
+    // 入口・同梱した製品（tasks・observer の Node 側の雛形）・kit の JavaScript と資材が lib/ に入る
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/cli/guide.md", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/mock-ui.png", "lib/tasks/core/preflight/mock-ui.html", "lib/tasks/core/preflight/launcher.mjs", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js", "lib/observer/shared/status.js"]) {
       expect(files, f).toContain(f);
     }
     // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）

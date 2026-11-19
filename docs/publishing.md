@@ -3,14 +3,14 @@
 P3 を npm に `@infodb/p3` として公開するときのチェックリスト。npm への公開とタグ付けは人が行う。
 CI は使わず、手元で確かめてから公開する。Docker のイメージ（Docker Hub の `tamuto/p3`）も同じ版で出す（6.）。
 
-リポジトリは pnpm workspace で、公開するのは入口のパッケージ `@infodb/p3`（`packages/p3`）の1つだけ。kit・tasks
-（`@infodb/p3-kit`・`@infodb/p3-tasks`）は公開せず、ビルドして同梱する。ルートの `package.json`（`p3-workspace`）は開発用で公開しない。
+リポジトリは pnpm workspace で、公開するのは入口のパッケージ `@infodb/p3`（`packages/p3`）の1つだけ。kit・製品
+（`@infodb/p3-kit`・`@infodb/p3-tasks`・`@infodb/p3-observer`）は公開せず、ビルドして同梱する。ルートの `package.json`（`p3-workspace`）は開発用で公開しない。
 
 | | 開発（チェックアウト） | 公開する中身（`dist/package`） |
 | --- | --- | --- |
-| manifest | ルートの `package.json`（scripts・開発用の依存）と `packages/*/package.json`（入口は workspace の `@infodb/p3-kit`・`@infodb/p3-tasks` を devDependencies に持つ） | `packages/p3/package.json` から devDependencies（workspace の参照）と scripts を外したもの（`scripts/build-cli.mjs` が作る） |
-| 版 | 4 つの manifest（ルート・入口・tasks・kit）を同じ版にする（`test/package.test.ts`） | 入口の版 |
-| 中身 | ソース（`packages/*/src`）を tsx で動かす | 入口の `bin/`・`lib/`（tasks は `lib/tasks/`、kit は `lib/kit/` に同梱）・`dist/web`、ルートの `skills/`・`docs/`・README・LICENSE |
+| manifest | ルートの `package.json`（scripts・開発用の依存）と `packages/*/package.json`（入口は workspace の `@infodb/p3-kit`・製品を devDependencies に持つ） | `packages/p3/package.json` から devDependencies（workspace の参照）と scripts を外したもの（`scripts/build-cli.mjs` が作る） |
+| 版 | 全部の manifest（ルート・入口・tasks・observer・kit）を同じ版にする（`test/package.test.ts`） | 入口の版 |
+| 中身 | ソース（`packages/*/src`）を tsx で動かす | 入口の `bin/`・`lib/`（tasks は `lib/tasks/`、observer は `lib/observer/`、kit は `lib/kit/` に同梱）・`dist/web`、ルートの `skills/`・`docs/`・README・LICENSE |
 | 作り方 | `pnpm install` | `pnpm build`（`vite build` と `scripts/build-cli.mjs --require-web`）→ `npm pack ./dist/package` / `npm publish ./dist/package` |
 
 ### 版と Git タグの対応
@@ -32,7 +32,7 @@ node scripts/verify-pack.mjs --docker            # npm の tarball（DevContaine
 node scripts/verify-docker.mjs                   # 同じコミットから作った Docker のイメージ（既定の複数プロジェクトの起動と、明示した1つのプロジェクトの起動）
 ```
 
-内部パッケージ（`packages/*` の kit・tasks など）を足しても、公開するのは入口の `@infodb/p3` と `tamuto/p3` だけで、上の手順は変わらない。
+内部パッケージ（`packages/*` の kit・tasks・observer など）を足しても、公開するのは入口の `@infodb/p3` と `tamuto/p3` だけで、上の手順は変わらない。
 変わるのは同梱の対象と検査の一覧（`scripts/build-cli.mjs`・`Dockerfile`・`scripts/verify-pack.mjs` の tarball の中身・`test/pack.test.ts`・`test/package.test.ts` の版の同期）で、
 足すときはそれらを同じ変更で直す。
 
@@ -45,7 +45,7 @@ node scripts/verify-docker.mjs                   # 同じコミットから作�
   自分たちの `@infodb/*` の部品を版で固定したものだけ（[docs/architecture.md](architecture.md) の「llmcs の部品の依存」。
   `test/package.test.ts` が確かめる）。1日を過ぎた版の例外は、公開の前に外す
 - [ ] どの `package.json`（ルート・`packages/*`）にも手元のフォルダへのリンク（`link:` / `file:`）が無く、`pnpm-lock.yaml` のリンクは workspace の
-  自分たちのパッケージ（`../kit`・`../tasks`）だけ。workspace の参照は `@infodb/p3-kit`・`@infodb/p3-tasks` だけ（`test/package.test.ts`）
+  自分たちのパッケージ（`../kit`・`../tasks`・`../observer`）だけ。workspace の参照は `@infodb/p3-kit`・`@infodb/p3-tasks`・`@infodb/p3-observer` だけ（`test/package.test.ts`）
 
 ## 2. クリーンな依存の解決と検査
 
@@ -62,7 +62,7 @@ node scripts/verify-pack.mjs --docker     # pnpm build → npm pack ./dist/packa
 ```
 
 - [ ] 全段が `ok`。確かめる段: Node の版と engines / tarball の中身（入口・同梱した tasks と kit・画面・skills・docs。ソースは入らない）/
-  `npm install`（開発用の依存・tsx・esbuild・公開しない `@infodb/p3-tasks`・`@infodb/p3-kit` が入らず、入れた manifest と実行時の import に
+  `npm install`（開発用の依存・tsx・esbuild・公開しない `@infodb/p3-tasks`・`@infodb/p3-observer`・`@infodb/p3-kit` が入らず、入れた manifest と実行時の import に
   workspace のパッケージ・チェックアウトの参照が残らない）/ pnpm で入れてもビルドのスクリプトの許可を聞かない /
   別のリポジトリで `init --agents`・`init --agents codex` と `p3 agents`（後から足す・`--force`）・`whoami`・要望の作成・Mock の Preflight・メモを足した再評価・`serve`（画面・資産・API）/
   `codex update`（`--docker`。未登録・未認証のまま本物の Docker でイメージを作り直し、版を読む）
@@ -86,14 +86,14 @@ node scripts/verify-pack.mjs --docker     # pnpm build → npm pack ./dist/packa
   `/workspaces`（DevContainer の慣例）のような汎用のものにする。コンテナの中の `/workspace`（リポジトリ）と `/data`
   （データのフォルダ）は Codex のコンテナとの約束なので残す
 - [ ] `packages/p3/package.json` の `repository` / `homepage` / `bugs` が実際の公開先を指している（リポジトリを公開してから確かめる）
-- [ ] 版を上げた（ルート・`packages/p3`・`packages/tasks`・`packages/kit` の `package.json` の `version` を同じ版に）
+- [ ] 版を上げた（ルートと `packages/*`（p3・tasks・observer・kit）の `package.json` の `version` を同じ版に）
 
 ## 5. 公開（人が行う）
 
 ```bash
 npm login                          # @infodb のスコープに公開できるアカウント
 pnpm build                         # 画面と CLI・serve をビルドし、公開する中身を dist/package に組み立てる
-npm publish ./dist/package         # 入口の @infodb/p3 だけを出す。publishConfig.access は public（kit・tasks は同梱済みで出さない）
+npm publish ./dist/package         # 入口の @infodb/p3 だけを出す。publishConfig.access は public（kit・製品は同梱済みで出さない）
 ```
 
 公開した後に、別の環境で `pnpx @infodb/p3 --help` が動くことを確かめる（その版も公開から1日は pnpm の既定では入らない。

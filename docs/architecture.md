@@ -877,25 +877,26 @@ CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・
 ## パッケージの構成
 
 p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer など）を選んで組み合わせる形にするため、リポジトリを pnpm workspace にし、
-コードを 3 つのパッケージに分ける（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
+コードを入口・製品・kit のパッケージに分ける（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
 
 | パッケージ | 中身 | 読み込んでよいもの |
 | --- | --- | --- |
-| 入口 `@infodb/p3`（`packages/p3`） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | tasks・kit |
+| 入口 `@infodb/p3`（`packages/p3`） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | 製品（tasks・observer）・kit |
 | `@infodb/p3-tasks`（`packages/tasks`） | 今の p3 の機能（要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・画面のページ・API） | kit |
+| `@infodb/p3-observer`（`packages/observer`） | 観測基盤（準備中。今は起動の確認だけ。下の「p3-observer」） | kit |
 | `@infodb/p3-kit`（`packages/kit`） | 入口と製品が使う最小限の共通処理 | なし |
 
-- 入口は、知っている製品（今は tasks だけ）をはっきり呼んで組み込む。製品を探して読み込む仕組み（プラグインの基盤）は作らない
+- 入口は、知っている製品（tasks・observer）をはっきり呼んで組み込む。製品を探して読み込む仕組み（プラグインの基盤）は作らない
 - tasks は入口を読み込まない。入口のもの（置いた AI 向けの入口の診断など）が要るときは、入口から値や関数で渡す（`cli/tasksCli.ts` の `TasksRun`）
-- 将来の製品どうしは直接読み込まない。連携が要るなら kit の小さな約束事を通す。p3-observer は名前だけを決め、データは自分のサブフォルダ
+- 製品どうし（tasks ⇔ observer）は直接読み込まない。連携が要るなら kit の小さな約束事を通す。observer のデータは自分のサブフォルダ
   （`.p3/observer/` の想定）だけを持つ（tasks のデータに触れない）
 - 今の `shared` は「画面と Node の両方から読める」という層の規則で、tasks 固有の型が多い。まるごと kit にはしない
 - パッケージの間はパッケージ名（`@infodb/p3-tasks/core/context.ts` のように、そのパッケージの `src` からのパス）で読み、相対パスで別の
   パッケージのファイルを指さない。読むパッケージは manifest に workspace の参照で書く。境界は `test/packageBoundary.test.ts` が確かめる
-  （入口 → tasks → kit の一方向・相対パスでの迂回・manifest の宣言・kit の処理に使い手がいること・observer のパッケージがまだ無いこと）。
-  層の向き（shared ← core ← server / cli、web → shared）は入口と tasks の `src` の中で同じに分け、パッケージ名で読んだ先も
+  （入口 → 製品 → kit の一方向・製品の間の読み込み・相対パスでの迂回・manifest の宣言・kit の処理に使い手がいること・workspace のパッケージの一覧）。
+  層の向き（shared ← core ← server / cli、web → shared）は入口と製品の `src` の中で同じに分け、パッケージ名で読んだ先も
   `test/layers.test.ts` が照らす
-- 配るのは入口の `@infodb/p3` の1つで、kit・tasks は公開せずにビルドして同梱する（`lib/tasks/`・`lib/kit/`。パッケージ名の import は同梱した先への
+- 配るのは入口の `@infodb/p3` の1つで、kit・製品は公開せずにビルドして同梱する（`lib/tasks/`・`lib/observer/`・`lib/kit/`。パッケージ名の import は同梱した先への
   相対パスに書き換える。`scripts/build-cli.mjs`）。利用者から見える名前・コマンド・データの場所・CLI・API・画面は変えない。Docker も同じ中身を使う
   （[開発ガイド](development.md#npm-で配る中身)）
 - 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に tasks のページのフォルダをそのまま付け（`tsr.config.json` の
@@ -903,8 +904,10 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 - tasks の中は、層ごとの共通の土台と機能のまとまり（`features/<機能>/{shared,core,cli,server,web}`）に分ける。機能の中身はその機能・組み立ての場所・
   入口の層と画面の組み合わせだけが読み、機能の core どうしと循環は禁止（`test/featureBoundary.test.ts`）。配置・規則・まとめた仕組みと残した理由・前後の
   計測は [docs/refactoring.md](refactoring.md)
+- 版とタグは製品で分けない。全部の manifest（ルート・入口・製品・kit）を同じ版にし（`test/package.test.ts`）、Git のタグ `v<版>`・npm・Docker の
+  タグも1つの版で出す（[公開の手順: 版と Git タグの対応](publishing.md#版と-git-タグの対応)）
 - 製品ごとの設計: tasks の設計と規則はこの文書の残りの節（作業の単位・Preflight・受け入れ基準など）。kit は下の「kit の中身と使い手」。
-  p3-observer は名前を予約しただけで、パッケージも設計もまだ無い（作るときは `packages/observer` に置き、データは `.p3/observer/` だけを持つ）
+  observer は下の「p3-observer」
 
 **機能（棚卸しの ID）ごとの置き場所**（パスは各パッケージの `src` からの相対。入口なら `packages/p3/src/`、tasks なら `packages/tasks/src/`）
 
@@ -921,11 +924,37 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 | F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。入口の `projectsRoutes.ts` も同じ説明を返す |
 | F10〜F25・F27 | tasks | 判断表の根拠のパスのまま |
 | F26 AI 接続・実行環境 | tasks（暫定） | `cli/{codex,chatgpt}.ts`・`core/chatgpt.ts`・`core/preflight/{codexEngine,docker,hostPaths}.ts`。入口は `codex`・`chatgpt`・`render` のコマンドをプロジェクトを決める前に tasks の関数で動かす |
-| F28 独立した観測 | なし | パッケージの名前（observer）だけを予約する |
+| F28 独立した観測 | observer | `packages/observer`。今は起動の確認だけ（下の「p3-observer」）。観測の入力・保存の契約・利用者が具体化したら、その実装をここに置く |
 
 **kit の中身と使い手**（`packages/kit/src/`）: `usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口と tasks が使う）、
 `appInfo.ts`（動いている p3 の版。入口が起動のときに渡し、tasks が Codex に名乗る版として読む）、`fsutil.ts`・`frontmatter.ts`（置き換え書き込み・
 ロック・frontmatter。tasks が使う。将来の製品の保存も使う見込み）。使い手のいない処理を先回りして kit に置かない。
+
+### p3-observer
+
+観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**準備の段階**で、パッケージ・配布・起動の構成だけを用意し、観測データの収集・
+保存・スキーマ・移行は持たない（将来の要望で仕様を決める）。tasks とは別の製品で、単独でも tasks と一緒にも使える。
+
+**所有の境界**
+
+| | observer が持つ | observer が持たない |
+| --- | --- | --- |
+| コード | `packages/observer/src` の層（`shared` 起動状態の型・ページと API の場所、`core` 起動状態、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` のページ） | 入口の振り分け・serve の組み立て・画面の外枠（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
+| データ | 自分のサブフォルダだけ（設計の想定は `.p3/observer/`。置き場所は保存を足すときに決める。今は何も保存しない） | tasks の要望・タスク・run・設定・個人設定の登録。tasks のプロジェクトの解決を経ない |
+| 版 | 入口が渡す共通の版（kit の `appInfo.ts`）を名乗る | 自分の版・タグ |
+
+**観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。kit の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
+API（`server/api`）・ページ（`web`）は、どれも `packages/observer/src` の同じ層に足す。tasks の記録（証拠・レビュー・指標）を読む連携が要るときは、
+製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今回の準備では連携しない）。保存を足すときは、入れ物（`.p3/observer/`）の
+形と移行を先に決める。
+
+**起動の構成**（製品は入口のビルドのときに組み込んだもの。起動のときに、そのうちのどれを使うかを選ぶ）
+
+| 構成 | CLI | serve |
+| --- | --- | --- |
+| tasks だけ（既定） | 今までどおり（`p3 <コマンド>`） | `p3 serve`・`p3 serve --all-projects`（今までどおり） |
+| observer だけ | `p3 observer status`（プロジェクトの登録が無くても動く） | `p3 serve --products observer` |
+| 両方 | 同じ `p3` から両方のコマンドを呼ぶ | `p3 serve --products tasks,observer`（`--all-projects` も一緒に使える） |
 
 ## サーバに置かない理由
 
