@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { adoptBlocker, adoptionSummary, editConflict, editDirty, editOf } from "../src/web/lib/childDrafts.ts";
-import { preflightSteps } from "../src/web/lib/preflightSteps.ts";
-import type { ProposedChild } from "../src/shared/types.ts";
+import { adoptBlocker, adoptionSummary, editConflict, editDirty, editOf } from "../packages/tasks/src/web/lib/childDrafts.ts";
+import { preflightSteps } from "../packages/tasks/src/web/lib/preflightSteps.ts";
+import type { ProposedChild } from "../packages/tasks/src/shared/types.ts";
 
 /** 子の要望の案の画面の規則（ChildDrafts.tsx） */
 const child = (key: string, include = true): ProposedChild => ({ key, title: `${key} の題`, description: "## 目的\nx\n## 完了条件\ny", requires: [], overlaps: [], include });

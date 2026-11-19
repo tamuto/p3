@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { apiBase, currentScope, fixScope, pageBase, projectFromPath, projectPath, scopeHeaders } from "../src/web/lib/scope.ts";
-import { hasUnsaved, savesInFlight, savesSettled, trackSave } from "../src/web/lib/unsaved.ts";
+import { apiBase, currentScope, fixScope, pageBase, projectFromPath, projectPath, scopeHeaders } from "../packages/tasks/src/web/lib/scope.ts";
+import { hasUnsaved, savesInFlight, savesSettled, trackSave } from "../packages/tasks/src/web/lib/unsaved.ts";
 
 describe("画面の対象（プロジェクトを跨ぐ serve）", () => {
   it("URL の /projects/<名前> から名前を取り出す（それ以外・壊れた符号は無し）", () => {

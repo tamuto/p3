@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { addTag, cleanTag, removeTag, sameTags, tagsFrom } from "../src/shared/tags.ts";
-import { draftOf, editDraft, syncDraft } from "../src/web/lib/draft.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { addTag, cleanTag, removeTag, sameTags, tagsFrom } from "../packages/tasks/src/shared/tags.ts";
+import { draftOf, editDraft, syncDraft } from "../packages/tasks/src/web/lib/draft.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 describe("タグの入力（値ごと）", () => {

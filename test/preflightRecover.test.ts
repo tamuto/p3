@@ -3,12 +3,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { EngineOutcome, PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { currentOwner, ownerState, type OwnerProbe } from "../src/core/preflight/owner.ts";
-import { PreflightBusyError, PreflightService } from "../src/core/preflight/service.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import type { PreflightRun, RunOwner } from "../src/shared/types.ts";
+import type { EngineOutcome, PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { currentOwner, ownerState, type OwnerProbe } from "../packages/tasks/src/core/preflight/owner.ts";
+import { PreflightBusyError, PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import type { PreflightRun, RunOwner } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, tempDir } from "./helpers.ts";
 
 /**

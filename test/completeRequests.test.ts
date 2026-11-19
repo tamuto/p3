@@ -1,11 +1,11 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../src/core/releaseNotes/completeRequests.ts";
-import { releaseNoteDetail, saveReleaseNote } from "../src/core/releaseNotes/service.ts";
-import { archiveRequest } from "../src/core/requestOps.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { ServerEvent } from "../src/shared/types.ts";
+import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/core/releaseNotes/completeRequests.ts";
+import { releaseNoteDetail, saveReleaseNote } from "../packages/tasks/src/core/releaseNotes/service.ts";
+import { archiveRequest } from "../packages/tasks/src/core/requestOps.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 const MS = [

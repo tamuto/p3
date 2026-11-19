@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft } from "../src/web/lib/draft.ts";
-import { latestOnly, STALE } from "../src/web/lib/latest.ts";
-import { applyLoad, initialLoad } from "../src/web/lib/requestLoad.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft } from "../packages/tasks/src/web/lib/draft.ts";
+import { latestOnly, STALE } from "../packages/tasks/src/web/lib/latest.ts";
+import { applyLoad, initialLoad } from "../packages/tasks/src/web/lib/requestLoad.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 describe("入力欄の下書き（取り直しても編集中は上書きしない）", () => {

@@ -144,6 +144,9 @@ describe("要望の作業ツリー", () => {
     // `pnpm --dir <p3 の場所> p3 ...` で呼ばれたとき（pnpm がカレントを p3 の場所に移し、元の場所は INIT_CWD）
     const viaPnpm = { ...ai, npm_lifecycle_event: "p3", npm_package_name: "@infodb/p3", INIT_CWD: wt };
     expect(p3(fileURLToPath(new URL("..", import.meta.url)), ["whoami", "--json"], viaPnpm).json()).toMatchObject({ actor: "ai:claude", request: rid });
+    // 開発のリポジトリのルート（pnpm workspace の p3-workspace）の "p3" スクリプトから呼ばれたときも、呼び出し元に戻る
+    const viaWorkspace = { ...viaPnpm, npm_package_name: "p3-workspace" };
+    expect(p3(fileURLToPath(new URL("..", import.meta.url)), ["whoami", "--json"], viaWorkspace).json()).toMatchObject({ actor: "ai:claude", request: rid });
     // 利用者のパッケージの "p3" スクリプトから呼ばれたとき（pnpx・npm exec も）は、今の場所のまま
     const viaUserScript = { ...ai, npm_lifecycle_event: "p3", npm_package_name: "myapp", INIT_CWD: tempDir() };
     expect(p3(wt, ["whoami", "--json"], viaUserScript).json()).toMatchObject({ request: rid });

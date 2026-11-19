@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { REQUEST_STATUSES, type RequestStatus } from "../src/shared/types.ts";
-import { byCheckedDesc } from "../src/web/lib/order.ts";
-import { filterRequests, matchesShow, parseShow, parseTagsSearch, SHOW_OPTIONS, tagCandidates, toggleTag, type Show } from "../src/web/lib/requestFilter.ts";
+import { REQUEST_STATUSES, type RequestStatus } from "../packages/tasks/src/shared/types.ts";
+import { byCheckedDesc } from "../packages/tasks/src/web/lib/order.ts";
+import { filterRequests, matchesShow, parseShow, parseTagsSearch, SHOW_OPTIONS, tagCandidates, toggleTag, type Show } from "../packages/tasks/src/web/lib/requestFilter.ts";
 
 const pick = (show: Parameters<typeof matchesShow>[1]) => REQUEST_STATUSES.filter((s: RequestStatus) => matchesShow(s, show));
 

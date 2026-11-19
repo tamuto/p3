@@ -14,12 +14,12 @@ import {
   readAcceptance,
   type AcceptanceState,
   type EvidenceBasis,
-} from "../src/shared/acceptance.ts";
-import { progress } from "../src/core/ops.ts";
-import { createTask, updateTask } from "../src/core/requestOps.ts";
-import { extractTaskReview, taskReviewInputHash } from "../src/core/taskReview/material.ts";
-import { taskReviewMaterial } from "../src/core/taskReview/review.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+} from "../packages/tasks/src/shared/acceptance.ts";
+import { progress } from "../packages/tasks/src/core/ops.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { extractTaskReview, taskReviewInputHash } from "../packages/tasks/src/core/taskReview/material.ts";
+import { taskReviewMaterial } from "../packages/tasks/src/core/taskReview/review.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeProject, newRequest, tempDir } from "./helpers.ts";
 
 /**
@@ -276,7 +276,7 @@ describe("API", () => {
   });
 });
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 function p3(dataDir: string, args: string[], input?: string) {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "ai:test" };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, input, cwd: dataDir });

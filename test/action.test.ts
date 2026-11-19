@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runAction } from "../src/web/lib/action.ts";
+import { runAction } from "../packages/tasks/src/web/lib/action.ts";
 
 // 画面の操作から待たずに走らせる処理（済みを外す・Preflight の中止）。失敗を未処理の拒否にせず、画面に文言で渡す
 describe("runAction", () => {

@@ -1,8 +1,8 @@
 // test/dataWatcher.test.ts の子プロセス。通常の serve（startServer。データのフォルダを実際に監視する）を動かし、標準入力の指示に答える。
 // 未処理の例外・拒否は握り潰さず、印を付けて 0 以外で終わる（親が終了コードと標準エラーで見る）
 import { createInterface } from "node:readline";
-import { resolveMachineSettings } from "../../src/core/machineSettings.ts";
-import { startServer } from "../../src/server/server.ts";
+import { resolveMachineSettings } from "../../packages/tasks/src/core/machineSettings.ts";
+import { startServer } from "../../packages/p3/src/server/server.ts";
 
 process.on("uncaughtException", (e) => {
   process.stderr.write(`uncaught: ${e?.stack ?? e}\n`);

@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tempDir } from "./helpers.ts";
-import { DockerAbortError } from "../src/core/preflight/docker.ts";
+import { DockerAbortError } from "../packages/tasks/src/core/preflight/docker.ts";
 import {
   containerIdCandidates,
   deepestMount,
@@ -11,7 +11,7 @@ import {
   systemProbe,
   type HostPathProbe,
   type InspectedContainer,
-} from "../src/core/preflight/hostPaths.ts";
+} from "../packages/tasks/src/core/preflight/hostPaths.ts";
 
 const ID = "a95d4275f95622266b6a45190d6bafc4c99db8843605f1de17a397313f3dedfe";
 const OTHER = "b".repeat(64);

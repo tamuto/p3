@@ -2,9 +2,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { selectCarryover } from "../src/core/preflight/carryover.ts";
-import type { PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
+import { selectCarryover } from "../packages/tasks/src/core/preflight/carryover.ts";
+import type { PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { makeRepo, newRequest, openTestProject } from "./helpers.ts";
 
 /** 必ず失敗するエンジン（直近の run が失敗した状態を作る） */

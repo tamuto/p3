@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { init } from "../src/cli/project.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { init } from "../packages/p3/src/cli/project.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { gitInit, makeProject, tempDir } from "./helpers.ts";
 
 /**
@@ -13,7 +13,7 @@ import { gitInit, makeProject, tempDir } from "./helpers.ts";
  * AI 向けの手順を選ぶ方針で、p3 preflight のエンジンや --prepare / --complete は変えない
  */
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 let CONFIG_HOME = "";
 beforeEach(() => {
   CONFIG_HOME = tempDir("p3-config-");

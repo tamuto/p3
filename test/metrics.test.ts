@@ -3,13 +3,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { METRIC_DEFINITIONS, type MetricsInput } from "../src/core/metrics/definitions.ts";
-import { metricScopeOf, metricsReport } from "../src/core/metrics/index.ts";
-import { createTask, updateRequest, updateTask } from "../src/core/requestOps.ts";
-import type { CompletionRecord } from "../src/shared/completionRecord.ts";
-import type { MetricResult } from "../src/shared/metrics.ts";
-import type { Request, Task } from "../src/shared/types.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { METRIC_DEFINITIONS, type MetricsInput } from "../packages/tasks/src/core/metrics/definitions.ts";
+import { metricScopeOf, metricsReport } from "../packages/tasks/src/core/metrics/index.ts";
+import { createTask, updateRequest, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import type { CompletionRecord } from "../packages/tasks/src/shared/completionRecord.ts";
+import type { MetricResult } from "../packages/tasks/src/shared/metrics.ts";
+import type { Request, Task } from "../packages/tasks/src/shared/types.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, tempDir } from "./helpers.ts";
 
 /**
@@ -169,7 +169,7 @@ describe("範囲と CLI・API", () => {
 
   it("CLI と API は同じ範囲から同じ指標 ID・値・単位・対象数・欠損数を返し、知らない範囲は使い方の誤り・400", async () => {
     const { ctx, dataDir } = await setup();
-    const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+    const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
     const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
     const cli = (args: string[]) => spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, cwd: dataDir });
     const app = apiRoutes(ctx);

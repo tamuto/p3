@@ -3,11 +3,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { listTasks, progress } from "../src/core/ops.ts";
-import { createTask, updateTask } from "../src/core/requestOps.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { applyBlockOp, BLOCK_LIMITS, BlockInputError, blockWarnings } from "../src/shared/taskBlock.ts";
+import { listTasks, progress } from "../packages/tasks/src/core/ops.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { applyBlockOp, BLOCK_LIMITS, BlockInputError, blockWarnings } from "../packages/tasks/src/shared/taskBlock.ts";
 import { makeProject, newRequest, newTask, tempDir } from "./helpers.ts";
 
 /**
@@ -147,7 +147,7 @@ describe("保存（core）", () => {
 });
 
 describe("CLI と API", () => {
-  const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+  const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   const p3 = (dataDir: string, args: string[], input?: string) => {
     const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "ai:test" };
     const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, input });

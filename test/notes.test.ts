@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { PreflightNote, PreflightRun } from "../src/shared/types.ts";
-import { ApiError } from "../src/web/lib/api.ts";
-import { nextRunLabel, notesPanelState, submitNote, type NotesPanelInput } from "../src/web/lib/notes.ts";
+import type { PreflightNote, PreflightRun } from "../packages/tasks/src/shared/types.ts";
+import { ApiError } from "../packages/tasks/src/web/lib/api.ts";
+import { nextRunLabel, notesPanelState, submitNote, type NotesPanelInput } from "../packages/tasks/src/web/lib/notes.ts";
 
 const note = (id: string, pending: boolean): PreflightNote & { pending: boolean } => ({ id, requestId: "r", createdAt: "2026-10-09T00:00:00Z", body: "b", pending });
 

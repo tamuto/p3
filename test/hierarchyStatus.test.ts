@@ -1,13 +1,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { progress } from "../src/core/ops.ts";
-import { materialOf } from "../src/core/releaseNotes/material.ts";
-import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../src/core/releaseNotes/completeRequests.ts";
-import { createRequest, createTask, updateRequest, updateTask } from "../src/core/requestOps.ts";
-import { completionCheck, resolvedIssue, StatusRuleError } from "../src/core/requestStatus.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { progress } from "../packages/tasks/src/core/ops.ts";
+import { materialOf } from "../packages/tasks/src/core/releaseNotes/material.ts";
+import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/core/releaseNotes/completeRequests.ts";
+import { createRequest, createTask, updateRequest, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { completionCheck, resolvedIssue, StatusRuleError } from "../packages/tasks/src/core/requestStatus.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /** 親子の完了の判定・祖先を戻す・進捗・リリースノート（docs/architecture.md の「状態と完了の判定」「進捗とリリースノート」） */

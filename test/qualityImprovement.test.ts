@@ -6,12 +6,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { updateQuality } from "../src/core/quality.ts";
-import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement, tokenTag } from "../src/core/qualityImprovement.ts";
-import { createRequest, updateRequest } from "../src/core/requestOps.ts";
-import { newTaskReviewRunId } from "../src/core/taskReview/store.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { TaskReviewInput, TaskReviewResult } from "../src/shared/taskReview.ts";
+import { updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement, tokenTag } from "../packages/tasks/src/core/qualityImprovement.ts";
+import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
+import { newTaskReviewRunId } from "../packages/tasks/src/core/taskReview/store.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { TaskReviewInput, TaskReviewResult } from "../packages/tasks/src/shared/taskReview.ts";
 import { makeProject, newRequest, tempDir } from "./helpers.ts";
 
 const source = { type: "project" } as const;
@@ -137,7 +137,7 @@ describe("登録", () => {
 describe("CLI と API", () => {
   it("CLI は原稿を出すだけで、--register --hash で作る。API も同じ。登録先があれば 3 / 409", async () => {
     const a = await makeProject();
-    const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+    const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
     const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
     const p3 = (args: string[]) => {
       const r = spawnSync(process.execPath, [BIN, "--dir", a.dataDir, ...args], { encoding: "utf8", env });

@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Hierarchy } from "../src/shared/hierarchy.ts";
-import type { ServerEvent } from "../src/shared/types.ts";
-import { HierarchyError, hierarchyOf, hierarchyView } from "../src/core/hierarchy.ts";
-import { archiveRequest, createRequest, updateRequest } from "../src/core/requestOps.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { Hierarchy } from "../packages/tasks/src/shared/hierarchy.ts";
+import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
+import { HierarchyError, hierarchyOf, hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
+import { archiveRequest, createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 /** 要望の親子（docs/architecture.md の「大きい要望の分割」） */

@@ -1,9 +1,9 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import type { ServerEvent } from "../src/shared/types.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /**

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { ApiError, failureOf } from "../src/web/lib/api.ts";
-import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft } from "../src/web/lib/draft.ts";
-import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../src/web/lib/requestEdit.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { ApiError, failureOf } from "../packages/tasks/src/web/lib/api.ts";
+import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft } from "../packages/tasks/src/web/lib/draft.ts";
+import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../packages/tasks/src/web/lib/requestEdit.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 describe("要望の本文の下書き（タイトル・タグと同じ rev を共有する）", () => {
@@ -97,8 +97,8 @@ describe("画面の保存と再評価（API を通して）", () => {
 });
 
 describe("評価対象の規則（shared/preflightInput.ts。サーバと画面で同じ）", async () => {
-  const { changedLabel, isMaterialized, normalizeInput, sameText } = await import("../src/shared/preflightInput.ts");
-  const { normalizeInput: serverNormalize } = await import("../src/core/preflight/input.ts");
+  const { changedLabel, isMaterialized, normalizeInput, sameText } = await import("../packages/tasks/src/shared/preflightInput.ts");
+  const { normalizeInput: serverNormalize } = await import("../packages/tasks/src/core/preflight/input.ts");
   it("サーバの評価対象の正規化と画面の本文の比較は同じ規則", () => {
     expect(serverNormalize).toBe(normalizeInput);
     expect(sameBody).toBe(sameText);

@@ -3,15 +3,15 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import type { EngineOutcome, PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import type { OwnerProbe } from "../src/core/preflight/owner.ts";
-import { CancelRefusedError, PreflightService } from "../src/core/preflight/service.ts";
-import { NotFoundError } from "../src/core/store/collection.ts";
-import { CANCEL_REQUEST_FILE } from "../src/core/store/preflightStore.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { PreflightRun, RunOwner } from "../src/shared/types.ts";
+import type { EngineOutcome, PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import type { OwnerProbe } from "../packages/tasks/src/core/preflight/owner.ts";
+import { CancelRefusedError, PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
+import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
+import { CANCEL_REQUEST_FILE } from "../packages/tasks/src/core/store/preflightStore.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { PreflightRun, RunOwner } from "../packages/tasks/src/shared/types.ts";
 import { gitInit, makeRepo, tempDir } from "./helpers.ts";
 
 /**
@@ -142,7 +142,7 @@ describe("run の中断（cancelRun）", () => {
 });
 
 describe("CLI（別のプロセス）からの中断", () => {
-  const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+  const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   const CHILD = fileURLToPath(new URL("./fixtures/preflightChild.ts", import.meta.url));
 
   it.runIf(process.platform === "linux")("動いている別のプロセスの run に中断を頼み、止まったら cancelled。止まらない（応答しない）間は requested のまま", async () => {

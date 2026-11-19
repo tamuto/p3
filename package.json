@@ -1,72 +1,38 @@
 {
-  "name": "@infodb/p3",
+  "name": "p3-workspace",
   "version": "0.13.0",
-  "description": "File-based project management with AI-powered preflight (Codex App Server)",
-  "keywords": [
-    "project-management",
-    "task",
-    "codex",
-    "preflight",
-    "cli"
-  ],
+  "private": true,
+  "description": "infodb p3 の開発用のリポジトリ（pnpm workspace）。配布するのは packages/p3（@infodb/p3）",
   "license": "MIT",
-  "author": "tamuto",
-  "homepage": "https://github.com/tamuto/p3#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tamuto/p3.git"
-  },
-  "bugs": {
-    "url": "https://github.com/tamuto/p3/issues"
-  },
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "packageManager": "pnpm@12.10.1",
-  "bin": {
-    "p3": "bin/p3.mjs"
-  },
-  "files": [
-    "bin",
-    "lib",
-    "dist/web",
-    "skills",
-    "docs"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "dev": "pnpm demo && concurrently -n server,web -c blue,magenta \"pnpm:dev:server\" \"pnpm:dev:web\"",
-    "dev:server": "tsx watch --clear-screen=false src/cli/main.ts serve --dir .p3-demo",
+    "dev:server": "tsx watch --clear-screen=false packages/p3/src/cli/main.ts serve --dir .p3-demo",
     "dev:web": "vite",
-    "build": "vite build && node scripts/build-cli.mjs",
-    "start": "pnpm demo && node bin/p3.mjs serve --dir .p3-demo",
-    "p3": "node bin/p3.mjs",
+    "build": "vite build && node scripts/build-cli.mjs --require-web",
+    "start": "pnpm demo && node packages/p3/bin/p3.mjs serve --dir .p3-demo",
+    "p3": "node packages/p3/bin/p3.mjs",
     "demo": "tsx scripts/demo.ts",
     "demo:reset": "tsx scripts/demo.ts --force",
     "routes": "tsr generate",
     "typecheck": "tsr generate && tsc --noEmit -p .",
-    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error src scripts test vite.config.ts vitest.config.ts vitest.ui.config.ts",
+    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error packages/kit/src packages/tasks/src packages/p3/src packages/p3/bin scripts test vite.config.ts vitest.config.ts vitest.ui.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest run -c vitest.ui.config.ts",
     "check": "pnpm check:browser && pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm test:ui",
     "check:browser": "tsx scripts/check-browser.ts",
-    "prepack": "pnpm build",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "video": "node scripts/video/record.mjs"
-  },
-  "dependencies": {
-    "@hono/node-server": "~2.1.3",
-    "@infodb/chatgpt-plan": "^0.1.1",
-    "@infodb/codex-workspace": "^0.2.1",
-    "hono": "^4.13.13",
-    "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "video": "node scripts/video/record.mjs",
+    "package": "pnpm build && npm pack ./dist/package"
   },
   "devDependencies": {
+    "@infodb/chatgpt-plan": "^0.1.1",
+    "@infodb/codex-workspace": "^0.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-router": "^1.170.41",
     "@tanstack/router-cli": "^1.167.40",
@@ -76,6 +42,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
+    "hono": "^4.13.13",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2004",
     "playwright-core": "^1.64.1",
@@ -87,6 +54,7 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.9.1"
   }
 }

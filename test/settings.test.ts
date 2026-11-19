@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, resolveMachineSettings, SETTING_KEYS, SettingsError } from "../src/core/machineSettings.ts";
-import { loadUserConfig, normalizeUserConfig, saveUserConfig, userConfigPath } from "../src/core/userConfig.ts";
+import { DEFAULT_SETTINGS, resolveMachineSettings, SETTING_KEYS, SettingsError } from "../packages/tasks/src/core/machineSettings.ts";
+import { loadUserConfig, normalizeUserConfig, saveUserConfig, userConfigPath } from "../packages/tasks/src/core/userConfig.ts";
 import { tempDir } from "./helpers.ts";
 
 const user = (d: Record<string, unknown>) => normalizeUserConfig(d);
@@ -130,7 +130,7 @@ describe("個人設定のファイル", () => {
 describe("入力されたパス", () => {
   it("~ をホームに展開する（対話式の入力ではシェルが展開しない）", async () => {
     const { homedir } = await import("node:os");
-    const { resolvePath } = await import("../src/cli/project.ts");
+    const { resolvePath } = await import("../packages/kit/src/usage.ts");
     expect(resolvePath("/w", "~/p3-data/a")).toBe(join(homedir(), "p3-data/a"));
     expect(resolvePath("/w", "~")).toBe(homedir());
     expect(resolvePath("/w", "data")).toBe("/w/data");

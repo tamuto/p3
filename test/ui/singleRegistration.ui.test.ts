@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 
-const P3_BIN = fileURLToPath(new URL("../../bin/p3.mjs", import.meta.url));
+const P3_BIN = fileURLToPath(new URL("../../packages/p3/bin/p3.mjs", import.meta.url));
 
 describe.skipIf(!inject("chromium").available)("登録が1つのときのプロジェクトを跨ぐ serve", () => {
   let s: Scenario;

@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { Outputs } from "../src/web/components/Outputs.tsx";
-import { outputHref } from "../src/web/lib/outputs.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { Outputs } from "../packages/tasks/src/web/components/Outputs.tsx";
+import { outputHref } from "../packages/tasks/src/web/lib/outputs.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 describe("成果物のリンク", () => {

@@ -24,7 +24,7 @@ export function jaFontconfig(list = () => execFileSync("fc-list", ["Noto Sans CJ
   }
 }
 
-export const BUILT_INDEX = fileURLToPath(new URL("../../dist/web/index.html", import.meta.url));
+export const BUILT_INDEX = fileURLToPath(new URL("../../packages/p3/dist/web/index.html", import.meta.url));
 
 /** ビルドは Chromium の有無によらず要る（pnpm check はビルドの後に UI テストを流す） */
 export function checkBuilt(index = BUILT_INDEX) {

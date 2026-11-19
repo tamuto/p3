@@ -48,14 +48,14 @@ describe("pnpm lint", () => {
     expect(codes).toEqual(["react-hooks(exhaustive-deps)", "react-hooks(rules-of-hooks)", "typescript(no-floating-promises)", "typescript(no-misused-promises)"]);
   });
 
-  it("src・scripts・test と設定ファイルを検査し（.mjs も）、生成したルート一覧は除く", () => {
+  it("パッケージ（入口・tasks・kit の src と入口の bin）・scripts・test と設定ファイルを検査し（.mjs も）、生成したルート一覧は除く", () => {
     const r = run(root, ["--debug=files", ...lintArgs.filter((a) => !a.startsWith("-"))]);
     expect(r.status, r.stderr).toBe(0);
     const files = r.stdout.split("\n").filter((l) => /\.(m?[jt]sx?)$/.test(l));
-    for (const f of ["src/cli/main.ts", "src/web/routes/__root.tsx", "scripts/demo.ts", "test/lint.test.ts", "test/fixtures/fake-codex.mjs", "vite.config.ts", "vitest.config.ts"]) {
+    for (const f of ["packages/p3/src/cli/main.ts", "packages/p3/src/web/routes/__root.tsx", "packages/p3/bin/p3.mjs", "packages/tasks/src/cli/taskCommands.ts", "packages/tasks/src/web/routes/index.tsx", "packages/kit/src/fsutil.ts", "scripts/demo.ts", "test/lint.test.ts", "test/fixtures/fake-codex.mjs", "vite.config.ts", "vitest.config.ts"]) {
       expect(files).toContain(f);
     }
-    expect(files).not.toContain("src/web/routeTree.gen.ts");
+    expect(files).not.toContain("packages/p3/src/web/routeTree.gen.ts");
     expect(files.filter((f) => /^(bin|dist|node_modules|\.p3-demo)\//.test(f))).toEqual([]);
   });
 });

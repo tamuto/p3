@@ -2,15 +2,15 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { Hierarchy, orderSiblings } from "../src/shared/hierarchy.ts";
-import type { Request } from "../src/shared/types.ts";
-import { HierarchyError, hierarchyView } from "../src/core/hierarchy.ts";
-import { createRequest, orderChildren, updateRequest } from "../src/core/requestOps.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { progress } from "../src/core/ops.ts";
-import { progressTree } from "../src/web/lib/progressTree.ts";
+import { Hierarchy, orderSiblings } from "../packages/tasks/src/shared/hierarchy.ts";
+import type { Request } from "../packages/tasks/src/shared/types.ts";
+import { HierarchyError, hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
+import { createRequest, orderChildren, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { progress } from "../packages/tasks/src/core/ops.ts";
+import { progressTree } from "../packages/tasks/src/web/lib/progressTree.ts";
 import { makeProject, newTask, openTestProject } from "./helpers.ts";
 
 /** 子の表示順（docs/architecture.md の「子の表示順」）: 親の childOrder と、そこに無い子の作成順 */
@@ -145,7 +145,7 @@ describe("子の表示順の保存（orderChildren）", () => {
     expect((await get(`/requests/${parent.id}`)).children.map((x: { id: string }) => x.id)).toEqual([c, a, b]);
     // CLI の request ls --parent
     const cli = JSON.parse(
-      execFileSync(process.execPath, [join(process.cwd(), "bin/p3.mjs"), "request", "ls", "--parent", parent.id, "--json"], {
+      execFileSync(process.execPath, [join(process.cwd(), "packages/p3/bin/p3.mjs"), "request", "ls", "--parent", parent.id, "--json"], {
         cwd: root,
         env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), INIT_CWD: root, XDG_CONFIG_HOME: join(root, ".xdg") },
         encoding: "utf8",

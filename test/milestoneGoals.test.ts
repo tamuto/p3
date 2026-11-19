@@ -6,12 +6,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { MILESTONE_GOAL_LIMITS, milestoneGoalProblems, nextGoalId } from "../src/shared/milestoneGoals.ts";
-import { MilestonesConflictError, ProjectInputError } from "../src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { MILESTONE_GOAL_LIMITS, milestoneGoalProblems, nextGoalId } from "../packages/tasks/src/shared/milestoneGoals.ts";
+import { MilestonesConflictError, ProjectInputError } from "../packages/tasks/src/core/store/workspace.ts";
 import { gitInit, makeProject, tempDir } from "./helpers.ts";
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 let CONFIG_HOME = "";
 beforeEach(() => {
   CONFIG_HOME = tempDir("p3-config-");

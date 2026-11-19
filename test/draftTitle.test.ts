@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { DraftConflictError } from "../src/core/preflight/service.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { DraftConflictError } from "../packages/tasks/src/core/preflight/service.ts";
 import {
   canSaveTitle,
   discardTitle,
@@ -14,7 +14,7 @@ import {
   titlePending,
   titleSaved,
   titleSaveFailed,
-} from "../src/web/lib/draftTitle.ts";
+} from "../packages/tasks/src/web/lib/draftTitle.ts";
 import { makeProject, newRequest, openTestProject } from "./helpers.ts";
 
 describe("タスク案の題の下書き", () => {

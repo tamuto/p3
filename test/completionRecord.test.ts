@@ -3,13 +3,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readCompletion, taskTriggers } from "../src/shared/completionRecord.ts";
-import { qualityVersion, readQuality } from "../src/shared/quality.ts";
-import { createTask, updateRequest, updateRequirement, updateTask } from "../src/core/requestOps.ts";
-import { completeMilestoneRequests, completionPlan } from "../src/core/releaseNotes/completeRequests.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { readCompletion, taskTriggers } from "../packages/tasks/src/shared/completionRecord.ts";
+import { qualityVersion, readQuality } from "../packages/tasks/src/shared/quality.ts";
+import { createTask, updateRequest, updateRequirement, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { completeMilestoneRequests, completionPlan } from "../packages/tasks/src/core/releaseNotes/completeRequests.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeProject, newRequest, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 /**
@@ -221,7 +221,7 @@ describe("旧データ・壊れた記録・競合", () => {
   });
 });
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 function p3(dataDir: string, args: string[]) {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "ai:test" };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, cwd: dataDir });

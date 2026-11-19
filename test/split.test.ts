@@ -1,14 +1,14 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { codexPrompt } from "../src/core/preflight/codexEngine.ts";
-import type { PreflightJob } from "../src/core/preflight/engine.ts";
-import { StaleInputError } from "../src/core/preflight/input.ts";
-import { hierarchyView } from "../src/core/hierarchy.ts";
-import { ChildDraftsChangedError } from "../src/core/preflight/service.ts";
-import { createRequest, updateRequest } from "../src/core/requestOps.ts";
-import { stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { codexPrompt } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import type { PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";
+import { StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
+import { hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
+import { ChildDraftsChangedError } from "../packages/tasks/src/core/preflight/service.ts";
+import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
+import { stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newTask } from "./helpers.ts";
 
 /** Preflight の分割の案（docs/architecture.md の「Preflight の分割の案」） */

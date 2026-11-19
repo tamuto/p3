@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { acceptanceChanged, applyAcceptanceOps, criteriaEditOps, criteriaForTask } from "../src/shared/acceptance.ts";
+import { acceptanceChanged, applyAcceptanceOps, criteriaEditOps, criteriaForTask } from "../packages/tasks/src/shared/acceptance.ts";
 import {
   answerState,
   applySourceOps,
@@ -17,16 +17,16 @@ import {
   sourceState,
   type Clarification,
   type RequirementSource,
-} from "../src/shared/requirementSource.ts";
-import { parseAssessment } from "../src/core/preflight/service.ts";
-import { StaleInputError } from "../src/core/preflight/input.ts";
-import type { PreflightEngine, PreflightJob } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { createTask, saveClarifyAnswer, updateRequest, updateRequirement, updateTask } from "../src/core/requestOps.ts";
-import { taskReviewMaterial } from "../src/core/taskReview/review.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { extractTaskReview } from "../src/core/taskReview/material.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+} from "../packages/tasks/src/shared/requirementSource.ts";
+import { parseAssessment } from "../packages/tasks/src/core/preflight/service.ts";
+import { StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
+import type { PreflightEngine, PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { createTask, saveClarifyAnswer, updateRequest, updateRequirement, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { taskReviewMaterial } from "../packages/tasks/src/core/taskReview/review.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { extractTaskReview } from "../packages/tasks/src/core/taskReview/material.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /**
@@ -413,7 +413,7 @@ describe("確認事項の取り込み（Codex・手元で同じ）", () => {
   });
 });
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 function p3(dataDir: string, args: string[], input?: string) {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "ai:test" };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, input, cwd: dataDir });

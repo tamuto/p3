@@ -810,7 +810,7 @@ p3 metrics rm M3 --rev 1      # 消す
 - 値 0 の記録は 0、記録の無い指標は「記録なし」。記録は `<データのフォルダ>/metrics/manual.json` に残り、プロジェクトのデータと一緒に共有される
 - 値を記録したマイルストーンは消せない（先に `p3 metrics rm`）。`project.yaml` の直接編集で消えたら、指標に注意が出る
 
-- 指標を足すときは `src/core/metrics/definitions.ts` の `METRIC_DEFINITIONS` に1件（ID・名前・単位・何から・対象・算出・欠損の扱いと集計）を足す。
+- 指標を足すときは `packages/tasks/src/core/metrics/definitions.ts` の `METRIC_DEFINITIONS` に1件（ID・名前・単位・何から・対象・算出・欠損の扱いと集計）を足す。
   CLI・API・画面はその並びをそのまま出す
 
 ### 見直しが必要（候補）

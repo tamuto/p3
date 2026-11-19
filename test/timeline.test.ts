@@ -13,7 +13,7 @@ import {
   timeRange,
   visibleRows,
   ZOOMS,
-} from "../src/web/lib/timeline.ts";
+} from "../packages/tasks/src/web/lib/timeline.ts";
 
 describe("timeline", () => {
   it("まとまりの最初の日: 週は月曜、月は1日", () => {

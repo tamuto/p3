@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine, type HostMount } from "../src/core/preflight/codexEngine.ts";
-import { writeRepoEntry } from "../src/core/store/projectFile.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine, type HostMount } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import { writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
 import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
@@ -139,7 +139,7 @@ describe("複数の参照先を Preflight に渡す", () => {
 });
 
 describe("参照先の git の履歴（Codex のコンテナから使えるか）", async () => {
-  const { gitHistory } = await import("../src/core/repoRefs.ts");
+  const { gitHistory } = await import("../packages/tasks/src/core/repoRefs.ts");
   const { execFileSync } = await import("node:child_process");
   const { git } = await import("./helpers.ts");
   const commit = (dir: string) => {

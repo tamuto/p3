@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { AGENTS_SNIPPET, agentsSnippet, ENTRY_COMMENT, SKILL_SOURCE } from "../src/cli/project.ts";
-import { ENTRY_VERSION, GUIDE_SOURCE } from "../src/cli/guide.ts";
+import { AGENTS_SNIPPET, agentsSnippet, ENTRY_COMMENT, SKILL_SOURCE } from "../packages/p3/src/cli/project.ts";
+import { ENTRY_VERSION, GUIDE_SOURCE } from "../packages/p3/src/cli/guide.ts";
 
 const skill = readFileSync(SKILL_SOURCE, "utf8");
 const devSkill = readFileSync(new URL("../.claude/skills/p3/SKILL.md", import.meta.url), "utf8");

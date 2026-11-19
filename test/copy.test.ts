@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { RequestIdCopy } from "../src/web/components/RequestIdCopy.tsx";
-import { COPY_MESSAGE, copyNotice, copyText } from "../src/web/lib/copy.ts";
+import { RequestIdCopy } from "../packages/tasks/src/web/components/RequestIdCopy.tsx";
+import { COPY_MESSAGE, copyNotice, copyText } from "../packages/tasks/src/web/lib/copy.ts";
 
 describe("要望 ID のコピー", () => {
   it("渡した ID の全文だけを書き、書き込みが終わってから copied を返す", async () => {

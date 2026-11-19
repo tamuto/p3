@@ -3,8 +3,8 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tempDir } from "./helpers.ts";
-import { checkDataDir, DataDirError } from "../src/core/store/locate.ts";
-import { startServer } from "../src/server/server.ts";
+import { checkDataDir, DataDirError } from "../packages/tasks/src/core/store/locate.ts";
+import { startServer } from "../packages/p3/src/server/server.ts";
 
 /** 空いているポート（一度待ち受けて閉じる） */
 async function freePort(): Promise<number> {

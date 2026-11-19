@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { mountNames, parseRepoPath, repoNameProblem } from "../src/shared/repos.ts";
-import { normalizeProject, normalizeRepos } from "../src/core/store/normalize.ts";
-import { writeProjectFile, writeRepoEntry } from "../src/core/store/projectFile.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
+import { mountNames, parseRepoPath, repoNameProblem } from "../packages/tasks/src/shared/repos.ts";
+import { normalizeProject, normalizeRepos } from "../packages/tasks/src/core/store/normalize.ts";
+import { writeProjectFile, writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
 import { makeRepo } from "./helpers.ts";
 
 describe("参照先の定義（project.yaml の repos）", () => {

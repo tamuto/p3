@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { OwnerProbe } from "../src/core/preflight/owner.ts";
-import { createTask, updateTask } from "../src/core/requestOps.ts";
-import { ReviewCancelRefused, ReviewStoreError, RunControl } from "../src/core/reviewRuns.ts";
-import { newTaskReviewRunId, parseTaskReviewKey } from "../src/core/taskReview/store.ts";
-import type { TaskReviewInput, TaskReviewResult, TaskReviewRun } from "../src/shared/taskReview.ts";
+import type { OwnerProbe } from "../packages/tasks/src/core/preflight/owner.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { ReviewCancelRefused, ReviewStoreError, RunControl } from "../packages/tasks/src/core/reviewRuns.ts";
+import { newTaskReviewRunId, parseTaskReviewKey } from "../packages/tasks/src/core/taskReview/store.ts";
+import type { TaskReviewInput, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/shared/taskReview.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 /**

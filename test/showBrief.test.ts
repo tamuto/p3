@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeProject, newRequest, newTask, tempDir } from "./helpers.ts";
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 
 /**
  * 短い出力でどれだけ減るか（README の「短い出力」の目安）。

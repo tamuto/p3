@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { writeRepoEntry } from "../src/core/store/projectFile.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
 import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const def = { role: "", readFirst: false, map: [] };

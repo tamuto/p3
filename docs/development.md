@@ -9,8 +9,8 @@ P3 そのものを開発するときの手順と、ソースの構成。使い�
 
 ```bash
 pnpm install
-pnpm build                   # 画面（p3 serve で配信する dist/web）
-pnpm link --global           # `p3` コマンドをこのチェックアウトで使う（任意）
+pnpm build                   # 画面（p3 serve で配信する packages/p3/dist/web）と配布物（dist/package）
+pnpm --dir packages/p3 link --global   # `p3` コマンドをこのチェックアウトで使う（任意）
 ```
 
 グローバルに入れずに、P3 の場所を指定して pnpm で直接動かしてもよい。管理したいリポジトリ（やその作業ツリー）の中で:
@@ -20,7 +20,10 @@ pnpm -s --dir /path/to/p3 p3 whoami     # -s で pnpm 自身の出力を抑え�
 ```
 
 pnpm はスクリプトをパッケージの場所で動かすが、P3 は呼び出し元の場所（pnpm が渡す `INIT_CWD`）に戻ってから
-対象のプロジェクト・今の要望（作業ツリーのブランチ）・git のユーザーを判定する。
+対象のプロジェクト・今の要望（作業ツリーのブランチ）・git のユーザーを判定する（ルートの `p3-workspace` と入口の `@infodb/p3` の `p3` スクリプトのとき）。
+
+このリポジトリは pnpm workspace で、入口（`packages/p3`）・tasks（`packages/tasks`）・kit（`packages/kit`）の3つのパッケージに分けている
+（下の「構成」と [docs/architecture.md](architecture.md#パッケージの構成)）。コマンドはどれもルートで動かす。
 
 ## よく使うコマンド
 
@@ -74,7 +77,7 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 - 手元の対話エージェントの Preflight（`--prepare` / `--complete`）は、CLI と取り込みを別プロセスのテストで確かめる
   （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が入口のスキルから手順（`p3 guide`）を読んで
   担当（`preflight.runner`）どおりに依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。担当で分けた手順の書き方の
-  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。手順（`src/cli/guide.md`）の Preflight の
+  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。手順（`packages/p3/src/cli/guide.md`）の Preflight の
   節や指示の形を変えたときは、一時フォルダのプロジェクト（`init --agents claude --preflight-runner agent`）を Claude Code で開き、
   親と子の要望を作って「要望 <ID> の Preflight をして」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、
   依頼の無い登録では始めないことを確かめる。`p3 config set preflight.runner=codex` に変えて、「Preflight して」とだけ頼むと聞き返すこと、
@@ -90,7 +93,7 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
     `p3()` の `env` に明示する
   - 所要時間を比べるときは、同じマシンで `pnpm test` を数回流し、全体の時間の中央値とファイルごとの時間を見る
     （`pnpm vitest run --reporter=json --outputFile=<ファイル>` の各ファイルの `startTime`・`endTime`）
-- データのフォルダの監視（`src/core/store/dataWatcher.ts`）は `test/dataWatcher.test.ts` が確かめる。監視の失敗（入れ子の消失・
+- データのフォルダの監視（`packages/tasks/src/core/store/dataWatcher.ts`）は `test/dataWatcher.test.ts` が確かめる。監視の失敗（入れ子の消失・
   読めないエラー・開始の失敗・読み込みの失敗）は監視を差し替えて確実に起こし、ログ・立て直し・続けての失敗でやめること・close の後に
   何も残らないことを見る。実際の監視は、通常の serve を別のプロセスで動かし（`test/fixtures/watchChild.ts`）、`drafts/` を作っては
   消し続けても落ちず、API が答え、close の後に自分で終わることを見る。`--all-projects` で一方の監視が壊れても両方の API と
@@ -157,9 +160,9 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 TypeScript 7 の型検査器で tsconfig.json を読む）も動かす。設定は `.oxlintrc.json`。ESLint・Biome・整形の道具は入れていない
 （書式はそろえて書く）。指摘は全部エラーで、警告も使われていない無効化コメントも `pnpm check` を落とす。
 
-- **対象**: package.json の `lint` に並べた `src`・`scripts`・`test`・`vite.config.ts`・`vitest.config.ts`・`vitest.ui.config.ts`。この中の `.mjs`
-  （起動の補助・偽の app-server など）も、TypeScript の対象ではないが型情報なしの規則で検査する。`bin/` は対象の外
-- **除外**: 生成したルート一覧 `src/web/routeTree.gen.ts`。`dist/`・`node_modules/`・`.p3-demo/` は対象のフォルダの外
+- **対象**: package.json の `lint` に並べた各パッケージの `src`（入口・tasks・kit）と入口の `bin`・`scripts`・`test`・`vite.config.ts`・`vitest.config.ts`・
+  `vitest.ui.config.ts`。この中の `.mjs`（起動の補助・偽の app-server など）も、TypeScript の対象ではないが型情報なしの規則で検査する
+- **除外**: 生成したルート一覧 `packages/p3/src/web/routeTree.gen.ts`。`dist/`・`node_modules/`・`.p3-demo/` は対象のフォルダの外
 - **規則**: plugin は typescript・unicorn・oxc・react・import・promise・vitest。それぞれの correctness（誤りか無意味なコード）を全部
   使い、ほかのカテゴリは一括では入れず、次を選んで足す
 
@@ -193,7 +196,7 @@ suspicious カテゴリの一括（JSX で要らない `react-in-jsx-scope` な�
 
 - 中で try / catch して画面に知らせる関数（保存・Preflight の開始など）は `onClick={() => void save()}`。`void` は
   「待たない」の印で、失敗を隠すためには使わない
-- 失敗を受け止めない処理は `runAction(処理, (文言) => …)`（`src/web/lib/action.ts`）で、失敗を画面に渡す
+- 失敗を受け止めない処理は `runAction(処理, (文言) => …)`（`packages/tasks/src/web/lib/action.ts`）で、失敗を画面に渡す
 - 読み直し（`reload`）のように失敗を状態に入れて投げない関数は、子には `() => void reload()` を渡す
 
 `test/lint.test.ts` が、採用した規則の代表的な違反（Hooks・待たない Promise・Promise の渡し方）で lint が失敗することと、
@@ -201,39 +204,46 @@ suspicious カテゴリの一括（JSX で要らない `react-in-jsx-scope` な�
 
 ## 構成
 
+pnpm workspace の3つのパッケージ。依存の向きは 入口 → tasks → kit の一方向（`test/packageBoundary.test.ts`）。パッケージの間はパッケージ名
+（`@infodb/p3-tasks/core/context.ts` のように、パッケージの `src` からのパス）で読み、相対パスで別のパッケージのファイルを指さない。
+入口と tasks の `src` は同じ層に分ける（依存の向き: shared ← core ← server / cli、web → shared。`test/layers.test.ts`）。設計と、機能ごとの
+置き場所は [docs/architecture.md](architecture.md#パッケージの構成)。
+
 ```
-src/                 依存の向き: shared ← core ← server / cli、web → shared（test/layers.test.ts で確かめる）
-  shared/            型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
-  cli/               p3 CLI（core でファイルを直接操作。serve でサーバも起動する）
-    guide.md         AI 向けの作業の手順の原本（p3 guide が返す。ビルドで lib/cli/ に写す）
-    main.ts          振り分け・プロジェクトと変更者と今の要望の決定・終了コード
-    taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は core/requestOps.ts を通す）
-    args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
-  core/              CLI と serve の共通の中核（HTTP は使わない）
-    requestOps.ts    要望・タスクの変更の手順（CLI と API はここを呼ぶ。確かめる → 保存 → ブランチの割り当て・進行中に戻す → 変更通知）
-    ops.ts           CLI と API で共通の読み取り（一覧・参照の解き方・進捗の集計など）
-    store/           要望のフォルダとタスクのコレクション、frontmatter、Preflight の保存、監視
-    preflight/       エンジン（codex-workspace / mock）と実行・タスク化
-    chatgpt.ts       ChatGPT の接続（アプリ名・保存先・トークンの長さ。サインインと保存は @infodb/chatgpt-plan）
-    context.ts / userConfig.ts / machineSettings*.ts   プロジェクトを開く・個人設定・マシンごとの設定
-  server/            HTTP だけ（p3 serve）
-    server.ts        待ち受けと画面の配信
-    api/             REST + SSE（core を呼ぶ）
-  web/               React + TanStack Router + Tailwind（text-base 基準）
-    routes/          ページ（1ファイル1ページ。__root.tsx が共通の枠）
-    routeTree.gen.ts ルート一覧（自動生成）
-    components/      部品（複数のページで使うもの。大きいページの部品は components/<ページ>/）
-bin/p3.mjs           CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
+packages/
+  p3/                入口 @infodb/p3（npm・Docker で配るのはこれ。kit・tasks はビルドして同梱する）
+    bin/p3.mjs       CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
+    src/cli/         main.ts（引数の解釈・プロジェクトの決定・serve・help・guide・init・join・agents）・project.ts（init / join / agents）・
+                     guide.ts と guide.md（AI 向けの作業の手順の原本。p3 guide が返す）・agentsStatus.ts・help.ts
+    src/server/      server.ts（待ち受けと画面の配信）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
+    src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）
+    src/web/         画面の外枠（main.tsx・Boot・App・router・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
+                     routeTree.gen.ts はルート一覧（自動生成。tasks のページも入る）
+  tasks/             @infodb/p3-tasks（今の p3 の機能。公開しない）
+    src/shared/      型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
+    src/cli/         tasksCli.ts（プロジェクトを開いた後の振り分け・終了コード）・コマンドの種類ごと（taskCommands.ts など。変更は
+                     core/requestOps.ts を通す）・projectSettings.ts（config・repo・今の要望）・readOnly.ts・args.ts・output.ts
+    src/core/        CLI と serve の共通の中核（HTTP は使わない）。requestOps.ts（変更の手順）・ops.ts（読み取り）・store/（保存・監視）・
+                     preflight/（エンジンと実行・タスク化）・chatgpt.ts・context.ts（プロジェクトを開く）・userConfig.ts・machineSettings*.ts
+    src/server/api/  REST + SSE（core を呼ぶ）
+    src/web/         ページ（routes/。1ファイル1ページ）・部品（components/）・画面の処理（lib/）
+  kit/               @infodb/p3-kit（入口と製品が使う最小限の共通処理。公開しない）: fsutil.ts・frontmatter.ts・usage.ts・appInfo.ts
 skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）
-scripts/             デモデータ・配布物の確認・使い方の動画（video/）
-docs/                導入・使い方・開発・設計・公開の文書
-test/                ユニットテスト
+scripts/             配布物のビルド（build-cli.mjs）・デモデータ・配布物の確認・使い方の動画（video/）
+docs/                導入・使い方・開発・設計・公開の文書（利用者向けの入口。配布物にも入れる）
+test/                ユニットテスト（パッケージをまたいで確かめるのでルートに置く）
 ```
 
-画面のページは TanStack Router のファイルベースのルーティングで、`src/web/routes/` にファイルを置けば足りる。
+- 外の依存は使うパッケージの manifest に書く（入口は実行時の依存をまとめて持つ。kit・tasks の実行時の依存は入口の `dependencies` にも同じ範囲で書く。
+  `test/package.test.ts`）。テストだけが直接使う外の部品はルートの `devDependencies`
+- 将来の製品（p3-observer）は名前だけを決めている。パッケージを足すときは `packages/` に置き、入口から明示して組み込む
+
+画面のページは TanStack Router のファイルベースのルーティングで、`packages/tasks/src/web/routes/` にファイルを置けば足りる
+（入口の `__root.tsx` の下に、このフォルダをそのまま付ける。`tsr.config.json` の `virtualRouteConfig`）。
 小さいページは中身もそのファイルに書く。大きいページは、ルートのファイルを組み立て（状態と並び）だけにし、部品を
-`src/web/components/<ページ>/` に分ける（要望の画面は `components/request/`）。ルート一覧 `src/web/routeTree.gen.ts` は
-`pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される（設定は `tsr.config.json`。型検査のためにコミットしておく）。
+`packages/tasks/src/web/components/<ページ>/` に分ける（要望の画面は `components/request/`）。ルート一覧 `packages/p3/src/web/routeTree.gen.ts` は
+`pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される（型検査のためにコミットしておく）。画面のビルド（Vite の root）は入口の
+`packages/p3/src/web` で、Tailwind は tasks の `src/web` のクラスも拾う（`index.css` の `@source`）。
 
 規則を足すときに直す場所は [docs/architecture.md](architecture.md) の「規則の置き場所」。
 
@@ -258,30 +268,33 @@ test/                ユニットテスト
 
 ## npm で配る中身
 
-`@infodb/p3` として npm に公開する（公開そのものは人が行う。手順は [docs/publishing.md](publishing.md)）。画面と CLI・serve を
-ビルドして同梱し、利用者の環境では TypeScript を変換しない（`tsx` とそれが使う esbuild を入れないので、pnpm がビルドのスクリプトの
-許可を聞かない）。このリポジトリの開発（`pnpm p3`・テスト）は、今までどおりソースを `tsx` でそのまま動かす。
+`@infodb/p3`（入口のパッケージ）として npm に公開する（公開そのものは人が行う。手順は [docs/publishing.md](publishing.md)）。kit・tasks は
+公開せず、ビルドして同梱する。画面と CLI・serve をビルドして同梱し、利用者の環境では TypeScript を変換しない（`tsx` とそれが使う esbuild を
+入れないので、pnpm がビルドのスクリプトの許可を聞かない）。このリポジトリの開発（`pnpm p3`・テスト）は、今までどおりソースを `tsx` でそのまま動かす。
 
 | 何を | どうする |
 | --- | --- |
-| 同梱するもの（`files`） | `bin/`、`lib/`（ビルド済みの CLI・serve。描画のイメージの資材 `lib/core/preflight/render-image/` などの .ts 以外の資材を含む）、`dist/web`（ビルド済みの画面）、`skills/`（AI 向けスキルの原本）、`docs/`（README から辿る文書）、README・LICENSE |
-| 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・TypeScript のソース（`src/`）・開発用のスキル（`.claude/`） |
-| 実行時の依存 | `hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`。`tsx`（esbuild）と React などの画面の部品は開発用 |
-| CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。`tsc -p tsconfig.build.json` で `src/{cli,core,server,shared}` を同じ深さの `lib/` に 1:1 で出し（相対の import の `.ts` は `.js` に書き換わる）、.ts 以外の資材を同じ場所に写す。`src/` と同じ深さなので、`import.meta.url` からの相対の参照（`../../skills`・`dist/web`・`./mock-ui.html` など）はそのまま効く。資材を足すときは、その層のフォルダに置けば写る。`lib/` は git で追跡しない |
+| 公開する中身 | `pnpm build` が `dist/package/` に組み立てる（`npm pack ./dist/package`・`npm publish ./dist/package`）: 入口の `bin/`、`lib/`（ビルド済みの CLI・serve。入口は `lib/{cli,core,server}`、同梱した tasks は `lib/tasks/`、kit は `lib/kit/`。描画のイメージの資材 `lib/tasks/core/preflight/render-image/` などの .ts 以外の資材を含む）、`dist/web`（ビルド済みの画面）と、ルートの `skills/`（AI 向けスキルの原本）・`docs/`（README から辿る文書）・README・LICENSE |
+| 公開する manifest | `packages/p3/package.json` から開発だけの項目（`devDependencies` の workspace の参照・`scripts`）を外したもの。workspace のパッケージ（`@infodb/p3-tasks`・`@infodb/p3-kit`）の名前は manifest にも実行時の import にも残らない（`test/pack.test.ts`） |
+| 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・TypeScript のソース（`packages/`・`src/`）・開発用のスキル（`.claude/`） |
+| 実行時の依存 | `hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`（入口の `dependencies`）。`tsx`（esbuild）と React などの画面の部品は開発用 |
+| CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。一時のフォルダ `packages/p3/build-src/` に配布物と同じ並び（入口の src/{cli,core,server}・`tasks/`・`kit/`）でソースを集め、パッケージ名の import を集めた先への相対パスに書き換えてから、`tsc` で `packages/p3/lib/` に 1:1 で出す（相対の import の `.ts` は `.js` に書き換わる）。.ts 以外の資材は同じ場所に写す。入口の `lib/{cli,server}` は `src` と同じ深さなので、`import.meta.url` からの相対の参照（`../../package.json`・`dist/web`）はそのまま効く。スキルの原本は上へ探す（配布物は同梱した `skills/`、チェックアウトはルートの `skills/`）。tasks の資材はそのファイルと同じフォルダだけを参照する。資材を足すときは、その層のフォルダに置けば写る。`packages/p3/lib/`・`dist/` は git で追跡しない |
 | Node | `>=24`（`@infodb/codex-workspace`・`@infodb/chatgpt-plan` の `>=22` を満たす）。開発と Docker のイメージは Node 26 |
-| 公開前のビルド | `prepack` で `pnpm build`。利用者が入れるときにはビルドも Docker の操作もしない |
-| bin | `p3`（`bin/p3.mjs`）。`src/cli/main.ts` があるチェックアウトでは tsx でソースを、無ければ（配布物）`lib/cli/main.js` を動かす。ソースを動かすときは今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプトのときだけ |
+| 公開前のビルド | ルートの `pnpm build`（`vite build` と `scripts/build-cli.mjs --require-web`）。入口の manifest にはスクリプトを書かない。利用者が入れるときにはビルドも Docker の操作もしない |
+| bin | `p3`（`packages/p3/bin/p3.mjs`）。`packages/p3/src/cli/main.ts` があるチェックアウトでは tsx でソースを、無ければ（配布物）`lib/cli/main.js` を動かす。ソースを動かすときは今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプト（ルートの `p3-workspace` か入口の `@infodb/p3`）のときだけ |
+| 動いている版 | 入口が起動のときに自分の package.json の版を kit の `appInfo.ts` に渡し、tasks（Codex に名乗る版など）はそこを読む |
 
 ```bash
 pnpm -s check                       # 型検査・lint・テスト・画面のビルド・UI テスト
-pnpm verify:pack --docker           # npm pack → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
+pnpm verify:pack --docker           # pnpm build → npm pack ./dist/package → 実行時の依存だけで別の場所に入れて動かす（scripts/verify-pack.mjs）
 # DevContainer の中では、描画の出力先を Docker のホストから見えるところにする
 P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces pnpm verify:pack --docker --render-dir /workspaces/tmp
 ```
 
 ## Docker のイメージ
 
-`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 26 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm pack` と同じ中身に実行時の依存だけを
+`Dockerfile`（Docker Hub の `tamuto/p3`。ビルドは Node 26 と packageManager の pnpm でロックファイルどおりに入れ、`pnpm build` の後に `npm pack ./dist/package` で
+公開と同じ tarball を作って展開し、実行時の依存は `pnpm --filter @infodb/p3 deploy --prod` で workspace の lockfile のまま入口の分だけを
 入れる。実行も Node 26・git・Docker の CLI と buildx。既定は `serve --all-projects --host 0.0.0.0`）と `.dockerignore`
 （git・依存・ビルドの出力・データ・個人設定・認証・テストを入れない）。約束は `test/docker.test.ts` が確かめる。
 ベースの Node はメジャー版（ビルドも実行も `node:26-bookworm-slim`。描画のイメージも同じ）だけを指定し、同じメジャーの中の更新（セキュリティ
@@ -305,7 +318,7 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs
 serve になること。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
 確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
 
-マウントするパスの自動の決め方（`src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で
+マウントするパスの自動の決め方（`packages/tasks/src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で
 確かめる。このマシン（DevContainer など）と、Dockerfile から作ったイメージ（中と外で違うパスの bind 2つ・名前付きボリューム・
 ソケット・コンテナの名前と違うホスト名）の両方で、`codex.pathMap` の無い使い捨ての個人設定の p3 が、`p3 user-config paths` で
 自分のコンテナを確かめてパスを決めること、bind の下の原稿を `p3 render` で PNG にすること、volume の下・コンテナの中だけの原稿・
@@ -348,7 +361,7 @@ serve になること。本物の Codex（ソケット・pathMap・ChatGPT の�
 | docs/development.md（この文書） | 開発の手順と構成 |
 
 同じ説明を複数の文書に書かない（片方からリンクする）。確認作業の記録（どの幅・どのブラウザで確かめたか）は文書に書かず、
-PR とタスクの変更の記録に残す。CLI のヘルプ（`src/cli/help.ts`）・API の説明（`src/server/api/manifest.ts`）は入口が変わったとき、
-AI の手順が変わったときは手順の原本 `src/cli/guide.md`（`p3 guide` が返す）の1か所を直す。置く入口（`skills/p3/SKILL.md` と
-`src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`））は、入口に書くこと（呼び方・読み込みの約束）を変えたときだけ両方を直し、
-`src/cli/guide.ts` の `ENTRY_VERSION` を上げる（手順の本文だけの改訂では上げない。`test/agents.test.ts` が確かめる）。
+PR とタスクの変更の記録に残す。CLI のヘルプ（`packages/p3/src/cli/help.ts`）・API の説明（`packages/tasks/src/server/api/manifest.ts`）は入口が変わったとき、
+AI の手順が変わったときは手順の原本 `packages/p3/src/cli/guide.md`（`p3 guide` が返す）の1か所を直す。置く入口（`skills/p3/SKILL.md` と
+`packages/p3/src/cli/project.ts` の `agentsSnippet`（`AGENTS_SNIPPET`））は、入口に書くこと（呼び方・読み込みの約束）を変えたときだけ両方を直し、
+`packages/p3/src/cli/guide.ts` の `ENTRY_VERSION` を上げる（手順の本文だけの改訂では上げない。`test/agents.test.ts` が確かめる）。

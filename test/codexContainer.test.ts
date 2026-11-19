@@ -2,9 +2,9 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
-import { DOCKER_LIMITS } from "../src/core/preflight/docker.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import { DOCKER_LIMITS } from "../packages/tasks/src/core/preflight/docker.ts";
 import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /**

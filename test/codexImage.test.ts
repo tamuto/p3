@@ -3,11 +3,11 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CodexImageError, ensureCodexImage, updateCodexImage } from "../src/core/preflight/codexImage.ts";
+import { CodexImageError, ensureCodexImage, updateCodexImage } from "../packages/tasks/src/core/preflight/codexImage.ts";
 import { tempDir } from "./helpers.ts";
 
 const FAKE_DOCKER = fileURLToPath(new URL("./fixtures/fake-docker.mjs", import.meta.url));
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 const DAY = 86_400_000;
 
 /** PATH に置く偽の docker（このテストの node で fake-docker.mjs を動かす）と、その状態・記録のファイル */

@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { loadConnection } from "@infodb/chatgpt-plan";
-import { connectionPath } from "../src/core/chatgpt.ts";
-import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../src/core/userConfig.ts";
-import { readTheme, ThemeInputError, writeTheme } from "../src/core/userTheme.ts";
+import { connectionPath } from "../packages/tasks/src/core/chatgpt.ts";
+import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../packages/tasks/src/core/userConfig.ts";
+import { readTheme, ThemeInputError, writeTheme } from "../packages/tasks/src/core/userTheme.ts";
 import { makeProject, tempDir, writeConnection } from "./helpers.ts";
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 
 /** 個人設定の置き場所（XDG_CONFIG_HOME）をテストごとに分ける */
 let home = "";
@@ -276,7 +276,7 @@ describe("/api/user-theme", () => {
 
 describe("describeSettings（p3 user-config の表示）", () => {
   it("環境変数・個人設定・既定のどれから来た値かを出し、読めない値は理由を添える", async () => {
-    const { describeSettings } = await import("../src/core/machineSettingsEdit.ts");
+    const { describeSettings } = await import("../packages/tasks/src/core/machineSettingsEdit.ts");
     const user = { settings: { codex: { model: "gpt-x", effort: "high" } } };
     const { rows, error } = describeSettings(user, { P3_CODEX_MODEL: "gpt-env", P3_CODEX_EFFORT: "" });
     expect(error).toBeUndefined();

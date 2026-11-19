@@ -29,7 +29,9 @@ describe("Dockerfile", () => {
     expect(Number(/^node:(\d+)-/.exec(runtime)?.[1])).toBeGreaterThanOrEqual(min);
     expect(dockerfile).toContain(`npm install -g ${pkg.packageManager}`);
     expect(dockerfile).toContain("pnpm install --frozen-lockfile");
-    expect(dockerfile).toContain("pnpm install --prod --frozen-lockfile");
+    // 実行時の依存は workspace の lockfile のまま、入口の分だけ（pnpm deploy）。中身は公開と同じ tarball
+    expect(dockerfile).toContain("pnpm --filter @infodb/p3 deploy --prod");
+    expect(dockerfile).toContain("npm pack ./dist/package");
   });
 
   it("Docker Hub の tamuto/p3 として、版と出どころのラベル・ヘルスチェックを持つ", () => {
@@ -60,10 +62,10 @@ describe("Dockerfile", () => {
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith("#"));
-    for (const p of [".git", "node_modules", "dist", ".p3", ".p3-demo", ".env", ".env.*", "**/auth.json", "**/chatgpt.json", "**/config.yaml", ".claude", ".serena", "test"]) {
+    for (const p of [".git", "node_modules", "**/node_modules", "dist", "**/dist", "packages/p3/lib", ".p3", ".p3-demo", ".env", ".env.*", "**/auth.json", "**/chatgpt.json", "**/config.yaml", ".claude", ".serena", "test"]) {
       expect(ignored, p).toContain(p);
     }
-    // 配る中身（package.json の files）に要るものは除かない
-    for (const p of ["src", "bin", "skills", "docs", "pnpm-lock.yaml"]) expect(ignored).not.toContain(p);
+    // 配る中身を作るのに要るもの（パッケージのソース・bin・skills・docs・lockfile）は除かない
+    for (const p of ["packages", "src", "bin", "skills", "docs", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) expect(ignored).not.toContain(p);
   });
 });

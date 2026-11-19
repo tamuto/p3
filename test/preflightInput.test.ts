@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { PreflightEngine, PreflightJob } from "../src/core/preflight/engine.ts";
-import { compareInput, normalizeInput, StaleInputError } from "../src/core/preflight/input.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { PreflightEngine, PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";
+import { compareInput, normalizeInput, StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 /** 始めたら release() まで待つ mock（評価中の編集を作る）。渡された要望を残す */

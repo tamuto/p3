@@ -59,6 +59,7 @@ P3 を Docker のコンテナで動かすこともできる（[導入ガイド: 
 | P3 そのものの開発・ソースの構成・配布物 | [開発ガイド](docs/development.md) |
 | 設計の方針と規則（なぜそうするか） | [docs/architecture.md](docs/architecture.md) |
 | 開発の工程ごとに P3 が受け持つこと・意図して持たないこと | [設計: 開発の工程と P3 の受け持ち](docs/architecture.md#開発の工程と-p3-の受け持ち) |
+| パッケージの構成（入口・tasks・kit）と製品ごとの設計の置き場所・機能の棚卸し | [設計: パッケージの構成](docs/architecture.md#パッケージの構成)・[機能の棚卸し](docs/feature-inventory.md) |
 | ChatGPT のサインインの設計 | [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md) |
 | npm への公開の手順 | [docs/publishing.md](docs/publishing.md) |
 

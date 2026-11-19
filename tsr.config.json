@@ -1,6 +1,17 @@
 {
   "target": "react",
-  "routesDirectory": "./src/web/routes",
-  "generatedRouteTree": "./src/web/routeTree.gen.ts",
-  "autoCodeSplitting": true
+  "routesDirectory": "./packages/p3/src/web/routes",
+  "generatedRouteTree": "./packages/p3/src/web/routeTree.gen.ts",
+  "autoCodeSplitting": true,
+  "virtualRouteConfig": {
+    "type": "root",
+    "file": "__root.tsx",
+    "children": [
+      {
+        "type": "physical",
+        "pathPrefix": "",
+        "directory": "../../../../tasks/src/web/routes"
+      }
+    ]
+  }
 }

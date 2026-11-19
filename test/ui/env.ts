@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { gitInit, git, tempDir } from "../helpers.ts";
 
-const P3_BIN = fileURLToPath(new URL("../../bin/p3.mjs", import.meta.url));
+const P3_BIN = fileURLToPath(new URL("../../packages/p3/bin/p3.mjs", import.meta.url));
 const run = promisify(execFile);
 
 /** 親の環境から、子の p3 の対象の決まり方に効くものを外す（P3_*・INIT_CWD・git の場所の指定・XDG） */
