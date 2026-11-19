@@ -383,7 +383,7 @@ include: true
 レビューは、保存してあるマイルストーンの目的・予定機能に対して、Codex が参照先のリポジトリのコードと git の履歴を読み、実装が目的を
 果たしているか・目的に無い変更が無いかを確かめる参考の記録（操作は [使い方ガイド](how-to-use.md#マイルストーンレビュー)）。所属する
 要望・タスクの記録は実装した人の自己申告として、どこを見るかの手がかりにする（記録の要約で終わらせない）。比較材料の抽出は
-`core/milestoneReview/material.ts`（コードの材料は `code.ts`）、履歴は `core/milestoneReview/store.ts`、形は `shared/milestoneReview.ts`。
+`features/milestoneReview/core/material.ts`（コードの材料は `code.ts`）、履歴は `features/milestoneReview/core/store.ts`、形は `features/milestoneReview/shared/milestoneReview.ts`。
 リリースノートの材料（`releaseNotes/material.ts`）の収録の条件は変えない。
 
 - **範囲**: マイルストーンに直接属する要望の全部の状態（見送り・未完了も）。要望の本文、各タスクの本文・状態・変更の記録・成果物の
@@ -411,7 +411,7 @@ include: true
 - **保護**: 履歴のあるマイルストーンは消せず、ID も変えられない（`requestOps.ts` の `checkMilestoneRemoval`）。project.yaml を直接
   編集して定義が消えても、履歴は孤立として一覧・閲覧できる
 - 抽出と履歴の保存は、要望の状態・リリースノート・リリース済みを変えない
-- **実行**（`core/milestoneReview/service.ts`・依頼文と確かめ方は `review.ts`）: Preflight と同じ Codex の接続の `ask` に、材料を
+- **実行**（`features/milestoneReview/core/service.ts`・依頼文と確かめ方は `review.ts`）: Preflight と同じ Codex の接続の `ask` に、材料を
   取り出したときに読めた参照先を渡し、Preflight と同じく `/workspace/<名前>` に読むだけでマウントする（データのフォルダは渡さない。
   認証・診断・パスの対応・使用量の上限・取消を共有）。Mock は明示したときだけで、失敗しても切り替えない。依頼文では、記録を自己申告
   として手がかりにとどめ、予定機能ごとに実装を読んで判断する・コミットの差分から目的に無い変更を挙げる・書き込みやテストとアプリの
@@ -435,7 +435,7 @@ include: true
 
 ### リリースノートのデータ
 
-マイルストーンごとに1件、`<data>/release-notes/<マイルストーンID>.md` に置く（`core/releaseNotes/`）。要望のフォルダの外に
+マイルストーンごとに1件、`<data>/release-notes/<マイルストーンID>.md` に置く（`features/releaseNotes/core/`）。要望のフォルダの外に
 置くのは、複数の要望をまとめるものだから。
 
 - **材料**（`releaseNotes/material.ts`）: マイルストーンに属する要望（アーカイブしたものは除く）を全部返し、収録するかを決める。
@@ -489,7 +489,7 @@ include: true
   materialization に残してやり直しでも同じにする。今の要望（`cli/project.ts` の `currentRequest`）は、今いる参照先
   （`locateHere`）の割当のブランチ → ブランチ名の要望 ID の順で、パスの中の要望 ID だけでは決めない（detached HEAD では決めない）。
   git のブランチ・作業ツリーは作らない
-- 参照先の登録・変更・削除は `core/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
+- 参照先の登録・変更・削除は `features/settings/core/repoAdmin.ts` に集め、CLI（`p3 repo`）と設定画面（`/api/repos`・`components/ReposPanel.tsx`）が
   同じものを使う。このマシンのパスは `localOnly` でローカルの画面にだけ返し、変えられるのもローカルの画面（Origin）からだけ。
   パスつきで足すときは、共有の定義を書く前にフォルダかを確かめる
   - 設定画面はほかの画面と同じく画面の横幅いっぱいに使う。入力欄のラベルは短くし、補足は `Field` の `hint` で入力欄の下に出すので、
@@ -512,7 +512,7 @@ include: true
 - マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`P3_*`）→ 個人設定 → 既定値 で決める（`packages/tasks/src/core/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は [導入ガイド](installation.md#設定の決まり) の「設定の決まり」
-- マシンごとの設定の書き換え（`p3 user-config set`。`packages/tasks/src/core/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
+- マシンごとの設定の書き換え（`p3 user-config set`。`packages/tasks/src/features/settings/core/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
   パスの対応は `codex.pathMap+=A=B` / `codex.pathMap-=A` で1件ずつ足し・外す（全部の置き換えは受けない。書き間違いで全部を
   失わないように）。`updateUserConfig` の中で変更を当ててから、環境変数を見ずに `resolveMachineSettings` で確かめ、読めなければ
   何も書かない（テーマを含めて一括）。表示（`describeSettings`）は項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）。
@@ -625,7 +625,7 @@ include: true
   `web/lib/theme.ts` が持ち、`system` の間だけ `prefers-color-scheme` の変化を購読する。保存先は個人設定だけで、
   localStorage は使わない。ほかのプロセスでの変更は読み直しで反映する
 - 設定画面のテーマの選択は、選んだらすぐ `PUT /api/user-theme` で保存し、保存できてから画面に反映する
-  （`web/lib/themeSave.ts`。保存中に続けて選んだら、終わってから最後の選択だけを保存する。失敗したら保存済みの表示に戻す）。
+  （`features/settings/web/lib/themeSave.ts`。保存中に続けて選んだら、終わってから最後の選択だけを保存する。失敗したら保存済みの表示に戻す）。
 - 進捗のスケジュールの狭い画面: 左の一覧の幅を枠の幅から決める（`web/lib/timeline.ts` の `leftWidth`。640px 未満で
   枠の 36%・112〜380px、640px 以上は 380px）。スケジュールの見える幅（`scheduleSpan`）・描く期間の右端・見える範囲の判定・
   今日への移動・ズームの中央の日付は、すべてこの幅から計算する（測る前は幅 0 で、見える幅は負にならない）。行の高さと
@@ -833,29 +833,29 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | エラーから CLI の終了コード・標準エラーと API の状態・code への対応 | `core/errorOutcome.ts` の `errorOutcome`（CLI は `cliExit`、API の各アプリは `apiError` で写す。契約は `test/errorContract.test.ts`） |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
-| リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `web/lib/releaseNoteDraft.ts` |
+| リリースノートの本文の下書き（外の変更・削除・読めないときに入力を残す・編集を始めた版で保存） | `features/releaseNotes/web/lib/releaseNoteDraft.ts` |
 | 読み取り（一覧・参照の解き方・進捗） | `core/ops.ts` |
 | アーカイブしたタスクの読み取り（通常の一覧・集計に混ぜない） | `core/store/archivedTasks.ts` |
 | レビューの実行の記録の共通部分（保存・終わり・回復・取消・遅れた結果の拒否） | `core/reviewRuns.ts` |
-| タスクの AI レビュー（材料・履歴） | `core/taskReview/`（`material.ts`・`store.ts`） |
-| プロジェクトの品質基準（状態・ID の振り方・操作・テンプレートと改版の差分・版） | `shared/quality.ts`・`shared/qualityTemplates.ts`（保存は `core/quality.ts` と `Workspace.writeQuality`） |
+| タスクの AI レビュー（材料・履歴） | `features/taskReview/core/`（`material.ts`・`store.ts`） |
+| プロジェクトの品質基準（状態・ID の振り方・操作・テンプレートと改版の差分・版） | `features/quality/shared/quality.ts`・`features/quality/shared/qualityTemplates.ts`（保存は `features/quality/core/quality.ts` と `Workspace.writeQuality`） |
 | 作業中のタスクの止まっている理由（停止。付ける・直す・解除・履歴・止まったままの移動の拒否・壊れた値の読み方） | `shared/taskBlock.ts`（保存と状態との突き合わせは `core/requestOps.ts` の `updateTask`、集計は `core/ops.ts`） |
-| タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
-| 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
-| タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
-| 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `shared/retrospective.ts`（保存は `core/retrospective.ts`） |
-| 開発の指標（定義・対象・算出・欠損の扱い・範囲）と人が記録する値 | `core/metrics/definitions.ts` の `METRIC_DEFINITIONS`（範囲と材料は `core/metrics/index.ts`、人の記録の保存は `core/metrics/manual.ts`、型は `shared/metrics.ts`） |
+| タスクの受け入れ基準と証拠（ID の振り方・操作・失効・根拠の種類・不足・壊れた値の読み方）と済みの解除 | `features/requirements/shared/acceptance.ts`（済みの解除と保存は `core/requestOps.ts` の `updateTask`） |
+| 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `features/requirements/shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `features/requirements/shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
+| タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `features/records/shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
+| 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `features/retro/shared/retrospective.ts`（保存は `features/retro/core/retrospective.ts`） |
+| 開発の指標（定義・対象・算出・欠損の扱い・範囲）と人が記録する値 | `features/metrics/core/definitions.ts` の `METRIC_DEFINITIONS`（範囲と材料は `features/metrics/core/index.ts`、人の記録の保存は `features/metrics/core/manual.ts`、型は `features/metrics/shared/metrics.ts`） |
 | JSON の記録のファイルの読み書き（読むときの扱いを記録ごとに渡す・置き換えで書く） | `core/store/jsonRecord.ts` の `readJsonRecord`・`writeJsonRecord`（記録ごとの扱いの違いは [docs/refactoring.md](refactoring.md) の表） |
 | 要望・タスクの p3 が管理する frontmatter の項目のまとまり（読む・壊れた値の書き戻し・書かない項目・入力から外す項目） | `core/store/fieldGroups.ts` の `TASK_FIELD_GROUPS`・`REQUEST_FIELD_GROUPS`（まとまりごとの検査は各 `shared/*.ts`、書き戻しの仕組みは `core/store/collection.ts` の `keepRaw`） |
 | 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
-| 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |
-| 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `shared/reviewCandidate.ts`（読み取り・集計は `core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
-| リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `core/releaseNotes/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
+| 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `features/records/shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `features/records/core/completionRefs.ts`） |
+| 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `features/records/shared/reviewCandidate.ts`（読み取り・集計は `features/records/core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
+| リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `features/releaseNotes/core/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
 | タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 | マイルストーンの表示の順（ID のバージョンの降順。CLI・API・画面の一覧と選ぶ欄。project.yaml の順は変えない） | `shared/milestoneOrder.ts` |
-| マイルストーンレビュー（材料の範囲・履歴の保存・依頼文と結果の確かめ方・実行の排他と回復） | `core/milestoneReview/`（`material.ts`・`store.ts`・`review.ts`・`service.ts`） |
+| マイルストーンレビュー（材料の範囲・履歴の保存・依頼文と結果の確かめ方・実行の排他と回復） | `features/milestoneReview/core/`（`material.ts`・`store.ts`・`review.ts`・`service.ts`） |
 | マイルストーンの目的・予定機能（件数・文字数・空・重複・ID の振り方） | `shared/milestoneGoals.ts`（保存の排他と版の照合は `core/store/workspace.ts` の `saveProject`） |
 
 CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・登録が1つだけのときの抑止・serve・help・guide・init・join・agents）、
@@ -889,7 +889,9 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
   （[開発ガイド](development.md#npm-で配る中身)）
 - 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に tasks のページのフォルダをそのまま付け（`tsr.config.json` の
   `virtualRouteConfig`）、入口が知っている製品のページだけが入る
-- 重複した仕組みのまとめ方とモジュール構成の組み直しの経過（計測・棚卸し・まとめたもの）は [docs/refactoring.md](refactoring.md)
+- tasks の中は、層ごとの共通の土台と機能のまとまり（`features/<機能>/{shared,core,cli,server,web}`）に分ける。機能の中身はその機能・組み立ての場所・
+  入口の層と画面の組み合わせだけが読み、機能の core どうしと循環は禁止（`test/featureBoundary.test.ts`）。配置・規則・まとめた仕組みと残した理由・前後の
+  計測は [docs/refactoring.md](refactoring.md)
 - 製品ごとの設計: tasks の設計と規則はこの文書の残りの節（作業の単位・Preflight・受け入れ基準など）。kit は下の「kit の中身と使い手」。
   p3-observer は名前を予約しただけで、パッケージも設計もまだ無い（作るときは `packages/observer` に置き、データは `.p3/observer/` だけを持つ）
 
@@ -900,10 +902,10 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 | F01 起動・振り分け・help・静的配信 | 入口 | `bin/p3.mjs`・`cli/main.ts`・`cli/help.ts`・`server/server.ts`。tasks のコマンドは `cli/tasksCli.ts` の `runTasksCommand`、終了コードは `reportError` を呼ぶ |
 | F02 配布物の確認 | 入口 | `scripts/verify-*.mjs`・`scripts/check-browser.ts`・`docs/publishing.md` |
 | F03 AI 向けの入口・guide・診断 | 入口 | `cli/project.ts`（置く）・`cli/guide.ts`・`cli/agentsStatus.ts`・`skills/`。手順の本文 `cli/guide.md` は tasks の運用の手順だが、`p3 guide` が同梱の原本を返すので当面は入口と一緒に置く |
-| F04 登録・参加・プロジェクトの決定・読む／書くの判定 | 分ける | 入口: `cli/project.ts`（init・join・project）。tasks: `cli/projectSettings.ts`（`config`・`repo`・変更者・今いる参照先・今の要望）・`cli/readOnly.ts`（コマンドごとの読む／書く。入口が呼ぶ）・`core/store/locate.ts`（決め方とデータの検査。入口が呼ぶ） |
-| F05 個人設定・マシンごとの設定・変更者 | tasks（kit の候補） | `core/userConfig.ts`・`core/machineSettings*.ts`・`cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の製品が個人設定を使うときに、入出力だけを kit に分ける |
+| F04 登録・参加・プロジェクトの決定・読む／書くの判定 | 分ける | 入口: `cli/project.ts`（init・join・project）。tasks: `features/settings/cli/projectSettings.ts`（`config`・`repo`・変更者・今いる参照先・今の要望）・`cli/readOnly.ts`（コマンドごとの読む／書く。入口が呼ぶ）・`core/store/locate.ts`（決め方とデータの検査。入口が呼ぶ） |
+| F05 個人設定・マシンごとの設定・変更者 | tasks（kit の候補） | `core/userConfig.ts`・`core/machineSettings*.ts`・`features/settings/cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の製品が個人設定を使うときに、入出力だけを kit に分ける |
 | F06 置き換え書き込み・ロック・frontmatter | kit | `fsutil.ts`・`frontmatter.ts`（`packages/kit/src/`）。今は tasks（要望・タスク・run・指標・設定の保存）が使い、将来の製品の保存も使う見込み。採番・正規化・アーカイブは tasks |
-| F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | 入口: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品 `web/components/ui.tsx` とテーマ（`ThemePanel`・`core/userTheme.ts`・`server/api/userThemeRoutes.ts`）は、設定画面（tasks のページ）が使うので当面は tasks に置き、入口が読み込む。2 つ目の製品が使うときに kit に移す |
+| F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | 入口: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品 `web/components/ui.tsx` とテーマ（`ThemePanel`・`features/settings/core/userTheme.ts`・`features/settings/server/userThemeRoutes.ts`）は、設定画面（tasks のページ）が使うので当面は tasks に置き、入口が読み込む。2 つ目の製品が使うときに kit に移す |
 | F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知は入口の `projectsRoutes.ts`。監視の仕組みを製品で共有するのは 2 つ目の製品が出てから |
 | F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。入口の `projectsRoutes.ts` も同じ説明を返す |
 | F10〜F25・F27 | tasks | 判断表の根拠のパスのまま |
@@ -1063,7 +1065,7 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 ### 要求の出典と確認
 
 外部の評価（課題 B）への対応: 要求そのものが間違っている場合、リポジトリと履歴を読んでも正解は分からない。Preflight には無理に正解を
-出させず、根拠が足りないことと誰に何を確かめるかを示させ、実装から独立した正解の根拠を人が残せるようにする（`shared/requirementSource.ts`）。
+出させず、根拠が足りないことと誰に何を確かめるかを示させ、実装から独立した正解の根拠を人が残せるようにする（`features/requirements/shared/requirementSource.ts`）。
 
 - **持ち物**: 要望の `requirementSources`（`[{id: S1, target?, source?, basis?, confirmed?, history?, recordedAt, recordedBy}]`）・`requirementSeq`・
   `clarifyAnswers`。タスクとタスク案の `acceptanceSources`（同じ記録に `criterionId`。基準の中ではなく別に持つので、id と text で基準を組み直す
@@ -1147,7 +1149,7 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 ### 手戻りの履歴と保存のロック
 
 タスクの済みの解除と完了からの再開を `reworkHistory`（`[{id: R1, at, by, rev, cause, unchecked, reopened, from, to}]`。追記だけ）に残す
-（`shared/reworkHistory.ts`）。後で「Preflight で心配したことが手戻りになったか」を追うときの材料にする。
+（`features/records/shared/reworkHistory.ts`）。後で「Preflight で心配したことが手戻りになったか」を追うときの材料にする。
 
 - `updateTask` が、書く直前に読み直した値と保存する値（状態・済み。完了から戻すと済みも外れる）を比べて決め、状態と同じ1回の書き込みに入れる。
   `cause` は `reopen`（完了から戻した）・`explicit`（済みを外すと明示した）・`acceptance`（基準・証拠・基準の根拠の中身が変わって済みが外れた）。
@@ -1164,7 +1166,7 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 
 ### 振り返り
 
-外部の評価への対応: 蓄積した記録で開発を振り返る一例として、Preflight で心配したリスクが実装の後に起きたかを追う（`shared/retrospective.ts`）。
+外部の評価への対応: 蓄積した記録で開発を振り返る一例として、Preflight で心配したリスクが実装の後に起きたかを追う（`features/retro/shared/retrospective.ts`）。
 P3 は AI の実装を動かさず、成績も測らない。
 
 - **記録**: 要望のフォルダの `retrospective.json`（`{version, targets: [...]}`）。要望と一緒にアーカイブ・共有する。保存は要望のロック
@@ -1180,7 +1182,7 @@ P3 は AI の実装を動かさず、成績も測らない。
 - **リスクの確認**（`addJudgment`）: `judgments` に `J<n>`（対象 ID・リスクの位置・原文の写し・状態・事実・範囲・根拠・理由・日時・主体）を追記する。
   リスクは対象 ID と位置で見分ける（同文のリスクも別）。今の確認は対象とリスクの最後の1件。`occurred` は事実と根拠、`not_occurred` は範囲と根拠が要り、
   `unchecked` は根拠を結び付けるだけ。決めた確認（`unchecked` 以外）を変えるには理由が要る。今の対象のリスクだけに足せ、件数（`riskCounts`）も今の対象だけ
-- **根拠**（`core/retrospective.ts` の `resolveEvidence`）: 保存するときに今の記録と照らし、参照先と抜粋（1000 文字まで）と結果の版を写す。
+- **根拠**（`features/retro/core/retrospective.ts` の `resolveEvidence`）: 保存するときに今の記録と照らし、参照先と抜粋（1000 文字まで）と結果の版を写す。
   タスクレビューはこの要望のタスク（今の・アーカイブ）の完了した run の `overall`・`items`・`quality`・`unplanned`・`checks` の位置。
   マイルストーンレビューは固定した材料（`input.requests`）にこの要望が直接あるものだけで、所見の `evidence` に要望 ID か `<要望ID>/T…` が無ければ
   結び付く理由が要る（実行中の材料の変更 `inputChanged` も写す）。手戻りはタスクの `reworkHistory` の ID。人の参照は確かめない
@@ -1192,8 +1194,8 @@ P3 は AI の実装を動かさず、成績も測らない。
 外部の評価への対応: AI 開発の成果をコードの量ではなく、到達の時間・品質（手戻り・基準の未達）などで振り返る材料として、記録から指標を出す。
 P3 は AI の実装を動かして測らない。成績の評価・順位には使わない。
 
-- **定義**: `core/metrics/definitions.ts` の `METRIC_DEFINITIONS` の1か所。各定義は ID・名前・単位・出典・対象・算出・欠損の扱いと `compute(input)`。
-  CLI の `metrics`・API の `GET /api/metrics` は `core/metrics/index.ts` の `metricsReport` を通り、同じ値を返す
+- **定義**: `features/metrics/core/definitions.ts` の `METRIC_DEFINITIONS` の1か所。各定義は ID・名前・単位・出典・対象・算出・欠損の扱いと `compute(input)`。
+  CLI の `metrics`・API の `GET /api/metrics` は `features/metrics/core/index.ts` の `metricsReport` を通り、同じ値を返す
 - **範囲**: プロジェクト全体（所属なし・登録に無いマイルストーンの要望を含む）か、`project.yaml` に登録したマイルストーンに今直接属する要望。
   見送り・アーカイブの要望は除く。タスクは要望の直下だけ。読めない要望は `notices`
 - **値の状態**: `ok`・`no_targets`（対象なし）・`no_data`（欠損だけ）・`not_reached`（まだ到達していない）・`unrecorded`（記録なし）。値は `ok` のときだけで、ほかは `null`（0 にしない）
@@ -1207,7 +1209,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - **タスクレビュー**: 今完了しているタスクごとに、`selectTaskReview` で完了した run を1件選ぶ（`finishedAt` の新しい順、同時刻は run ID の大きい方。
   読めない記録・`finishedAt` の無い完了の run があれば欠損）。選んだ結果の `items` の `missing` と `unplanned` を別の指標に数える。`undetermined`・`checks` は
   内訳だけ。レビューの無いタスクばかりなら `unrecorded`。読むのは `taskReviews.list`・`get` だけで、run を作らない。マイルストーンレビューの所見は今後の候補
-- **人が記録する値**（`kind: manual`。定義の `manual` に値の規則）: `core/metrics/manual.ts`。`<data>/metrics/manual.json`（`{version: 1, seq, records}`）に持ち、
+- **人が記録する値**（`kind: manual`。定義の `manual` に値の規則）: `features/metrics/core/manual.ts`。`<data>/metrics/manual.json`（`{version: 1, seq, records}`）に持ち、
   `metrics/.manual.lock` のロックの中で読み直してから置き換えで書く。識別は指標・範囲（`project` かマイルストーン ID）・期間・単位で、同じ内容は書かない。
   値・出典・メモの訂正は記録の `rev` を照らす（渡さない・違えば `metrics_conflict`）。壊れたファイルは空とみなさず `metrics_unreadable`（読む側は欠損と `notices`）。
   表示は範囲が一致する記録だけを期間・単位ごとの `rows` に出し、範囲の間・通貨・期間をまたいで合算しない（`value` は1行のときだけ）。書くのは CLI だけ。
@@ -1216,7 +1218,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 ### 完了の記録
 
 タスクの完了（`task_done`）・人の済み（`task_checked`）・要望の対応済（`request_resolved`）・完了済（`request_done`）のとき、
-そのときの条件の写しを `completionRecords` に追記する（`shared/completionRecord.ts`）。今の値（`doneAt`・`checkedAt` は再開で消える）とは別に持ち、
+そのときの条件の写しを `completionRecords` に追記する（`features/records/shared/completionRecord.ts`）。今の値（`doneAt`・`checkedAt` は再開で消える）とは別に持ち、
 後から「当時どの条件で完了・確認したか」を比べる材料にする。
 
 - 状態と同じ更新（同じ rev）で同じファイルに書く。片方だけが保存されることはない。`expectedRev` の競合では何も書かない
@@ -1226,7 +1228,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - 写す値は、同じ操作で変えた基準・証拠を当てた後のもの。品質は完了したときの最新の値（設定全体の版・作業先に当てはまる項目と除外）で、
   取り込んだときの版は基準の `quality.version` に残る。要望の記録は題と `requestSubject`（題と本文の hash）を持ち、本文は写さない
 - 要望の記録の `tasks`・`children` は判定に使った直下のタスクと子の要望（ID・rev・状態・その時点の最新の記録 ID）。子だけの親も子の記録から辿れる
-- 参照先は書く前（ロックの外）に `core/completionRefs.ts` が取る: `git rev-parse HEAD` と、参照先のフォルダに限った `git status --porcelain`。
+- 参照先は書く前（ロックの外）に `features/records/core/completionRefs.ts` が取る: `git rev-parse HEAD` と、参照先のフォルダに限った `git status --porcelain`。
   状態は `ok`・`not_git`・`unregistered`・`missing`・`notdir`・`failed` で、理由にはこのマシンのパスを入れない。完了になりうる更新
   （状態を完了にする・済みを付ける・対応済・完了済にする）のときだけ取る。Preflight の評価対象にはコミットの固定が無いので、run から補わない
 - 入口: `createTask`（完了で作る）・`updateTask`（CLI の move・set・check、API の PATCH、品質の取り込み）・`updateRequest`（CLI の request set、
@@ -1239,7 +1241,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 ### 見直し候補
 
 外部の評価（課題 C）への対応: 過去に正しいと判断したものが、仕様や環境の変化で正しくなくなることがある。判断を間違いと決めつけず、
-当時の条件（完了の記録）と今の条件の差を「見直しが必要（候補）」として示す（`shared/reviewCandidate.ts`）。状態は増やさない。
+当時の条件（完了の記録）と今の条件の差を「見直しが必要（候補）」として示す（`features/records/shared/reviewCandidate.ts`）。状態は増やさない。
 
 - **基点**: タスク・要望の最新の完了の記録。人がもう一度済み・完了にすれば新しい記録が基点になる。記録が無い・読めないときは
   `no_record`・`unreadable` で、差分なし（`none`）とも候補（`candidate`）とも分ける
@@ -1264,7 +1266,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 
 タスクは任意で **受け入れ基準**（`acceptanceCriteria: [{id, text}]`。何を満たせば完了か）を持ち、作業した側は基準ごとに
 **証拠**（`acceptanceEvidence: [{criterionId, criterionText, result, evidence, recordedAt, recordedBy}]`）を残す。規則は
-`shared/acceptance.ts` の1か所で、CLI（`new --criterion`・`criteria`・`evidence`・`set` / `move` の `--evidence`）と API
+`features/requirements/shared/acceptance.ts` の1か所で、CLI（`new --criterion`・`criteria`・`evidence`・`set` / `move` の `--evidence`）と API
 （POST の `criteria`、PATCH の `acceptance` の操作）は同じ操作を `core/requestOps.ts` に渡すだけ。
 
 - **ID**: 足すときに `A1, A2, ...` を振る。並べ替え・文言の変更で振り直さず、消した ID も使い直さない（振った最後の番号を
@@ -1274,7 +1276,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - **根拠の種類**: 証拠は任意の `basis` を持つ（`{kind: unverified}` 未確認 / `{kind: declaration}` 申告のみ / `{kind: read, reference}`
   読んで確認 / `{kind: machine, command, result, target}` 検査結果あり）。結果と別の軸で、どれも作業した側の申告（P3 は実行しない。
   read と machine に正しさの上下は付けない。人の済みはタスクの `checkedAt` で、basis に human は作らない。AI レビューの判定は写さない）。
-  型・ラベル・組み合わせ（met / unmet に未確認は不可、unverified は未確認だけ）・古い値の解釈・内訳・変更の比較は `shared/acceptance.ts`。
+  型・ラベル・組み合わせ（met / unmet に未確認は不可、unverified は未確認だけ）・古い値の解釈・内訳・変更の比較は `features/requirements/shared/acceptance.ts`。
   根拠を省いた record は、同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ（古い CLI・画面の更新を
   妨げず、古い証拠を同じ値で保存し直しても根拠を足さない）。保存した値に basis が無い古い証拠は書き換えず、読むときだけ
   unverified は未確認、ほかは「申告のみ（種類未記録）」と解釈する（本文から推し量って格上げしない）。`acceptanceStatus` の `met` は
@@ -1292,7 +1294,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
   同じ値の再保存・成果物の追加・同じ操作で済みを付け直すときは外さない。未完了へ戻すと外れるのは今までどおり
 - **今の値に当てる**: 操作は書く直前に読み直したファイルの値に当て、1つでも規則に合わなければ何も書かない（`rev` を渡せば競合も分かる）
 - **Preflight のタスク案**: 案（`drafts/D*.md`）も `acceptanceCriteria` を持つ。Codex・手元のエージェントは文の並びで書き、
-  P3 が読むときに A1, A2, ... を振る（`shared/acceptance.ts` の `readDraftCriteria`）。読めない基準は案の `acceptanceProblems`
+  P3 が読むときに A1, A2, ... を振る（`features/requirements/shared/acceptance.ts` の `readDraftCriteria`）。読めない基準は案の `acceptanceProblems`
   （案のファイルには書かない）に出し、手元の結果の取り込み（`--complete`）では直せる問題として断る。Codex の run では案に残して
   ログに出し、その案はタスク化を断る（直せば消える）。人の編集は並び全体の置き換えで、編集を始めたときの基準
   （`expectedCriteria`）と今の基準が違えば題と同じく 409 で書かない（同じ題のまま他で基準が変わっても上書きしない）。
@@ -1327,18 +1329,18 @@ quality:
 - **状態**: `quality` が無ければ未設定、あれば設定済み（意図して空でもよい）、読めない値（重複した ID・理由の無い除外・確認の方法の
   欠け）があれば invalid。invalid は未設定として扱い、ファイルの値は消さず、操作は断って直し方を示す。知らない参照先は警告だけ
 - **上限**: 100 件、文 1000・コマンド 500・成功の条件 500・確かめ方 1000・除外の理由 500 文字
-- **書き方**: `core/quality.ts` の操作（init・adopt・upgrade・add・replace・edit・remove・exempt・unexempt）を `Workspace.writeQuality` が
+- **書き方**: `features/quality/core/quality.ts` の操作（init・adopt・upgrade・add・replace・edit・remove・exempt・unexempt）を `Workspace.writeQuality` が
   project.yaml のロックの中で、読み直した最新の値に当て、`quality` の項目だけを書く（コメント・ほかの項目は残す）。設定の保存
   （PUT /api/project・`p3 config`）・参照先の保存・マイルストーンの保存は `quality` を書かないので、無関係な保存で品質基準は消えない
 - **版**: 品質だけの中身の hash（`qualityVersion`）。操作に版を渡すと、違えば `quality_conflict`（API 409・CLI 終了コード 3）で何も書かない
-- **テンプレート**（`shared/qualityTemplates.ts`）: 版つきの例（共通の基本・TypeScript の例）で、業界の標準への認証ではない。採用すると
+- **テンプレート**（`features/quality/shared/qualityTemplates.ts`）: 版つきの例（共通の基本・TypeScript の例）で、業界の標準への認証ではない。採用すると
   編集できる実体として写し、出典（`source`）を残す。テンプレートが改版しても採用済みの内容は変わらず、差分（足す・変わる・消える）
   を見て `upgrade` で明示して当てる
 - P3 はコマンドを実行しない・依存を入れない。確認の方法は CI・手元の作業・外の自動化のどれでもよく、特定の製品・フォルダを必須にしない
 
 ### 品質の改善要望
 
-品質の不足から改善要望を作る（`core/qualityImprovement.ts`。形は `shared/qualityImprovement.ts`）。
+品質の不足から改善要望を作る（`features/quality/core/qualityImprovement.ts`。形は `features/quality/shared/qualityImprovement.ts`）。
 
 - **診断**（読むだけ）: 出典は品質基準の設定（`project`）・タスクのレビューの1回分・マイルストーンレビューの1回分。不足を
   unset（未設定）/ invalid（読めない設定）/ violated（レビューで確かめた違反）/ undetermined（判断できない）/ exempt（理由つきの除外）に
@@ -1409,8 +1411,8 @@ blockHistory:               # 履歴（追記だけ。before / after はその�
 ### タスクの AI レビュー（材料）
 
 完了したタスクの本文・受け入れ基準に対して、比較対象の変更が基準を満たしているかを、作業したのとは別の Codex のスレッドに
-読むだけで確かめさせる参考の記録。作業した AI の能力・成績の評価ではない。材料は `core/taskReview/material.ts` が固定する
-（何も書かない。保存は別）。形は `shared/taskReview.ts`。
+読むだけで確かめさせる参考の記録。作業した AI の能力・成績の評価ではない。材料は `features/taskReview/core/material.ts` が固定する
+（何も書かない。保存は別）。形は `features/taskReview/shared/taskReview.ts`。
 
 - **対象**: 保存してある完了したタスク（済みも再実行できる）。無い（404）・未完了（`not_done`）・アーカイブ（`archived`）は断る
 - **タスクの材料**: 本文・受け入れ基準・作業した側の証拠（基準ごとの今の状態 `evidenceStates`、読めない値）・変更の記録・成果物・
@@ -1466,7 +1468,7 @@ blockHistory:               # 履歴（追記だけ。before / after はその�
 
 ### タスクの AI レビュー（履歴と実行）
 
-履歴は要望のフォルダの中に置く（`core/taskReview/store.ts`）。要望をアーカイブすれば一緒に動き、タスクをアーカイブしても残って読める。
+履歴は要望のフォルダの中に置く（`features/taskReview/core/store.ts`）。要望をアーカイブすれば一緒に動き、タスクをアーカイブしても残って読める。
 
 ```text
 requests/<要望ID>/task-reviews/<タスクID>/<run>/input.json   固定した材料（作ったら変えない）
@@ -1487,7 +1489,7 @@ requests/<要望ID>/task-reviews/.locks/<タスクID>.lock        状態を変�
 
 ### タスクの AI レビュー（実行）
 
-`core/taskReview/service.ts`（CLI の `p3 review`・API の `/requests/:rid/tasks/:tid/reviews` が呼ぶ）。依頼文と結果の確かめ方は `review.ts`。
+`features/taskReview/core/service.ts`（CLI の `p3 review`・API の `/requests/:rid/tasks/:tid/reviews` が呼ぶ）。依頼文と結果の確かめ方は `review.ts`。
 
 - **頼む先**: Preflight と同じ Codex の接続（`CodexWorkspaceEngine.ask`。認証・パスの対応・診断・時間と使用量の上限・取消を共有）。
   毎回新しいスレッドで、作業したスレッドは再開しない。マウントするのは run の材料のフォルダ（`/workspace/material`）だけで、
@@ -1511,7 +1513,7 @@ requests/<要望ID>/task-reviews/.locks/<タスクID>.lock        状態を変�
 ### リリースノートの要約（生成の境界）
 
 マイルストーンのリリースノートの機能の要約は、Preflight と同じ Codex の接続（個人設定・認証・イメージの確かめ・起動の診断）で頼む
-（`CodexWorkspaceEngine.ask`、`core/releaseNotes/generate.ts`）。Preflight の評価・タスク化は行わない。
+（`CodexWorkspaceEngine.ask`、`features/releaseNotes/core/generate.ts`）。Preflight の評価・タスク化は行わない。
 
 - **渡すもの**: 始めるときに固定した材料（[リリースノートのデータ](#リリースノートのデータ)）のうち、マイルストーンのタイトルと、
   収録する要望とタスクの ID・タイトル・変更の記録だけを依頼文に入れる。要望やタスクの本文・成果物・参照先・データのフォルダは

@@ -219,14 +219,19 @@ packages/
     src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）
     src/web/         画面の外枠（main.tsx・Boot・App・router・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
                      routeTree.gen.ts はルート一覧（自動生成。tasks のページも入る）
-  tasks/             @infodb/p3-tasks（今の p3 の機能。公開しない）
+  tasks/             @infodb/p3-tasks（今の p3 の機能。公開しない）。共通の土台（層ごと）と機能のまとまり（features/）に分ける
     src/shared/      型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
-    src/cli/         tasksCli.ts（プロジェクトを開いた後の振り分け・終了コード）・コマンドの種類ごと（taskCommands.ts など。変更は
-                     core/requestOps.ts を通す）・projectSettings.ts（config・repo・今の要望）・readOnly.ts・args.ts・output.ts
-    src/core/        CLI と serve の共通の中核（HTTP は使わない）。requestOps.ts（変更の手順）・ops.ts（読み取り）・store/（保存・監視）・
-                     preflight/（エンジンと実行・タスク化）・chatgpt.ts・context.ts（プロジェクトを開く）・userConfig.ts・machineSettings*.ts
-    src/server/api/  REST + SSE（core を呼ぶ）
-    src/web/         ページ（routes/。1ファイル1ページ）・部品（components/）・画面の処理（lib/）
+    src/cli/         tasksCli.ts（プロジェクトを開いた後の振り分け）・コマンドの種類ごと（taskCommands.ts など。変更は core/requestOps.ts を通す）・
+                     readOnly.ts・args.ts・output.ts
+    src/core/        CLI と serve の共通の中核（HTTP は使わない）。requestOps.ts（変更の手順）・ops.ts（読み取り）・store/（保存・監視・項目の
+                     まとまり fieldGroups.ts・JSON の記録 jsonRecord.ts）・preflight/（Preflight と AI の実行: エンジン・Codex と ChatGPT・Docker・
+                     画面資料）・reviewRuns.ts（レビューの実行の骨組み）・errorOutcome.ts（エラーから終了コードと HTTP の状態への表）・
+                     context.ts（プロジェクトを開く）・userConfig.ts・machineSettings.ts
+    src/server/api/  API の組み立て（routes.ts が機能の API をつなぐ）と共通の API
+    src/web/         画面の共通の部品（components/）・処理（lib/）・ルートの宣言（routes/。ページの中身は機能の web/ から読む）
+    src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: metrics・records（完了の記録・手戻り・見直し候補・前提）・
+                     quality・retro・requirements（要求の根拠・回答・受け入れ基準）・settings・taskReview・milestoneReview・releaseNotes。
+                     読んでよいものは docs/refactoring.md「モジュール構成」（test/featureBoundary.test.ts）
   kit/               @infodb/p3-kit（入口と製品が使う最小限の共通処理。公開しない）: fsutil.ts・frontmatter.ts・usage.ts・appInfo.ts
 skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）
 scripts/             配布物のビルド（build-cli.mjs）・デモデータ・配布物の確認・使い方の動画（video/）
@@ -237,9 +242,12 @@ test/                ユニットテスト（パッケージをまたいで確�
 - 外の依存は使うパッケージの manifest に書く（入口は実行時の依存をまとめて持つ。kit・tasks の実行時の依存は入口の `dependencies` にも同じ範囲で書く。
   `test/package.test.ts`）。テストだけが直接使う外の部品はルートの `devDependencies`
 - 将来の製品（p3-observer）は名前だけを決めている。パッケージを足すときは `packages/` に置き、入口から明示して組み込む
+- tasks に機能を足すときは `features/<機能>/` に層で分けて置き、CLI は `cli/tasksCli.ts`、API は `server/api/routes.ts`、画面は `web/routes/` からつなぐ。
+  ほかの機能の中身は読まず、契約は `shared/` に置く（`test/featureBoundary.test.ts`）。コード量は `node scripts/measure-code.mjs` で数える
 
 画面のページは TanStack Router のファイルベースのルーティングで、`packages/tasks/src/web/routes/` にファイルを置けば足りる
-（入口の `__root.tsx` の下に、このフォルダをそのまま付ける。`tsr.config.json` の `virtualRouteConfig`）。
+（入口の `__root.tsx` の下に、このフォルダをそのまま付ける。`tsr.config.json` の `virtualRouteConfig`）。機能のページは、ルートのファイルに
+URL と検索の値の宣言だけを置き、中身を機能の `web/` に書く（例: `routes/metrics.tsx` と `features/metrics/web/MetricsPage.tsx`）。
 小さいページは中身もそのファイルに書く。大きいページは、ルートのファイルを組み立て（状態と並び）だけにし、部品を
 `packages/tasks/src/web/components/<ページ>/` に分ける（要望の画面は `components/request/`）。ルート一覧 `packages/p3/src/web/routeTree.gen.ts` は
 `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される（型検査のためにコミットしておく）。画面のビルド（Vite の root）は入口の
