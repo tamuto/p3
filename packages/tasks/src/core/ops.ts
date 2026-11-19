@@ -3,7 +3,7 @@ import { normalizeTaskId } from "../shared/refs.ts";
 import { REQUEST_STATUSES, type RequestProgress, type RequestStatus, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
 import { hierarchyNow } from "./requestStatus.ts";
-import { requestReviewCounts, taskReview } from "../features/records/core/reviewCandidates.ts";
+import { requestReviewCounts, reviewMemo, taskReview } from "../features/records/core/reviewCandidates.ts";
 
 /**
  * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。
@@ -102,6 +102,8 @@ export function titleOf({ ws }: P3Context, ref: string): string {
  */
 export function progress(ctx: P3Context): RequestProgress[] {
   const h = hierarchyNow(ctx.ws);
+  // 見直しの診断はこの呼び出しの中で使い回す（タスク行と、要望の自身・自分のタスク・配下の件数で同じ結果を使う）
+  const memo = reviewMemo(ctx);
   const zero = () => Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
   return ctx.ws.requests
     .list()
@@ -136,7 +138,7 @@ export function progress(ctx: P3Context): RequestProgress[] {
           // 証拠の小さな概要（本文は載せない。規則は shared/acceptance.ts）
           const evidence = evidenceSummary(t);
           // 完了したタスクの見直しの診断の状態（理由は詳細で読む）
-          const review = taskReview(ctx, t)?.state;
+          const review = memo.task(t)?.state;
           return { id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, ...(block ? { block } : {}), ...(evidence ? { evidence } : {}), ...(review ? { review } : {}) };
         }),
         counts,
@@ -147,7 +149,7 @@ export function progress(ctx: P3Context): RequestProgress[] {
         children: h.children(request.id).map((c) => c.id),
         subtree: sub,
         hierarchyIssues: h.issuesAround(request.id),
-        review: requestReviewCounts(ctx, request, h),
+        review: requestReviewCounts(ctx, request, h, memo),
       };
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || byId(a.request.id, b.request.id));
