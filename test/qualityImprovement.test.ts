@@ -82,6 +82,18 @@ describe("診断と原稿", () => {
   });
 });
 
+describe("登録の記録のファイル（quality-improvements.json）", () => {
+  it("今の扱い: JSON として読めない記録は、診断（登録先の案内に読む）の時点で断り（invalid）、ファイルを変えない（JSON の記録の部品をまとめるとき 261119-vwgf8 で変えない）", async () => {
+    const { ctx, rid } = await setup();
+    const file = join(ctx.ws.dataDir, "quality-improvements.json");
+    writeFileSync(file, "{ 壊れた");
+    const run = await seedReview(ctx, rid, [q("Q1", "violated")]);
+    const src = { type: "task-review" as const, request: rid, task: "T001", run };
+    await expect(diagnoseQuality(ctx, src)).rejects.toMatchObject({ code: "invalid", message: expect.stringMatching(/quality-improvements\.json が読めません/) });
+    expect(readFileSync(file, "utf8")).toBe("{ 壊れた");
+  });
+});
+
 describe("登録", () => {
   it("診断の版が違えば作らない。登録先を残し、run が違っても同じ不足は案内する。閉じた要望からの作り直しは明示", async () => {
     const { ctx, rid } = await setup();

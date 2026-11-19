@@ -886,6 +886,7 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
   （[開発ガイド](development.md#npm-で配る中身)）
 - 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に tasks のページのフォルダをそのまま付け（`tsr.config.json` の
   `virtualRouteConfig`）、入口が知っている製品のページだけが入る
+- 重複した仕組みのまとめ方とモジュール構成の組み直しの経過（計測・棚卸し・まとめたもの）は [docs/refactoring.md](refactoring.md)
 - 製品ごとの設計: tasks の設計と規則はこの文書の残りの節（作業の単位・Preflight・受け入れ基準など）。kit は下の「kit の中身と使い手」。
   p3-observer は名前を予約しただけで、パッケージも設計もまだ無い（作るときは `packages/observer` に置き、データは `.p3/observer/` だけを持つ）
 
