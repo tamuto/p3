@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CONFIG_HOME, p3, repo, withConfigHome, relativeFrom, snapshot } from "./cliHelpers.ts";
 import { git, tempDir } from "./helpers.ts";
-import { joinProject } from "../src/cli/project.ts";
+import { joinProject } from "../packages/p3/src/cli/project.ts";
 
 describe("p3 join（既にあるプロジェクトへの参加）", () => {
   const cfgFile = (home: string) => join(home, "infodb-p3", "config.yaml");

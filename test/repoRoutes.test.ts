@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeRepo, openTestProject, tempDir } from "./helpers.ts";
-import { loadUserConfig, saveUserConfig } from "../src/core/userConfig.ts";
+import { loadUserConfig, saveUserConfig } from "../packages/tasks/src/core/userConfig.ts";
 
 const savedHome = process.env.XDG_CONFIG_HOME;
 afterEach(() => {

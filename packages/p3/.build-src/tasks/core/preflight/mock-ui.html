@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>一覧と絞り込み（Mock の例）</title>
+<style>
+body{margin:24px;font-family:sans-serif;color:#1e293b;background:#fff}
+h1{font-size:20px;margin:0 0 4px} .note{color:#64748b;font-size:13px;margin:0 0 16px}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:16px}
+.f{border:1px solid #94a3b8;border-radius:6px;padding:6px 12px;font-size:14px}
+.btn{background:#4f46e5;color:#fff;border-radius:6px;padding:6px 16px;font-size:14px}
+.sub{border:1px solid #cbd5e1;border-radius:6px;padding:6px 12px;font-size:14px;color:#475569}
+table{width:100%;border-collapse:collapse;font-size:14px} th{background:#f1f5f9;text-align:left}
+th,td{border-bottom:1px solid #e2e8f0;padding:8px 10px}
+.tag{background:#fef3c7;color:#92400e;border-radius:999px;padding:1px 8px;font-size:12px}
+</style></head>
+<body>
+<h1>一覧（絞り込みつき）</h1>
+<p class="note">Mock の決まった例です。要望の内容は読んでいません。表の行は仮のデータです。</p>
+<div class="bar"><span class="f">キーワード</span><span class="f">状態: すべて ▾</span><span class="f">担当: すべて ▾</span><span class="btn">絞り込む</span><span class="sub">条件を消す</span></div>
+<table>
+<tr><th>ID</th><th>タイトル</th><th>状態</th><th>担当</th><th>期限</th></tr>
+<tr><td>T001</td><td>（仮）入力欄を足す</td><td>進行中</td><td>担当A</td><td>10/14 <span class="tag">今週</span></td></tr>
+<tr><td>T002</td><td>（仮）一覧に列を足す</td><td>未着手</td><td>担当B</td><td>10/20</td></tr>
+<tr><td>T003</td><td>（仮）テストを書く</td><td>完了</td><td>担当A</td><td>10/09</td></tr>
+</table>
+</body></html>

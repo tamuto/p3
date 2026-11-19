@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preflightSteps } from "../src/web/lib/preflightSteps.ts";
+import { preflightSteps } from "../packages/tasks/src/web/lib/preflightSteps.ts";
 
 const view = (run: Parameters<typeof preflightSteps>[0]) => preflightSteps(run).map((s) => `${s.label}:${s.state}${s.current ? "*" : ""}`);
 const log = (n: number) => Array.from({ length: n }, () => ({ at: "", kind: "info" as const, text: "" }));

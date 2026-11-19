@@ -1,11 +1,11 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { checkStatusChange, reopenIfNeeded, resolvedIssue, StatusRuleError } from "../src/core/requestStatus.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { checkStatusChange, reopenIfNeeded, resolvedIssue, StatusRuleError } from "../packages/tasks/src/core/requestStatus.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
 import { makeProject, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 async function setup() {

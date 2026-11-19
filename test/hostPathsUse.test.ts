@@ -3,17 +3,17 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, 
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine, type HostMount } from "../src/core/preflight/codexEngine.ts";
-import type { HostPathProbe, InspectedContainer } from "../src/core/preflight/hostPaths.ts";
-import { RenderError, renderHtml } from "../src/core/preflight/render.ts";
-import type { ResolvedRef } from "../src/core/repoRefs.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine, type HostMount } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import type { HostPathProbe, InspectedContainer } from "../packages/tasks/src/core/preflight/hostPaths.ts";
+import { RenderError, renderHtml } from "../packages/tasks/src/core/preflight/render.ts";
+import type { ResolvedRef } from "../packages/tasks/src/core/repoRefs.ts";
 import { makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const ID = "c".repeat(64);
 const FAKE_RUN = fileURLToPath(new URL("./fixtures/fake-docker-run.mjs", import.meta.url));
 const FAKE_RENDER = fileURLToPath(new URL("./fixtures/fake-render-docker.mjs", import.meta.url));
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 
 const line = (n: number, root: string, at: string, type = "ext4") => `${n} 1 8:48 ${root} ${at} rw - ${type} /dev/sdd rw`;
 

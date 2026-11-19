@@ -3,14 +3,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { qualityVersion, readQuality } from "../src/shared/quality.ts";
-import { PremiseInputError } from "../src/shared/reviewCandidate.ts";
-import { createTask, recordPremise, updateRequest, updateRequirement, updateTask } from "../src/core/requestOps.ts";
-import { listTasks, progress } from "../src/core/ops.ts";
-import { requestReview, reviewCandidates, taskReview } from "../src/core/reviewCandidates.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import type { Workspace } from "../src/core/store/workspace.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { qualityVersion, readQuality } from "../packages/tasks/src/shared/quality.ts";
+import { PremiseInputError } from "../packages/tasks/src/shared/reviewCandidate.ts";
+import { createTask, recordPremise, updateRequest, updateRequirement, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { listTasks, progress } from "../packages/tasks/src/core/ops.ts";
+import { requestReview, reviewCandidates, taskReview } from "../packages/tasks/src/core/reviewCandidates.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import type { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, MAIN_REF, newRequest, tempDir } from "./helpers.ts";
 
 /**
@@ -176,7 +176,7 @@ describe("記録なし・比較不能・差分なし", () => {
   });
 });
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 function p3(dataDir: string, args: string[]) {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, cwd: dataDir });

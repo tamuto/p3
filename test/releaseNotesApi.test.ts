@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import type { ServerEvent } from "../src/shared/types.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import {
   applyGenerated,
   asNew,
@@ -14,8 +14,8 @@ import {
   savedNote,
   syncNote,
   type NoteState,
-} from "../src/web/lib/releaseNoteDraft.ts";
-import type { Summarizer } from "../src/core/releaseNotes/generate.ts";
+} from "../packages/tasks/src/web/lib/releaseNoteDraft.ts";
+import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 /** 画面の API（app.request で呼ぶ。serve は起動しない） */

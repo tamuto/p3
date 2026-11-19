@@ -14,20 +14,24 @@
 # 手元にある古いベースを使わないよう、作るときは --pull を付ける（docs/development.md の「Docker のイメージ」）。
 # Docker の CLI と pnpm は版を固定する（中身の変わり方をこちらで決める）
 
-# --- ビルド: 画面をビルドし、npm で配るのと同じ中身（package.json の files）を作る -----------------------------
+# --- ビルド: npm で配るのと同じ中身（入口 @infodb/p3 に tasks・kit を同梱したもの）を作る -------------------------------
 FROM node:26-bookworm-slim AS build
 WORKDIR /src
-# package.json の packageManager と同じ版の pnpm（Node に付いた corepack はこの版の配布の形を扱えないので npm で入れる）
+# ルートの package.json の packageManager と同じ版の pnpm（Node に付いた corepack はこの版の配布の形を扱えないので npm で入れる）
 RUN npm install -g pnpm@12.10.1
+# workspace の manifest と lockfile だけを先に写して依存を入れる（ソースを変えてもこの層は作り直さない）
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/p3/package.json packages/p3/
+COPY packages/tasks/package.json packages/tasks/
+COPY packages/kit/package.json packages/kit/
 RUN pnpm install --frozen-lockfile
 COPY . .
-# prepack で画面をビルドしてから、配る中身だけを tarball にする
-RUN pnpm pack --pack-destination /pack && mkdir /opt/p3 && tar -xzf /pack/*.tgz -C /opt/p3 --strip-components=1
-# 実行に要る依存だけを、ロックファイルどおりに入れる
-RUN cp pnpm-lock.yaml pnpm-workspace.yaml /opt/p3/ && cd /opt/p3 && pnpm install --prod --frozen-lockfile
+# 画面と CLI・serve をビルドし、公開する中身（dist/package）を npm pack で tarball にして展開する（npm に出すものと同じ）
+RUN pnpm build && mkdir -p /pack && npm pack ./dist/package --pack-destination /pack && mkdir /opt/p3 && tar -xzf /pack/*.tgz -C /opt/p3 --strip-components=1
+# 実行時の依存は workspace の lockfile のまま、入口の実行時の依存だけを入れる（pnpm deploy が入口用の lockfile で固定する。
+# 開発用の依存と workspace の kit・tasks は入れない。kit・tasks は lib/ に同梱済み）
+RUN pnpm --filter @infodb/p3 deploy --prod /opt/deps && mv /opt/deps/node_modules /opt/p3/node_modules
 
-# --- Docker の CLI（ホストのデーモンを使う。buildx は Codex・描画のイメージを作るため） --------------------------
 FROM docker:27.5.1-cli AS docker-cli
 
 # --- 実行 ------------------------------------------------------------------------------------------------------

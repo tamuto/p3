@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RunPulse } from "../src/shared/types.ts";
-import { createPulsePoller, latestNotice, PULSE_INTERVAL_MS, runStateLabel, shownRunChanged } from "../src/web/lib/preflightWatch.ts";
+import type { RunPulse } from "../packages/tasks/src/shared/types.ts";
+import { createPulsePoller, latestNotice, PULSE_INTERVAL_MS, runStateLabel, shownRunChanged } from "../packages/tasks/src/web/lib/preflightWatch.ts";
 
 /** 1回ずつ手で終わらせられる確かめ */
 function setup() {

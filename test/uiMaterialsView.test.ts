@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PreflightRun, UiMaterial } from "../src/shared/types.ts";
+import type { PreflightRun, UiMaterial } from "../packages/tasks/src/shared/types.ts";
 import {
   attachFormatOf,
   attachmentUrl,
@@ -15,11 +15,11 @@ import {
   uiShortage,
   uiStatusView,
   unsentAttachments,
-} from "../src/web/lib/uiMaterials.ts";
-import { ATTACHMENT_FILE_LIMITS } from "../src/shared/types.ts";
-import { ATTACHMENT_LIMITS } from "../src/core/store/attachments.ts";
-import { UI_LIMITS } from "../src/core/preflight/uiMaterials.ts";
-import { fixScope } from "../src/web/lib/scope.ts";
+} from "../packages/tasks/src/web/lib/uiMaterials.ts";
+import { ATTACHMENT_FILE_LIMITS } from "../packages/tasks/src/shared/types.ts";
+import { ATTACHMENT_LIMITS } from "../packages/tasks/src/core/store/attachments.ts";
+import { UI_LIMITS } from "../packages/tasks/src/core/preflight/uiMaterials.ts";
+import { fixScope } from "../packages/tasks/src/web/lib/scope.ts";
 
 // 通常の serve の画面（API は /api）
 fixScope({ mode: "single" });

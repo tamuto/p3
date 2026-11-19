@@ -2,12 +2,12 @@ import { createHash, createSign, generateKeyPairSync, type KeyObject } from "nod
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { chatgptCommand } from "../src/cli/chatgpt.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { chatgptView } from "../src/web/lib/chatgpt.ts";
+import { chatgptCommand } from "../packages/tasks/src/cli/chatgpt.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { chatgptView } from "../packages/tasks/src/web/lib/chatgpt.ts";
 import { loadConnection, OPENAI_ENDPOINTS, PLAN_SCOPE, SCOPES, type ChatGptAccount, type OAuthDeps } from "@infodb/chatgpt-plan";
-import { chatgptAccount, ChatGptAuthError, CODEX_TOKEN_MIN_VALID_MS, signInFailure } from "../src/core/chatgpt.ts";
-import { loadUserConfig, saveUserConfig } from "../src/core/userConfig.ts";
+import { chatgptAccount, ChatGptAuthError, CODEX_TOKEN_MIN_VALID_MS, signInFailure } from "../packages/tasks/src/core/chatgpt.ts";
+import { loadUserConfig, saveUserConfig } from "../packages/tasks/src/core/userConfig.ts";
 import { makeProject, tempDir, writeConnection } from "./helpers.ts";
 
 const KID = "k1";

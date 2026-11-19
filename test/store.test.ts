@@ -2,14 +2,14 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { absRef, normalizeTaskId, parseRef, relRef, REQUEST_ID, taskId } from "../src/shared/refs.ts";
-import { ConflictError, NotFoundError } from "../src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { newRequestId, slugify } from "../src/core/store/fsutil.ts";
-import { normalizeProject, normalizeTaskIn } from "../src/core/store/normalize.ts";
-import { writeProjectFile } from "../src/core/store/projectFile.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { RELATION_TYPES, relationRole, relationTypes } from "../src/shared/types.ts";
+import { absRef, normalizeTaskId, parseRef, relRef, REQUEST_ID, taskId } from "../packages/tasks/src/shared/refs.ts";
+import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { newRequestId, slugify } from "../packages/kit/src/fsutil.ts";
+import { normalizeProject, normalizeTaskIn } from "../packages/tasks/src/core/store/normalize.ts";
+import { writeProjectFile } from "../packages/tasks/src/core/store/projectFile.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { RELATION_TYPES, relationRole, relationTypes } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, newTask, projectConfig, tempDir } from "./helpers.ts";
 
 describe("参照", () => {

@@ -1,10 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { codexPrompt } from "../src/core/preflight/codexEngine.ts";
-import type { PreflightJob } from "../src/core/preflight/engine.ts";
-import { containerEnv, developerInstructions, LOCAL_INSTRUCTIONS_FILE, localEnv, localInstructions, preflightPrompt } from "../src/core/preflight/instructions.ts";
-import { resolveRefs } from "../src/core/repoRefs.ts";
+import { codexPrompt } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import type { PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";
+import { containerEnv, developerInstructions, LOCAL_INSTRUCTIONS_FILE, localEnv, localInstructions, preflightPrompt } from "../packages/tasks/src/core/preflight/instructions.ts";
+import { resolveRefs } from "../packages/tasks/src/core/repoRefs.ts";
 import { git, gitInit, projectConfig, tempDir } from "./helpers.ts";
 
 /** 空白を含むパスの参照先2つ（片方は git）・未登録の参照先・添付・親子・引き継ぎのある Preflight */

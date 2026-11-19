@@ -6,20 +6,20 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
-import type { OwnerProbe } from "../src/core/preflight/owner.ts";
-import { extractReviewInput } from "../src/core/milestoneReview/material.ts";
-import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt } from "../src/core/milestoneReview/review.ts";
-import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
-import { newReviewRunId } from "../src/core/milestoneReview/store.ts";
-import type { Summarizer } from "../src/core/releaseNotes/generate.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { ReviewRun } from "../src/shared/milestoneReview.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import type { OwnerProbe } from "../packages/tasks/src/core/preflight/owner.ts";
+import { extractReviewInput } from "../packages/tasks/src/core/milestoneReview/material.ts";
+import { InvalidReview, parseReview, REVIEW_INPUT_LIMIT, reviewPrompt } from "../packages/tasks/src/core/milestoneReview/review.ts";
+import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
+import { newReviewRunId } from "../packages/tasks/src/core/milestoneReview/store.ts";
+import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { ReviewRun } from "../packages/tasks/src/shared/milestoneReview.ts";
 import { git, gitInit, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-reviewer.mjs", import.meta.url));
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 
 function codex(scenario: string, logFile: string, launched: unknown[] = []) {
   return new CodexWorkspaceEngine({

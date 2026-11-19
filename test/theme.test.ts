@@ -2,10 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { themeScript } from "../src/server/api/userThemeRoutes.ts";
-import { THEMES, type Theme } from "../src/shared/types.ts";
-import { applyTheme, createThemeController, initialTheme, type MediaQuery, type ThemeRoot } from "../src/web/lib/theme.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { themeScript } from "../packages/tasks/src/server/api/userThemeRoutes.ts";
+import { THEMES, type Theme } from "../packages/tasks/src/shared/types.ts";
+import { applyTheme, createThemeController, initialTheme, type MediaQuery, type ThemeRoot } from "../packages/tasks/src/web/lib/theme.ts";
 import { makeProject, tempDir } from "./helpers.ts";
 
 /** html 要素の代わり（data-theme・class・color-scheme だけ） */

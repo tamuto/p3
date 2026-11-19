@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parentChoices, progressTree } from "../src/web/lib/progressTree.ts";
-import type { RequestProgress } from "../src/shared/types.ts";
+import { parentChoices, progressTree } from "../packages/tasks/src/web/lib/progressTree.ts";
+import type { RequestProgress } from "../packages/tasks/src/shared/types.ts";
 
 /** 進捗の親子の木と、親に選べる要望（web/lib/progressTree.ts） */
 const row = (id: string, parent?: string): RequestProgress => ({

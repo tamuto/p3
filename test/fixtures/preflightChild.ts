@@ -1,7 +1,7 @@
 // test/preflightRecover.test.ts の子プロセス。要望の Preflight を、終わらないエンジンで始めて待ち続ける（親が強制終了する）。
 // 標準出力に始めた run の ID を出す
-import { PreflightService } from "../../src/core/preflight/service.ts";
-import { Workspace } from "../../src/core/store/workspace.ts";
+import { PreflightService } from "../../packages/tasks/src/core/preflight/service.ts";
+import { Workspace } from "../../packages/tasks/src/core/store/workspace.ts";
 
 const [dataDir, requestId] = process.argv.slice(2);
 const ws = new Workspace(dataDir);

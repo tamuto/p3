@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CONFIG_HOME, p3, repo, withConfigHome, snapshot } from "./cliHelpers.ts";
 import { tempDir } from "./helpers.ts";
-import { init } from "../src/cli/project.ts";
+import { init } from "../packages/p3/src/cli/project.ts";
 
 describe("AI 向けの使い方の置く先（init --agents claude|codex|both・p3 agents）", () => {
   const SKILL = fileURLToPath(new URL("../skills/p3/SKILL.md", import.meta.url));

@@ -3,13 +3,13 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseFrontmatter } from "../src/core/store/frontmatter.ts";
+import { parseFrontmatter } from "../packages/kit/src/frontmatter.ts";
 import { git, gitInit, tempDir } from "./helpers.ts";
 
 // 同梱のスキルの「タスクを進める」の手順（テストを通したら完了と記録を保存 → 最後なら対応済 → 要望のフォルダを実装と同じコミットに
 // 入れる → URL は後から足して追記のコミット）を、使い捨ての git のリポジトリと実際の CLI でなぞる。push・PR は外へ出ないので試さない
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 const CONFIG_HOME = tempDir("p3-config-");
 
 function p3(cwd: string, args: string[], env: Record<string, string> = {}, input?: string) {

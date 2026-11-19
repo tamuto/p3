@@ -71,7 +71,7 @@ const localEnv = {
   XDG_CONFIG_HOME: config,
   P3_ACTOR: "human:verify",
 };
-const p3 = (cwd, ...argv) => sh(process.execPath, [join(ROOT, "bin", "p3.mjs"), ...argv], { cwd, env: localEnv });
+const p3 = (cwd, ...argv) => sh(process.execPath, [join(ROOT, "packages", "p3", "bin", "p3.mjs"), ...argv], { cwd, env: localEnv });
 const repoOf = (n) => join(work, n);
 const dataOf = (n) => join(repoOf(n), ".p3");
 
@@ -123,7 +123,7 @@ const run = (name, extra = [], cmd = []) => {
 try {
   if (!flag("no-build")) {
     await step(`docker build（${image}）`, () => {
-      const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+      const version = JSON.parse(readFileSync(join(ROOT, "packages", "p3", "package.json"), "utf8")).version;
       // --pull: 手元の古いベースではなく、今の node:<メジャー>-bookworm-slim を取って作る
       execFileSync("docker", ["build", "-q", "--pull", "--build-arg", `P3_VERSION=${version}`, "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
       return docker("image", "inspect", "--format", "{{.Id}}", image).slice(0, 19);

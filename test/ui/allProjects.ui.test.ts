@@ -11,7 +11,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { Page } from "playwright-core";
 import type { UiEnv } from "./env.ts";
 
-const P3_BIN = fileURLToPath(new URL("../../bin/p3.mjs", import.meta.url));
+const P3_BIN = fileURLToPath(new URL("../../packages/p3/bin/p3.mjs", import.meta.url));
 const second = { repo: "", dataDir: "" };
 /** 長い登録名（ヘッダーの切り替えの欄の幅を確かめる） */
 const LONG_NAME = "expense-receipts-upload-and-approval-history-for-month-end-closing";

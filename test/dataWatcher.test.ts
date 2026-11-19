@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { DataWatcher, type DataWatcherOptions } from "../src/core/store/dataWatcher.ts";
+import { DataWatcher, type DataWatcherOptions } from "../packages/tasks/src/core/store/dataWatcher.ts";
 import { makeRepo, openTestProject, tempDir } from "./helpers.ts";
 
 /**

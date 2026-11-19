@@ -5,7 +5,7 @@ P3 が自分でサインインした ChatGPT アカウント（Sign in with Chat
 P3 自体の本人認証は足さない（ローカルの個人用ツールのまま）。
 
 サインイン・保存・更新・解除の実装は、llmcs の chatgpt-plan-ts（npm の `@infodb/chatgpt-plan`）にある（P3 の実装を
-アプリ名と保存先を引数にして切り出したもの）。P3 は `src/core/chatgpt.ts` で、アプリ名（`infodb_p3`）・保存先・
+アプリ名と保存先を引数にして切り出したもの）。P3 は `packages/tasks/src/core/chatgpt.ts` で、アプリ名（`infodb_p3`）・保存先・
 Codex に渡すトークンの長さ・CLI の案内だけを決めて使う。以下は部品と P3 の約束（部品を上げるときに確かめること）。
 
 公式資料（2026-10-10 に確認。以下の契約はこれに合わせる）:
@@ -75,7 +75,7 @@ Preflight
 ```
 
 - `config.yaml` とは別のファイルにするので、プロジェクトや画面の設定を保存しても接続は消えず、その逆も起きない。
-- Preflight のログとエラー（`run.json`）に残す前に、トークンらしいものを伏せる（`src/core/redact.ts`）。Codex は API の認証エラーで
+- Preflight のログとエラー（`run.json`）に残す前に、トークンらしいものを伏せる（`packages/tasks/src/core/redact.ts`）。Codex は API の認証エラーで
   キーの一部（先頭 8 文字と末尾 3 文字。例 `Incorrect API key provided: eyJhbGci***xyz`）を見せるので、それと JWT・Bearer の値・
   渡したトークンそのものを `[伏せました]` にする
 - CLI の `--json`、API、ログ、エラーには、トークンを出さない（状態として出すのはアカウントの email、プラン利用の可否、期限、ホスト ID・client ID の有無）。

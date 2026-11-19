@@ -4,9 +4,9 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { gitInit, tempDir } from "./helpers.ts";
-import { ENTRY_VERSION, GUIDE_SCHEMA_VERSION, GUIDE_SOURCE } from "../src/cli/guide.ts";
+import { ENTRY_VERSION, GUIDE_SCHEMA_VERSION, GUIDE_SOURCE } from "../packages/p3/src/cli/guide.ts";
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 const source = readFileSync(GUIDE_SOURCE, "utf8");
 

@@ -67,7 +67,7 @@ const p3json = (argv) => JSON.parse(p3([...argv, "--json"]));
 
 try {
   await step("Node の版", () => {
-    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(join(ROOT, "packages", "p3", "package.json"), "utf8"));
     const major = Number(process.versions.node.split(".")[0]);
     const min = Number(/>=\s*(\d+)/.exec(pkg.engines.node)?.[1]);
     check(major >= min, `Node ${process.version} は engines（${pkg.engines.node}）を満たしません`);
@@ -75,8 +75,9 @@ try {
   });
 
   if (!tgz) {
-    await step("npm pack（prepack で画面をビルド）", () => {
-      const out = execFileSync("npm", ["pack", "--json", "--pack-destination", work], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    await step("pnpm build と npm pack ./dist/package（入口・tasks・kit を同梱した公開の中身）", () => {
+      execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
+      const out = execFileSync("npm", ["pack", "./dist/package", "--json", "--pack-destination", work], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
       const info = JSON.parse(out.slice(out.indexOf("[")))[0];
       tgz = join(work, info.filename);
       return `${info.filename}  ${info.entryCount} ファイル`;
@@ -85,11 +86,11 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    // CLI・serve はビルド済みの JavaScript（lib/）。TypeScript のソース（src/）は入れない
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "lib/core/preflight/render-image/Dockerfile", "lib/core/preflight/render-image/render.mjs", "lib/core/preflight/launcher.mjs", "lib/core/preflight/mock-ui.html", "lib/cli/guide.md"]) {
+    // CLI・serve はビルド済みの JavaScript（入口は lib/、同梱した tasks・kit は lib/tasks・lib/kit）。TypeScript のソース（src/・packages/）は入れない
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
-    const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|node_modules\/)/.test(f) || f.endsWith(".ts"));
+    const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|packages\/|node_modules\/|build-src\/)/.test(f) || f.endsWith(".ts"));
     check(unwanted.length === 0, `入れてはいけないもの: ${unwanted.join(", ")}`);
     return `${files.length} ファイル`;
   });

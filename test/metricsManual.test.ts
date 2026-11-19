@@ -3,10 +3,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { metricsReport } from "../src/core/metrics/index.ts";
-import { manualFile, recordManual } from "../src/core/metrics/manual.ts";
-import { checkMilestoneRemoval } from "../src/core/requestOps.ts";
-import type { MetricResult, MetricsReport } from "../src/shared/metrics.ts";
+import { metricsReport } from "../packages/tasks/src/core/metrics/index.ts";
+import { manualFile, recordManual } from "../packages/tasks/src/core/metrics/manual.ts";
+import { checkMilestoneRemoval } from "../packages/tasks/src/core/requestOps.ts";
+import type { MetricResult, MetricsReport } from "../packages/tasks/src/shared/metrics.ts";
 import { makeProject, openTestProject, tempDir } from "./helpers.ts";
 
 /**
@@ -14,7 +14,7 @@ import { makeProject, openTestProject, tempDir } from "./helpers.ts";
  * 通貨・期間・範囲を合算しないこと、再送・版の競合・同時更新、入力の検査と壊れたファイル、マイルストーンの削除と参照切れを確かめる
  */
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 async function setup() {
   const p = await makeProject({ milestones: [{ id: "m1", title: "一" }] });
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };

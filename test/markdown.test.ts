@@ -1,10 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { ProposedTask } from "../src/shared/types.ts";
-import { Markdown } from "../src/web/components/Markdown.tsx";
-import { DraftDetail } from "../src/web/components/request/DraftDetail.tsx";
-import { markdownHref, selectedDraft } from "../src/web/lib/markdown.ts";
+import type { ProposedTask } from "../packages/tasks/src/shared/types.ts";
+import { Markdown } from "../packages/tasks/src/web/components/Markdown.tsx";
+import { DraftDetail } from "../packages/tasks/src/web/components/request/DraftDetail.tsx";
+import { markdownHref, selectedDraft } from "../packages/tasks/src/web/lib/markdown.ts";
 
 const html = (text: string) => renderToStaticMarkup(createElement(Markdown, { text }));
 /** 要素を除いた文字だけ（描画された文が読めるか） */

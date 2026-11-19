@@ -4,11 +4,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { reworkOf } from "../src/shared/reworkHistory.ts";
-import { createTask, updateTask } from "../src/core/requestOps.ts";
-import { ConflictError, NotFoundError } from "../src/core/store/collection.ts";
-import { withFileLock } from "../src/core/store/fsutil.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { reworkOf } from "../packages/tasks/src/shared/reworkHistory.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
+import { withFileLock } from "../packages/kit/src/fsutil.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /**
@@ -128,7 +128,7 @@ describe("旧データと壊れた値", () => {
   });
 });
 
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 function p3(dataDir: string, args: string[]) {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
   const r = spawnSync(process.execPath, [BIN, "--dir", dataDir, ...args], { encoding: "utf8", env, cwd: dataDir });

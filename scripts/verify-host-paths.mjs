@@ -58,7 +58,7 @@ const cleanEnv = (config) => ({
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_") && !k.startsWith("npm_"))),
   XDG_CONFIG_HOME: config,
 });
-const runLocal = (argv, config) => spawnSync(process.execPath, [join(ROOT, "bin", "p3.mjs"), ...argv], { encoding: "utf8", env: cleanEnv(config) });
+const runLocal = (argv, config) => spawnSync(process.execPath, [join(ROOT, "packages", "p3", "bin", "p3.mjs"), ...argv], { encoding: "utf8", env: cleanEnv(config) });
 const PAGE = '<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body><h1>パスの自動の確認</h1></body></html>';
 const isPng = (f) => existsSync(f) && readFileSync(f).subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 
@@ -122,7 +122,7 @@ try {
   // --- B. Dockerfile のイメージ --------------------------------------------------------------------------------------
   if (!flag("no-build")) {
     await step(`B0 docker build（${image}）`, () => {
-      const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+      const version = JSON.parse(readFileSync(join(ROOT, "packages", "p3", "package.json"), "utf8")).version;
       execFileSync("docker", ["build", "-q", "--pull", "--build-arg", `P3_VERSION=${version}`, "-t", image, ROOT], { stdio: ["ignore", "ignore", "inherit"] });
       return docker("image", "inspect", "--format", "{{.Id}}", image).slice(0, 19);
     });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listTasks, progress, resolve, resolveRef, resolveRequestId } from "../src/core/ops.ts";
+import { listTasks, progress, resolve, resolveRef, resolveRequestId } from "../packages/tasks/src/core/ops.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 async function setup() {

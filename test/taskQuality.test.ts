@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { localInstructions } from "../src/core/preflight/instructions.ts";
-import { updateQuality } from "../src/core/quality.ts";
-import { createTask, importQuality, updateTask } from "../src/core/requestOps.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { acceptanceStatus } from "../src/shared/acceptance.ts";
-import { taskQualityDiff } from "../src/shared/quality.ts";
+import { localInstructions } from "../packages/tasks/src/core/preflight/instructions.ts";
+import { updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { createTask, importQuality, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { acceptanceStatus } from "../packages/tasks/src/shared/acceptance.ts";
+import { taskQualityDiff } from "../packages/tasks/src/shared/quality.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 /**

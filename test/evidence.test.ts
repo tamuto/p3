@@ -2,10 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
-import { parseAssessment, parseEvidence } from "../src/core/preflight/service.ts";
-import { writeRepoEntry } from "../src/core/store/projectFile.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import { parseAssessment, parseEvidence } from "../packages/tasks/src/core/preflight/service.ts";
+import { writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
 import { makeProject, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
@@ -108,7 +108,7 @@ describe("判断の根拠（assessment.json の evidence）", () => {
 });
 
 describe("経緯を根拠にした判断（コミット）", async () => {
-  const { evidenceLines } = await import("../src/shared/scopeView.ts");
+  const { evidenceLines } = await import("../packages/tasks/src/shared/scopeView.ts");
   it("evidence の commit を残し、表示に出す", () => {
     const [e] = parseEvidence([{ claim: "評価対象の固定は 261012-8m55z で入れた", kind: "assumed", commit: " cc42e41 " }])!;
     expect(e).toEqual({ claim: "評価対象の固定は 261012-8m55z で入れた", kind: "assumed", commit: "cc42e41" });

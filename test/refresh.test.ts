@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRefresher, onReturn, refetchOnEvent, type Events } from "../src/web/lib/refresh.ts";
+import { createRefresher, onReturn, refetchOnEvent, type Events } from "../packages/tasks/src/web/lib/refresh.ts";
 
 const deferred = () => {
   let resolve!: () => void;

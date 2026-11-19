@@ -3,14 +3,14 @@ import { chmodSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { shellArg } from "../src/cli/output.ts";
+import { shellArg } from "../packages/tasks/src/cli/output.ts";
 import { gitInit, tempDir } from "./helpers.ts";
 
 /**
  * p3 preflight が始められない・失敗したときに、Preflight を通さずにタスクを作る道（p3 new）を stderr に案内する。
  * 本物の Docker と ChatGPT は使わない（個人設定はテストごとに分け、PATH の docker を差し替える）
  */
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 let CONFIG_HOME = "";
 beforeEach(() => {
   CONFIG_HOME = tempDir("p3-config-");

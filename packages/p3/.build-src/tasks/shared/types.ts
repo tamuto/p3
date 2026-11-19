@@ -1,0 +1,974 @@
+import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "./acceptance.ts";
+import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
+import type { QualitySnapshot, QualityState } from "./quality.ts";
+import type { PreflightRunner } from "./preflightRunner.ts";
+import type { RefScope, RepoRef } from "./repos.ts";
+/**
+ * p3 のドメイン型。サーバ・CLI・Web で共有する。
+ *
+ * 作業の単位は「要望」。要望ごとにフォルダを作り、そこから生まれたタスクや Preflight の記録は
+ * すべてその下に置く。タスクは要望をまたいで移動しないので、要望の中で素直な連番（T001, T002, ...）にする。
+ *
+ *   .p3/requests/<要望ID>/request.md
+ *   .p3/requests/<要望ID>/tasks/T001.md
+ *   .p3/requests/<要望ID>/preflight/<run>/...
+ */
+
+// ---------------------------------------------------------------------------
+// 関係: 多元的なので、型付きの有向エッジとして持つ。
+// エッジは張った側のファイルに書き、逆向きはインデックスで導く。
+// 相手の書き方（参照）は shared/refs.ts を参照。
+// ---------------------------------------------------------------------------
+
+/**
+ * 関係の種類。A →(種類)→ B と張ったとき、画面と CLI は「役割 + 相手」で見せる:
+ *   label   A から見た B の役割（A の詳細に「依存先 B」）
+ *   inverse B から見た A の役割（B の詳細に「依存元 A」）
+ *   verb    種類そのものの説明（関係を張るときの選択肢・CLI のヘルプ）
+ * 例: T002 depends_on T001 → T002 に「依存先 T001」、T001 に「依存元 T002」
+ */
+/**
+ * タスクの関係は2つだけ（どちらも同じ要望の中のタスクを指す。target は "T003"）。
+ *   depends_on: 順序（相手が先に終わっている必要がある）。Preflight の案の dependsOn から張る
+ *   supersedes: 再評価で古いタスクを置き換える（相手は古い案）。Preflight の案の supersedes から張る
+ * 手で張る機能は持たない
+ */
+export const RELATION_TYPES = {
+  depends_on: { label: "依存先", inverse: "依存元", verb: "依存する（相手が先に終わっている必要がある）" },
+  supersedes: { label: "旧案", inverse: "新案", verb: "置き換える（相手は古い案）" },
+} as const;
+
+/** 関係の向きに応じた相手の役割。out: 張った側から見た相手、in: 張られた側から見た相手（張った側） */
+export function relationRole(type: string, direction: "out" | "in"): string {
+  const t = RELATION_TYPES[type as keyof typeof RELATION_TYPES];
+  if (!t) return type;
+  return direction === "out" ? t.label : t.inverse;
+}
+
+export type RelationType = keyof typeof RELATION_TYPES;
+export const relationTypes = Object.keys(RELATION_TYPES) as RelationType[];
+
+/** 誰が張ったか（今は Preflight のタスク化だけが張る） */
+export type RelationOrigin = "human" | "ai" | "preflight";
+
+export interface Relation {
+  type: RelationType;
+  /** 同じ要望のタスク（"T003"） */
+  target: string;
+  note?: string;
+  origin?: RelationOrigin;
+}
+
+// ---------------------------------------------------------------------------
+// タスク
+// ---------------------------------------------------------------------------
+
+/**
+ * タスクの状態は3つで固定（設定では変えない）。タスクは AI か人が実施し、人から見て必要なのは
+ * 「まだ動いていない / 処理中 / 処理が終わった（PR・MR・ドキュメントが出た）」だけ。成果物のレビューは成果物の側で行う。
+ * 保留や取りやめの状態は持たない: AI が進めた作業は、マージしないなら完了のまま（成果物の側で閉じる）、
+ * 手を付けないなら未着手のままでよい。
+ */
+export const TASK_STATUSES = ["todo", "doing", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = { todo: "未着手", doing: "作業中", done: "完了" };
+export const isTaskStatus = (s: unknown): s is TaskStatus => (TASK_STATUSES as readonly unknown[]).includes(s);
+
+export interface Task {
+  /** 要望の中での ID（T001） */
+  id: string;
+  /** 所属する要望の ID（フォルダから決まる。ファイルには書かない） */
+  request: string;
+  /** プロジェクト全体で一意な参照（<要望ID>/T001。ファイルには書かない） */
+  ref: string;
+  title: string;
+  status: TaskStatus;
+  labels: string[];
+  /** 触るコード領域（例: "src/core/store"）。表示と絞り込みに使う */
+  areas: string[];
+  /** 成果物。1項目ずつ URL（PR / MR）・文章・ドキュメントのパスのどれでもよい。項目全体が http(s) の URL なら画面でリンクにする */
+  outputs: string[];
+  /** 作業先（作業先にできる参照先の名前）。null は作業先なし（調査・人の判断など）。shared/workTarget.ts */
+  repo: string | null;
+  /** リポジトリごとの成果物（PR など）。最後のタスクに、関係するリポジトリの PR を全部残せる。outputs とは別に持つ */
+  repoOutputs?: RepoOutput[];
+  /**
+   * 作業中にした日時（着手を指示した目安）と、完了にした日時。
+   * 予定ではなく、ステータスを変えたときに p3 が記録する（AI や人が書くものではない）
+   */
+  startedAt?: string;
+  doneAt?: string;
+  /** 完了したタスクを人が確認して「済み」にした日時（完了から戻すと消える） */
+  checkedAt?: string;
+  /**
+   * 変更の記録（Markdown）。完了にするときに作業した側が書く: 何を変えたか・なぜ・入れた決まり・やめたもの。
+   * 後の Preflight が経緯を調べるとき、タスク解析・リリースノートの材料に読む。AI が完了にするときは必須
+   */
+  record?: string;
+  /** 受け入れ基準（何を満たせば完了か）。無いタスクは「受け入れ基準なし」。規則は shared/acceptance.ts */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /** 基準ごとに作業した側が残した証拠（申告。レビューの判定ではない） */
+  acceptanceEvidence?: AcceptanceEvidence[];
+  /** 基準に振った最後の番号（消した ID を使い直さない） */
+  acceptanceSeq?: number;
+  /** 基準ごとの要求の根拠（出典・確かめた人・日・根拠。criterionId で対応。実装後の証拠とは別。shared/requirementSource.ts） */
+  acceptanceSources?: CriterionSource[];
+  /** 基準ごとの要求の根拠に振った最後の番号（S1, S2…。基準をまたいでタスクで1つ。消した ID を使い直さない。p3 が書く） */
+  acceptanceSourceSeq?: number;
+  /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
+  acceptanceProblems?: string[];
+  /** 止まっている理由（作業中のタスクの属性。状態ではない）。規則は shared/taskBlock.ts */
+  block?: TaskBlock;
+  /** 停止の履歴（付けた・直した・解除した。追記だけ） */
+  blockHistory?: BlockHistoryEntry[];
+  /** 直接編集で読めなかった停止の値の理由（ファイルには書かない） */
+  blockProblems?: string[];
+  /** 完了・人の済みにしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
+  completionRecords?: CompletionRecord[];
+  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
+  completionProblems?: string[];
+  /** 手戻りの履歴（済みの解除・完了からの再開。追記だけ。shared/reworkHistory.ts） */
+  reworkHistory?: ReworkEntry[];
+  /** 直接編集で読めなかった手戻りの履歴の理由（ファイルには書かない） */
+  reworkProblems?: string[];
+  relations: Relation[];
+  /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
+  rev: number;
+  createdAt: string;
+  updatedAt: string;
+  /** 変更者（ai:claude / human:<git の user.name>） */
+  updatedBy?: string;
+  /** Markdown 本文 */
+  body: string;
+}
+
+// ---------------------------------------------------------------------------
+// 要望 — 作業の単位。1要望 = 1フォルダ = 1作業ツリー（ブランチ）
+// ---------------------------------------------------------------------------
+
+/**
+ * 要望のステータス。resolved（対応済）は AI など作業する側が「全タスクを終えた」と示すもので、人の確認待ち。
+ * done（完了済）・rejected（見送り）は人が決める。
+ */
+/**
+ * アーカイブしたタスク（tasks/.archive/<ID>.md）。閲覧専用で、通常のタスクの一覧・集計には混ぜない（core/store/archivedTasks.ts）。
+ * status・updatedAt はアーカイブする前の最後の値で、アーカイブした日時ではない（アーカイブの日時・理由は記録していない）
+ */
+export type ArchivedTask = Task & { archived: true };
+
+/** アーカイブの1件を読めなかった（壊れた frontmatter・読めないファイル） */
+export interface ArchivedTaskError {
+  id: string;
+  error: string;
+}
+
+/** 要望のアーカイブの一覧（ID の数値順）。壊れたものは tasks に入れず errors に出す */
+export interface ArchivedTaskList {
+  request: string;
+  tasks: ArchivedTask[];
+  errors: ArchivedTaskError[];
+}
+
+export type RequestStatus = "draft" | "preflight" | "reviewed" | "active" | "resolved" | "done" | "rejected";
+export const REQUEST_STATUSES: RequestStatus[] = ["draft", "preflight", "reviewed", "active", "resolved", "done", "rejected"];
+
+/** 要望の、作業先のリポジトリでのブランチ（名前だけ。git のブランチや作業ツリーは作業する人・AI が作る） */
+export interface Workstream {
+  branch: string;
+}
+
+/** リポジトリ（参照先の名前）ごとの成果物 */
+export interface RepoOutput {
+  repo: string;
+  output: string;
+}
+
+export interface Request {
+  /** フォルダ名（作成日 + 乱数。例: 261009-k7m3x） */
+  id: string;
+  title: string;
+  status: RequestStatus;
+  /** 親の要望 ID（子の要望のとき。1つだけ。子の一覧は保存せず逆引きする。shared/hierarchy.ts） */
+  parent?: string;
+  /**
+   * 子の表示順（直下の子の ID。親の request.md に書く。任意）。親子の所属は子の parent が正で、ここに無い子・今は子でない ID は
+   * 読むときに扱う（shared/hierarchy.ts の orderSiblings）。実行の順・着手できるかは表さない
+   */
+  childOrder?: string[];
+  /** 分割で作った子の採用元（"<run>/<子の案のキー>"。採用のやり直しで同じ子を見分ける） */
+  splitFrom?: string;
+  areas: string[];
+  /** 期限（YYYY-MM-DD） */
+  due?: string;
+  /** まとめてリリースする単位（project.yaml の milestones の id） */
+  milestone?: string;
+  /** タグ: 外部 ID・分類の自由な文字列（例: jira:PROJ-123、group:顧客A、feature）。shared/tags.ts */
+  tags: string[];
+  /** 作業先のリポジトリごとのブランチ（参照先の名前 → ブランチ）。タスク化・作業先を足したときに要る分だけ割り当てる */
+  workstreams?: Record<string, Workstream>;
+  /** 最新 preflight run */
+  lastPreflight?: string;
+  /** 要求の根拠の記録（任意。出典・確かめた人・日・根拠。shared/requirementSource.ts） */
+  requirementSources?: RequirementSource[];
+  /** 根拠の記録に振った最後の番号 */
+  requirementSeq?: number;
+  /** Preflight の確認事項への回答（元の run と確認事項の ID ごと。過去の run は書き換えない） */
+  clarifyAnswers?: ClarifyAnswer[];
+  /** 直接編集で読めなかった根拠・回答の理由（ファイルには書かない。あれば操作で変えない） */
+  requirementProblems?: string[];
+  /** 対応済・完了済にしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
+  completionRecords?: CompletionRecord[];
+  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
+  completionProblems?: string[];
+  /** 人が明示した前提の変更（外部の規則の変更など。追記だけ。shared/reviewCandidate.ts） */
+  premiseChanges?: PremiseChange[];
+  /** 直接編集で読めなかった前提の変更の理由（ファイルには書かない） */
+  premiseProblems?: string[];
+  rev: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy?: string;
+  body: string;
+}
+
+import type { HierarchyIssue } from "./hierarchy.ts";
+import type { CompletionRecord } from "./completionRecord.ts";
+import type { ReworkEntry } from "./reworkHistory.ts";
+import type { PremiseChange, ReviewState, ReviewSummary } from "./reviewCandidate.ts";
+import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
+
+/** 進捗の画面・CLI 用の集計 */
+/** 進捗のスケジュールに描くためのタスクの要約 */
+export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block"> & {
+  /** 受け入れ基準の証拠の概要（有効な met・申告のみの件数・根拠ごとの件数・読めない値の有無。本文は載せない）。基準も証拠も無ければ省く */
+  evidence?: EvidenceSummary;
+  /** 完了したタスクの見直しの診断の状態（完了していなければ省く） */
+  review?: ReviewState;
+};
+
+export interface RequestProgress {
+  request: Request;
+  tasks: TaskMark[];
+  /** ステータスごとのタスク数 */
+  counts: Record<TaskStatus, number>;
+  total: number;
+  done: number;
+  /** 最後に変更された日時（要望かタスク。子のある要望は配下も見る） */
+  updatedAt: string;
+  /** 止まっている自分のタスクの数（作業中にも数える） */
+  blocked: number;
+  /** 直下の子の要望の ID（親の childOrder の順。無い子は作成日時の古い順。shared/hierarchy.ts） */
+  children: string[];
+  /**
+   * 配下の集計（自分と子孫のタスク。見送りの子とその下も含めて数え、状態は rejected に出す）。counts・total・done は自分の値と別。
+   * 全体の合計は各要望の自分の値（total・done）を足す（配下を足すと二重に数える）
+   */
+  subtree: { counts: Record<TaskStatus, number>; total: number; done: number; blocked: number; requests: Record<RequestStatus, number> };
+  /** 親子の問題（自分・祖先・子孫） */
+  hierarchyIssues: HierarchyIssue[];
+  /** 見直しが必要（候補）の概要（shared/reviewCandidate.ts） */
+  review?: RequestReviewCounts;
+}
+
+/**
+ * 要望の見直し候補の概要。self: 要望自身の診断（対応済・完了済のときだけ）/ tasks: 自分のタスクの候補の数 / below: 自分を除く配下
+ * （子孫の要望自身と、そのタスク）の候補の数。親の件数は集約で、その親自身を候補とは扱わない
+ */
+export interface RequestReviewCounts {
+  self?: ReviewSummary;
+  tasks: number;
+  below: number;
+}
+
+// ---------------------------------------------------------------------------
+// Preflight
+// ---------------------------------------------------------------------------
+
+export type Verdict = "go" | "clarify" | "no_go";
+
+/**
+ * 子の要望の案（分割の run の children/C1.md）。採用すると、親の下に下書きの子の要望を作る（子の Preflight は人が別に始める）。
+ * 1つの run はタスク案か子の案のどちらかだけを持つ
+ */
+export interface ProposedChild {
+  /** run 内のキー (C1, C2, ...) */
+  key: string;
+  title: string;
+  /** 目的・範囲・範囲外・完了条件・分割の理由・他の子との前提と契約・出典（Markdown） */
+  description: string;
+  /** 想定するタスクの数（概算。無ければ不明） */
+  estimatedTasks?: number;
+  /** 前提にする他の子の案（C キー。タスクの関係ではなく、子の本文に書く） */
+  requires: string[];
+  /** 親の既存のタスクと重なりうるもの（T001。レビューで見せる） */
+  overlaps: string[];
+  include: boolean;
+}
+
+/** 分割するか・しないかの判断（想定タスク数が SPLIT_HINT_TASKS 以上か、境界の候補があるとき必ず書く） */
+export interface SplitDecision {
+  decision: "split" | "keep";
+  estimatedTasks?: number;
+  reasons: string[];
+}
+
+export interface ProposedTask {
+  /** run 内のキー (D1, D2, ...)。タスク化すると要望の連番（T00x）が振られる */
+  key: string;
+  title: string;
+  description: string;
+  areas: string[];
+  /** 同じ run 内の他の key */
+  dependsOn: string[];
+  /** 置き換える同じ要望の既存タスク（"T003"。再評価で古いタスクを置き換えるとき） */
+  supersedes: string[];
+  /** 取り込み対象か（UI で切り替え） */
+  include: boolean;
+  /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
+  repo?: string | null;
+  /** 受け入れ基準（タスク化するとタスクに ID ごと写す。無い古い案は基準なし）。人がタスク化の前に直せる */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /** 案の基準が読めない理由（案のファイルには書かない。あればその案はタスク化できない。基準を直すと消える） */
+  acceptanceProblems?: string[];
+  /** 基準ごとの要求の根拠（タスク化するとタスクに写す。shared/requirementSource.ts） */
+  acceptanceSources?: CriterionSource[];
+  /** 根拠に振った最後の番号（消した ID を使い直さない。タスク化するとタスクに引き継ぐ。p3 が書く） */
+  acceptanceSourceSeq?: number;
+}
+
+export interface PreflightAssessment {
+  summary: string;
+  verdict: Verdict;
+  validity: { score: number; reasons: string[] };
+  feasibility: { score: number; reasons: string[] };
+  risks: string[];
+  /** 確認事項（文の並び。以前の run と同じ形で残す） */
+  questions: string[];
+  /** 構造化した確認事項（確認先・質問・必要な根拠・判断への影響。無ければ記録なし。shared/requirementSource.ts） */
+  clarifications?: Clarification[];
+  /** 読めなかった確認事項の理由（黙って捨てない） */
+  clarificationProblems?: string[];
+  areas: string[];
+  /** 判断の根拠（調べた箇所と、推測の明示）。無ければ記録なし（以前の結果） */
+  evidence?: Evidence[];
+  /** 分割するか・しないか（無ければ記録なし） */
+  split?: SplitDecision;
+}
+
+/**
+ * 判断の根拠1つ。verified: 参照先のファイルを読んで確かめた / assumed: 確かめていない推測（消さずに推測と明示する）。
+ * P3 は、見ていない参照先・参照先の外・無いファイルを指す verified を assumed に直し、note に理由を書く
+ */
+export interface Evidence {
+  /** 支える判断（例: 「実現可能性: 既存の X で足りる」「D2 の範囲」） */
+  claim: string;
+  kind: "verified" | "assumed";
+  /** 参照先の名前 */
+  repo?: string;
+  /** 参照先の中の相対パス */
+  file?: string;
+  /** 行・関数名など */
+  location?: string;
+  /** 経緯を確かめたコミット（git の履歴を根拠にしたとき） */
+  commit?: string;
+  /** P3 が付けた注記（確かめた根拠として扱えなかった理由） */
+  note?: string;
+}
+
+export type PreflightStatus = "running" | "completed" | "failed";
+
+/**
+ * Preflight の run の今の状態（ディスクから読んだもの。GET /api/requests/:rid/preflight-status）。
+ *   ready: run.json を読めた / pending: run のフォルダはあるが run.json がまだ無い（保存の途中）/
+ *   missing: run のフォルダが無い / broken: run.json が読めない・壊れている
+ * version は run.json の更新を見分ける値（中身の意味は持たない。変わったら取り直す）
+ */
+export interface RunPulse {
+  id: string;
+  state: "ready" | "pending" | "missing" | "broken";
+  status?: PreflightStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  version?: string;
+}
+
+/**
+ * 要望の最新の Preflight（lastPreflight）と、見ている run の今の状態。監視（変更通知）が届かなくても、画面が軽く確かめるため。
+ *   state: ok / gone（要望のファイルが無い。削除・アーカイブ）/ broken（要望のファイルが読めない）
+ *   latest: lastPreflight の run（未実行なら null）。run: 問い合わせで指定した run（指定しなければ無い）
+ */
+export interface PreflightPulse {
+  requestId: string;
+  state: "ok" | "gone" | "broken";
+  latest: RunPulse | null;
+  run?: RunPulse;
+}
+
+/**
+ * Preflight の画面資料の種類。proposal: エンジンが作った画面イメージ（提案。現状の証拠ではない）/
+ * current: 人が添付した現状の画像 / spec: 仕様書（xlsx など）から取り出した画像
+ */
+export const UI_MATERIAL_KINDS = { proposal: "提案", current: "現状（添付）", spec: "仕様書から" } as const;
+export type UiMaterialKind = keyof typeof UI_MATERIAL_KINDS;
+
+/** 画面資料1つ（画像は PNG / JPEG。パスは run の ui/ からの相対なので、データのフォルダを動かしても辿れる） */
+export interface UiMaterial {
+  /** run の中で一意（U1, U2 ...）。画像の取得は 要望 / run / この ID で行う */
+  id: string;
+  kind: UiMaterialKind;
+  /** 画像（run の ui/ からの相対パス） */
+  file: string;
+  format: "png" | "jpeg";
+  /** 画像の実際の大きさ（P3 が画像から読む） */
+  width: number;
+  height: number;
+  bytes: number;
+  /** 説明 */
+  title: string;
+  /** 出典（提案なら原稿、添付なら添付の ID など） */
+  source?: string;
+  /** 原稿（HTML。run の ui/ からの相対パス。画面には配信しない） */
+  html?: string;
+  /** 対象のタスク案（D キー。1枚に複数をまとめてもよい） */
+  drafts: string[];
+  /** 想定した画面の幅（px） */
+  viewport?: number;
+  /** 前提（仮のデータ・省いたものなど） */
+  assumptions: string[];
+  /** 資料を作った run */
+  run: string;
+  /** P3 が原稿から描いた（エンジンは画像を見ていない。利用者が確かめる）。clipped: 縦に長すぎて切った・blocked: 止めた読み込みの数 */
+  rendered?: { by: "p3"; clipped: boolean; blocked: number };
+}
+
+/**
+ * 画面資料の状態。generating: 評価中 / ready: そろった / not_needed: UI を伴わない（理由つき）/ missing: 足りない（理由つき）。
+ * run に記録が無ければ以前の run（記録なし）
+ */
+export type UiMaterialsStatus = "generating" | "ready" | "not_needed" | "missing";
+
+export interface UiMaterials {
+  status: UiMaterialsStatus;
+  /** UI を伴う案か（エンジンの判定。分からなければ無し） */
+  needed?: boolean;
+  /** 不要・不足の理由 */
+  reason?: string;
+  /** 画面イメージが要るタスク案（D キー） */
+  targets: string[];
+  items: UiMaterial[];
+  /** 取り込めなかった資料とその理由 */
+  problems: string[];
+  /** 必要な画面イメージが足りないので、判定を go から clarify にした */
+  verdictAdjusted?: { from: "go"; to: "clarify" };
+}
+
+export interface PreflightRun {
+  id: string;
+  requestId: string;
+  /** 始めたときのプロジェクトの品質基準（状態・版・項目）。評価の資料とタスク化の取り込みに使う（古い run には無い） */
+  quality?: QualitySnapshot;
+  /** 評価したもの。local: 手元の対話エージェント（p3 preflight --prepare で準備し、--complete で取り込む。P3 はモデルを呼ばない） */
+  engine: "codex" | "mock" | "local";
+  /** running の間は、local ならエージェントの評価を待っている（プロセスを跨いで続く） */
+  status: PreflightStatus;
+  startedAt: string;
+  finishedAt?: string;
+  log: PreflightLogEntry[];
+  assessment?: PreflightAssessment;
+  /** drafts/ 配下のファイルから読み込まれる */
+  drafts: ProposedTask[];
+  /** children/ 配下のファイルから読み込まれる子の要望の案（分割の run。無ければタスク案の run） */
+  children?: ProposedChild[];
+  /** 案の読み込みで見つけた問題（タスク案と子の案の混在・キーの重なり・必須の項目の欠け・無い案やタスクへの参照）。あれば採用しない */
+  draftProblems?: string[];
+  /**
+   * 子の案の採用の途中経過。書く前に子の ID を予約して残し、途中で落ちても同じ ID で続ける。
+   *   reserved: 案 → 予約した子の要望 ID、created: 作った子（案のキー）、keys: 採用に選んだ案、done: 終わった
+   */
+  adoption?: { reserved: Record<string, string>; created: string[]; keys: string[]; done: boolean };
+  error?: string;
+  threadId?: string;
+  /** タスク化済みなら作成されたタスク ID */
+  materialized?: string[];
+  /**
+   * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らず、同じタスクを二度アーカイブしないための記録。
+   *   created: 作った案とタスク（D1 → T004）、archive: アーカイブに選んだ置き換えられるタスク、archived: アーカイブ済み
+   */
+  materialization?: {
+    created: Record<string, string>;
+    archive: string[];
+    archived: string[];
+    done: boolean;
+    /** 割り当てるブランチ（始めたときに決めたもの。やり直しでも同じ） */
+    workstreams?: { add: Record<string, Workstream>; noGit: string[] };
+  };
+  /** 実行した人 */
+  startedBy?: string;
+  /** 結果を引き継いだ前回の run（無ければ最初から評価した） */
+  previous?: string;
+  /** 渡したメモの ID。内容は run ディレクトリの carryover.md に固定して残す */
+  notes?: string[];
+  /**
+   * 調べた範囲: 参照先ごとに読めたか（始めるときに P3 が決める。モデルの申告では変えない）。このマシンのパスは入れない。
+   * 無ければ以前の run（記録なし）
+   */
+  scope?: RefScope[];
+  /** 画面資料（ui/）。無ければ以前の run（記録なし） */
+  ui?: UiMaterials;
+  /** 始めるときに固定した添付（run の attachments/ と ui/current/）。無ければ添付なし */
+  attachments?: FixedAttachment[];
+  /**
+   * 評価対象: 始めるときにディスクから読み直して固定した要望のタイトルと本文（正規化済み。エンジンに渡したものと同じ）。
+   * 無ければ以前の run（run の request.md から読む）
+   */
+  input?: PreflightInput;
+  /** 手元のエージェントの run（engine: local）: 準備したときの要望のステータス（取り込み・取消で戻す）と、取り込めなかった回数 */
+  local?: { before: RequestStatus; rejected?: number };
+  /** 実行しているプロセス（codex / mock。core/preflight/owner.ts）。落ちたプロセスの run を見分けるのに使う。以前の run には無い */
+  owner?: RunOwner;
+  /** 始める前の要望のステータス（codex / mock。中断にしたとき、最新の run なら要望をこれに基づいて戻す。local は local.before） */
+  before?: RequestStatus;
+  /**
+   * running のまま残った run を中断（failed）にした。理由と日時。acknowledgedBy は、動いているか確かめられない run を、人が止まって
+   * いることを確かめて中断にした（p3 preflight --cancel --acknowledge-stopped・画面）。無ければ、実行していたプロセスが終わっていたので P3 が中断にした
+   */
+  interrupted?: { reason: string; at: string; acknowledgedBy?: string };
+  /** 中断を頼まれている（cancel-request.json。実行しているプロセスが見て止める。止まるまでは running のまま） */
+  cancelRequested?: { at: string; by?: string };
+}
+
+/** running の run を実行しているプロセスの今の状態（GET run の liveness。core/preflight/owner.ts の判定。local は評価を待っている） */
+export type RunLiveness = { state: "alive" | "waiting" } | { state: "dead" | "unknown"; reason: string };
+
+/**
+ * Preflight の run を実行しているプロセス（共有するデータに置く。パス・認証情報・ホスト名そのものは残さない）。
+ * instance はこのマシン（コンテナ）の不透明な識別子、boot は OS の起動、pidNs は PID の名前空間、start はプロセスの起動の時刻（Linux）
+ */
+export interface RunOwner {
+  instance: string;
+  boot?: string;
+  pidNs?: string;
+  pid: number;
+  start?: string;
+}
+
+/** Preflight の評価対象（要望のタイトルと本文）。比べるのはこの2つだけ（タグ・期限・ステータスは比べない） */
+export interface PreflightInput {
+  title: string;
+  body: string;
+  /**
+   * 親子の評価対象（始めたときの値。無ければ以前の run で、比べない）。hash は題と本文から作る（core/preflight/input.ts の inputHash）。
+   *   parent: 親の目的（子の要望の Preflight。親の題・本文が変われば子のタスク化を断る）/
+   *   children: 始めたときの子の要望（分割の採用の直前に、別の run から採用した・足した・外した・直したことを見つける）
+   */
+  parent?: { id: string; hash: string };
+  children?: { id: string; hash: string }[];
+  /** 始めたときの要求の根拠と確認事項への回答（無ければ無し。以前の run にも無い。shared/requirementSource.ts） */
+  requirement?: RequirementInput;
+}
+
+/** 比べる項目（タイトル・本文・親の目的・子の要望） */
+export type InputField = "title" | "body" | "parent" | "children" | "requirement";
+
+/**
+ * run の評価対象と今の要望が同じか。
+ *   same: 同じ（タスク化できる） / changed: タイトルか本文が変わった / unknown: run の評価対象が読めない（以前の run の欠損など）
+ * changed と unknown の run からはタスク化しない（再評価する）
+ */
+export interface InputMatch {
+  status: "same" | "changed" | "unknown";
+  /** changed のとき、変わった項目 */
+  changed?: InputField[];
+  /** unknown の理由 */
+  reason?: string;
+}
+
+/** タスクが置き換えられていることの印。from は置き換えた側のタスク（<要望ID>/T004） */
+export interface SupersededMark {
+  from: string;
+  note?: string;
+}
+
+/** タスク化のときに知らせる、置き換えられる既存タスク（同じ要望の未完了のもの） */
+export interface SupersedeCandidate {
+  /** T001 */
+  id: string;
+  /** <要望ID>/T001 */
+  ref: string;
+  title: string;
+  status: TaskStatus;
+  rev: number;
+  /** 置き換えを書いた採用したタスク案 */
+  reasons: { draft: string }[];
+}
+
+/** タスク化の結果 */
+export interface MaterializeResult {
+  tasks: Task[];
+  /** アーカイブした置き換えられたタスク（T001） */
+  archived: string[];
+  /** 置き換えられるが残したタスク */
+  kept: SupersedeCandidate[];
+  /** 対応済から進行中に戻した祖先（子の要望をタスク化した） */
+  reopenedAncestors?: string[];
+}
+
+/** 子の案の採用の結果。created: 作った子 / failed: 作れなかった案（その後は pending）/ pending: まだ作っていない案 */
+export interface AdoptionResult {
+  created: { key: string; id: string }[];
+  failed: { key: string; error: string; code: "conflict" | "error" }[];
+  pending: string[];
+  /** 対応済から進行中に戻した祖先 */
+  reopenedAncestors?: string[];
+}
+
+/**
+ * Preflight へのメモ: 確認事項への回答や方針の変更。要望のフォルダの notes/<ID>.md に1件1ファイルで書き足す。
+ * まだ渡していないメモは、次の Preflight に前回の結果と一緒に渡す。
+ */
+export interface PreflightNote {
+  /** N-20261009-123456-ab12 */
+  id: string;
+  requestId: string;
+  createdAt: string;
+  createdBy?: string;
+  body: string;
+}
+
+/** 添付の形式（初期は画像と Excel だけ） */
+export const ATTACHMENT_FORMATS = { png: "PNG 画像", jpeg: "JPEG 画像", xlsx: "Excel（xlsx）" } as const;
+export type AttachmentFormat = keyof typeof ATTACHMENT_FORMATS;
+/** 添付の上限（1つの要望あたり）。サーバで確かめ、画面でも作成の前に同じ値で知らせる */
+export const ATTACHMENT_FILE_LIMITS = {
+  count: 20,
+  /** 画面資料の画像と同じ上限（run の中で同じ確かめ方をするため） */
+  imageBytes: 5 * 1024 * 1024,
+  xlsxBytes: 20 * 1024 * 1024,
+  totalBytes: 100 * 1024 * 1024,
+} as const;
+
+/**
+ * 要望の添付（requests/<要望ID>/attachments/<ID>/）。原本は内部の名前で保存し、元の名前・説明・出典を残す。
+ * Preflight を始めるときに run の中へコピーして固定する（後で足し・消ししても、過去の run の資料は変わらない）
+ */
+export interface Attachment {
+  /** A-20261012-123456-ab12 */
+  id: string;
+  requestId: string;
+  /** 元のファイル名（表示とダウンロードの名前にだけ使う） */
+  name: string;
+  format: AttachmentFormat;
+  bytes: number;
+  sha256: string;
+  description?: string;
+  /** 出典（どこから持ってきたか） */
+  source?: string;
+  /** 画像の大きさ */
+  width?: number;
+  height?: number;
+  createdAt: string;
+  createdBy?: string;
+}
+
+/** run に固定した添付（path は run のフォルダからの相対） */
+export interface FixedAttachment extends Omit<Attachment, "requestId"> {
+  path: string;
+  /** xlsx から取り出したもの（無ければまだ取り出していない） */
+  extract?: XlsxExtractRecord;
+}
+
+/** xlsx から取り出した範囲と、取り出せなかったもの */
+export interface XlsxExtractRecord {
+  /** 取り出した内容（Markdown。run のフォルダからの相対） */
+  text?: string;
+  sheets: number;
+  cells: number;
+  /** 値が保存されていない数式など（未確認） */
+  unknownCells: number;
+  /** 埋め込みの画像（画面資料の「仕様書から」。file は run の ui/ からの相対） */
+  images: { id: string; file: string; sheet: string; anchor: string; format: "png" | "jpeg"; width: number; height: number; bytes: number }[];
+  truncated: string[];
+  unsupported: string[];
+  /** ブックとして読めなかった理由（このときは中身は未読） */
+  error?: string;
+}
+
+export interface PreflightLogEntry {
+  at: string;
+  kind: "info" | "command" | "message" | "error";
+  text: string;
+}
+
+// ---------------------------------------------------------------------------
+// プロジェクト / グラフ
+// ---------------------------------------------------------------------------
+
+export interface Milestone {
+  /** 要望の milestone に書く短い名前（例: v0.2） */
+  id: string;
+  title: string;
+  /** 予定日（YYYY-MM-DD） */
+  due?: string;
+  /** リリース済み */
+  done?: boolean;
+  /** 目的（複数行の自由文。マイルストーンレビューで所属する要望と比べる）。規則は shared/milestoneGoals.ts */
+  purpose?: string;
+  /** 予定している機能・目標（id は振ったら変えない） */
+  goals?: MilestoneGoal[];
+}
+
+/** マイルストーンの予定機能・目標の1件 */
+export interface MilestoneGoal {
+  /** 安定した ID（G1, G2, ...）。並べ替え・文言の変更で振り直さない */
+  id: string;
+  text: string;
+}
+
+// ---------------------------------------------------------------------------
+// リリースノート — マイルストーンごとに1件（<data>/release-notes/<マイルストーンID>.md）
+// ---------------------------------------------------------------------------
+
+/**
+ * 材料の警告の種類。
+ *   broken_request:  読めない要望のファイル（所属が分からないので全体の警告）
+ *   not_finished:    未完了の要望（対応済・完了済でない。収録しない）
+ *   no_tasks:        タスクの無い要望（収録しない）
+ *   open_tasks:      対応済・完了済なのに完了していないタスクがある（状態の不整合。収録しない）
+ *   broken_task:     読めないタスクのファイル（収録しない）
+ *   missing_record:  変更の記録の無い完了したタスク（要約の材料にしない）
+ *   no_material:     収録する要望に変更の記録が1つも無い（要約に入らない）
+ *   no_candidates:   収録する要望が無い / no_sources: 要約の材料（変更の記録）が無い
+ *   unknown_milestone: project.yaml に無いマイルストーン（直接編集で消えた。ノートだけが残っている）
+ *   material_changed: 生成・保存のあとで材料が変わった（古い材料からの本文。自動では直さない）
+ *   suspicious_content: 生成した要約に内部のパス・秘密らしい文字列がある（公開の前に確かめる）
+ */
+export type ReleaseWarningCode =
+  | "broken_request"
+  | "not_finished"
+  | "no_tasks"
+  | "open_tasks"
+  | "open_children"
+  | "broken_task"
+  | "missing_record"
+  | "no_material"
+  | "no_candidates"
+  | "no_sources"
+  | "unknown_milestone"
+  | "material_changed"
+  | "suspicious_content";
+
+export interface ReleaseWarning {
+  code: ReleaseWarningCode;
+  /** 対象（要望 ID・<要望ID>/T001・データのフォルダからの相対パス・マイルストーン ID） */
+  target: string;
+  message: string;
+}
+
+/** 材料のタスク（完了したもの）。record があるものだけが要約の材料 */
+export interface ReleaseSourceTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  record?: string;
+}
+
+/** 材料の要望1件（収録するもの） */
+export interface ReleaseSource {
+  request: string;
+  title: string;
+  status: RequestStatus;
+  tasks: ReleaseSourceTask[];
+}
+
+/** マイルストーンに属する要望1件と、収録するかどうか */
+export interface ReleaseRequestItem {
+  id: string;
+  title: string;
+  status: RequestStatus;
+  createdAt: string;
+  /** 収録する（要望が対応済か完了済で、タスクが1件以上あり、全部が完了で読める） */
+  included: boolean;
+  /** 収録しない理由 */
+  reason?: string;
+  /** タスク（アーカイブしたものは含まない）。record はここでは持たない（sources にある） */
+  tasks: { id: string; title: string; status: TaskStatus; hasRecord: boolean }[];
+  warnings: ReleaseWarning[];
+  /** 子の要望（直下。マイルストーンの外のものも含む） */
+  children?: string[];
+  /** 構造の要望（自分のタスクが無く、子だけを持つ）。収録の判定には入るが、材料（sources）は無い */
+  structural?: boolean;
+}
+
+/**
+ * マイルストーンのリリースノートの材料。抽出したときのディスクの状態を固定したもの。
+ * hash は材料（要望の所属・状態・タイトル、収録するタスクの記録）の識別子で、生成・保存のあとの変更を見つけるのに使う
+ */
+export interface ReleaseMaterial {
+  milestone: { id: string; title: string; due?: string; done?: boolean; known: boolean };
+  /** 作成日時 → ID の順 */
+  requests: ReleaseRequestItem[];
+  /** 収録する要望と、変更の記録のある完了したタスク（要約の材料） */
+  sources: ReleaseSource[];
+  /** 全体の警告（読めない要望・候補なし・材料なしなど）。要望ごとの警告は requests[].warnings */
+  warnings: ReleaseWarning[];
+  hash: string;
+  extractedAt: string;
+}
+
+/**
+ * マイルストーンの要望を一括で完了済にできるか（core/releaseNotes/completeRequests.ts が判定する。画面・CLI は見せるだけ）。
+ * 見送りを除く全要望が収録の条件（対応済か完了済・タスクが1件以上で全部完了・読めないタスクなし）を満たすときだけできる。
+ * 変えるのは対応済（resolved）だけで、完了済・見送り・タスク（済みを含む）・ノートは変えない
+ */
+export interface RequestCompletionPlan {
+  milestone: string;
+  /** 判定に使った材料の hash（実行するときにそのまま渡す） */
+  basedOn: string;
+  /** 実行できる（blockers が無い）。対象が0件でもできる（何も変えない） */
+  ready: boolean;
+  /** 完了済にする要望（対応済のもの） */
+  targets: { id: string; title: string }[];
+  /** 既に完了済（変えない） */
+  alreadyDone: string[];
+  /** 見送り（判定から除き、変えない） */
+  skipped: string[];
+  /** できない理由（target は要望 ID かマイルストーン・ファイル） */
+  blockers: { target: string; reason: string }[];
+}
+
+/** 一括で完了済にした結果。途中で止まったら、完了済にしたもの・失敗した1件・まだ変えていないものを分けて返す */
+export interface RequestCompletionResult {
+  milestone: string;
+  completed: { id: string; title: string }[];
+  failed?: { id: string; reason: string; code: "conflict" | "changed" | "error" };
+  notRun: string[];
+  alreadyDone: string[];
+}
+
+/** 保存したリリースノート。本文（公開する Markdown）と、内部の出典（frontmatter）を分けて持つ */
+export interface ReleaseNote {
+  milestone: string;
+  title: string;
+  /** 公開する本文（出力はこれだけ） */
+  body: string;
+  /** 保存したときの材料（出典。公開しない） */
+  sources: ReleaseSource[];
+  /** 保存したときの材料の hash */
+  materialHash?: string;
+  createdAt: string;
+  createdBy?: string;
+  updatedAt: string;
+  updatedBy?: string;
+  /** 編集の版（ファイル全体の sha256）。更新はこの版を渡し、違えば競合にする */
+  version: string;
+}
+
+/** 生成した機能の要約1項目。sources は出典（要望 ID か <要望ID>/T001。材料にあるものだけ） */
+export interface ReleaseSummaryItem {
+  text: string;
+  sources: string[];
+}
+
+export type ReleaseGenerationStatus = "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * 生成の失敗の種類。unavailable: Codex を使えない（未接続など）/ usage_limit: 使用量の上限 / timeout: 時間切れ /
+ * invalid_output: 結果の形が違う・出典が材料に無い・長すぎる / error: そのほか
+ */
+export type ReleaseGenerationFailure = "unavailable" | "usage_limit" | "timeout" | "invalid_output" | "error";
+
+/**
+ * リリースノートの要約の生成（1回分）。保存とは別で、生成は保存したノートを変えない。
+ * このプロセスのメモリにだけ置く（serve を止めれば消える。CLI は終わるまで待つ）
+ */
+export interface ReleaseGeneration {
+  id: string;
+  milestone: string;
+  /** 頼んだ先（mock は明示したときだけ。要約はしない） */
+  engine: "codex" | "mock";
+  status: ReleaseGenerationStatus;
+  startedAt: string;
+  finishedAt?: string;
+  startedBy?: string;
+  /** 生成に渡した材料の hash */
+  materialHash: string;
+  /** 生成のあとで材料が変わった（終わったときに確かめる。古い材料からの生成） */
+  materialChanged?: boolean;
+  /** 要約（completed のとき） */
+  items?: ReleaseSummaryItem[];
+  /** 要約から P3 が組み立てた本文の案（保存はしない） */
+  markdown?: string;
+  warnings: ReleaseWarning[];
+  error?: string;
+  failure?: ReleaseGenerationFailure;
+  log: PreflightLogEntry[];
+}
+
+/** マイルストーンごとのノートの有無（一覧） */
+export interface ReleaseNoteSummary {
+  milestone: string;
+  title: string;
+  due?: string;
+  done?: boolean;
+  /** project.yaml にあるか（無ければノートだけが残っている） */
+  known: boolean;
+  /** 属する要望の数（アーカイブしたものは含まない） */
+  requests: number;
+  note:
+    | { state: "none" }
+    | { state: "ok"; version: string; updatedAt: string; updatedBy?: string }
+    | { state: "invalid"; error: string };
+}
+
+export interface ProjectConfig {
+  name: string;
+  /** 何を作っているプロジェクトか。Preflight の前提になる */
+  description: string;
+  /**
+   * 参照先（リポジトリ・フォルダ。名前・役割・最初に読むか・作業先になりうるか・主なフォルダ）。
+   * Preflight が読み、作業先にできるものはタスクの作業先になる。このマシンのパスは個人設定に置く。shared/repos.ts
+   */
+  repos: RepoRef[];
+  /** マイルストーン（リリース）。複数の要望をまとめる */
+  milestones: Milestone[];
+  /** ブランチ命名規則。{id} {slug} を置換 */
+  branchPattern: string;
+  preflight: {
+    /** プロジェクト固有の評価の観点・制約（例: 「外部 API の追加は要相談」） */
+    instructions: string;
+    /** Preflight の担当（shared/preflightRunner.ts）。未設定は codex として扱う */
+    runner?: PreflightRunner;
+    /** preflight.runner に読めない値が書いてあるとき、その値（担当は決めない。保存しても消さない） */
+    invalidRunner?: string;
+  };
+  /**
+   * 品質基準（project.yaml の quality。読むときに決まる。設定の保存では書かず、core/quality.ts の操作だけが書く）。
+   * 無ければ未設定として扱う。規則は shared/quality.ts
+   */
+  quality?: QualityState;
+  /** 品質基準の版（品質だけの中身の hash。保存の前に比べる） */
+  qualityVersion?: string;
+}
+
+/** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
+export type ServerEvent =
+  | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "projects" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
+  /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
+  | { type: "changed"; kind: "release-note"; milestone: string }
+  /** タスクの AI レビューの状態が変わった */
+  | { type: "task-review"; id?: string; request: string; task: string; status?: "running" | "completed" | "failed" | "cancelled" }
+  /** リリースノートの要約の生成の状態が変わった */
+  | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
+  /** マイルストーンレビューの実行の状態（このプロセスの実行と、ほかのプロセスが書いた履歴の変化。status は分からなければ無い） */
+  | { type: "milestone-review"; id?: string; milestone: string; status?: "running" | "completed" | "failed" | "cancelled" }
+  | { type: "preflight-log"; runId: string; entry: PreflightLogEntry }
+  | { type: "preflight-status"; runId: string; status: PreflightStatus };
+
+// ---------------------------------------------------------------------------
+// 画面のテーマ（個人設定の ui.theme。このマシンのすべてのプロジェクトで共通）
+// ---------------------------------------------------------------------------
+
+/** system: OS（ブラウザ）の表示設定に合わせる（既定）/ light: 常にライト / dark: 常にダーク */
+export const THEMES = ["system", "light", "dark"] as const;
+export type Theme = (typeof THEMES)[number];
+export const isTheme = (v: unknown): v is Theme => typeof v === "string" && (THEMES as readonly string[]).includes(v);

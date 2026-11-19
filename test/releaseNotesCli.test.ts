@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { gitInit, tempDir } from "./helpers.ts";
 
 /** p3 release-notes を別プロセスで動かす（個人設定はテストごとに分け、このマシンの P3_* は効かせない） */
-const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 let CONFIG_HOME = "";
 beforeEach(() => {
   CONFIG_HOME = tempDir("p3-config-");

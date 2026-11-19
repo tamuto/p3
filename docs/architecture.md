@@ -318,7 +318,7 @@ include: true
 - 手元のリポジトリの場所はマシンごとに違うので、プロジェクトのデータではなく個人設定に持たせる
 - **操作するプロジェクトは環境変数では決めない**（同じ人が複数のプロジェクトを行き来するため）。
   `--project <名前>` → 今いる場所（登録したリポジトリ・作業ツリー・データのフォルダの中）→ 登録が1つならそれ、の順で決め、
-  決まらなければ登録済みの一覧と選び方を出す（`src/core/store/locate.ts`）
+  決まらなければ登録済みの一覧と選び方を出す（`packages/tasks/src/core/store/locate.ts`）
 - プロジェクトを開く共通の入口（`core/context.ts` の `openProject`。CLI も `serve` の `startServer` もここを通る）で、
   データのフォルダと `project.yaml` があるかを確かめる（`locate.ts` の `checkDataDir`）。無ければ空のプロジェクトとして続けず
   `DataDirError`（終了コード 1）。何も作らない。無い（ENOENT）と読めない（権限・入出力）は分けて伝える。`init`（作成）・`join`（参加）と
@@ -509,17 +509,17 @@ include: true
 
 ### マシンごとの設定と Codex の起動
 
-- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`P3_*`）→ 個人設定 → 既定値 で決める（`src/core/machineSettings.ts`）。
+- マシンごとの設定は、項目ごとに CLI の明示 → 環境変数（`P3_*`）→ 個人設定 → 既定値 で決める（`packages/tasks/src/core/machineSettings.ts`）。
   CLI と serve・Codex エンジンが同じ解決を使い、`process.env` を個人設定の値で書き換えない。`.env` はどこからも読まない
   （P3 は pnpx などで入れるので、パッケージの場所は利用者が触らない）。項目と環境変数の対照は [導入ガイド](installation.md#設定の決まり) の「設定の決まり」
-- マシンごとの設定の書き換え（`p3 user-config set`。`src/core/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
+- マシンごとの設定の書き換え（`p3 user-config set`。`packages/tasks/src/core/machineSettingsEdit.ts`）: `キー=値` で書き、`キー=` で消し、
   パスの対応は `codex.pathMap+=A=B` / `codex.pathMap-=A` で1件ずつ足し・外す（全部の置き換えは受けない。書き間違いで全部を
   失わないように）。`updateUserConfig` の中で変更を当ててから、環境変数を見ずに `resolveMachineSettings` で確かめ、読めなければ
   何も書かない（テーマを含めて一括）。表示（`describeSettings`）は項目ごとの効いている値と出どころ（環境変数 / 個人設定 / 既定）。
   空の環境変数は既定に戻すので出どころも既定。プロジェクトの登録（projects）は表示しない（`p3 project ls`）
 - パスの対応のエラー（`bind source path does not exist`）には、直し方（`pathMapHowTo`）として設定するコマンド・例・ホストの
   パスの調べ方を添える。共有の記録に残るので、このマシンのパスは例のパスで示す。対応が当たっていたなら行き先の誤りとして案内する
-- **マウントするパスの決め方**（`src/core/preflight/hostPaths.ts` の `resolveHostPaths`。261115-d0n30）: Docker のコンテナに
+- **マウントするパスの決め方**（`packages/tasks/src/core/preflight/hostPaths.ts` の `resolveHostPaths`。261115-d0n30）: Docker のコンテナに
   マウントするこのマシンのパスを、Docker のデーモンから見たパスに決める。求めた結果は個人設定に書かず、毎回求める。
   ここで Docker に出すのは `docker inspect` だけ（`dockerExec` の時間の上限と取消。引数は配列）で、全部の対象が決まる前にマウントする
   コマンドは出さない。1つでも決まらなければ `ok: false` で、呼ぶ側はコンテナを起こさない
@@ -707,7 +707,7 @@ serve の中で起きたこと（画面からの保存、Preflight の進み具�
 タブ・ウィンドウに戻ったときの読み直し（POST /api/reload）で取り込む。ファイル監視は補助で、届かないことがある
 （NFS や、Node の再帰的な監視が置き換えて保存したファイルの2回目以降の変更を通知しないことがある）。
 
-**データのフォルダの監視**（`src/core/store/dataWatcher.ts`。`Workspace.watch` が1つだけ持ち、通常の serve と `--all-projects` の
+**データのフォルダの監視**（`packages/tasks/src/core/store/dataWatcher.ts`。`Workspace.watch` が1つだけ持ち、通常の serve と `--all-projects` の
 プロジェクトごとに同じものを使う）: 補助なので、壊れても serve と実行中の Preflight は止めない。
 
 - `fs.promises.watch` は使わない。Node 22 の Linux の再帰監視（JS の実装）は、見ている途中でフォルダが消えると（Preflight が
@@ -862,23 +862,34 @@ CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・
 
 ## パッケージの構成
 
-p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer など）を選んで組み合わせる形にするため、コードを 3 つのまとまりに分ける
-（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
+p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer など）を選んで組み合わせる形にするため、リポジトリを pnpm workspace にし、
+コードを 3 つのパッケージに分ける（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
 
-| まとまり | 中身 | 読み込んでよいもの |
+| パッケージ | 中身 | 読み込んでよいもの |
 | --- | --- | --- |
-| 入口（p3） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | tasks・kit |
-| tasks | 今の p3 の機能（要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・画面のページ・API） | kit |
-| kit | 入口と製品が使う最小限の共通処理 | なし |
+| 入口 `@infodb/p3`（`packages/p3`） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | tasks・kit |
+| `@infodb/p3-tasks`（`packages/tasks`） | 今の p3 の機能（要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・画面のページ・API） | kit |
+| `@infodb/p3-kit`（`packages/kit`） | 入口と製品が使う最小限の共通処理 | なし |
 
 - 入口は、知っている製品（今は tasks だけ）をはっきり呼んで組み込む。製品を探して読み込む仕組み（プラグインの基盤）は作らない
 - tasks は入口を読み込まない。入口のもの（置いた AI 向けの入口の診断など）が要るときは、入口から値や関数で渡す（`cli/tasksCli.ts` の `TasksRun`）
 - 将来の製品どうしは直接読み込まない。連携が要るなら kit の小さな約束事を通す。p3-observer は名前だけを決め、データは自分のサブフォルダ
   （`.p3/observer/` の想定）だけを持つ（tasks のデータに触れない）
 - 今の `shared` は「画面と Node の両方から読める」という層の規則で、tasks 固有の型が多い。まるごと kit にはしない
-- 境界は `test/packageBoundary.test.ts` が確かめる（入口 → tasks → kit の一方向、kit の処理に使い手がいること）
+- パッケージの間はパッケージ名（`@infodb/p3-tasks/core/context.ts` のように、そのパッケージの `src` からのパス）で読み、相対パスで別の
+  パッケージのファイルを指さない。読むパッケージは manifest に workspace の参照で書く。境界は `test/packageBoundary.test.ts` が確かめる
+  （入口 → tasks → kit の一方向・相対パスでの迂回・manifest の宣言・kit の処理に使い手がいること・observer のパッケージがまだ無いこと）。
+  層の向き（shared ← core ← server / cli、web → shared）は入口と tasks の `src` の中で同じに分け、パッケージ名で読んだ先も
+  `test/layers.test.ts` が照らす
+- 配るのは入口の `@infodb/p3` の1つで、kit・tasks は公開せずにビルドして同梱する（`lib/tasks/`・`lib/kit/`。パッケージ名の import は同梱した先への
+  相対パスに書き換える。`scripts/build-cli.mjs`）。利用者から見える名前・コマンド・データの場所・CLI・API・画面は変えない。Docker も同じ中身を使う
+  （[開発ガイド](development.md#npm-で配る中身)）
+- 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に tasks のページのフォルダをそのまま付け（`tsr.config.json` の
+  `virtualRouteConfig`）、入口が知っている製品のページだけが入る
+- 製品ごとの設計: tasks の設計と規則はこの文書の残りの節（作業の単位・Preflight・受け入れ基準など）。kit は下の「kit の中身と使い手」。
+  p3-observer は名前を予約しただけで、パッケージも設計もまだ無い（作るときは `packages/observer` に置き、データは `.p3/observer/` だけを持つ）
 
-**機能（棚卸しの ID）ごとの置き場所**
+**機能（棚卸しの ID）ごとの置き場所**（パスは各パッケージの `src` からの相対。入口なら `packages/p3/src/`、tasks なら `packages/tasks/src/`）
 
 | 棚卸し | 置き場所 | 分け方・今の置き方 |
 | --- | --- | --- |
@@ -887,7 +898,7 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 | F03 AI 向けの入口・guide・診断 | 入口 | `cli/project.ts`（置く）・`cli/guide.ts`・`cli/agentsStatus.ts`・`skills/`。手順の本文 `cli/guide.md` は tasks の運用の手順だが、`p3 guide` が同梱の原本を返すので当面は入口と一緒に置く |
 | F04 登録・参加・プロジェクトの決定・読む／書くの判定 | 分ける | 入口: `cli/project.ts`（init・join・project）。tasks: `cli/projectSettings.ts`（`config`・`repo`・変更者・今いる参照先・今の要望）・`cli/readOnly.ts`（コマンドごとの読む／書く。入口が呼ぶ）・`core/store/locate.ts`（決め方とデータの検査。入口が呼ぶ） |
 | F05 個人設定・マシンごとの設定・変更者 | tasks（kit の候補） | `core/userConfig.ts`・`core/machineSettings*.ts`・`cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の製品が個人設定を使うときに、入出力だけを kit に分ける |
-| F06 置き換え書き込み・ロック・frontmatter | kit | `core/store/fsutil.ts`・`core/store/frontmatter.ts`。今は tasks（要望・タスク・run・指標・設定の保存）が使い、将来の製品の保存も使う見込み。採番・正規化・アーカイブは tasks |
+| F06 置き換え書き込み・ロック・frontmatter | kit | `fsutil.ts`・`frontmatter.ts`（`packages/kit/src/`）。今は tasks（要望・タスク・run・指標・設定の保存）が使い、将来の製品の保存も使う見込み。採番・正規化・アーカイブは tasks |
 | F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | 入口: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品 `web/components/ui.tsx` とテーマ（`ThemePanel`・`core/userTheme.ts`・`server/api/userThemeRoutes.ts`）は、設定画面（tasks のページ）が使うので当面は tasks に置き、入口が読み込む。2 つ目の製品が使うときに kit に移す |
 | F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知は入口の `projectsRoutes.ts`。監視の仕組みを製品で共有するのは 2 つ目の製品が出てから |
 | F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。入口の `projectsRoutes.ts` も同じ説明を返す |
@@ -895,9 +906,9 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 | F26 AI 接続・実行環境 | tasks（暫定） | `cli/{codex,chatgpt}.ts`・`core/chatgpt.ts`・`core/preflight/{codexEngine,docker,hostPaths}.ts`。入口は `codex`・`chatgpt`・`render` のコマンドをプロジェクトを決める前に tasks の関数で動かす |
 | F28 独立した観測 | なし | パッケージの名前（observer）だけを予約する |
 
-**kit の中身と使い手**: `cli/usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口と tasks が使う）、
-`core/store/fsutil.ts`・`core/store/frontmatter.ts`（tasks が使う。将来の製品の保存も使う見込み）。使い手のいない処理を先回りして
-kit に置かない。
+**kit の中身と使い手**（`packages/kit/src/`）: `usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口と tasks が使う）、
+`appInfo.ts`（動いている p3 の版。入口が起動のときに渡し、tasks が Codex に名乗る版として読む）、`fsutil.ts`・`frontmatter.ts`（置き換え書き込み・
+ロック・frontmatter。tasks が使う。将来の製品の保存も使う見込み）。使い手のいない処理を先回りして kit に置かない。
 
 ## サーバに置かない理由
 
@@ -916,7 +927,7 @@ kit に置かない。
   認証情報は各自の ChatGPT の接続か `auth.json`（個人の場所に置き、プロジェクトには置かない）。
 - 結果は戻り値ではなく **ファイル**（要望のフォルダの `preflight/<RUN>/assessment.json`, `drafts/*.md`）。
   同期すればチームの全員が同じ評価とタスク案を見られる。誰が実行したかは `run.json` とタスクの `updatedBy` に残る。
-- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`src/core/preflight/uiMaterials.ts`）。AI（Codex・手元の
+- 画面資料（`preflight/<RUN>/ui/`）もファイル契約にする（`packages/tasks/src/core/preflight/uiMaterials.ts`）。AI（Codex・手元の
   エージェント）は画面の原稿（`ui/src/U1.html` …）と `ui/index.json` を書き、P3 が原稿を描画のコンテナで PNG にして `ui/index.json` に
   書き足す（[画面イメージの描画のイメージ](#画面イメージの描画のイメージ)。AI は画像を作らない）。P3 は取り込む前に確かめて `run.json` の `ui` に記録する。画像の形式と大きさは拡張子ではなく
   中身から読み、配信のときも同じ確かめ方をもう一度する（取り込んだ後に差し替えられた画像は返さない）。画像は
@@ -959,7 +970,7 @@ kit に置かない。
   追加で許す保証ではない。コマンドの実行は禁止していない。参照先は読むだけのマウントで書けない。データのフォルダ（`/data`）は
   書けるマウントなので、「run の中だけ」は指示と事後の警告で守っている（書き込みを run に閉じ込める囲いは今は無い）。
   画面イメージの描画は、この Codex のコンテナではなく別のコンテナで行う
-- 指示（制約 = Codex の `developerInstructions` と、依頼文）は `src/core/preflight/instructions.ts` の1か所で作る。評価の観点・
+- 指示（制約 = Codex の `developerInstructions` と、依頼文）は `packages/tasks/src/core/preflight/instructions.ts` の1か所で作る。評価の観点・
   履歴の調べ方・分割・出力の形・画面の原稿の書き方の原本はここだけに置き、エンジンごとに複製しない。実行環境ごとに違うのは
   パスと「何が強制されているか」だけで、`InstructionEnv` として注入する:
   - `containerEnv`（Codex）: 参照先は `/workspace/<mount>`、データは `/data`。書き込みは run の配下だけ、と指示する
@@ -980,7 +991,7 @@ kit に置かない。
     プロセスと、落ちたプロセスが残した run」）
   - 取り込みは成果物を先に確かめ（`localProblems`）、問題があれば run を変えずに断る（`local.rejected` を数えるだけ）。通ったら画面の
     原稿を描き、通常と同じ `ingest`・`finish` で完了にする。取り込みも取消も `lastPreflight` は変えない
-- **実行しているプロセスと、落ちたプロセスが残した run**（`src/core/preflight/owner.ts`、`service.ts` の `busy`・`recoverRequest`・
+- **実行しているプロセスと、落ちたプロセスが残した run**（`packages/tasks/src/core/preflight/owner.ts`、`service.ts` の `busy`・`recoverRequest`・
   `recover`・`finishLocked`）: serve・CLI が途中で落ちると、codex / mock の run は `running` のまま残る。以前は開始から 35 分たったら
   落ちたものとみなして始め直せたが、生きている長い実行と重なりうるうえ、画面からは何分たっても始め直せなかったのでやめた
   - 記録: 始めるとき（`open`）に `run.json` の `owner` と `before`（始める前の要望のステータス）を残す。`owner` は `instance`（ローカルの
@@ -1012,7 +1023,7 @@ kit に置かない。
 
 要望のタイトルと本文は、Preflight の前後・実行中・完了済を含め、いつでも書き換えられる（`p3 request set --body` / `title=`、
 API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存のタスク・過去の run は変えない。そのかわり、古い評価からはタスク化しない
-（`src/core/preflight/input.ts`）。
+（`packages/tasks/src/core/preflight/input.ts`）。
 
 - **固定**: Preflight を始めるとき、要望をディスクから読み直し（監視していない外部の編集も取り込む）、タイトルと本文を
   `run.json` の `input` に固定する。人が読む `request.md` とエンジンに渡す要望も同じ内容にする。実行中に要望が書き換えられても、
@@ -1087,7 +1098,7 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
 ### 置き換えられたタスク
 
 再評価でタスク化すると、新しい案が同じ要望の古いタスクを置き換える（`supersedes`）ことがある。
-タスクの状態は 未着手 / 作業中 / 完了 の3つのままにし、置き換えは関係として扱う（`src/core/supersede.ts`）。
+タスクの状態は 未着手 / 作業中 / 完了 の3つのままにし、置き換えは関係として扱う（`packages/tasks/src/core/supersede.ts`）。
 
 - **タスク化で知らせる候補**: **採用した** 案の `supersedes` のうち、同じ要望にある未完了（未着手・作業中）のタスク。
   不採用の案だけにあるもの・完了したタスク・無いタスクは候補にしない。
@@ -1539,12 +1550,12 @@ package.json では公開版の版の範囲（`^0.2.0` など）で指定し、�
   - いつもの Preflight: 既定の1日より古ければ作り直す（個人設定 `codex.ensureImage: false` か `P3_CODEX_ENSURE_IMAGE=0` で止める）
   - 強制更新（`p3 codex update`）: `maxAgeMs` を -∞ にして、作った日時によらず作り直す。プロジェクト・認証を決める前に動き、
     個人設定の自動更新の停止（`codex.ensureImage: false`）とも関係しない。前に `docker version` でデーモンを確かめ、
-    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`src/core/preflight/codexImage.ts`）
+    失敗した段（docker が無い / デーモン / 作成 / 版の取得）ごとに次にすることを出す（`packages/tasks/src/core/preflight/codexImage.ts`）
   - テストは偽の docker（`test/fixtures/fake-docker.mjs`）で行い、本物の Docker では次で確かめる:
     `XDG_CONFIG_HOME=$(mktemp -d) p3 codex update --json`（未登録・未認証のままでよい）
   - P3 は `ensureImage` そのものは呼ばない（inspect・build・版の確認のどれにも待つ時間の上限が無く、取消も受けないため）。同じ判定と
     ビルドを、同梱の `DOCKER_CONTEXT` と `parseCreated` を使って `codexImage.ts` で行う（Dockerfile は写さない）
-- **Docker の待ち時間の上限と後片付け**（`src/core/preflight/docker.ts`）: 以前は版の確認のコンテナ（`codex --version`）が版を出した後も
+- **Docker の待ち時間の上限と後片付け**（`packages/tasks/src/core/preflight/docker.ts`）: 以前は版の確認のコンテナ（`codex --version`）が版を出した後も
   終わらず、Preflight がそれを待って止まったことがある（2026-11-03）。P3 が動かす docker の操作には上限があり、時間切れ・中止では
   docker の CLI を止め、P3 が名前を付けて起こしたコンテナはそのコンテナだけを `docker rm -f <名前>` で消す（`docker ps` の全部や
   イメージ名では消さない）
@@ -1574,8 +1585,8 @@ llmcs の変更を P3 で使うには、llmcs 側で新しい版を公開し、P
 
 ### 画面イメージの描画のイメージ
 
-画面イメージの描画（`src/core/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
-Dockerfile（`src/core/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
+画面イメージの描画（`packages/tasks/src/core/preflight/render.ts`）は、Codex のイメージ（llmcs の Dockerfile）とは別に、P3 が持つ
+Dockerfile（`packages/tasks/src/core/preflight/render-image/`）で作る。llmcs の Dockerfile は変えない。将来 llmcs のイメージに
 Playwright が入っても、それだけでは描画の安全の条件（ネットワークなし・認証情報なし・リポジトリなし・原稿は読むだけ）を
 満たさないので、描画は別のコンテナで行う。
 
@@ -1627,7 +1638,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
   ドキュメントは古いまま残ることがあるので、今のコードと食い違えば今のコードを正として評価・タスク案を作らせ、見つけた食い違いは
   黙って片方に合わせず、すべてリスクか確認事項に書かせる（`instructions.ts` の「やること」。過去の記録と今のコードの食い違いも同じ扱い）。
   `preflight.instructions` にはプロジェクト固有の評価の観点・制約を書く。どちらも Codex への指示に加わる。
-  `preflight.runner`（`codex` / `agent`。`src/shared/preflightRunner.ts`）は Preflight の担当で、AI 向けの手順が `whoami --json` の
+  `preflight.runner`（`codex` / `agent`。`packages/tasks/src/shared/preflightRunner.ts`）は Preflight の担当で、AI 向けの手順が `whoami --json` の
   `preflight` から読む方針（評価のエンジン・run の `engine` とは別。P3 の実行の仕方は変えない）。未設定は `codex`、読めない値は
   `invalidRunner` に残して担当を決めない（保存しても消さない。`config set preflight.runner=` で直す）。保存（`saveProject`）は
   `preflight` を項目ごとに重ねるので、観点だけ・担当だけの更新（以前の API の形 `{ instructions }` も）で、もう片方は消えない。
@@ -1659,13 +1670,13 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 古いまま残る（原本を変えても届かない）が、CLI は `pnpx @infodb/p3` で新しいものが使われるので、手順は CLI の版に合ったものになる。
 
 - 入口は2つ。同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
-  `codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `src/cli/project.ts` の `AGENT_TARGETS`、
+  `codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `packages/p3/src/cli/project.ts` の `AGENT_TARGETS`、
   選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）と、AGENTS.md（無ければ CLAUDE.md）の「タスク管理（infodb p3）」の節
-  （`src/cli/project.ts` の `agentsSnippet`。スキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`）
+  （`packages/p3/src/cli/project.ts` の `agentsSnippet`。スキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`）
 - 入口に書くのは、いつ使うか（スキルの `description`）・`pnpx @infodb/p3 guide --json` の `guide` を最後まで読んで従うこと・取得
   できなければ p3 を操作せずエラーと呼び方を人に伝えて終えることだけ。入口の古さの伝え方・`whoami` での対象の確かめ方・更新の
   しかたは手順（guide）の側に書く
-- 入口の版（`ENTRY_VERSION`。`src/cli/guide.ts`。正の整数）を、スキルは frontmatter の `metadata.p3-entry-version`（Agent Skills の
+- 入口の版（`ENTRY_VERSION`。`packages/p3/src/cli/guide.ts`。正の整数）を、スキルは frontmatter の `metadata.p3-entry-version`（Agent Skills の
   `metadata` は文字列の対応なので `"1"`）、節は見出しの次の行のコメント `<!-- p3-entry-version: 1 -->` に持たせる。入口に書くこと
   （呼び方・読み込みの約束）を変えたときだけ上げ、手順の本文の改訂では上げない。JSON の `schemaVersion`・CLI の `cliVersion` とは別
 - 置き先を覚えておく共有の設定は持たない（参加の `join` は置かず、置く・最新にするのは人が明示する `p3 agents` だけなので、消した先が
@@ -1686,7 +1697,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 ### 置いた入口の診断（`agents`）
 
-`whoami --json` と `guide --json` は、同じ診断（`src/cli/agentsStatus.ts` の `diagnoseAgents`）を `agents` に返す。読むだけで、
+`whoami --json` と `guide --json` は、同じ診断（`packages/p3/src/cli/agentsStatus.ts` の `diagnoseAgents`）を `agents` に返す。読むだけで、
 古くても操作を断らず、書き換えもしない（更新は人が `p3 agents` で行う。AI は伝えるだけ。手順の「置いた入口の状態」）。
 
 - 調べるのは今いる git の作業ツリーのルート（git 管理外は今いる場所）の、両方のスキルと AGENTS.md / CLAUDE.md の両方の節だけ
@@ -1706,9 +1717,9 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 ### 作業の手順（`p3 guide`）
 
-置いたスキル・節は人が更新しないと古いまま残るので、手順の本文は実行中の CLI から読めるようにする（`src/cli/guide.ts`）。
+置いたスキル・節は人が更新しないと古いまま残るので、手順の本文は実行中の CLI から読めるようにする（`packages/p3/src/cli/guide.ts`）。
 
-- 原本は CLI と一緒に配る `src/cli/guide.md` の1つ（配布物では `scripts/build-cli.mjs` が写した `lib/cli/guide.md`）。毎回この原本を
+- 原本は CLI と一緒に配る `packages/p3/src/cli/guide.md` の1つ（配布物では `scripts/build-cli.mjs` が写した `lib/cli/guide.md`）。毎回この原本を
   読んで返し、写しを持たない。オプションなしは本文、`--json` は `{ schemaVersion, cliVersion, entryVersion, guide, agents }`（`agents` は上の診断）
 - `schemaVersion` は JSON の形の版（`GUIDE_SCHEMA_VERSION`）。`cliVersion` は同梱の `package.json` の版で、最新かどうかの判断には
   使わない（npm に問い合わせない）。`entryVersion`（`ENTRY_VERSION`。正の整数）は入口（置いたスキル・節）の決まりの版で、起動の

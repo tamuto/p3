@@ -4,20 +4,20 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Connection } from "@infodb/chatgpt-plan";
-import { type ProjectConfig, type Request, type Task } from "../src/shared/types.ts";
-import type { P3Context } from "../src/core/context.ts";
-import type { PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { PreflightService } from "../src/core/preflight/service.ts";
-import { writeProjectFile, writeRepoEntry } from "../src/core/store/projectFile.ts";
-import type { RepoRef } from "../src/shared/repos.ts";
-import { Workspace } from "../src/core/store/workspace.ts";
-import { ReleaseGenerator, type Summarizer } from "../src/core/releaseNotes/generate.ts";
-import { MockSummarizer } from "../src/core/releaseNotes/mockSummarizer.ts";
-import { MilestoneReviewService } from "../src/core/milestoneReview/service.ts";
-import { MockReviewer } from "../src/core/milestoneReview/mockReviewer.ts";
-import { TaskReviewService } from "../src/core/taskReview/service.ts";
-import { MockTaskReviewer } from "../src/core/taskReview/mockReviewer.ts";
+import { type ProjectConfig, type Request, type Task } from "../packages/tasks/src/shared/types.ts";
+import type { P3Context } from "../packages/tasks/src/core/context.ts";
+import type { PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
+import { writeProjectFile, writeRepoEntry } from "../packages/tasks/src/core/store/projectFile.ts";
+import type { RepoRef } from "../packages/tasks/src/shared/repos.ts";
+import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
+import { ReleaseGenerator, type Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { MockSummarizer } from "../packages/tasks/src/core/releaseNotes/mockSummarizer.ts";
+import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
+import { MockReviewer } from "../packages/tasks/src/core/milestoneReview/mockReviewer.ts";
+import { TaskReviewService } from "../packages/tasks/src/core/taskReview/service.ts";
+import { MockTaskReviewer } from "../packages/tasks/src/core/taskReview/mockReviewer.ts";
 
 export function tempDir(prefix = "p3-test-"): string {
   // macOS などで /tmp がシンボリックリンクでも、git の返すパスと比べられるよう実体にする

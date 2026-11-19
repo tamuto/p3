@@ -1,9 +1,9 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import type { PreflightPulse } from "../src/shared/types.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import type { PreflightPulse } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, openTestProject } from "./helpers.ts";
 
 /**

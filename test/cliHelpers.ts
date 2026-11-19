@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, expect, vi } from "vitest";
 import { gitInit, tempDir } from "./helpers.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
 
 /**
  * CLI を別のプロセスで動かすテスト（test/cli*.test.ts）の共通の準備。
@@ -17,7 +17,7 @@ import { parseFrontmatter, stringifyFrontmatter } from "../src/core/store/frontm
 // 超えうる。CLI のテストファイルだけ待つ時間を延ばす（確かめる中身は変えない）
 vi.setConfig({ testTimeout: 60_000 });
 
-export const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+export const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
 
 /** 今のテストの個人設定の場所（XDG_CONFIG_HOME）。テストごとに新しい一時フォルダ */
 export let CONFIG_HOME = "";

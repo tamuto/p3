@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { evidenceLines, scopeLines } from "../src/shared/scopeView.ts";
-import { PreflightScope } from "../src/web/components/PreflightScope.tsx";
+import { evidenceLines, scopeLines } from "../packages/tasks/src/shared/scopeView.ts";
+import { PreflightScope } from "../packages/tasks/src/web/components/PreflightScope.tsx";
 
 const scope = [
   { name: "app", mount: "app", role: "本体", readFirst: true, status: "ok" as const },

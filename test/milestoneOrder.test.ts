@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareMilestoneIds, sortMilestones } from "../src/shared/milestoneOrder.ts";
+import { compareMilestoneIds, sortMilestones } from "../packages/tasks/src/shared/milestoneOrder.ts";
 
 const ids = (list: { id: string }[]) => list.map((m) => m.id);
 const of = (...xs: string[]) => xs.map((id) => ({ id, title: `t-${id}` }));

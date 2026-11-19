@@ -4,16 +4,16 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { PreflightEngine } from "../src/core/preflight/engine.ts";
-import { LOCAL_INSTRUCTIONS_FILE } from "../src/core/preflight/instructions.ts";
-import { RenderError } from "../src/core/preflight/render.ts";
-import { LocalResultError, LocalRunError, PreflightBusyError, PreflightService } from "../src/core/preflight/service.ts";
-import type { Renderer } from "../src/core/preflight/uiRender.ts";
-import { wireframePng } from "../src/core/preflight/wireframe.ts";
-import { stringifyFrontmatter } from "../src/core/store/frontmatter.ts";
-import { NotFoundError } from "../src/core/store/collection.ts";
-import { PREFLIGHT_CANCELLED } from "../src/shared/directTask.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import type { PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { LOCAL_INSTRUCTIONS_FILE } from "../packages/tasks/src/core/preflight/instructions.ts";
+import { RenderError } from "../packages/tasks/src/core/preflight/render.ts";
+import { LocalResultError, LocalRunError, PreflightBusyError, PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
+import type { Renderer } from "../packages/tasks/src/core/preflight/uiRender.ts";
+import { wireframePng } from "../packages/tasks/src/core/preflight/wireframe.ts";
+import { stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
+import { PREFLIGHT_CANCELLED } from "../packages/tasks/src/shared/directTask.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { gitInit, makeRepo, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /** 呼ばれたら失敗するエンジン（手元の経路はモデルを呼ばない） */
@@ -259,7 +259,7 @@ describe("画面（API）から見た手元のエージェントの Preflight", 
 });
 
 describe("CLI（別のプロセス）での手元のエージェントの Preflight", () => {
-  const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+  const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   function p3(cwd: string, configHome: string, args: string[]) {
     const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_")));
     // Codex・Docker を呼べないようにする（呼べば失敗する）

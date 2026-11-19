@@ -1,69 +1,65 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { DOCS, links } from "./docLinks.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
 
+/** workspace の manifest（ルートは開発用。配布するのは packages/p3 の @infodb/p3） */
+const MANIFESTS = ["package.json", "packages/p3/package.json", "packages/tasks/package.json", "packages/kit/package.json"];
+
 describe("依存の指定", () => {
-  it("llmcs の部品（codex-workspace・chatgpt-plan）は公開版の範囲で指定し、手元のフォルダへのリンクを残さない", () => {
-    const pkg = JSON.parse(read("package.json"));
+  it("llmcs の部品（codex-workspace・chatgpt-plan）は公開版の範囲で指定し、手元のフォルダへのリンクを残さない。workspace の参照は自分たちのパッケージだけ", () => {
+    const pkg = JSON.parse(read("packages/p3/package.json"));
     expect(pkg.dependencies["@infodb/codex-workspace"]).toMatch(/^\^\d+\.\d+\.\d+$/);
     expect(pkg.dependencies["@infodb/chatgpt-plan"]).toMatch(/^\^\d+\.\d+\.\d+$/);
     expect(pkg.dependencies["@llmcs/codex-workspace"]).toBeUndefined();
-    const all = { ...pkg.dependencies, ...pkg.devDependencies };
-    expect(Object.entries(all).filter(([, v]) => /^(link|file|portal):/.test(String(v)))).toEqual([]);
-    expect(read("pnpm-lock.yaml")).not.toMatch(/\b(link|file):\.\.?\//);
+    for (const m of MANIFESTS) {
+      const j = JSON.parse(read(m));
+      const all = Object.entries({ ...j.dependencies, ...j.devDependencies }) as [string, string][];
+      expect(all.filter(([, v]) => /^(link|file|portal):/.test(v)), m).toEqual([]);
+      expect(all.filter(([k, v]) => v.startsWith("workspace:") && !/^@infodb\/p3-(tasks|kit)$/.test(k)), m).toEqual([]);
+    }
+    // lockfile のリンクは workspace の自分たちのパッケージ（入口 → tasks・kit、tasks → kit）だけ（手元の llmcs などを指さない）
+    const lockLinks = [...read("pnpm-lock.yaml").matchAll(/\b(?:link|file):(\.\.?\/[^\s'"]*)/g)].map((m) => m[1]);
+    expect(lockLinks.filter((l) => !/^\.\.\/(kit|tasks)$/.test(l))).toEqual([]);
   });
 
   it("公開から日の浅い版を待たずに入れる例外は、自分たちが公開した @infodb の部品の版を固定したものだけ", () => {
-    const ws = parse(read("pnpm-workspace.yaml")) as { minimumReleaseAgeExclude?: string[] };
+    const ws = parse(read("pnpm-workspace.yaml")) as { minimumReleaseAgeExclude?: string[]; packages?: string[] };
     for (const e of ws.minimumReleaseAgeExclude ?? []) expect(e).toMatch(/^@infodb\/[a-z0-9-]+@\d+\.\d+\.\d+$/);
+    expect(ws.packages).toEqual(["packages/*"]);
   });
 });
 
-describe("npm で配る中身", () => {
-  const pkg = JSON.parse(read("package.json"));
+describe("npm で配る中身（manifest）", () => {
+  const pkg = JSON.parse(read("packages/p3/package.json"));
+  const root = JSON.parse(read("package.json"));
 
-  it("公開できる manifest（スコープ付きの公開・Node の版・bin・公開前のビルド）", () => {
+  it("公開できる manifest（スコープ付きの公開・Node の版・bin）。ルートと kit・tasks は公開しない", () => {
     expect(pkg.private).toBeUndefined();
     expect(pkg.name).toBe("@infodb/p3");
     expect(pkg.publishConfig).toEqual({ access: "public" });
     expect(pkg.license).toBe("MIT");
     expect(pkg.engines.node).toBe(">=24");
     expect(pkg.bin).toEqual({ p3: "bin/p3.mjs" });
-    expect(pkg.scripts.prepack).toBe("pnpm build");
-    // 利用者が入れるときにビルドや Docker を動かさない
-    for (const s of ["preinstall", "install", "postinstall", "prepare"]) expect(pkg.scripts[s]).toBeUndefined();
+    expect(pkg.files).toEqual(["bin", "lib", "dist/web", "skills", "docs"]);
+    // 利用者が入れるときにビルドや Docker を動かさない（入口の manifest にスクリプトを書かない。ビルドはルートの pnpm build）
+    expect(pkg.scripts).toBeUndefined();
+    expect(root.scripts.build).toBe("vite build && node scripts/build-cli.mjs --require-web");
+    for (const m of ["package.json", "packages/tasks/package.json", "packages/kit/package.json"]) expect(JSON.parse(read(m)).private, m).toBe(true);
+    // 同じ版で出す（kit・tasks は同梱するので、版は入口とそろえる）
+    for (const m of MANIFESTS) expect(JSON.parse(read(m)).version, m).toBe(pkg.version);
   });
 
-  it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用）", () => {
+  it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用。kit・tasks は同梱するので書かない）", () => {
     expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/chatgpt-plan", "@infodb/codex-workspace", "hono", "yaml", "zod"]);
-  });
-
-  it("npm pack の一覧に、動かすのに要るものがあり、設定・テスト・開発用のものが無い", () => {
-    const r = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: fileURLToPath(root), encoding: "utf8" });
-    expect(r.status, r.stderr).toBe(0);
-    const files: string[] = JSON.parse(r.stdout)[0].files.map((f: { path: string }) => f.path);
-    for (const f of ["package.json", "README.md", "LICENSE", "bin/p3.mjs", "skills/p3/SKILL.md"]) {
-      expect(files).toContain(f);
+    // 同梱する kit・tasks の実行時の依存は、入口の依存に同じ範囲で入っている
+    for (const m of ["packages/tasks/package.json", "packages/kit/package.json"]) {
+      for (const [k, v] of Object.entries(JSON.parse(read(m)).dependencies as Record<string, string>)) {
+        if (k.startsWith("@infodb/p3-")) continue;
+        expect(pkg.dependencies[k], `${m} の ${k}`).toBe(v);
+      }
     }
-    // 画面はビルドしてあれば入る（pnpm -s check はテストの後にビルドするので、ここでは有無だけ確かめる）。CLI・serve の JavaScript（lib/）は
-    // ここでは見ない（test/pack.test.ts が並行して作り直すため）。lib/ を作って詰めて動かすのは pack.test.ts と scripts/verify-pack.mjs
-    if (existsSync(new URL("dist/web/index.html", root))) expect(files).toContain("dist/web/index.html");
-    expect(pkg.files).toContain("lib");
-    // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）
-    for (const doc of DOCS) {
-      expect(files).toContain(doc);
-      for (const { target } of links(doc)) expect(files, `${doc} → ${target}`).toContain(target);
-    }
-    const unwanted = files.filter((f) =>
-      // TypeScript のソース（src/）は入れない（実行はビルド済みの lib/。tsx・esbuild を利用者の環境に入れない）
-      /^(\.env|\.p3|\.claude\/|\.serena\/|test\/|scripts\/|src\/|node_modules\/|tsconfig|vite\.config|vitest\.config|pnpm-)/.test(f) || f.endsWith(".ts"),
-    );
-    expect(unwanted).toEqual([]);
   });
 });

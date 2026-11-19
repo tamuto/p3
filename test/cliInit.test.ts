@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CONFIG_HOME, p3, repo, snapshot } from "./cliHelpers.ts";
 import { git, tempDir } from "./helpers.ts";
-import { init } from "../src/cli/project.ts";
+import { init } from "../packages/p3/src/cli/project.ts";
 
 describe("p3 init", () => {
   it("指定したフォルダにデータを作り、リポジトリの中身から既定値を推測する", async () => {

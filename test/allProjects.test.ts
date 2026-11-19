@@ -3,18 +3,18 @@ import { cp, mkdir, readFile, rename, symlink, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import type { P3Context } from "../src/core/context.ts";
-import { fixedSettings, resolveMachineSettings } from "../src/core/machineSettings.ts";
-import type { EngineOutcome, PreflightEngine } from "../src/core/preflight/engine.ts";
-import { MockEngine } from "../src/core/preflight/mockEngine.ts";
-import { currentOwner } from "../src/core/preflight/owner.ts";
-import { ProjectRegistry, RegistryError } from "../src/core/projectRegistry.ts";
-import type { Summarizer } from "../src/core/releaseNotes/generate.ts";
-import { checkDataDir } from "../src/core/store/locate.ts";
-import { GENERATION_HEADER, projectsRoutes } from "../src/server/api/projectsRoutes.ts";
-import { singleProjectApp, startServer } from "../src/server/server.ts";
-import type { ServerEvent } from "../src/shared/types.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import type { P3Context } from "../packages/tasks/src/core/context.ts";
+import { fixedSettings, resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
+import type { EngineOutcome, PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
+import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
+import { currentOwner } from "../packages/tasks/src/core/preflight/owner.ts";
+import { ProjectRegistry, RegistryError } from "../packages/p3/src/core/projectRegistry.ts";
+import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { checkDataDir } from "../packages/tasks/src/core/store/locate.ts";
+import { GENERATION_HEADER, projectsRoutes } from "../packages/p3/src/server/api/projectsRoutes.ts";
+import { singleProjectApp, startServer } from "../packages/p3/src/server/server.ts";
+import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
 /** 外から開け閉めできる Preflight のエンジン（開くまで待つ。取り消せる） */
@@ -406,7 +406,7 @@ describe("本物の待ち受け（--all-projects）", () => {
 });
 
 describe("p3 serve --all-projects の引数", () => {
-  const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+  const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   const run = (args: string[]) => spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", env: { ...process.env, XDG_CONFIG_HOME: tempDir("p3-cfg-") } });
   it("serve 以外・--project / --dir と一緒には使えない", () => {
     expect(run(["ls", "--all-projects"])).toMatchObject({ status: 1, stderr: expect.stringContaining("p3 serve でだけ") });

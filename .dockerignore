@@ -8,7 +8,11 @@
 .devcontainer
 .worktrees
 node_modules
+**/node_modules
 dist
+**/dist
+packages/p3/lib
+packages/p3/build-src
 *.tgz
 .p3
 .p3-demo

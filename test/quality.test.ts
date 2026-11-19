@@ -3,10 +3,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { qualityView, updateQuality } from "../src/core/quality.ts";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { applyQualityOps, QualityInputError, qualityVersion, readQuality, standardsFor, templateDiffs, type QualityTemplate } from "../src/shared/quality.ts";
-import { QUALITY_TEMPLATES } from "../src/shared/qualityTemplates.ts";
+import { qualityView, updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { applyQualityOps, QualityInputError, qualityVersion, readQuality, standardsFor, templateDiffs, type QualityTemplate } from "../packages/tasks/src/shared/quality.ts";
+import { QUALITY_TEMPLATES } from "../packages/tasks/src/shared/qualityTemplates.ts";
 import { MAIN_REF, makeProject, openTestProject, tempDir } from "./helpers.ts";
 
 /**
@@ -115,7 +115,7 @@ describe("CLI と API", () => {
   it("CLI と API で同じ基準が残る。版の競合は CLI 3・API 409", async () => {
     const a = await makeProject();
     const b = await makeProject();
-    const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+    const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
     const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
     const p3 = (args: string[]) => {
       const r = spawnSync(process.execPath, [BIN, "--dir", a.dataDir, ...args], { encoding: "utf8", env });
@@ -154,7 +154,7 @@ describe("CLI と API", () => {
 });
 
 describe("CLI の対象（--repo）と未設定からの開始", () => {
-  const BIN = fileURLToPath(new URL("../bin/p3.mjs", import.meta.url));
+  const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   async function setup() {
     const a = await makeProject({ repos: [MAIN_REF, { ...MAIN_REF, name: "infra", readFirst: false }] });
     const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };

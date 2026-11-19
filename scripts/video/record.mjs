@@ -21,7 +21,7 @@ import { chromium } from "playwright-core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
-const P3_BIN = join(ROOT, "bin/p3.mjs");
+const P3_BIN = join(ROOT, "packages/p3/bin/p3.mjs");
 const DEMO_HOME = "/home/me";
 const REPO = join(DEMO_HOME, "src/expense");
 const PORT = 4310;

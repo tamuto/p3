@@ -7,7 +7,7 @@ description: infodb p3（P³）自身の開発で、このリポジトリの要�
 
 このリポジトリ（infodb p3 本体）の作業も、p3 の要望とタスクで管理する。
 操作の手順・人と AI の役割・してはいけないことは、**開発中のソースの CLI が返す手順**に従う。p3 を操作する前に
-`pnpm -s p3 guide --json` を実行し、返った `guide` を最後まで読むこと（原本は `src/cli/guide.md`。利用者のプロジェクトでは、置いた
+`pnpm -s p3 guide --json` を実行し、返った `guide` を最後まで読むこと（原本は `packages/p3/src/cli/guide.md`。利用者のプロジェクトでは、置いた
 入口 `skills/p3/SKILL.md` から公開版の `guide` を読む）。ここには P3 の開発だけで違う点を書く。
 `guide` を取得できなければ（CLI を壊す変更の途中など）、p3 を操作せず、下の「CLI の呼び方」の最後に従ってユーザーに伝える。
 
@@ -35,12 +35,12 @@ P3_ACTOR=ai:<エージェント名> pnpm -s p3 <コマンド> [引数] --json   
   `move ... done --output` で足す
 - 依存の `@infodb/codex-workspace`・`@infodb/chatgpt-plan`（llmcs）は公開版を使う。手元の llmcs で試すときの一時的な手順と、
   公開から1日を待たずに入れる例外の決まりは `docs/architecture.md`（llmcs の部品の依存）
-- 手順の本文（役割・終わり方）は `src/cli/guide.md` の1か所に書く。置く入口の `skills/p3/SKILL.md` と `src/cli/project.ts` の
+- 手順の本文（役割・終わり方）は `packages/p3/src/cli/guide.md` の1か所に書く。置く入口の `skills/p3/SKILL.md` と `packages/p3/src/cli/project.ts` の
   `agentsSnippet`（`AGENTS_SNIPPET`）は入口だけで、入口に書くこと（呼び方・読み込みの約束）を変えたら両方を直し、`ENTRY_VERSION`
-  （`src/cli/guide.ts`）を上げる。本文だけの改訂では上げない（`test/agents.test.ts` が確かめる）
+  （`packages/p3/src/cli/guide.ts`）を上げる。本文だけの改訂では上げない（`test/agents.test.ts` が確かめる）
 - このリポジトリの `.claude/skills/p3/SKILL.md`（このファイル）は開発向けで、置く入口とわざと違う。`whoami` / `guide` の `agents` に
   このファイルの `outdated`・`modified` と、AGENTS.md の節の `missing` が出ても、このリポジトリでは人に伝えなくてよい（ほかの状態は伝える）
 - 機能を足す・変えるときに直す場所: 規則は `docs/architecture.md` の「規則の置き場所」の1か所（CLI と API の両方に書かない）。
   ドキュメントは、導入を docs/installation.md、使い方を docs/how-to-use.md、開発を docs/development.md、設計と規則を docs/architecture.md に書き、README は入口だけにする（分担は docs/development.md の「文書を直すとき」）。同じ説明を複数に書かない。CLI のヘルプ
   （`cli/help.ts`）・API の説明（`server/api/manifest.ts`）は入口が変わったときだけ。AI の手順が変わったら
-  手順の原本 `src/cli/guide.md`（入口が変わったときだけ `skills/p3/SKILL.md`・`AGENTS_SNIPPET`・`ENTRY_VERSION` も）。確認作業の記録（どの幅で確かめたか）はドキュメントに書かず、PR とタスクの成果物に残す
+  手順の原本 `packages/p3/src/cli/guide.md`（入口が変わったときだけ `skills/p3/SKILL.md`・`AGENTS_SNIPPET`・`ENTRY_VERSION` も）。確認作業の記録（どの幅で確かめたか）はドキュメントに書かず、PR とタスクの成果物に残す

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 async function setup() {

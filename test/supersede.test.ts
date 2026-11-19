@@ -2,11 +2,11 @@ import { writeFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { apiRoutes } from "../src/server/api/routes.ts";
-import { ConflictError } from "../src/core/store/collection.ts";
-import { supersededMarks } from "../src/core/supersede.ts";
-import type { SupersedeCandidate } from "../src/shared/types.ts";
-import { archiveSelection, markText, warningText } from "../src/web/lib/supersede.ts";
+import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
+import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
+import { supersededMarks } from "../packages/tasks/src/core/supersede.ts";
+import type { SupersedeCandidate } from "../packages/tasks/src/shared/types.ts";
+import { archiveSelection, markText, warningText } from "../packages/tasks/src/web/lib/supersede.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 
 /**

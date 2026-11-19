@@ -2,11 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { chatgptAccount } from "../src/core/chatgpt.ts";
-import { CodexWorkspaceEngine } from "../src/core/preflight/codexEngine.ts";
-import { GenerationRejected, parseSummary, ReleaseGenerator, SUMMARY_INPUT_LIMIT, summaryInput, type Summarizer } from "../src/core/releaseNotes/generate.ts";
-import { releaseMaterial, saveReleaseNote, startGeneration } from "../src/core/releaseNotes/service.ts";
-import type { ReleaseGeneration } from "../src/shared/types.ts";
+import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
+import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
+import { GenerationRejected, parseSummary, ReleaseGenerator, SUMMARY_INPUT_LIMIT, summaryInput, type Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { releaseMaterial, saveReleaseNote, startGeneration } from "../packages/tasks/src/core/releaseNotes/service.ts";
+import type { ReleaseGeneration } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-summarizer.mjs", import.meta.url));

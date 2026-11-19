@@ -2,9 +2,9 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "n
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
-import { agentsText, diagnoseAgents, type AgentsDiagnosis } from "../src/cli/agentsStatus.ts";
-import { ENTRY_VERSION } from "../src/cli/guide.ts";
-import { AGENTS_SNIPPET, placeAgents, SKILL_SOURCE } from "../src/cli/project.ts";
+import { agentsText, diagnoseAgents, type AgentsDiagnosis } from "../packages/p3/src/cli/agentsStatus.ts";
+import { ENTRY_VERSION } from "../packages/p3/src/cli/guide.ts";
+import { AGENTS_SNIPPET, placeAgents, SKILL_SOURCE } from "../packages/p3/src/cli/project.ts";
 
 const CLAUDE = ".claude/skills/p3/SKILL.md";
 const CODEX = ".agents/skills/p3/SKILL.md";
