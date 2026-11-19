@@ -235,10 +235,10 @@ p3 request set k7m3x status=done               # 要望を完了済にする（�
 
 | 登録が1つだけで決まったとき | コマンド |
 | --- | --- |
-| 警告して続ける | `whoami`・`progress`・`ls`・`show`・`find`・`notes`・`drafts`、`request ls / show`、`milestone`（一覧）、`config`（表示）、`repo`（一覧）、`attach`（一覧）、`release-notes ls / show / export` |
-| 止まる | 上のほか全部。要望・タスク・マイルストーン・設定・参照先の変更、`preflight`（`--note-only` も）、`accept`、`attach add / get / rm`（`get` はファイルを書く）、`release-notes generate / save`（`generate` は保存しなくても生成を始める）、`serve`（画面から変えられる） |
+| 警告して続ける | `whoami`・`progress`・`ls`・`show`・`find`・`resolve`・`notes`・`drafts`・`clarify`・`revisit`、`request ls / show`、`milestone`（一覧）、`config`（表示）、`repo`（一覧）、`attach`（一覧）、`quality`（表示・`templates`・`template`）、`release-notes ls / show / export`、`metrics`（集計）・`metrics records`、`retro`（表示）、`premise`（一覧）、`source`（根拠の一覧: 要望・タスク・案とその基準。`ls` / `show` / 操作なし） |
+| 止まる | 上のほか全部。要望・タスク・マイルストーン・設定・参照先の変更、`preflight`（`--note-only` も）、`accept`、`answer`、`attach add / get / rm`（`get` はファイルを書く）、`release-notes generate / save`（`generate` は保存しなくても生成を始める）、`metrics record / rm`、`retro confirm / judge`、`premise add / ack`、`source` の操作（`add`・`edit`・`confirm`・`rm` と、操作の語が無くても `--sources-json` でまとめて当てるとき。ファイル・標準入力を読む前に止まる）、`serve`（画面から変えられる） |
 
-`init`・`project`・`user-config`・`chatgpt`・`codex`・`render` はプロジェクトを選ばないので対象外。
+`init`・`project`・`user-config`・`chatgpt`・`codex`・`render`・`guide` はプロジェクトを選ばないので対象外。
 
 決まったプロジェクトの **データのフォルダと `project.yaml` が無い** と、CLI のどのコマンドも `serve` も、空のプロジェクトとして
 開かずに終了コード 1 で止まる（何も作らない。`--json` でも空の結果は返さず、案内は標準エラーに出る）。フォルダの移動・共有ドライブの

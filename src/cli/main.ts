@@ -219,7 +219,7 @@ async function main(argv: string[]): Promise<number> {
   const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
   // 登録が1つだけで決まった（今いる場所では決まっていない）なら、変える操作は何も読み書きする前に止め、読むだけなら警告する
   if (target.via === "only") {
-    const write = !readsOnly(cmd, args);
+    const write = !readsOnly(cmd, args, o);
     if (write) throw new ProjectNotResolvedError(onlyRegistrationNotice(target, true));
     process.stderr.write(`${onlyRegistrationNotice(target, false)}\n`);
   }

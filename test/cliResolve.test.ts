@@ -59,6 +59,19 @@ describe("登録が1つだけで決まったとき（今いる場所では決ま
       ["attach", "rm", aid, "--req", rid],
       ["release-notes", "generate", "v1"],
       ["release-note", "save", "v1"],
+      ["answer", rid, "Q1", "--body", "回答"],
+      ["metrics", "record", "post_release_defects", "0", "--from", "2026-11-01", "--to", "2026-11-30", "--source", "管理表"],
+      ["metrics", "rm", "M1"],
+      ["metrics", "知らない操作"],
+      ["retro", rid, "confirm"],
+      ["retrospective", "judge", "1", "--state", "occurred", "--req", rid],
+      ["retro", rid, "知らない操作"],
+      ["premise", "add", "--target", rid, "--reason", "x", "--req", rid],
+      ["premises", rid, "ack", "P1", "--target", rid, "--condition", "x"],
+      ["premise", rid, "知らない操作"],
+      ["source", rid, "add", "--source", "x"],
+      ["source", `${rid}/T001`, "A1", "rm", "S1"],
+      ["source", rid, "知らない操作"],
       ["serve", "--port", "0"],
       ["知らないコマンド"],
     ];
@@ -105,6 +118,16 @@ describe("登録が1つだけで決まったとき（今いる場所では決ま
       ["release-notes"],
       ["release-note", "ls"],
       ["release-notes", "show", "v1"],
+      ["revisit", rid],
+      ["quality"],
+      ["quality", "templates"],
+      ["metrics"],
+      ["metrics", "--milestone", "v1"],
+      ["metrics", "records"],
+      ["retro", rid],
+      ["retrospective", "show", "--req", rid],
+      ["premise", rid],
+      ["premises", "ls", "--req", rid],
     ];
     for (const args of reads) {
       const r = p3(nowhere, [...args, "--json"]);
@@ -114,13 +137,67 @@ describe("登録が1つだけで決まったとき（今いる場所では決ま
       expect(() => r.json()).not.toThrow();
     }
     // まだ無いもの（Preflight のタスク案・リリースノート）を読むときも、止めずに「無い」と返す
-    for (const args of [["drafts", rid], ["release-notes", "export", "v1"]]) {
+    for (const args of [["drafts", rid], ["clarify", rid], ["release-notes", "export", "v1"]]) {
       const r = p3(nowhere, args);
       expect(r.code, args.join(" ")).toBe(2);
       expect(r.err).toContain("を表示しています");
       expect(r.err).not.toContain("変える操作はしません");
     }
     expect(p3(nowhere, ["whoami", "--json"]).json()).toMatchObject({ project: "app", via: "only", here: [] });
+  });
+
+  it("根拠の一括操作（--sources-json）は要望・タスク・案のどれでも、ファイル・標準入力を読む前に止まり、明示すれば保存できる。根拠の一覧は警告して読める", async () => {
+    const { app, data, rid, nowhere } = await single();
+    expect(p3(app, ["add", "書き出し", "--req", rid, "--criterion", "CSV で書き出せる"]).code).toBe(0);
+    const pf = p3(app, ["preflight", rid, "--engine", "mock", "--json"]);
+    expect(pf.code, pf.err).toBe(0);
+    const run = pf.json().id as string;
+    expect(p3(app, ["source", `${rid}/D1`, "--json"]).json().items.length).toBeGreaterThan(0);
+    const file = join(nowhere, "ops.json");
+    writeFileSync(file, JSON.stringify([{ op: "add", source: "経理規程" }]));
+    const criterionFile = join(nowhere, "criterion-ops.json");
+    writeFileSync(criterionFile, JSON.stringify([{ criterion: "A1", op: "add", source: "経理規程" }]));
+    const before = snapshot(data);
+    const bulk: { args: string[]; input?: string }[] = [
+      { args: ["source", rid, "--sources-json", file] },
+      { args: ["sources", rid, "--sources-json", "-"], input: JSON.stringify([{ op: "add", source: "標準入力" }]) },
+      { args: ["source", "--sources-json", file, "--req", rid] },
+      { args: ["source", `${rid}/T002`, "--sources-json", criterionFile] },
+      { args: ["source", `${rid}/T002`, "A1", "--sources-json", file] },
+      { args: ["source", `${rid}/T002`, "--sources-json", "-"], input: JSON.stringify([{ criterion: "A1", op: "add", source: "標準入力" }]) },
+      { args: ["source", `${rid}/D1`, "--sources-json", criterionFile] },
+      { args: ["source", `${rid}/D1`, "A1", "--sources-json", "-"], input: JSON.stringify([{ op: "add", source: "標準入力" }]) },
+      // 読むより先に止まる（壊れた入力・無いファイルでも、入力の誤りではなくプロジェクトの案内）
+      { args: ["source", rid, "--sources-json", join(nowhere, "無い.json")] },
+      { args: ["source", rid, "--sources-json", "-"], input: "{ 壊れた" },
+    ];
+    for (const { args, input } of bulk) {
+      const r = p3(nowhere, args, {}, CONFIG_HOME, input);
+      expect(r.code, args.join(" ")).toBe(1);
+      expect(r.err, args.join(" ")).toContain("変える操作はしません");
+      expect(r.err, args.join(" ")).not.toMatch(/--sources-json は|読めません|JSON/);
+      expect(r.out).toBe("");
+    }
+    expect(snapshot(data)).toEqual(before);
+
+    // 根拠の一覧は警告して読める（要望・タスク・案とその基準）
+    for (const args of [["source", rid], ["sources", rid, "ls"], ["source", "show", "--req", rid], ["source", `${rid}/T002`], ["source", `${rid}/T002`, "A1", "show"], ["source", `${rid}/D1`, "A1"]]) {
+      const r = p3(nowhere, [...args, "--json"]);
+      expect(r.code, `${args.join(" ")}: ${r.err}`).toBe(0);
+      expect(r.err).toContain("を表示しています");
+      expect(() => r.json()).not.toThrow();
+    }
+
+    // 明示すれば同じ一括操作で保存できる
+    const req = p3(nowhere, ["--project", "app", "source", rid, "--sources-json", file, "--json"]);
+    expect(req.code, req.err).toBe(0);
+    expect(req.json().sources).toEqual([expect.objectContaining({ id: "S1", source: "経理規程" })]);
+    const task = p3(nowhere, ["--project", "app", "source", `${rid}/T002`, "--sources-json", "-", "--json"], {}, CONFIG_HOME, JSON.stringify([{ criterion: "A1", op: "add", source: "標準入力" }]));
+    expect(task.code, task.err).toBe(0);
+    expect(task.json().items[0].sources).toEqual([expect.objectContaining({ id: "S1", source: "標準入力" })]);
+    const draft = p3(nowhere, ["--project", "app", "source", `${rid}/D1`, "--sources-json", criterionFile, "--run", run, "--json"]);
+    expect(draft.code, draft.err).toBe(0);
+    expect(draft.json().items[0].sources).toEqual([expect.objectContaining({ id: "S1", source: "経理規程" })]);
   });
 
   it("プロジェクトを明示するか、今いる場所で決まれば、変える操作もできる", async () => {
