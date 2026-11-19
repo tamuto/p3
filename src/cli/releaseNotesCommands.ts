@@ -4,7 +4,7 @@ import type { ReleaseGeneration, ReleaseMaterial, ReleaseWarning, RequestComplet
 import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote, startGeneration } from "../core/releaseNotes/service.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import { shellArg } from "./output.ts";
 import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 import { completeMilestoneRequests, CompletionRejected } from "../core/releaseNotes/completeRequests.ts";

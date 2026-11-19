@@ -855,9 +855,49 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | マイルストーンレビュー（材料の範囲・履歴の保存・依頼文と結果の確かめ方・実行の排他と回復） | `core/milestoneReview/`（`material.ts`・`store.ts`・`review.ts`・`service.ts`） |
 | マイルストーンの目的・予定機能（件数・文字数・空・重複・ID の振り方） | `shared/milestoneGoals.ts`（保存の排他と版の照合は `core/store/workspace.ts` の `saveProject`） |
 
-CLI は `cli/main.ts`（振り分け・プロジェクトと変更者の決定・終了コード）と、種類ごとのコマンド（`taskCommands.ts`・
+CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・登録が1つだけのときの抑止・serve・help・guide・init・join・agents）、
+`cli/tasksCli.ts`（tasks: プロジェクトを開いた後の振り分けとエラーから終了コードへの対応）と、種類ごとのコマンド（`taskCommands.ts`・
 `requestCommands.ts`・`preflightCommands.ts`）に分ける。大きい画面は、ルートのファイルを組み立てだけにして部品を
 `web/components/<ページ>/` に分ける。
+
+## パッケージの構成
+
+p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer など）を選んで組み合わせる形にするため、コードを 3 つのまとまりに分ける
+（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
+
+| まとまり | 中身 | 読み込んでよいもの |
+| --- | --- | --- |
+| 入口（p3） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | tasks・kit |
+| tasks | 今の p3 の機能（要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・画面のページ・API） | kit |
+| kit | 入口と製品が使う最小限の共通処理 | なし |
+
+- 入口は、知っている製品（今は tasks だけ）をはっきり呼んで組み込む。製品を探して読み込む仕組み（プラグインの基盤）は作らない
+- tasks は入口を読み込まない。入口のもの（置いた AI 向けの入口の診断など）が要るときは、入口から値や関数で渡す（`cli/tasksCli.ts` の `TasksRun`）
+- 将来の製品どうしは直接読み込まない。連携が要るなら kit の小さな約束事を通す。p3-observer は名前だけを決め、データは自分のサブフォルダ
+  （`.p3/observer/` の想定）だけを持つ（tasks のデータに触れない）
+- 今の `shared` は「画面と Node の両方から読める」という層の規則で、tasks 固有の型が多い。まるごと kit にはしない
+- 境界は `test/packageBoundary.test.ts` が確かめる（入口 → tasks → kit の一方向、kit の処理に使い手がいること）
+
+**機能（棚卸しの ID）ごとの置き場所**
+
+| 棚卸し | 置き場所 | 分け方・今の置き方 |
+| --- | --- | --- |
+| F01 起動・振り分け・help・静的配信 | 入口 | `bin/p3.mjs`・`cli/main.ts`・`cli/help.ts`・`server/server.ts`。tasks のコマンドは `cli/tasksCli.ts` の `runTasksCommand`、終了コードは `reportError` を呼ぶ |
+| F02 配布物の確認 | 入口 | `scripts/verify-*.mjs`・`scripts/check-browser.ts`・`docs/publishing.md` |
+| F03 AI 向けの入口・guide・診断 | 入口 | `cli/project.ts`（置く）・`cli/guide.ts`・`cli/agentsStatus.ts`・`skills/`。手順の本文 `cli/guide.md` は tasks の運用の手順だが、`p3 guide` が同梱の原本を返すので当面は入口と一緒に置く |
+| F04 登録・参加・プロジェクトの決定・読む／書くの判定 | 分ける | 入口: `cli/project.ts`（init・join・project）。tasks: `cli/projectSettings.ts`（`config`・`repo`・変更者・今いる参照先・今の要望）・`cli/readOnly.ts`（コマンドごとの読む／書く。入口が呼ぶ）・`core/store/locate.ts`（決め方とデータの検査。入口が呼ぶ） |
+| F05 個人設定・マシンごとの設定・変更者 | tasks（kit の候補） | `core/userConfig.ts`・`core/machineSettings*.ts`・`cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の製品が個人設定を使うときに、入出力だけを kit に分ける |
+| F06 置き換え書き込み・ロック・frontmatter | kit | `core/store/fsutil.ts`・`core/store/frontmatter.ts`。今は tasks（要望・タスク・run・指標・設定の保存）が使い、将来の製品の保存も使う見込み。採番・正規化・アーカイブは tasks |
+| F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | 入口: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品 `web/components/ui.tsx` とテーマ（`ThemePanel`・`core/userTheme.ts`・`server/api/userThemeRoutes.ts`）は、設定画面（tasks のページ）が使うので当面は tasks に置き、入口が読み込む。2 つ目の製品が使うときに kit に移す |
+| F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知は入口の `projectsRoutes.ts`。監視の仕組みを製品で共有するのは 2 つ目の製品が出てから |
+| F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。入口の `projectsRoutes.ts` も同じ説明を返す |
+| F10〜F25・F27 | tasks | 判断表の根拠のパスのまま |
+| F26 AI 接続・実行環境 | tasks（暫定） | `cli/{codex,chatgpt}.ts`・`core/chatgpt.ts`・`core/preflight/{codexEngine,docker,hostPaths}.ts`。入口は `codex`・`chatgpt`・`render` のコマンドをプロジェクトを決める前に tasks の関数で動かす |
+| F28 独立した観測 | なし | パッケージの名前（observer）だけを予約する |
+
+**kit の中身と使い手**: `cli/usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口と tasks が使う）、
+`core/store/fsutil.ts`・`core/store/frontmatter.ts`（tasks が使う。将来の製品の保存も使う見込み）。使い手のいない処理を先回りして
+kit に置かない。
 
 ## サーバに置かない理由
 

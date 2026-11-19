@@ -1,5 +1,5 @@
 import { CodexImageError, updateCodexImage, type ImageUpdate } from "../core/preflight/codexImage.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 
 /**
  * p3 codex update。Codex を動かすイメージを今すぐ作り直し、入った Codex の版を表示する。

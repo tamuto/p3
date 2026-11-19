@@ -3,7 +3,8 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { ENTRY_VERSION } from "./guide.ts";
-import { AGENT_TARGETS, AGENTS_MARK, agentsSnippet, findSections, KINDS, repoRoot, SKILL_SOURCE, type AgentKind } from "./project.ts";
+import { AGENT_TARGETS, AGENTS_MARK, agentsSnippet, findSections, KINDS, SKILL_SOURCE, type AgentKind } from "./project.ts";
+import { repoRoot } from "./usage.ts";
 
 /**
  * 置いた AI 向けの入口（スキルと AGENTS.md / CLAUDE.md の p3 の節）の診断（whoami と guide が同じものを返す）。

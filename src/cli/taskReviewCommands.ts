@@ -5,7 +5,7 @@ import { normalizeTaskId } from "../shared/refs.ts";
 import { previewOf, QUALITY_VERDICT_LABELS, TASK_REVIEW_SCOPE, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewVerdict } from "../shared/taskReview.ts";
 import type { CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 
 /**
  * タスクの AI レビュー（core/taskReview。画面と同じサービス）。

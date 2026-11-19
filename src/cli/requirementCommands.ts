@@ -18,7 +18,7 @@ import { resolveRequestId } from "../core/ops.ts";
 import { saveClarifyAnswer, updateRequirement, updateTask } from "../core/requestOps.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { pickRun } from "./preflightCommands.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import type { CommandEnv } from "./args.ts";
 import { formatRequirement, sourceLines } from "./showView.ts";
 

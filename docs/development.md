@@ -206,7 +206,9 @@ src/                 依存の向き: shared ← core ← server / cli、web →
   shared/            型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
   cli/               p3 CLI（core でファイルを直接操作。serve でサーバも起動する）
     guide.md         AI 向けの作業の手順の原本（p3 guide が返す。ビルドで lib/cli/ に写す）
-    main.ts          振り分け・プロジェクトと変更者と今の要望の決定・終了コード
+    main.ts          入口: 引数の解釈・プロジェクトの決定・serve・help・guide・init・join・agents（パッケージの構成は docs/architecture.md）
+    tasksCli.ts      tasks: プロジェクトを開いた後の振り分け・変更者と今の要望の決定・エラーから終了コードへの対応
+    project.ts / projectSettings.ts / usage.ts   init・join・agents（入口）/ config・repo・今の要望（tasks）/ 使い方の誤り・パス・git（kit）
     taskCommands.ts / requestCommands.ts / preflightCommands.ts   コマンドの種類ごと（変更は core/requestOps.ts を通す）
     args.ts / output.ts / help.ts   入力の解釈・出力・p3 help
   core/              CLI と serve の共通の中核（HTTP は使わない）

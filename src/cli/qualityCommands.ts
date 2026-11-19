@@ -3,7 +3,7 @@ import { checkLine, type QualityCheck, type QualityOp } from "../shared/quality.
 import { diagnoseQuality, improvementDraft, registerImprovement, type ImprovementSource } from "../core/qualityImprovement.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { table } from "./format.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 
 /**
  * 品質基準（core/quality.ts。画面の設定の「品質基準」と同じ）。

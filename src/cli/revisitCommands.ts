@@ -1,7 +1,7 @@
 import { REVIEW_CODE_LABEL, REVIEW_STATE_HINT, REVIEW_STATE_LABEL, type PremiseChange, type PremiseOp, type ReviewDiagnosis } from "../shared/reviewCandidate.ts";
 import { recordPremise } from "../core/requestOps.ts";
 import { reviewCandidates } from "../core/reviewCandidates.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import type { CommandEnv } from "./args.ts";
 
 /**

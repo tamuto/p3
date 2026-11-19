@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { chatgptAccount, signInFailure, type ChatGptStatus } from "../core/chatgpt.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 
 /**
  * p3 chatgpt login | status | logout。プロジェクトを決める前に動く（どのプロジェクトにも属さない、このマシンの接続）。

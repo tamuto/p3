@@ -1,7 +1,7 @@
 import { metricScopeOf, metricsReport } from "../core/metrics/index.ts";
 import { readManual, recordManual, removeManual } from "../core/metrics/manual.ts";
 import { MetricsError, METRIC_STATE_LABEL, METRIC_UNIT_LABEL, type ManualRecord, type ManualRow, type MetricResult, type MetricsReport } from "../shared/metrics.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import type { CommandEnv } from "./args.ts";
 
 /**

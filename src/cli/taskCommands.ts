@@ -14,7 +14,7 @@ import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras }
 import { formatReview } from "./revisitCommands.ts";
 import { taskReview } from "../core/reviewCandidates.ts";
 import { reviewSummary } from "../shared/reviewCandidate.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
 import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../shared/acceptance.ts";

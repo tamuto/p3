@@ -7,7 +7,7 @@ import { cleanBasis, EVIDENCE_BASIS_KINDS, isEvidenceBasisKind, parseEvidenceArg
 import { type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { repoArg } from "../core/workTargets.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import { Output } from "./output.ts";
 
 /** CLI の入力の解釈（オプション・キー=値・本文・添付のファイル）と、コマンドに渡すもの（CommandEnv） */

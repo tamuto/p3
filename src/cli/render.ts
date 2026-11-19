@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import type { MachineSettings } from "../core/machineSettings.ts";
 import { ensureRenderImage, RenderError, renderHtml } from "../core/preflight/render.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 
 const USAGE = [
   "p3 render <原稿.html> [--out 画像.png] [--width 1280]   自己完結した HTML / CSS を PNG にする（Docker が要る）",

@@ -13,7 +13,7 @@ import {
   type RiskJudgment,
 } from "../shared/retrospective.ts";
 import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView, type EvidenceRef, type RetrospectiveView } from "../core/retrospective.ts";
-import { UsageError } from "./project.ts";
+import { UsageError } from "./usage.ts";
 import type { CommandEnv } from "./args.ts";
 
 /**
