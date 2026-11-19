@@ -149,7 +149,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       completionSkippedNote(r.reworkSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}), ...recordSkips(r) }, () =>
         [`更新: ${next.ref} (rev ${next.rev})  ${keys.join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
     }
@@ -179,7 +179,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
       if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}), ...recordSkips(r) }, () =>
         `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
     }
@@ -256,6 +256,15 @@ function checkClearedNote(msg: string | undefined) {
 }
 
 /** 完了の記録・手戻りの履歴を足せなかった（壊れた記録）ことを知らせる */
+/**
+ * 状態は変えたが記録を残せなかった知らせ（完了の記録 completionSkipped・手戻りの履歴 reworkSkipped）。--json の結果にも、API のタスクの PATCH と
+ * 同じ項目名・文で入れる（無ければ省く）。AI は JSON だけを読むので、標準エラーの知らせと別に要る
+ */
+const recordSkips = (r: { completionSkipped?: string; reworkSkipped?: string }) => ({
+  ...(r.completionSkipped ? { completionSkipped: r.completionSkipped } : {}),
+  ...(r.reworkSkipped ? { reworkSkipped: r.reworkSkipped } : {}),
+});
+
 export function completionSkippedNote(msg: string | undefined) {
   if (msg) process.stderr.write(`${msg}\n`);
 }

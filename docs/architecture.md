@@ -1098,7 +1098,8 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   `cause` は `reopen`（完了から戻した）・`explicit`（済みを外すと明示した）・`acceptance`（基準・証拠・基準の根拠の中身が変わって済みが外れた）。
   済みの完了を戻した1操作は `unchecked` と `reopened` の両方を持つ1件
 - 同じ値の再保存・済みを保ったままの変更・成果物の追記では足さない。履歴の値は CLI・API から受け付けない。直接編集からは作らず、過去の分は補わない
-- 壊れた履歴は `reworkProblems` と `keepRaw` で元の値を残し、新しい履歴は足さずに `reworkSkipped` で知らせる（状態の変更は拒まない）
+- 壊れた履歴は `reworkProblems` と `keepRaw` で元の値を残し、新しい履歴は足さずに `reworkSkipped` で知らせる（状態の変更は拒まない。
+  CLI の `move`・`set` は標準エラーと `--json` の結果の両方、API の PATCH は結果）
 
 **保存のロック**: 要望とそのタスクの更新・作成・アーカイブは、要望ごとのロック（`requests/.locks/<要望ID>.lock`。要望のフォルダの外なので、
 アーカイブで一緒に動かない）の中で、読み直してから書く・移す。別のプロセスのタスクの更新と、タスク・要望のアーカイブが重なっても、
@@ -1176,7 +1177,7 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - 入口: `createTask`（完了で作る）・`updateTask`（CLI の move・set・check、API の PATCH、品質の取り込み）・`updateRequest`（CLI の request set、
   API の PATCH、マイルストーンの一括完了）。どれも記録の値を受け付けず（`completionRecords` は捨てる）、P3 が作る
 - 記録の無い古いデータは補わない。読めない記録は `completionProblems` にして `keepRaw` で元の値を書き戻し、新しい記録は足さない
-  （状態は変え、`completionSkipped` で知らせる）。読めない品質・基準・根拠は `problems` として写し、完了は拒まない
+  （状態は変え、`completionSkipped` で知らせる。CLI の `move`・`set` は標準エラーと `--json` の結果の両方、API の PATCH は結果）。読めない品質・基準・根拠は `problems` として写し、完了は拒まない
 - ファイルの並びでは最後（`updatedBy` の後）に書く。人が読む項目を上に残すため
 - 一覧（進捗・タスクの一覧）にも今は全部が載る（要望・タスクの値をそのまま返すため）。進捗のタスクの印は記録を載せず、見直しの状態だけを持つ
 
