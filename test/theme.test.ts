@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { themeScript } from "../packages/tasks/src/server/api/userThemeRoutes.ts";
+import { themeScript } from "../packages/tasks/src/features/settings/server/userThemeRoutes.ts";
 import { THEMES, type Theme } from "../packages/tasks/src/shared/types.ts";
 import { applyTheme, createThemeController, initialTheme, type MediaQuery, type ThemeRoot } from "../packages/tasks/src/web/lib/theme.ts";
 import { makeProject, tempDir } from "./helpers.ts";

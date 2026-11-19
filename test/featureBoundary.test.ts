@@ -6,21 +6,20 @@ import { describe, expect, it } from "vitest";
 /**
  * tasks の中の機能のまとまり（packages/tasks/src/features/<機能>/{shared,core,cli,server,web}。docs/refactoring.md「モジュール構成」）。
  *   - 機能の shared/（型と判定の純粋な契約）は、どこからでも読める
- *   - 機能の中身（core・cli・server・web）を読めるのは、その機能自身と、下の組み立ての場所（ASSEMBLY）と、画面のルートの宣言（web/routes/）だけ
- *   - 機能どうしの読み込みは循環しない
+ *   - 共通の土台の core・shared は、機能の中身を読まない（下の組み立ての場所 ASSEMBLY だけが例外。理由と一緒に列挙する）
+ *   - 入口の役の層（cli・server）は、機能の core と同じ層（cli→cli、server→server）を呼んで組み立ててよい。画面（web）は機能の web の部品を組み合わせてよい
+ *   - 機能の core が別の機能の core を読むのは禁止（契約は shared/ に置く）。機能どうしの読み込みは循環しない
  * 組み立ての場所を足すときは、理由と一緒にここに書く（何でも読める場所を増やさない）
  */
 const SRC = fileURLToPath(new URL("../packages/tasks/src/", import.meta.url));
 
-/** 機能の中身を読んでよい組み立ての場所（tasks/src からの相対） */
+/** 共通の土台の core のうち、機能の core を読んでよい組み立ての場所（tasks/src からの相対） */
 export const ASSEMBLY: Record<string, string> = {
   "core/context.ts": "プロジェクトを開くときに各機能のサービスを作る",
   "core/store/workspace.ts": "保存の入口として各機能の記録のストアを持つ",
   "core/errorOutcome.ts": "エラーから終了コード・HTTP の状態への対応の表",
-  "core/requestOps.ts": "マイルストーンを消す前に、各機能の記録（指標の人の記録・リリースノート・レビュー）があるかを確かめる",
-  "cli/tasksCli.ts": "CLI のコマンドの振り分け",
-  "server/api/routes.ts": "API の組み立て",
-  "web/lib/api.ts": "画面の API の呼び出し（応答の型）",
+  "core/requestOps.ts": "変更の手順の中で、完了の記録の参照先・品質基準の取り込みを使い、マイルストーンを消す前に各機能の記録があるかを確かめる",
+  "core/ops.ts": "進捗の集計に見直し候補の数を添える",
 };
 
 function files(dir: string): string[] {
@@ -41,6 +40,18 @@ const featureOf = (rel: string): [string, string] | undefined => {
   return m ? [m[1], m[2]] : undefined;
 };
 
+/** ファイルの層（機能の中なら機能の中の層） */
+const layerOf = (rel: string) => featureOf(rel)?.[1] ?? rel.split("/")[0];
+
+/** from（tasks/src からの相対）が、機能 g の層 sub のファイルを読んでよいか */
+function allowed(from: string, g: string, sub: string): boolean {
+  if (featureOf(from)?.[0] === g || sub === "shared") return true;
+  const layer = layerOf(from);
+  if ((layer === "cli" || layer === "server") && (sub === layer || sub === "core")) return true;
+  if (layer === "web" && sub === "web") return true;
+  return from in ASSEMBLY || from.startsWith("web/routes/");
+}
+
 function scan() {
   const violations: string[] = [];
   const edges = new Set<string>();
@@ -53,8 +64,7 @@ function scan() {
       if (!to) continue;
       const [g, sub] = to;
       if (from && from !== g) edges.add(`${from}→${g}`);
-      if (from === g || sub === "shared" || rel in ASSEMBLY || rel.startsWith("web/routes/")) continue;
-      violations.push(`${rel} → ${target}（機能 ${g} の中身。shared/ か組み立ての場所から読む）`);
+      if (!allowed(rel, g, sub)) violations.push(`${rel} → ${target}（機能 ${g} の ${sub}。この場所からは shared/ を読む）`);
     }
   }
   return { violations, edges: [...edges].sort() };

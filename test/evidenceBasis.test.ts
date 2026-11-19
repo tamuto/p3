@@ -14,7 +14,7 @@ import {
   readAcceptance,
   type AcceptanceState,
   type EvidenceBasis,
-} from "../packages/tasks/src/shared/acceptance.ts";
+} from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import { progress } from "../packages/tasks/src/core/ops.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { extractTaskReview, taskReviewInputHash } from "../packages/tasks/src/core/taskReview/material.ts";

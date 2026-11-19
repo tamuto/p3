@@ -10,7 +10,7 @@ import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codex
 import { extractReviewInput } from "../packages/tasks/src/core/milestoneReview/material.ts";
 import { InvalidReview, parseReview, reviewPrompt } from "../packages/tasks/src/core/milestoneReview/review.ts";
 import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
-import { updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
 import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
 import { git, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 

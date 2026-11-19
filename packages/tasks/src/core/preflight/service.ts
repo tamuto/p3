@@ -21,9 +21,9 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../shared/acceptance.ts";
-import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
-import { qualityCriteria, qualitySnapshot } from "../../shared/quality.ts";
+import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../features/requirements/shared/acceptance.ts";
+import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
+import { qualityCriteria, qualitySnapshot } from "../../features/quality/shared/quality.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";

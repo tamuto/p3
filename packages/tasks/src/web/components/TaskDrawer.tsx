@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { acceptanceStatus } from "../../shared/acceptance.ts";
-import { AcceptancePanel, metSummary, shortfallSummary } from "./Acceptance.tsx";
-import { CriteriaSources } from "./RequirementSources.tsx";
+import { acceptanceStatus } from "../../features/requirements/shared/acceptance.ts";
+import { AcceptancePanel, metSummary, shortfallSummary } from "../../features/requirements/web/Acceptance.tsx";
+import { CriteriaSources } from "../../features/requirements/web/RequirementSources.tsx";
 import { TaskReviewPanel } from "./TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
-import { QualityDiffPanel } from "./QualityDiff.tsx";
-import { CompletionRecords, ReviewPanel } from "./CompletionReview.tsx";
-import type { ReviewDiagnosis } from "../../shared/reviewCandidate.ts";
+import { QualityDiffPanel } from "../../features/quality/web/QualityDiff.tsx";
+import { CompletionRecords, ReviewPanel } from "../../features/records/web/CompletionReview.tsx";
+import type { ReviewDiagnosis } from "../../features/records/shared/reviewCandidate.ts";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";

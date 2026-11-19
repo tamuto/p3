@@ -1,8 +1,8 @@
 import { type ReactNode, type RefObject } from "react";
-import type { AcceptanceCriterion } from "../../../shared/acceptance.ts";
+import type { AcceptanceCriterion } from "../../../features/requirements/shared/acceptance.ts";
 import { relationRole, type ProjectConfig, type ProposedTask } from "../../../shared/types.ts";
 import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
-import { CriteriaRowsEditor, rowsEqual, rowsInvalid, rowsOf, type CriterionRow } from "../Acceptance.tsx";
+import { CriteriaRowsEditor, rowsEqual, rowsInvalid, rowsOf, type CriterionRow } from "../../../features/requirements/web/Acceptance.tsx";
 import { Markdown } from "../Markdown.tsx";
 import { Badge, Button } from "../ui.tsx";
 

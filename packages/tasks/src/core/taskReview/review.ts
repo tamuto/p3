@@ -1,4 +1,4 @@
-import { evidenceBasisOf } from "../../shared/acceptance.ts";
+import { evidenceBasisOf } from "../../features/requirements/shared/acceptance.ts";
 import { CONTAINER_WORKSPACE } from "@infodb/codex-workspace";
 import {
   QUALITY_VERDICTS,

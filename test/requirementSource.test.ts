@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { acceptanceChanged, applyAcceptanceOps, criteriaEditOps, criteriaForTask } from "../packages/tasks/src/shared/acceptance.ts";
+import { acceptanceChanged, applyAcceptanceOps, criteriaEditOps, criteriaForTask } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import {
   answerState,
   applySourceOps,
@@ -17,7 +17,7 @@ import {
   sourceState,
   type Clarification,
   type RequirementSource,
-} from "../packages/tasks/src/shared/requirementSource.ts";
+} from "../packages/tasks/src/features/requirements/shared/requirementSource.ts";
 import { parseAssessment } from "../packages/tasks/src/core/preflight/service.ts";
 import { StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
 import type { PreflightEngine, PreflightJob } from "../packages/tasks/src/core/preflight/engine.ts";

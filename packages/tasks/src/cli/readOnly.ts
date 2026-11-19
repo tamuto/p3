@@ -1,4 +1,4 @@
-import { SOURCE_SUBS } from "./requirementCommands.ts";
+import { SOURCE_SUBS } from "../features/requirements/cli/requirementCommands.ts";
 
 /**
  * 読むだけの操作か（データのフォルダ・個人設定・ファイルを変えず、外の生成も始めない）。

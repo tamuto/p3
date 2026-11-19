@@ -1,8 +1,8 @@
 import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
-import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../shared/acceptance.ts";
+import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
 import { readManual } from "../features/metrics/core/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
-import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
+import { qualityCriteria, standardHash, taskQualityDiff } from "../features/quality/shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
 import {
   answersKey,
@@ -18,12 +18,12 @@ import {
   type Clarification,
   type ClarifyAnswer,
   type SourceOp,
-} from "../shared/requirementSource.ts";
+} from "../features/requirements/shared/requirementSource.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
-import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../shared/completionRecord.ts";
-import { captureRefs } from "./completionRefs.ts";
-import { appendRework, reworkOf, REWORK_SKIPPED } from "../shared/reworkHistory.ts";
-import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../shared/reviewCandidate.ts";
+import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../features/records/shared/completionRecord.ts";
+import { captureRefs } from "../features/records/core/completionRefs.ts";
+import { appendRework, reworkOf, REWORK_SKIPPED } from "../features/records/shared/reworkHistory.ts";
+import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../features/records/shared/reviewCandidate.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";

@@ -3,10 +3,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { qualityView, updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { qualityView, updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { applyQualityOps, QualityInputError, qualityVersion, readQuality, standardsFor, templateDiffs, type QualityTemplate } from "../packages/tasks/src/shared/quality.ts";
-import { QUALITY_TEMPLATES } from "../packages/tasks/src/shared/qualityTemplates.ts";
+import { applyQualityOps, QualityInputError, qualityVersion, readQuality, standardsFor, templateDiffs, type QualityTemplate } from "../packages/tasks/src/features/quality/shared/quality.ts";
+import { QUALITY_TEMPLATES } from "../packages/tasks/src/features/quality/shared/qualityTemplates.ts";
 import { MAIN_REF, makeProject, openTestProject, tempDir } from "./helpers.ts";
 
 /**

@@ -1,5 +1,5 @@
-import { CriteriaSources } from "../RequirementSources.tsx";
-import type { SourceOp } from "../../../shared/requirementSource.ts";
+import { CriteriaSources } from "../../../features/requirements/web/RequirementSources.tsx";
+import type { SourceOp } from "../../../features/requirements/shared/requirementSource.ts";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { relationRole, type ProposedTask, type Request, type SupersedeCandidate } from "../../../shared/types.ts";
@@ -13,7 +13,7 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { materializeErrorText } from "../../lib/requestEdit.ts";
 import { selectedDraft, type DraftSelection } from "../../lib/markdown.ts";
 import { criteriaEditDirty, DraftDetail, type CriteriaEdit } from "./DraftDetail.tsx";
-import { rowsOf } from "../Acceptance.tsx";
+import { rowsOf } from "../../../features/requirements/web/Acceptance.tsx";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import {
   canSaveTitle,

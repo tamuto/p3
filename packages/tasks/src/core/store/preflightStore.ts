@@ -1,8 +1,8 @@
 import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
-import { readDraftCriteria, readSourceSeq } from "../../shared/acceptance.ts";
-import { readCriterionSources } from "../../shared/requirementSource.ts";
+import { readDraftCriteria, readSourceSeq } from "../../features/requirements/shared/acceptance.ts";
+import { readCriterionSources } from "../../features/requirements/shared/requirementSource.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
 
 /** 案の受け入れ基準と要求の根拠（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */

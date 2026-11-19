@@ -8,7 +8,7 @@ import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { loadConnection } from "@infodb/chatgpt-plan";
 import { connectionPath } from "../packages/tasks/src/core/chatgpt.ts";
 import { loadUserConfig, setProjectNode, updateUserConfig, UserConfigError, userConfigPath } from "../packages/tasks/src/core/userConfig.ts";
-import { readTheme, ThemeInputError, writeTheme } from "../packages/tasks/src/core/userTheme.ts";
+import { readTheme, ThemeInputError, writeTheme } from "../packages/tasks/src/features/settings/core/userTheme.ts";
 import { makeProject, tempDir, writeConnection } from "./helpers.ts";
 
 const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
@@ -276,7 +276,7 @@ describe("/api/user-theme", () => {
 
 describe("describeSettings（p3 user-config の表示）", () => {
   it("環境変数・個人設定・既定のどれから来た値かを出し、読めない値は理由を添える", async () => {
-    const { describeSettings } = await import("../packages/tasks/src/core/machineSettingsEdit.ts");
+    const { describeSettings } = await import("../packages/tasks/src/features/settings/core/machineSettingsEdit.ts");
     const user = { settings: { codex: { model: "gpt-x", effort: "high" } } };
     const { rows, error } = describeSettings(user, { P3_CODEX_MODEL: "gpt-env", P3_CODEX_EFFORT: "" });
     expect(error).toBeUndefined();

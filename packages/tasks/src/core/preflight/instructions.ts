@@ -7,8 +7,8 @@ import { gitHistory, refScope, type ResolvedRef } from "../repoRefs.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
 import { SPLIT_HINT_TASKS } from "../../shared/hierarchy.ts";
 import { ASSESSMENT_SPEC, CHILD_SPEC, DRAFT_SPEC, SPLIT_GUIDE, type PreflightJob } from "./engine.ts";
-import { checkLine } from "../../shared/quality.ts";
-import { renderRequirement, requestSubject, requirementInputOf } from "../../shared/requirementSource.ts";
+import { checkLine } from "../../features/quality/shared/quality.ts";
+import { renderRequirement, requestSubject, requirementInputOf } from "../../features/requirements/shared/requirementSource.ts";
 
 /**
  * Preflight の指示（制約と依頼文）を作る。評価の観点・履歴の調べ方・分割・出力の形の原本はここだけに置き、

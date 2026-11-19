@@ -4,7 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/milestoneGoals.ts";
-import { QualityInputError, qualityPlain, type QualityConfig } from "../../shared/quality.ts";
+import { QualityInputError, qualityPlain, type QualityConfig } from "../../features/quality/shared/quality.ts";
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "@infodb/p3-kit/fsutil.ts";

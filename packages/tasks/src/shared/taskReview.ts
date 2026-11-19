@@ -1,6 +1,6 @@
-import type { CriterionSource, SourceState } from "./requirementSource.ts";
-import type { AcceptanceCriterion, AcceptanceEvidence, CriterionState } from "./acceptance.ts";
-import type { QualitySnapshot, QualityStandard, TaskQualityDiffItem } from "./quality.ts";
+import type { CriterionSource, SourceState } from "../features/requirements/shared/requirementSource.ts";
+import type { AcceptanceCriterion, AcceptanceEvidence, CriterionState } from "../features/requirements/shared/acceptance.ts";
+import type { QualitySnapshot, QualityStandard, TaskQualityDiffItem } from "../features/quality/shared/quality.ts";
 import type { PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "./types.ts";
 
 /**

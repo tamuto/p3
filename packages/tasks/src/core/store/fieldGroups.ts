@@ -1,9 +1,9 @@
-import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
+import { ACCEPTANCE_KEYS, readAcceptance } from "../../features/requirements/shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
-import { COMPLETION_KEYS, readCompletion } from "../../shared/completionRecord.ts";
-import { PREMISE_KEYS, readPremises } from "../../shared/reviewCandidate.ts";
-import { readRework, REWORK_KEYS } from "../../shared/reworkHistory.ts";
-import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
+import { COMPLETION_KEYS, readCompletion } from "../../features/records/shared/completionRecord.ts";
+import { PREMISE_KEYS, readPremises } from "../../features/records/shared/reviewCandidate.ts";
+import { readRework, REWORK_KEYS } from "../../features/records/shared/reworkHistory.ts";
+import { readRequirement, REQUIREMENT_KEYS } from "../../features/requirements/shared/requirementSource.ts";
 import type { Request, Task } from "../../shared/types.ts";
 
 /**

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AcceptanceInputError, readDraftCriteria, tidyDraftCriteria } from "../packages/tasks/src/shared/acceptance.ts";
+import { AcceptanceInputError, readDraftCriteria, tidyDraftCriteria } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import { DRAFT_SPEC } from "../packages/tasks/src/core/preflight/engine.ts";
 import { DraftConflictError } from "../packages/tasks/src/core/preflight/service.ts";
 import { renderCarryover, selectCarryover } from "../packages/tasks/src/core/preflight/carryover.ts";

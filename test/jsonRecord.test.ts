@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readJsonRecord, writeJsonRecord } from "../packages/tasks/src/core/store/jsonRecord.ts";
-import { confirmRetrospectiveTarget, judgeRisk, loadRetrospective } from "../packages/tasks/src/core/retrospective.ts";
+import { confirmRetrospectiveTarget, judgeRisk, loadRetrospective } from "../packages/tasks/src/features/retro/core/retrospective.ts";
 import { archiveRequest } from "../packages/tasks/src/core/requestOps.ts";
 import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";

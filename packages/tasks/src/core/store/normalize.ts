@@ -1,4 +1,4 @@
-import { qualityVersion, readQuality } from "../../shared/quality.ts";
+import { qualityVersion, readQuality } from "../../features/quality/shared/quality.ts";
 import { keepRawOf, problemKeysOf, readFieldGroups, REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS } from "./fieldGroups.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";

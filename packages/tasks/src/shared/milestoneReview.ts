@@ -1,5 +1,5 @@
 import type { MilestoneGoal, PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "./types.ts";
-import type { QualitySnapshot } from "./quality.ts";
+import type { QualitySnapshot } from "../features/quality/shared/quality.ts";
 import type { QualityVerdict } from "./taskReview.ts";
 
 /**

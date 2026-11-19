@@ -15,7 +15,7 @@ import { fmtTime } from "../../lib/format.ts";
 import { latestOnly, STALE } from "../../lib/latest.ts";
 import { useServerEvents } from "../../lib/live.ts";
 import { Badge, Button, cx } from "../ui.tsx";
-import { ImprovementButton } from "../ImprovementDialog.tsx";
+import { ImprovementButton } from "../../../features/quality/web/ImprovementDialog.tsx";
 import { QUALITY_VERDICT_LABELS } from "../../../shared/taskReview.ts";
 
 /**

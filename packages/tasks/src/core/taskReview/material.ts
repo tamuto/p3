@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import YAML from "yaml";
-import { acceptanceStatus } from "../../shared/acceptance.ts";
-import { criteriaSourceView } from "../../shared/requirementSource.ts";
-import { qualitySnapshot, standardsFor, taskQualityDiff } from "../../shared/quality.ts";
+import { acceptanceStatus } from "../../features/requirements/shared/acceptance.ts";
+import { criteriaSourceView } from "../../features/requirements/shared/requirementSource.ts";
+import { qualitySnapshot, standardsFor, taskQualityDiff } from "../../features/quality/shared/quality.ts";
 import type {
   TaskReviewChange,
   TaskReviewCommit,

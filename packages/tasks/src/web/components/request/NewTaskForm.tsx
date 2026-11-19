@@ -5,8 +5,8 @@ import { defaultRepo, NO_REPO, repoChoices } from "../../../shared/workTarget.ts
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
 import { Button, Field, inputCls } from "../ui.tsx";
-import { CriteriaRowsEditor, rowsInvalid, type CriterionRow } from "../Acceptance.tsx";
-import { standardsFor } from "../../../shared/quality.ts";
+import { CriteriaRowsEditor, rowsInvalid, type CriterionRow } from "../../../features/requirements/web/Acceptance.tsx";
+import { standardsFor } from "../../../features/quality/shared/quality.ts";
 
 /** タスクを足しても状態が変わらず、作業を始めるなら手で進行中にする要望 */
 const BEFORE_ACTIVE: Request["status"][] = ["draft", "preflight", "reviewed"];

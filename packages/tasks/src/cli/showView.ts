@@ -1,10 +1,10 @@
-import { ANSWER_STATE_LABEL, criteriaSourceView, requestRequirementView, SOURCE_STATE_LABEL, type RequestRequirementView, type SourceConfirmation, type SourceView } from "../shared/requirementSource.ts";
+import { ANSWER_STATE_LABEL, criteriaSourceView, requestRequirementView, SOURCE_STATE_LABEL, type RequestRequirementView, type SourceConfirmation, type SourceView } from "../features/requirements/shared/requirementSource.ts";
 import { absRef, parseRef } from "../shared/refs.ts";
 import type { Request, SupersededMark, Task } from "../shared/types.ts";
-import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../shared/acceptance.ts";
+import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../features/requirements/shared/acceptance.ts";
 import { blockWarnings } from "../shared/taskBlock.ts";
-import { REWORK_CAUSE_LABEL, reworkLine } from "../shared/reworkHistory.ts";
-import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type RefCapture } from "../shared/completionRecord.ts";
+import { REWORK_CAUSE_LABEL, reworkLine } from "../features/records/shared/reworkHistory.ts";
+import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type RefCapture } from "../features/records/shared/completionRecord.ts";
 import type { P3Context } from "../core/context.ts";
 import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";

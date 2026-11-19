@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
-import { updateQuality } from "../packages/tasks/src/core/quality.ts";
+import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { extractTaskReview } from "../packages/tasks/src/core/taskReview/material.ts";
 import { InvalidTaskReview, parseTaskReview, taskReviewPrompt } from "../packages/tasks/src/core/taskReview/review.ts";

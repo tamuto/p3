@@ -226,9 +226,11 @@
 tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `server` / `web`）の共通の土台と、機能のまとまり
 （`features/<機能>/{shared,core,cli,server,web}`）に分ける。1 つの機能のコードは、その機能のフォルダの中で層に分かれる。
 
-- **読んでよいもの**: 機能の `shared/`（型と判定の純粋な契約）はどこからでも読める。機能の中身（`core`・`cli`・`server`・`web`）を読めるのは、
-  その機能自身と、組み立ての場所（`test/featureBoundary.test.ts` の `ASSEMBLY`。理由と一緒に列挙）と、画面のルートの宣言（`web/routes/`）だけ。
-  機能どうしの読み込みは循環しない（同じテスト）。層の向き（shared ← core ← server / cli、web → shared）は機能の中でも同じ（`test/layers.test.ts`）
+- **読んでよいもの**（`test/featureBoundary.test.ts`）: 機能の `shared/`（型と判定の純粋な契約）はどこからでも読める。共通の土台の `core`・`shared` は
+  機能の中身を読まない（組み立ての場所 `ASSEMBLY` だけが例外で、理由と一緒に列挙: プロジェクトを開く `context.ts`・保存の入口 `workspace.ts`・
+  エラーの表 `errorOutcome.ts`・変更の手順 `requestOps.ts`・進捗の集計 `ops.ts`）。入口の役の層（`cli`・`server`）は機能の `core` と同じ層を呼んで
+  組み立ててよく、画面（`web`）は機能の `web` の部品を組み合わせてよい。機能の `core` が別の機能の `core` を読むのは禁止（契約は `shared/` に置く）。
+  機能どうしの読み込みは循環しない。層の向き（shared ← core ← server / cli、web → shared）は機能の中でも同じ（`test/layers.test.ts`）
 - **組み立ての場所（入口と製品の接点）**: CLI はコマンドの振り分け（`cli/tasksCli.ts`）が機能の `cli/` を呼ぶ。API は `server/api/routes.ts` が機能の
   `server/` のアプリ（Hono）を `app.route` でつなぐ。画面は `web/routes/` のファイルがルートの宣言（URL と検索の値）だけを持ち、ページの中身は機能の
   `web/` から読む（物理のルートのフォルダは入口の `__root.tsx` の下にそのまま付く）。プロジェクトを開くとき（`core/context.ts`）に各機能の
@@ -236,9 +238,14 @@ tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `
 - **配布**: `scripts/build-cli.mjs` は tasks の `features/` も Node の JavaScript に入れる（`web/` を除く）。画面は入口で vite がビルドし、Tailwind は
   tasks の `src` 全体のクラスを拾う
 
+共通の土台に残したもの: 要望とタスクの本体（`shared/types.ts`・保存 `core/store/`・変更の手順 `core/requestOps.ts`・読み取り `core/ops.ts`・親子 `core/hierarchy.ts`・
+状態 `core/requestStatus.ts`・停止・作業先・置き換え）と、入口も使う基盤（個人設定 `core/userConfig.ts`・マシンごとの設定 `core/machineSettings.ts`・
+プロジェクトの決め方 `core/store/locate.ts`）、CLI の振り分けと共通の出力、API の組み立て、画面の共通の部品と処理。
+
 | 段階 | 移した機能 |
 | --- | --- |
 | T007 | 開発の指標（`features/metrics`: `shared/metrics.ts`・`core/{definitions,index,manual}.ts`・`cli/metricsCommands.ts`・`server/metricsRoutes.ts`（API から切り出した）・`web/MetricsPage.tsx`（ルートの宣言は `web/routes/metrics.tsx`）） |
+| T008 | 完了の記録・手戻り・見直し候補・前提（`features/records`）、品質基準・テンプレート・改善要望（`features/quality`）、振り返り（`features/retro`）、要求の根拠・確認事項と回答・受け入れ基準と証拠（`features/requirements`。基準の根拠が要求の根拠と同じ記録なので、受け入れ基準と 1 つのまとまりにした）、参照先・テーマ・マシンごとの設定の書き換え（`features/settings`） |
 
 ## 契約と既存のテストの対応
 

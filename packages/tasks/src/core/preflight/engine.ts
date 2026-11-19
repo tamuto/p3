@@ -1,4 +1,4 @@
-import type { QualitySnapshot } from "../../shared/quality.ts";
+import type { QualitySnapshot } from "../../features/quality/shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
 

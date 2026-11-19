@@ -9,7 +9,7 @@ import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
 import { byCheckedDesc } from "../../../lib/order.ts";
-import { ReviewBadge } from "../../../components/CompletionReview.tsx";
+import { ReviewBadge } from "../../../../features/records/web/CompletionReview.tsx";
 
 /**
  * 対応済みの一覧: 人が「済み」にしたタスク（タスクボードからは消える）。新しい順。

@@ -13,9 +13,9 @@ import { resolveRequestId } from "../core/ops.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest, formatFamily } from "./showView.ts";
-import { formatReview as formatRevisit } from "./revisitCommands.ts";
-import { requestReview } from "../core/reviewCandidates.ts";
-import { reviewSummary } from "../shared/reviewCandidate.ts";
+import { formatReview as formatRevisit } from "../features/records/cli/revisitCommands.ts";
+import { requestReview } from "../features/records/core/reviewCandidates.ts";
+import { reviewSummary } from "../features/records/shared/reviewCandidate.ts";
 
 /** 要望の配下の見直し候補の件数（無ければ何も出さない。親の件数は集約で、親自身を候補とは扱わない） */
 function reviewCountLines(review: ReturnType<typeof requestReview>): string[] {

@@ -11,7 +11,7 @@ import {
   type ReviewWarning,
 } from "../../shared/milestoneReview.ts";
 import type { Milestone } from "../../shared/types.ts";
-import { qualitySnapshot } from "../../shared/quality.ts";
+import { qualitySnapshot } from "../../features/quality/shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import { hierarchyNow } from "../requestStatus.ts";
 import { Workspace } from "../store/workspace.ts";
