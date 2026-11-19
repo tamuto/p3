@@ -9,8 +9,7 @@ import type {
 } from "../../shared/types.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import type { AskResult } from "../preflight/codexEngine.ts";
-import { CodexUnavailableError, CodexUsageLimitError } from "../preflight/codexEngine.ts";
-import { ChatGptAuthError } from "../chatgpt.ts";
+import { classifyAiFailure, pickReviewer } from "../reviewRuns.ts";
 import type { Workspace } from "../store/workspace.ts";
 import { extractMaterial } from "./material.ts";
 
@@ -76,8 +75,7 @@ export class ReleaseGenerator {
       throw new GenerationRejected("running", `${mid} の要約は生成中です（終わるのを待つか取り消してください）`);
     }
     const input = summaryInput(material);
-    const name = engine ?? (await this.opts.engine?.().catch(() => "codex" as const)) ?? "codex";
-    const summarizer = this.summarizers[name];
+    const { name, reviewer: summarizer } = await pickReviewer(this.summarizers, engine, this.opts.engine);
     if (!summarizer) throw new GenerationRejected("unavailable", `要約を頼む先（${name}）がありません`);
     const job: ReleaseGeneration = {
       id: `RG-${new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}-${randomBytes(2).toString("hex")}`,
@@ -184,13 +182,7 @@ export class ReleaseGenerator {
   }
 }
 
-function classify(e: unknown): [ReleaseGenerationFailure, string] {
-  const msg = (e as Error)?.message ?? String(e);
-  if (e instanceof CodexUnavailableError || e instanceof ChatGptAuthError) return ["unavailable", msg];
-  if (e instanceof CodexUsageLimitError) return ["usage_limit", msg];
-  if (e instanceof InvalidSummary) return ["invalid_output", msg];
-  return ["error", msg];
-}
+const classify = (e: unknown) => classifyAiFailure<ReleaseGenerationFailure>(e, (x) => x instanceof InvalidSummary);
 
 /** 結果が使えない（形が違う・出典が材料に無い・長すぎる） */
 export class InvalidSummary extends Error {}

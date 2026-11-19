@@ -2,6 +2,8 @@ import { readdir } from "node:fs/promises";
 import type { PreflightLogEntry, RunOwner } from "../shared/types.ts";
 import { ownerState, systemProbe, type OwnerProbe, type OwnerState } from "./preflight/owner.ts";
 import { readJsonRecord, writeJsonRecord } from "./store/jsonRecord.ts";
+import { ChatGptAuthError } from "./chatgpt.ts";
+import { CodexUnavailableError, CodexUsageLimitError } from "./preflight/codexEngine.ts";
 
 /**
  * レビューの実行の記録の共通部分（マイルストーンレビュー・タスクの AI レビュー）。比較材料と結果の形は各レビューに残し、ここには
@@ -232,5 +234,115 @@ export class RunControl<R extends RunLike, Res> {
       this.onChange(key, cur);
       return cur;
     }
+  }
+}
+
+// --- レビューの実行の共通の骨組み（タスクの AI レビュー・マイルストーンレビュー） ------------------------------------------
+
+type Push = (e: Omit<PreflightLogEntry, "at">) => void;
+
+/** AI の実行の失敗の分類（レビュー 2 つとリリースノートの要約で共通）。invalid は「結果を読めない」のエラー */
+export function classifyAiFailure<F extends string = "unavailable" | "usage_limit" | "invalid_output" | "error">(e: unknown, invalid: (e: unknown) => boolean): [F, string] {
+  const msg = (e as Error)?.message ?? String(e);
+  const kind = e instanceof CodexUnavailableError || e instanceof ChatGptAuthError ? "unavailable" : e instanceof CodexUsageLimitError ? "usage_limit" : invalid(e) ? "invalid_output" : "error";
+  return [kind as F, msg];
+}
+
+/** 頼む先を選ぶ（明示 → preflight.engine の設定 → codex）。無ければ reviewer は undefined（各機能が unavailable で断る） */
+export async function pickReviewer<E extends string, S>(reviewers: Partial<Record<E, S>>, explicit: E | undefined, configured: (() => Promise<E>) | undefined): Promise<{ name: E; reviewer?: S }> {
+  const name = explicit ?? (await configured?.().catch(() => "codex" as E)) ?? ("codex" as E);
+  return { name, reviewer: reviewers[name] };
+}
+
+/**
+ * レビューの実行の骨組み: このプロセスの実行・二重の開始の確かめ・実行（ログ・時間切れ・取り消し・ほかのプロセスの取消の要求・失敗の分類・
+ * 遅れた結果の拒否）・回復・取り消し・待つ。材料・依頼文・結果の読み方・終わる前の確かめ（after。材料の変化など）は各レビュー
+ */
+export class ReviewRunner<R extends RunLike, Res, Rec extends { run: R }> {
+  private local = new Map<string, { key: string; abort: AbortController; done: Promise<void> }>();
+  readonly control: RunControl<R, Res>;
+
+  constructor(
+    private store: RunStore<R, Res> & { hasHistory(key: string): Promise<boolean>; get(key: string, run: string): Promise<Rec> },
+    private opts: { timeoutMs: number; probe?: OwnerProbe; pollMs?: number; emit: (r: R) => void },
+  ) {
+    this.control = new RunControl(store, this.local, opts.probe, (_k, r) => opts.emit(r));
+  }
+
+  /** キーのロックの中で、実行中の run が無いことを確かめてから create を呼ぶ（あれば busy が返すエラーを投げ、何も作らない） */
+  begin(key: string, create: () => Promise<void>, busy: (b: { run: R; owner: { state: "local" } | OwnerState }) => Error): Promise<void> {
+    return this.store.withLock(key, async () => {
+      const b = await this.control.runningLocked(key);
+      if (b) throw busy(b);
+      await create();
+    });
+  }
+
+  /** このプロセスで実行する（終わるのは waitLocal で待つ） */
+  launch(key: string, run: R, work: (push: Push, signal: AbortSignal) => Promise<{ result: Res; end?: Partial<R> }>, classify: (e: unknown) => [string, string], after?: (end: RunEnd<R>, push: Push) => Promise<RunEnd<R>>): void {
+    const abort = new AbortController();
+    const job = { key, abort, done: Promise.resolve() };
+    this.local.set(run.id, job);
+    this.opts.emit(run);
+    const exec = async () => {
+      const log: PreflightLogEntry[] = [];
+      const push: Push = (e) => log.push({ at: new Date().toISOString(), ...e });
+      const { timeoutMs } = this.opts;
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const signal = AbortSignal.any([abort.signal, timeout]);
+      // ほかのプロセスからの取消の要求を見つけ、ログを run.json に書き足す
+      const stopWatch = this.control.watch(key, run.id, log, abort, this.opts.pollMs ?? 1000);
+      let end: RunEnd<R>;
+      let result: Res | undefined;
+      try {
+        const r = await work(push, signal);
+        if (signal.aborted) throw signal.reason;
+        result = r.result;
+        end = { ...r.end, status: "completed" } as RunEnd<R>;
+      } catch (e) {
+        const [failure, error] = abort.signal.aborted ? [undefined, "取り消しました"] : timeout.aborted ? ["timeout", `時間切れです（${Math.round(timeoutMs / 1000)} 秒）`] : classify(e);
+        end = (abort.signal.aborted ? { status: "cancelled", error } : { status: "failed", failure, error }) as RunEnd<R>;
+        push({ kind: "error", text: error });
+      } finally {
+        stopWatch();
+      }
+      if (after) end = await after(end, push);
+      // 既に終わっていた（人が中断した・回復した）なら、遅れて届いた結果は取り込まない
+      await this.control.end(key, run.id, { ...end, log: [...log] }, result);
+    };
+    job.done = exec().finally(() => this.local.delete(run.id));
+  }
+
+  /** 死んだ所有者の run を回復する（一覧・取得の前に） */
+  async recover(key: string): Promise<void> {
+    if (await this.store.hasHistory(key)) await this.store.withLock(key, () => this.control.recoverLocked(key));
+  }
+
+  /** 記録（実行中なら所有者の状態を添える） */
+  async get(key: string, run: string): Promise<Rec & { owner?: { state: "local" } | OwnerState }> {
+    await this.recover(key);
+    const rec = await this.store.get(key, run);
+    return { ...rec, ...(rec.run.status === "running" ? { owner: this.control.ownerOf(rec.run) } : {}) };
+  }
+
+  /** 取り消す（このプロセスの run は止め、ほかのプロセスの run は要求を書く。acknowledgeStopped は人が止まっていると確かめた run を記録の上で中断にする） */
+  cancel(key: string, run: string, by: string | undefined, opts: { acknowledgeStopped?: boolean } = {}): Promise<{ run: R; requested: boolean }> {
+    const local = this.local.get(run);
+    return this.control.cancel(key, run, by, { ...opts, label: `${key}/${run}`, abortLocal: () => local?.abort.abort(new Error("cancelled")) });
+  }
+
+  async waitLocal(run: string): Promise<void> {
+    await this.local.get(run)?.done;
+  }
+
+  running(): number {
+    return this.local.size;
+  }
+
+  /** このプロセスの実行が全部終わるまで待つ（cancel: 先に全部を取り消す） */
+  async settle(opts: { cancel?: boolean } = {}): Promise<void> {
+    const jobs = [...this.local.values()];
+    if (opts.cancel) for (const j of jobs) j.abort.abort(new Error("cancelled"));
+    await Promise.allSettled(jobs.map((j) => j.done));
   }
 }
