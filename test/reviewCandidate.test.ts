@@ -80,6 +80,88 @@ describe("理由と当時・今の値", () => {
   });
 });
 
+describe("品質基準の初回設定（未設定で完了した後に設定）", () => {
+  // 品質基準が未設定のうちに完了した要望とタスク。R1 はタスクの無い完了済の要望、R2 は作業先ありとなしの完了タスクを持つ
+  async function setupUnset() {
+    const p = await makeProject({ repos: [MAIN_REF, OTHER] });
+    // タスクの無い要望は対応済にできないので、人が完了済にしたもの
+    const r1 = await newRequest(p.ctx, { title: "調べるだけ", body: "結論を出す" });
+    await updateRequest(p.ctx, r1.id, { status: "done" });
+    const r2 = await newRequest(p.ctx, { title: "請求", body: "月末締め" });
+    await updateRequirement(p.ctx, r2.id, [{ op: "add", target: "税は切り捨て", source: "経理規程 3.2", basis: "例" }]);
+    const { task: a } = await createTask(p.ctx, r2.id, { title: "実装", repo: "main" });
+    const { task: b } = await createTask(p.ctx, r2.id, { title: "調査" });
+    for (const t of [a, b]) await updateTask(p.ctx, r2.id, t.id, { status: "done" });
+    await updateRequest(p.ctx, r2.id, { status: "resolved" });
+    await updateRequest(p.ctx, r2.id, { status: "done" });
+    expect(p.ctx.ws.project.quality?.state ?? "unset").toBe("unset");
+    return { ...p, r1: r1.id, r2: r2.id, a: a.id, b: b.id };
+  }
+  // CLI も同じ設定を読むよう project.yaml に書く（全体適用の Q1 と main だけの Q2）
+  async function introduce(ctx: Awaited<ReturnType<typeof setupUnset>>["ctx"]) {
+    const q = readQuality({ standards: [std("Q1", "テストを通す"), std("Q2", "main の検査", { repos: ["main"] })] }, ["main", "other"]);
+    if (q.state !== "set") throw new Error("品質基準が読めません");
+    await ctx.ws.writeQuality(() => q.config);
+  }
+
+  it("要望自身は差分なしで、候補のタスクが無い要望は進捗の見直し候補・revisit に出ない。完了タスクは当てはまる基準の追加を理由にする", async () => {
+    const { ctx, r1, r2, a, b, dataDir } = await setupUnset();
+    await introduce(ctx);
+    expect(ctx.ws.project.quality?.state).toBe("set");
+    // 要望自身: 初回設定だけでは候補にしない（タスクの無い要望も、完了タスクを持つ要望も）
+    expect(requestReview(ctx, r1).self).toMatchObject({ state: "none", reasons: [] });
+    expect(requestReview(ctx, r2).self).toMatchObject({ state: "none", reasons: [] });
+    // 完了タスク: 作業先ありは全体適用と作業先の基準、作業先なしは全体適用の基準を quality_added にする
+    const codes = (tid: string) => taskReview(ctx, ctx.ws.tasksOf(r2).require(tid))!.reasons.map((r) => `${r.code}:${r.target}`).sort();
+    expect(codes(a)).toEqual(["quality_added:Q1", "quality_added:Q2"]);
+    expect(codes(b)).toEqual(["quality_added:Q1"]);
+    // 進捗: R1 は自身も配下も候補なし。R2 は候補のタスクで行が残る（自身は候補にしない）
+    const rows = Object.fromEntries(progress(ctx).map((x) => [x.request.id, x.review]));
+    expect(rows[r1]).toMatchObject({ self: { state: "none", reasons: 0 }, tasks: 0, below: 0 });
+    expect(rows[r2]).toMatchObject({ self: { state: "none" }, tasks: 2 });
+    expect(reviewCandidates(ctx).map((d) => d.target).sort()).toEqual([`${r2}/${a}`, `${r2}/${b}`].sort());
+    // CLI: revisit --all --json と progress --all に R1 は出ず、要望自身の候補も出ない
+    const revisit = p3(dataDir, ["revisit", "--all", "--json"]);
+    expect(revisit.code, revisit.err).toBe(0);
+    expect((JSON.parse(revisit.out) as { target: string }[]).map((d) => d.target).sort()).toEqual([`${r2}/${a}`, `${r2}/${b}`].sort());
+    const prog = p3(dataDir, ["progress", "--all"]).out;
+    expect(prog).toContain("※見直し候補（タスク 2）");
+    expect(prog.split("\n").filter((l) => l.includes("※見直し候補"))).toHaveLength(1);
+  });
+
+  it("要望自身でも、設定済から未設定・読めない設定への変化は quality_state にする（読めないは完了時が未設定でも）", async () => {
+    const { ctx, r1 } = await setupUnset();
+    // 完了時が未設定で、今が読めない
+    setQuality(ctx.ws, { standards: "壊れた" });
+    const inv = requestReview(ctx, r1).self!;
+    expect(inv.reasons).toEqual([expect.objectContaining({ code: "quality_state", was: "未設定", now: "読めない" })]);
+    expect(inv.unreadable?.[0]).toMatch(/今の品質基準が読めない/);
+    // 設定済で完了し直してから、未設定・読めないにする
+    setQuality(ctx.ws, { standards: [std("Q1", "テストを通す")] });
+    await updateRequest(ctx, r1, { status: "active" });
+    await updateRequest(ctx, r1, { status: "done" });
+    expect(requestReview(ctx, r1).self).toMatchObject({ state: "none" });
+    setQuality(ctx.ws, undefined);
+    expect(requestReview(ctx, r1).self!.reasons).toEqual([expect.objectContaining({ code: "quality_state", was: "設定済", now: "未設定" })]);
+    setQuality(ctx.ws, { standards: "壊れた" });
+    const d = requestReview(ctx, r1).self!;
+    expect(d.reasons).toEqual([expect.objectContaining({ code: "quality_state", was: "設定済", now: "読めない" })]);
+    expect(d.unreadable?.[0]).toMatch(/今の品質基準が読めない/);
+  });
+
+  it("初回設定と同時に要望の根拠の変更・確認されていない前提の変更があれば、その理由で要望自身が候補に残る", async () => {
+    const { ctx, r2 } = await setupUnset();
+    await introduce(ctx);
+    await updateRequirement(ctx, r2, [{ op: "edit", id: "S1", basis: "新しい例" }]);
+    await recordPremise(ctx, r2, { op: "add", targets: [r2], reason: "経理規程の改版", condition: "規程 v2" });
+    const d = requestReview(ctx, r2).self!;
+    expect(d.state).toBe("candidate");
+    expect(d.reasons.map((r) => `${r.code}:${r.target}`).sort()).toEqual(["premise_changed:P1", "source_changed:S1"]);
+    expect(d.reasons.some((r) => r.code.startsWith("quality_"))).toBe(false);
+    expect(reviewCandidates(ctx).map((x) => x.target)).toContain(r2);
+  });
+});
+
 describe("関係のない変更では候補にしない", () => {
   it("別の作業先だけの品質の変更・品質の版だけの違い・参照先の HEAD の更新では候補にならない", async () => {
     const { ctx, rid, tid, root } = await setup();

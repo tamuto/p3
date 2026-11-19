@@ -1249,7 +1249,11 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
   添えるが、親自身を候補にはしない。`below` は子孫の要望自身とそのタスクを1回ずつ数える。アーカイブは見ない
 - **品質**: `standardsFor` で作業先に当てはまる項目を当時（記録の `quality.standards`）と今で比べる（`quality_added`・`quality_changed`
   （`standardHash`）・`quality_removed`・`quality_exempted`）。設定全体の版（`qualityVersion`）の違いだけでは候補にしない。
-  今が未設定・読めないなら `quality_state`、当時が読めないなら比べない。要望の記録は項目を写さないので状態だけを比べる
+  今が未設定・読めないなら `quality_state`、当時が読めないなら比べない。要望の記録は項目を写さないので、要望自身は状態だけを比べる:
+  設定済 → 未設定、または今が読めない（当時が設定済・未設定のどちらでも。比べられない部分も返す）だけを `quality_state` にし、
+  未設定 → 設定（品質基準の初回設定）は理由にしない。後から品質基準を導入しただけで、対応済・完了済の要望が一括して候補になるのを避けるため。
+  完了したタスクは未設定で完了していても（記録に項目が無い）、今の作業先に当てはまる項目を `quality_added` にする（作業先なしのタスクは
+  全体適用の項目）。そのため初回設定の後は、候補のタスクを持つ要望が配下の件数（`tasks`）で進捗の「見直し候補のみ」に残る
 - **基準と根拠**: 基準は ID で比べる（`criterion_added`・`criterion_changed`・`criterion_removed`）。基準ごとの根拠は (基準 ID, 記録 ID)、
   基準が写した要望の根拠（`from`）は当時の元と今の元を比べる（`source_changed`・`source_removed`・`source_unconfirmed`）。要望自身は要望の根拠の全部
 - **前提の変更**: 要望の `premiseChanges`（`[{id: P1, targets, reason, condition, at, by, acks?}]`。追記だけ）。対象は要望 ID・この要望の

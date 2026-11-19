@@ -11,7 +11,8 @@ import type { Request, Task } from "../../../shared/types.ts";
  *   - 対象: 完了したタスク（済みの有無を問わない）と、対応済・完了済の要望（自身の条件の差）。要望には配下の候補の件数を添えるが、
  *     その要望自身を候補にはしない。完了していない祖先にも件数だけ出せる
  *   - 品質: 設定全体の版の違いでは候補にしない。作業先に当てはまる項目の追加・変更（文・確認の方法・対象）・削除・除外への変化と、
- *     状態（設定済 → 未設定・読めない）の変化を見る。関係のない作業先だけの変更・参照先の HEAD の更新では候補にならない
+ *     状態（設定済 → 未設定・読めない）の変化を見る。関係のない作業先だけの変更・参照先の HEAD の更新では候補にならない。
+ *     要望自身は状態の変化だけを見る（未設定 → 設定の初回設定では候補にしない）。タスクは未設定で完了していても当てはまる項目の追加を見る
  *   - 基準: 記録した基準と今の基準を ID で比べる（追加・文の変更・削除）。基準ごとの根拠は (基準 ID, 記録 ID) で比べ、要望の記録を写した
  *     もの（from）は当時の元と今の元も比べる。要望の候補は要望の根拠の全部を比べる。文の類似からは推し量らない
  *   - 前提の変更: 外部の規則の変更などを、人が対象（要望・タスク・要望の根拠の ID）と理由・新しい条件を明示して要望に追記する
@@ -208,7 +209,12 @@ const stdLine = (s: QualityStandard) => `${s.text}（${checkLine(s.check)}）${s
 const sourceLine = (s: RequirementSource) => [s.target, s.source, s.basis].filter(Boolean).join(" / ");
 const sourceKey = (s: RequirementSource) => JSON.stringify([s.target ?? "", s.source ?? "", s.basis ?? ""]);
 
-function qualityReasons(rec: CompletionRecord, now: QualityState | undefined, repo: string | null, out: ReviewReason[], unreadable: string[]) {
+/**
+ * 品質の理由。subject は診断の対象: タスク（task。作業先 repo に当てはまる項目を比べる）か要望自身（request。状態だけを比べる）。
+ * 要望の記録は品質の項目を写さないので、要望自身は「設定済 → 未設定・読めない」の変化だけを理由にし、未設定 → 設定（初回設定）では
+ * 候補にしない（後から品質基準を導入しただけで、過去の要望が一括して候補になるのを避ける）。タスクは未設定の記録でも項目なしとして比べる
+ */
+function qualityReasons(rec: CompletionRecord, now: QualityState | undefined, subject: { kind: "task"; repo: string | null } | { kind: "request" }, out: ReviewReason[], unreadable: string[]) {
   const q = rec.quality;
   const st = now ?? { state: "unset" as const };
   if (q.state === "invalid") {
@@ -224,11 +230,11 @@ function qualityReasons(rec: CompletionRecord, now: QualityState | undefined, re
     out.push({ code: "quality_state", target: "quality", was: "設定済", now: "未設定" });
     return;
   }
-  // 要望の記録は項目を写さない（状態だけ比べる）
-  if (q.standards === undefined && q.state === "set") return;
+  // 要望自身は項目を比べない（状態だけ）。未設定 → 設定も候補にしない
+  if (subject.kind === "request") return;
   if (st.state !== "set") return;
   const then = q.standards ?? [];
-  const { applies, exempt } = standardsFor(st.config, repo);
+  const { applies, exempt } = standardsFor(st.config, subject.repo);
   for (const s of applies) {
     const was = then.find((x) => x.id === s.id);
     if (!was || was.exempt) out.push({ code: "quality_added", target: s.id, ...(was ? { was: stdLine(was) } : {}), now: stdLine(s) });
@@ -295,7 +301,7 @@ export function diagnoseTask(task: Task, request: Request | undefined, now: Revi
   if (!rec) return { target: task.ref, state: "no_record", reasons: [] };
   const reasons: ReviewReason[] = [];
   const unreadable: string[] = [];
-  qualityReasons(rec, now.quality, task.repo, reasons, unreadable);
+  qualityReasons(rec, now.quality, { kind: "task", repo: task.repo }, reasons, unreadable);
   // 基準
   if (rec.acceptance?.problems) unreadable.push("完了したときの受け入れ基準が読めなかったため、基準は比べられません");
   else if (task.acceptanceProblems?.length) unreadable.push("今の受け入れ基準が読めないため、基準は比べられません");
@@ -343,7 +349,7 @@ export function diagnoseRequest(request: Request, now: ReviewNow): ReviewDiagnos
   if (!rec) return { target: request.id, state: "no_record", reasons: [] };
   const reasons: ReviewReason[] = [];
   const unreadable: string[] = [];
-  qualityReasons(rec, now.quality, null, reasons, unreadable);
+  qualityReasons(rec, now.quality, { kind: "request" }, reasons, unreadable);
   if (rec.requirement?.problems) unreadable.push("完了したときの要望の根拠が読めなかったため、根拠は比べられません");
   else if (request.requirementProblems?.length) unreadable.push("今の要望の根拠が読めないため、根拠は比べられません");
   else {
