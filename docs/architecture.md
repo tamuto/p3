@@ -537,9 +537,20 @@ include: true
     ホスト名だけ・候補の先頭だけでは決めない。見つからない（`self-not-found`。リモート・別のデーモン）、複数（`self-ambiguous`）、
     inspect のホスト名がこのマシンと違う（`self-mismatch`）、問い合わせの失敗・時間切れ（`inspect-failed`）、ID が分からない
     （`self-unknown`）は自動では決めない
+  - マウントの元の照合（261120-ezdk4）: 見つけたコンテナの `Type: bind` ごとに、その `Destination`（リンクを辿った先）の mountinfo の
+    root が `Source` の末尾と一致しなければ自分と扱わない（`self-mismatch`）。ネットワークを共有する構成（Compose の
+    `network_mode: service:X`・`--network container:X`）では、`/etc/hostname` などの元・ホスト名・実行側の inspect の `HostnamePath` が
+    共有元 X のものになり、候補もホスト名の照合も X を指す。実機（Linux の Docker Engine 29、cgroup v2、containerd snapshotter）では、
+    同じ `Destination` に共有元が別の `Source` を付けていると X の `Source` を黙って選び、正しい手の対応は `conflict` で止まった。
+    中からは実行側の ID を得る手がかりが無い（cgroup は `0::/`、inspect に rootfs の snapshot が出ない。得るには接続先のコンテナを一覧する
+    しかなく、問い合わせを広げない）ので、自動で実行側を選ぶことはせず、照合で取り違えを見つけて止め、手の対応に任せる。
+    root が `/`（ファイルシステムの丸ごとの bind。NFS など）と、mountinfo に無いマウント先は比べない。ホストでシンボリックリンクを
+    通した bind（`Source` はリンク、root は実体）も止まる（取り違えより安全な側に倒す。導入ガイドの手順で手で書く）
+  - 1つのパスで、一番深いマウントが bind の形（root が `/` でない）なのに見つけたコンテナの `Mounts` に無いときも `self-mismatch`
+    （共有元にその `Destination` が無い構成。マウントの種類の問題ではないので、フォルダを移す案内にしない）
   - 1つのパス: 対象の実体（シンボリックリンクを辿った先。無いところは在るところまで辿って残りを足す）を含む **一番深い** マウントを
     mountinfo から選び、そこが inspect の `Mounts` の `Type: bind` の `Destination` のときだけ、その `Source` に残りを足す。
-    volume・tmpfs・Docker の知らないマウントの下（`not-bind`）や、どのマウントの下でもない（コンテナの層。`container-layer`）は、
+    volume・tmpfs・Docker の知らないマウント（root が `/`）の下（`not-bind`）や、どのマウントの下でもない（コンテナの層。`container-layer`）は、
     親の bind に逃げずに止める。`Source` が `/` で始まらない形（`unsupported-source`）も止める。`Source` は同じデーモンが返した
     もので、同じデーモンにそのまま渡せる（Docker Desktop の中の DevContainer でも、Desktop を見分けて止めることはしない）
   - 手で書いた対応は今までどおり前から順の境界一致（`mapPath`）で、元のパス（実体ではない）に当てる。自動で求めたものと食い違えば

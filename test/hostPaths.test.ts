@@ -180,6 +180,67 @@ describe("マウントするパスを Docker のホストのパスに決める�
   });
 });
 
+describe("ネットワークを共有するコンテナ（Compose の network_mode: service:X・--network container:X。261120-ezdk4 の実機の観測）", () => {
+  // 実行側 Y のコンテナの中から見えるもの。/etc/hostname などとホスト名は共有元 X のもの、/work は Y 自身の bind（runner）
+  const X = "c".repeat(64);
+  const runner = (work: string | null) =>
+    [
+      line(1, "/", "/", "overlay", "overlay"),
+      line(2, "/", "/cfg", "tmpfs", "tmpfs"),
+      ...(work ? [line(3, work, "/work")] : []),
+      line(4, `/var/lib/docker/containers/${X}/resolv.conf`, "/etc/resolv.conf"),
+      line(5, `/var/lib/docker/containers/${X}/hostname`, "/etc/hostname"),
+      line(6, `/var/lib/docker/containers/${X}/hosts`, "/etc/hosts"),
+      line(7, "/docker.sock", "/run/docker.sock", "tmpfs", "tmpfs"),
+    ].join("\n");
+  const sharer = (mounts: InspectedContainer["Mounts"]): InspectedContainer => ({ Id: X, Config: { Hostname: X.slice(0, 12) }, Mounts: mounts });
+  const shared = (over: Partial<HostPathProbe> & { containers?: InspectedContainer[]; links?: Record<string, string> }) => probe({ hostname: () => X.slice(0, 12), ...over });
+  const MANUAL: [string, string][] = [["/work", "/W/runner"]];
+
+  it("同じマウント先に共有元が別のホストのパスを付けていても、共有元を自分と扱わず止め、手で書いた実行側の bind を使う（conflict にしない）", async () => {
+    const p = shared({ mountinfo: () => runner("/W/runner"), containers: [sharer([{ Type: "bind", Source: "/W/sharer", Destination: "/work" }])] });
+    const r = await resolveHostPaths(["/work/repo"], { pathMap: [], probe: p });
+    expect(r.environment).toMatchObject({ kind: "container-unknown", reason: "self-mismatch" });
+    expect(r.paths[0]).toMatchObject({ ok: false, reason: "self-mismatch" });
+    expect((r.paths[0] as { detail: string }).detail).toContain("network_mode: service:");
+    expect((r.paths[0] as { next: string }).next).toContain("codex.pathMap+=");
+    expect(hosts(r)).not.toContain("auto:/W/sharer/repo");
+    const m = await resolveHostPaths(["/work/repo"], { pathMap: MANUAL, probe: p });
+    expect(m.ok).toBe(true);
+    expect(m.paths[0]).toMatchObject({ ok: true, origin: "manual", host: "/W/runner/repo", verified: false });
+  });
+
+  it("共有元にそのマウント先が無ければ、マウントの種類（not-bind）ではなく自分を取り違えた理由で止め、手で書いた実行側の bind を使う", async () => {
+    const p = shared({ mountinfo: () => runner("/W/runner"), containers: [sharer([])] });
+    const r = await resolveHostPaths(["/work/repo"], { pathMap: [], probe: p });
+    expect(r.paths[0]).toMatchObject({ ok: false, reason: "self-mismatch" });
+    expect((r.paths[0] as { next: string }).next).toContain("codex.pathMap+=");
+    const m = await resolveHostPaths(["/work/repo"], { pathMap: MANUAL, probe: p });
+    expect(m.paths[0]).toMatchObject({ ok: true, origin: "manual", host: "/W/runner/repo", verified: false });
+  });
+
+  it("共有しない通常のコンテナは、リンクを辿ったマウント先（/var/run → /run）とファイルシステムの丸ごとの bind を含めて今までどおり自動で決める", async () => {
+    const self = sharer([
+      { Type: "bind", Source: "/W/control", Destination: "/work" },
+      { Type: "bind", Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock" },
+    ]);
+    const p = shared({ mountinfo: () => runner("/W/control"), containers: [self], links: { "/var/run": "/run" } });
+    const r = await resolveHostPaths(["/work/repo"], { pathMap: [], probe: p });
+    expect(r.environment).toEqual({ kind: "container", containerId: X });
+    expect(hosts(r)).toEqual(["auto:/W/control/repo"]);
+    const m = await resolveHostPaths(["/work/repo"], { pathMap: [["/work", "/W/control"]], probe: p });
+    expect(m.paths[0]).toMatchObject({ origin: "manual", verified: true });
+  });
+
+  it("ホストでシンボリックリンクを通して bind した（Source はリンク、mountinfo は実体）ときも自動では決めず、手で書けば進む", async () => {
+    const p = shared({ mountinfo: () => runner("/W/real"), containers: [sharer([{ Type: "bind", Source: "/W/link", Destination: "/work" }])] });
+    const r = await resolveHostPaths(["/work/repo"], { pathMap: [], probe: p });
+    expect(r.paths[0]).toMatchObject({ ok: false, reason: "self-mismatch" });
+    const m = await resolveHostPaths(["/work/repo"], { pathMap: [["/work", "/W/link"]], probe: p });
+    expect(m.paths[0]).toMatchObject({ ok: true, origin: "manual", host: "/W/link/repo" });
+  });
+});
+
 describe("docker inspect の問い合わせ（実際の CLI の形）", () => {
   /** 呼ばれた引数を残し、指定どおりに振る舞う偽の docker */
   function fakeDocker(body: string) {
