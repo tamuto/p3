@@ -21,7 +21,7 @@ import {
   type RunLiveness,
 } from "../../shared/types.ts";
 import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
-import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../features/requirements/shared/acceptance.ts";
+import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readDraftCriteria, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../features/requirements/shared/acceptance.ts";
 import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
 import { qualityCriteria, qualitySnapshot } from "../../features/quality/shared/quality.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
@@ -860,7 +860,8 @@ export class PreflightService {
     // 根拠の採番（acceptanceSourceSeq）は p3 が振る。patch から上書きしない
     const { acceptanceCriteria: rawCriteria, acceptanceProblems: _p, acceptanceSourceSeq: _sq, sourceOps, ...rest } = patch;
     const criteria = rawCriteria !== undefined ? tidyDraftCriteria(rawCriteria) : undefined;
-    // 根拠の記録が読めないとき: 操作は断り、関係のない更新ではファイルの元の値のまま書き戻す
+    // 根拠の記録が読めないとき: 操作は断り、関係のない更新ではファイルの元の値のまま書き戻す（基準も、置き換えないなら同じ）
+    const rawCriteriaFile = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceCriteria");
     const rawSources = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSources");
     const rawSourceSeq = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSourceSeq");
     const sourceProblems: string[] = [];
@@ -884,9 +885,16 @@ export class PreflightService {
       acceptanceSources: sources?.length ? sources : undefined,
       acceptanceSourceSeq: sourceSeqNext,
     };
-    if (sourceProblems.length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, { acceptanceSources: rawSources, acceptanceSourceSeq: rawSourceSeq });
+    const keep: Record<string, unknown> = {
+      ...(rawCriteria === undefined && readDraftCriteria(rawCriteriaFile).problems ? { acceptanceCriteria: rawCriteriaFile } : {}),
+      ...(sourceProblems.length ? { acceptanceSources: rawSources, acceptanceSourceSeq: rawSourceSeq } : {}),
+    };
+    if (Object.keys(keep).length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, keep);
     else await this.ws.preflight.saveDraft(requestId, runId, next);
-    return sourceProblems.length ? { ...next, acceptanceSources: undefined, acceptanceSourceSeq: undefined, acceptanceProblems: [...(next.acceptanceProblems ?? []), ...sourceProblems] } : next;
+    // 応答は保存したファイルを再読込と同じ規則で読み直したもの（読めない理由を二重にせず、読めた値も再読込と揃える）
+    const saved = await this.ws.preflight.loadDraft(requestId, runId, key);
+    if (!saved) throw new Error(`${runId}/${key} not found`);
+    return saved;
   }
 
   /**
@@ -1379,7 +1387,11 @@ function verifiedProblem(ev: Evidence, refs: readonly ResolvedRef[]): string | u
   return undefined;
 }
 
-/** 構造化した確認事項（壊れた項目は黙って捨てず clarificationProblems に理由を残す。Codex・手元のエージェントで同じ） */
+/**
+ * 構造化した確認事項を読む（壊れた項目は黙って捨てず clarificationProblems に理由を残す）。この読み取りは Codex・手元のエージェントで
+ * 共通だが、確定の規則はエンジンで違う: Codex の取り込み（ingest）は理由をログにも残して取り込み、手元のエージェント（localProblems）は
+ * 直すまで確定を断る
+ */
 function clarificationsOf(v: unknown): Pick<PreflightAssessment, "clarifications" | "clarificationProblems"> {
   const { clarifications, problems } = readClarifications(v);
   return { ...(clarifications ? { clarifications } : {}), ...(problems ? { clarificationProblems: problems } : {}) };

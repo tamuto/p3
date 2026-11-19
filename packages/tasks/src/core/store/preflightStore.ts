@@ -22,6 +22,22 @@ function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknow
 import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
 import { writeJsonRecord } from "./jsonRecord.ts";
 
+/** 案のファイル1つを読む（f: ファイル名。key が無い古い案はファイル名から） */
+function draftOf(f: string, text: string): ProposedTask {
+  const { data, body } = parseFrontmatter(text);
+  return {
+    key: String(data.key ?? f.replace(/\.md$/, "")),
+    title: String(data.title ?? ""),
+    description: body.trim(),
+    areas: Array.isArray(data.areas) ? data.areas.map(String) : [],
+    dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
+    supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
+    include: data.include !== false,
+    ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
+    ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources, data.acceptanceSourceSeq),
+  };
+}
+
 /**
  * requests/<要望ID>/preflight/<RUN-ID>/
  *   run.json          評価結果・ログ・文脈（機械向け）
@@ -82,21 +98,18 @@ export class PreflightStore {
     const dir = join(this.runDir(requestId, runId), "drafts");
     const files = await readdir(dir).catch(() => [] as string[]);
     const drafts: ProposedTask[] = [];
-    for (const f of files.filter((f) => f.endsWith(".md"))) {
-      const { data, body } = parseFrontmatter(await readFile(join(dir, f), "utf8"));
-      drafts.push({
-        key: String(data.key ?? f.replace(/\.md$/, "")),
-        title: String(data.title ?? ""),
-        description: body.trim(),
-        areas: Array.isArray(data.areas) ? data.areas.map(String) : [],
-        dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
-        supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
-        include: data.include !== false,
-        ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
-        ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources, data.acceptanceSourceSeq),
-      });
-    }
+    for (const f of files.filter((f) => f.endsWith(".md"))) drafts.push(draftOf(f, await readFile(join(dir, f), "utf8")));
     return drafts.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+  }
+
+  /**
+   * 1つの案を読み直す（loadDrafts と同じ規則。無ければ undefined）。案の更新は保存した後にこれで読み直して返し、更新の応答と
+   * 再読込で基準・根拠・採番と読めない理由（acceptanceProblems）を同じにする
+   */
+  async loadDraft(requestId: string, runId: string, key: string): Promise<ProposedTask | undefined> {
+    const f = `${key}.md`;
+    const text = await readFile(join(this.runDir(requestId, runId), "drafts", f), "utf8").catch(() => undefined);
+    return text === undefined ? undefined : draftOf(f, text);
   }
 
   async saveChild(requestId: string, runId: string, c: ProposedChild): Promise<void> {
