@@ -1,10 +1,5 @@
-import { ACCEPTANCE_KEYS, readAcceptance } from "../../shared/acceptance.ts";
-import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
-import { COMPLETION_KEYS, readCompletion } from "../../shared/completionRecord.ts";
-import { PREMISE_KEYS, readPremises } from "../../shared/reviewCandidate.ts";
-import { readRework, REWORK_KEYS } from "../../shared/reworkHistory.ts";
 import { qualityVersion, readQuality } from "../../shared/quality.ts";
-import { readRequirement, REQUIREMENT_KEYS } from "../../shared/requirementSource.ts";
+import { keepRawOf, problemKeysOf, readFieldGroups, REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS } from "./fieldGroups.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
@@ -49,10 +44,8 @@ export const normalizeTaskIn =
     doneAt: d.doneAt ? iso(d.doneAt) : undefined,
     checkedAt: d.checkedAt ? iso(d.checkedAt) : undefined,
     record: str(d.record)?.trim() || undefined,
-    ...readAcceptance(d),
-    ...readBlock(d),
-    ...readCompletion(d),
-    ...readRework(d),
+    // 受け入れ基準・停止・完了の記録・手戻り（fieldGroups.ts）
+    ...readFieldGroups(TASK_FIELD_GROUPS, d),
     relations: normalizeRelations(d.relations),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -62,15 +55,10 @@ export const normalizeTaskIn =
   });
 
 /** タスクのうちファイルに書かないキー（場所から決まるもの・読んだときの問題） */
-export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "acceptanceProblems", "blockProblems", "completionProblems", "reworkProblems"];
+export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", ...problemKeysOf(TASK_FIELD_GROUPS)];
 
-/** 基準・証拠が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/acceptance.ts） */
-export const taskKeepRaw = (t: Task): readonly string[] => [
-  ...(t.acceptanceProblems?.length ? ACCEPTANCE_KEYS : []),
-  ...(t.blockProblems?.length ? BLOCK_KEYS : []),
-  ...(t.completionProblems?.length ? COMPLETION_KEYS : []),
-  ...(t.reworkProblems?.length ? REWORK_KEYS : []),
-];
+/** 項目のまとまりが壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（fieldGroups.ts） */
+export const taskKeepRaw = keepRawOf(TASK_FIELD_GROUPS);
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
@@ -94,9 +82,8 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     tags: strs(d.tags),
     ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
-    ...readRequirement(d),
-    ...readCompletion(d),
-    ...readPremises(d),
+    // 要求の根拠・完了の記録・前提（fieldGroups.ts）
+    ...readFieldGroups(REQUEST_FIELD_GROUPS, d),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
@@ -111,10 +98,10 @@ export const REQUEST_KEY_ORDER: (keyof Request)[] = [
 ];
 
 /** 要望のうちファイルに書かないキー（読んだときの問題） */
-export const REQUEST_DERIVED: (keyof Request)[] = ["requirementProblems", "completionProblems", "premiseProblems"];
+export const REQUEST_DERIVED: (keyof Request)[] = problemKeysOf(REQUEST_FIELD_GROUPS);
 
-/** 要求の根拠・回答が壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（shared/requirementSource.ts） */
-export const requestKeepRaw = (r: Request): readonly string[] => [...(r.requirementProblems?.length ? REQUIREMENT_KEYS : []), ...(r.completionProblems?.length ? COMPLETION_KEYS : []), ...(r.premiseProblems?.length ? PREMISE_KEYS : [])];
+/** 項目のまとまりが壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（fieldGroups.ts） */
+export const requestKeepRaw = keepRawOf(REQUEST_FIELD_GROUPS);
 
 /** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
 function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {

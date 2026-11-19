@@ -101,6 +101,13 @@
   同じ仕組みにする
 - **差（残す）**: 壊れたときにどの操作を断るか（基準・根拠・停止は操作を断る、完了の記録と手戻りは状態の変更は通して新しい記録だけを足さず
   `completionSkipped`・`reworkSkipped` で知らせる）と、その文言
+- **まとめたもの（T002）**: `core/store/fieldGroups.ts` に要望・タスクのまとまり（`TASK_FIELD_GROUPS`・`REQUEST_FIELD_GROUPS`。項目・問題の名前・読む関数）を
+  1 か所で定義し、読む（`readFieldGroups`）・書き戻す（`keepRawOf`）・書かない項目（`problemKeysOf`）・CLI と API の入力から外す項目（`withoutManaged`）を
+  そこから作るようにした。`normalize.ts` の手で並べた `taskKeepRaw`・`requestKeepRaw`・`TASK_DERIVED`・`REQUEST_DERIVED` と、`requestOps.ts` の
+  3 か所の項目の列挙（作る・タスクの更新・要望の更新）を置き換えた。書き戻しと競合の仕組みは今までどおり `collection.ts` の `keepRaw` と版
+- **まとめなかったもの**: 案の元の値の書き戻し（`preflightStore.ts`・`updateDraft`）は、案のファイルが `MarkdownCollection` でなく run の中の
+  ファイルで、書き戻す項目が根拠と採番の 2 つだけなので、今の形のまま（JSON の記録をまとめる T003 で、記録のファイルと一緒に見直す）。
+  各まとまりの検査・欠けたときの意味・断る操作と文言は各機能のまま（`test/fieldGroups.test.ts` が全部のまとまりを一緒に確かめる）
 
 ### 2. JSON・Markdown の記録のファイル（読み方・検査・ロック・置き換え・版）
 
