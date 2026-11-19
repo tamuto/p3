@@ -344,6 +344,7 @@ serve になること。本物の Codex（ソケット・pathMap・ChatGPT の�
 | [docs/architecture.md](architecture.md) | 設計と規則（なぜそうするか・どこで守っているか） |
 | [docs/chatgpt-sign-in.md](chatgpt-sign-in.md) | ChatGPT のサインインの設計 |
 | [docs/publishing.md](publishing.md) | npm への公開のチェックリスト |
+| [docs/feature-inventory.md](feature-inventory.md) | 機能の棚卸し（機能ごとの維持・統合・簡素化・分離・廃止・保留の判断と、複数パッケージの構成での所属の候補）。機能を足す・分けるときと、パッケージの構成を変えるときに見直す |
 | docs/development.md（この文書） | 開発の手順と構成 |
 
 同じ説明を複数の文書に書かない（片方からリンクする）。確認作業の記録（どの幅・どのブラウザで確かめたか）は文書に書かず、
