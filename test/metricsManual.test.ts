@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { metricsReport } from "../packages/tasks/src/features/metrics/core/index.ts";
-import { manualFile, recordManual } from "../packages/tasks/src/features/metrics/core/manual.ts";
+import { manualFile, readManual, recordManual } from "../packages/tasks/src/features/metrics/core/manual.ts";
 import { checkMilestoneRemoval } from "../packages/tasks/src/core/requestOps.ts";
 import type { MetricResult, MetricsReport } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import { makeProject, openTestProject, tempDir } from "./helpers.ts";
@@ -86,6 +86,39 @@ describe("人が記録する値", () => {
     const saved = JSON.parse(await readFile(manualFile(dataDir), "utf8")) as { records: { value: number; rev: number }[] };
     expect(saved.records).toHaveLength(1);
     expect(saved.records[0].rev).toBe(3);
+  });
+
+  it("訂正の更新者はその訂正の主体だけ: 主体なしなら updatedBy を省き（前の人を残さない）、作った人・日時は残す。再送と古い版は更新者・日時・版を変えない", async () => {
+    const { ctx, dataDir } = await setup();
+    const input = (value: number, note?: string) => ({ metric: "cost", value, unit: "JPY", from: "2026-11-01", to: "2026-11-30", source: "請求書", ...(note ? { note } : {}) });
+    const saved = async () => JSON.parse(await readFile(manualFile(dataDir), "utf8")) as { records: Record<string, unknown>[] };
+    const reread = async () => (await readManual(dataDir)).records[0];
+    const made = await recordManual(ctx, input(100), { actor: "human:a" });
+    expect(made.record).toMatchObject({ rev: 1, createdBy: "human:a", updatedBy: "human:a" });
+
+    // 主体なしの訂正
+    const anon = await recordManual(ctx, input(200), { expectedRev: 1 });
+    expect(anon.changed).toBe(true);
+    for (const r of [anon.record, (await saved()).records[0], await reread()]) {
+      expect(r).not.toHaveProperty("updatedBy");
+      expect(r).toMatchObject({ rev: 2, value: 200, createdBy: "human:a", createdAt: made.record.createdAt });
+    }
+
+    // 主体ありの訂正
+    const byB = await recordManual(ctx, input(300), { expectedRev: 2, actor: "human:b" });
+    expect(byB.record).toMatchObject({ rev: 3, updatedBy: "human:b", createdBy: "human:a" });
+    expect(await reread()).toMatchObject({ rev: 3, updatedBy: "human:b", createdBy: "human:a", createdAt: made.record.createdAt });
+
+    // 同じ値・出典・メモを主体なしで再送: 何も変えない
+    const before = await reread();
+    const again = await recordManual(ctx, input(300));
+    expect(again.changed).toBe(false);
+    for (const r of [again.record, await reread()]) expect({ updatedBy: r.updatedBy, updatedAt: r.updatedAt, rev: r.rev }).toEqual({ updatedBy: before.updatedBy, updatedAt: before.updatedAt, rev: before.rev });
+
+    // 古い版で内容を変える: 競合で何も書かない
+    await expect(recordManual(ctx, input(400), { expectedRev: 2 })).rejects.toMatchObject({ code: "metrics_conflict" });
+    const after = await reread();
+    expect({ updatedBy: after.updatedBy, updatedAt: after.updatedAt, rev: after.rev, value: after.value }).toEqual({ updatedBy: before.updatedBy, updatedAt: before.updatedAt, rev: before.rev, value: 300 });
   });
 
   it("負数・非数・小数の件数・不明な指標や所属・不正な期間・出典なしは受け付けず、壊れたファイルは読めないと出して書かない", async () => {
