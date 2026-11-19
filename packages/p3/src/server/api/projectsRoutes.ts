@@ -4,7 +4,7 @@ import { ProjectRegistry, RegistryError } from "../../core/projectRegistry.ts";
 import { PROJECT_NAME } from "@infodb/p3-tasks/core/userConfig.ts";
 import { chatgptRoutes } from "@infodb/p3-tasks/server/api/chatgptRoutes.ts";
 import { apiRoutes, eventStream } from "@infodb/p3-tasks/server/api/routes.ts";
-import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/server/api/userThemeRoutes.ts";
+import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
 
 /** 変える操作に添える登録世代のヘッダー（GET でも添えれば、違うときは断る） */

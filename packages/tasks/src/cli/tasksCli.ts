@@ -1,44 +1,27 @@
 import { daysUntil, localToday } from "../shared/dates.ts";
 import { openProject } from "../core/context.ts";
-import { SettingsError } from "../core/machineSettings.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
-import { OpRuleError } from "../core/requestOps.ts";
-import { AcceptanceInputError } from "../shared/acceptance.ts";
-import { RequirementInputError } from "../shared/requirementSource.ts";
-import { requirementCommand } from "./requirementCommands.ts";
-import { revisitCommand } from "./revisitCommands.ts";
-import { retroCommand } from "./retroCommands.ts";
-import { metricsCommand } from "./metricsCommands.ts";
-import { MetricsError } from "../shared/metrics.ts";
-import { RetrospectiveError } from "../shared/retrospective.ts";
+import { requirementCommand } from "../features/requirements/cli/requirementCommands.ts";
+import { revisitCommand } from "../features/records/cli/revisitCommands.ts";
+import { retroCommand } from "../features/retro/cli/retroCommands.ts";
+import { metricsCommand } from "../features/metrics/cli/metricsCommands.ts";
 import type { RequestProgress } from "../shared/types.ts";
-import { PremiseInputError } from "../shared/reviewCandidate.ts";
-import { BlockInputError } from "../shared/taskBlock.ts";
-import { taskReviewCommand } from "./taskReviewCommands.ts";
-import { qualityCommand } from "./qualityCommands.ts";
-import { QualityInputError } from "../shared/quality.ts";
-import { ImprovementError } from "../core/qualityImprovement.ts";
-import { TaskReviewRejected } from "../core/taskReview/material.ts";
-import { MilestonesConflictError, ProjectInputError } from "../core/store/workspace.ts";
-import { ReviewCancelRefused, ReviewRejected } from "../core/milestoneReview/service.ts";
-import { ReviewStoreError } from "../core/milestoneReview/store.ts";
-import { HierarchyError } from "../core/hierarchy.ts";
-import { ConflictError, NotFoundError } from "../core/store/collection.ts";
-import { DataDirError, ProjectNotResolvedError, VIA_LABEL } from "../core/store/locate.ts";
-import { UserConfigError } from "../core/userConfig.ts";
+import { taskReviewCommand } from "../features/taskReview/cli/taskReviewCommands.ts";
+import { qualityCommand } from "../features/quality/cli/qualityCommands.ts";
+import { NotFoundError } from "../core/store/collection.ts";
+import { VIA_LABEL } from "../core/store/locate.ts";
 import { table } from "./format.ts";
-import { config, currentRequest, locateHere, repoCommand, resolveActor, runnerText } from "./projectSettings.ts";
+import { cliExit } from "../core/errorOutcome.ts";
+import { config, currentRequest, locateHere, repoCommand, resolveActor, runnerText } from "../features/settings/cli/projectSettings.ts";
 import { UsageError } from "@infodb/p3-kit/usage.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { runnerView } from "../shared/preflightRunner.ts";
-import { GenerationRejected } from "../core/releaseNotes/generate.ts";
 import type { CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
 import { taskCommand } from "./taskCommands.ts";
 import { preflightCommand } from "./preflightCommands.ts";
-import { releaseNotesCommand } from "./releaseNotesCommands.ts";
-import { ReleaseNoteError } from "../core/releaseNotes/store.ts";
+import { releaseNotesCommand } from "../features/releaseNotes/cli/releaseNotesCommands.ts";
 import type { ResolvedProject } from "../core/store/locate.ts";
 import type { MachineSettings } from "../core/machineSettings.ts";
 
@@ -191,80 +174,5 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
   }
 }
 
-/** エラーを標準エラーに出し、終了コードを返す（競合 3・見つからない 2・ほか 1） */
-export function reportError(e: unknown): number {
-  if (e instanceof ConflictError) {
-    process.stderr.write(`競合: ${e.message}。最新を取得してやり直してください\n`);
-    return 3;
-  }
-  if (e instanceof UserConfigError) {
-    process.stderr.write(`${e.message}\n`);
-    return 1;
-  }
-  if (e instanceof SettingsError) {
-    process.stderr.write(`設定: ${e.message}\n`);
-    return 1;
-  }
-  if (e instanceof ProjectNotResolvedError || e instanceof DataDirError) {
-    process.stderr.write(`${e.message}\n`);
-    return 1;
-  }
-  // リリースノート: 無い → 2、版の競合・既にある → 3、読めない・ID が使えない → 1
-  if (e instanceof ReleaseNoteError) {
-    process.stderr.write(`${e.code === "conflict" ? "競合: " : ""}${e.message}\n`);
-    return e.code === "not_found" ? 2 : e.code === "conflict" || e.code === "exists" ? 3 : 1;
-  }
-  // 指標: 版の競合 → 3、規則に合わない・読めない → 1（何も書いていない）
-  if (e instanceof MetricsError) {
-    process.stderr.write(`${e.code === "metrics_conflict" ? "競合: " : ""}${e.message}\n`);
-    return e.code === "metrics_conflict" ? 3 : 1;
-  }
-  // 振り返り: 版の競合 → 3、規則に合わない・読めない → 1（何も書いていない）
-  if (e instanceof RetrospectiveError) {
-    process.stderr.write(`${e.code === "retro_conflict" ? "競合: " : ""}${e.message}\n`);
-    return e.code === "retro_conflict" ? 3 : 1;
-  }
-  // 生成を始められない（材料が無い・上限・実行中）。Codex は呼んでいない
-  if (e instanceof GenerationRejected) {
-    process.stderr.write(`${e.message}\n`);
-    return 1;
-  }
-  // 要望の親子: ロックを取れない・子の表示順を読んだ後に子の集合が変わった → 3（読み直してやり直す）、規則に合わない → 1
-  if (e instanceof HierarchyError) {
-    process.stderr.write(`${e.message}\n`);
-    const changedSet = e.code === "child_order_invalid" && (e.detail.reason === "not_child" || e.detail.reason === "missing");
-    return e.code === "hierarchy_busy" || changedSet ? 3 : 1;
-  }
-  // マイルストーンレビュー: 無い → 2、実行中・終わっている・動いている所有者がいる → 3、ほか（目的が無い・上限・ID・読めない）→ 1
-  if (e instanceof ReviewRejected || e instanceof ReviewStoreError || e instanceof ReviewCancelRefused) {
-    process.stderr.write(`${e.message}\n`);
-    const code = e.code;
-    return code === "not_found" || code === "unknown_milestone" ? 2 : code === "running" || code === "finished" || code === "owner_alive" || code === "exists" ? 3 : 1;
-  }
-  // タスクのレビュー: 実行中・材料が変わった → 3、ほか（未完了・比較対象・観点・上限・担当）→ 1
-  if (e instanceof TaskReviewRejected) {
-    process.stderr.write(`${e.message}\n`);
-    return e.code === "running" || e.code === "material_changed" ? 3 : 1;
-  }
-  // 改善要望: 診断が変わった・登録先がある → 3、無い → 2、ほか → 1
-  if (e instanceof ImprovementError) {
-    process.stderr.write(`${e.message}\n`);
-    return e.code === "not_found" ? 2 : e.code === "diagnosis_changed" || e.code === "existing" || e.code === "closed_existing" ? 3 : 1;
-  }
-  // 品質基準: 版が違う → 3、規則に合わない・読めない → 1
-  if (e instanceof QualityInputError) {
-    process.stderr.write(`${e.message}\n`);
-    return e.code === "quality_conflict" ? 3 : 1;
-  }
-  // マイルストーンの版が違う（読んだ後に他で変わった）→ 3。何も書いていない
-  if (e instanceof MilestonesConflictError) {
-    process.stderr.write(`競合: ${e.message}\n`);
-    return 3;
-  }
-  if (e instanceof NotFoundError) {
-    process.stderr.write(`見つかりません: ${e.id}\n`);
-    return 2;
-  }
-  process.stderr.write(`${e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError || e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof PremiseInputError || e instanceof BlockInputError ? "" : "エラー: "}${(e as Error).message}\n`);
-  return 1;
-}
+/** エラーを標準エラーに出し、終了コードを返す（競合 3・見つからない 2・ほか 1。対応の表は core/errorOutcome.ts） */
+export const reportError = (e: unknown): number => cliExit(e, (t) => process.stderr.write(t));

@@ -4,7 +4,7 @@ import { startServer, type RunningServer } from "../server/server.ts";
 import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject } from "@infodb/p3-tasks/core/store/locate.ts";
 import { loadUserConfig } from "@infodb/p3-tasks/core/userConfig.ts";
 import { codexCommand } from "@infodb/p3-tasks/cli/codex.ts";
-import { userConfigCommand } from "@infodb/p3-tasks/cli/userConfig.ts";
+import { userConfigCommand } from "@infodb/p3-tasks/features/settings/cli/userConfig.ts";
 import { chatgptCommand } from "@infodb/p3-tasks/cli/chatgpt.ts";
 import { init, isAgentChoice, joinProject, placeAgents, projectCommand } from "./project.ts";
 import { repoRoot, UsageError } from "@infodb/p3-kit/usage.ts";

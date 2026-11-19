@@ -4,7 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/milestoneGoals.ts";
-import { QualityInputError, qualityPlain, type QualityConfig } from "../../shared/quality.ts";
+import { QualityInputError, qualityPlain, type QualityConfig } from "../../features/quality/shared/quality.ts";
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "@infodb/p3-kit/fsutil.ts";
@@ -15,9 +15,9 @@ import { NoteStore } from "./noteStore.ts";
 import { PreflightStore } from "./preflightStore.ts";
 import { writeProjectFile, writeQualityFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
-import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../releaseNotes/store.ts";
-import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../milestoneReview/store.ts";
-import { TASK_REVIEWS_DIR, TaskReviewStore } from "../taskReview/store.ts";
+import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../../features/releaseNotes/core/store.ts";
+import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../../features/milestoneReview/core/store.ts";
+import { TASK_REVIEWS_DIR, TaskReviewStore } from "../../features/taskReview/core/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -177,6 +177,13 @@ export class Workspace {
   /** Preflight が読む参照先（共有の定義と、このマシンのパス）。呼ぶたびにパスがあるかを確かめる */
   refs(): ResolvedRef[] {
     return resolveRefs(this.project, { localRepos: this.localRepos });
+  }
+
+  /** ディスクから読み直した別の Workspace（材料の取り出しなど。画面・CLI のキャッシュに左右されない。複数のファイルを同じ時点で読んだとは保証しない） */
+  static async snapshot(dataDir: string): Promise<Workspace> {
+    const snap = new Workspace(dataDir);
+    await snap.load();
+    return snap;
   }
 
   async load(): Promise<void> {

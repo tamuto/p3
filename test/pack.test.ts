@@ -81,6 +81,8 @@ describe("npm pack の中身だけで動く", () => {
     expect(JSON.parse(p3(["whoami", "--json"]))).toMatchObject({ project: "sample" });
     const rid = JSON.parse(p3(["request", "new", "通知", "--body", "- 送信\n- 設定", "--json"])).id;
     expect(JSON.parse(p3(["preflight", rid, "--engine", "mock", "--json"]))).toMatchObject({ status: "completed" });
+    // 機能のまとまり（features/）に移したコマンドも同梱した JavaScript で動く
+    expect(JSON.parse(p3(["metrics", "--json"]))).toMatchObject({ scope: { kind: "project" }, metrics: expect.any(Array) });
 
     // serve: API はいつも、画面はビルドしてあれば（pnpm -s check はテストの後にビルドする）
     const port = 20000 + Math.floor(Math.random() * 20000);

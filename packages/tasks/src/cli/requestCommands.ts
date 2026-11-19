@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import { basename, relative, resolve as resolvePath } from "node:path";
 import { REQUEST_STATUSES, type Attachment, type Milestone, type Request } from "../shared/types.ts";
 import { nextGoalId } from "../shared/milestoneGoals.ts";
-import { QUALITY_VERDICT_LABELS } from "../shared/taskReview.ts";
-import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../shared/milestoneReview.ts";
-import type { ReviewDetail } from "../core/milestoneReview/service.ts";
+import { QUALITY_VERDICT_LABELS } from "../features/taskReview/shared/taskReview.ts";
+import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../features/milestoneReview/shared/milestoneReview.ts";
+import type { ReviewDetail } from "../features/milestoneReview/core/service.ts";
 import { type P3Context } from "../core/context.ts";
 import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, orderChildren, updateRequest } from "../core/requestOps.ts";
 import { hierarchyNow, resolvedIssue } from "../core/requestStatus.ts";
@@ -13,9 +13,9 @@ import { resolveRequestId } from "../core/ops.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest, formatFamily } from "./showView.ts";
-import { formatReview as formatRevisit } from "./revisitCommands.ts";
-import { requestReview } from "../core/reviewCandidates.ts";
-import { reviewSummary } from "../shared/reviewCandidate.ts";
+import { formatReview as formatRevisit } from "../features/records/cli/revisitCommands.ts";
+import { requestReview } from "../features/records/core/reviewCandidates.ts";
+import { reviewSummary } from "../features/records/shared/reviewCandidate.ts";
 
 /** 要望の配下の見直し候補の件数（無ければ何も出さない。親の件数は集約で、親自身を候補とは扱わない） */
 function reviewCountLines(review: ReturnType<typeof requestReview>): string[] {

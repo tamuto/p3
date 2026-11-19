@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
-import { extractReviewInput } from "../packages/tasks/src/core/milestoneReview/material.ts";
-import { InvalidReview, parseReview, reviewPrompt } from "../packages/tasks/src/core/milestoneReview/review.ts";
-import { MilestoneReviewService } from "../packages/tasks/src/core/milestoneReview/service.ts";
-import { updateQuality } from "../packages/tasks/src/core/quality.ts";
-import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import { extractReviewInput } from "../packages/tasks/src/features/milestoneReview/core/material.ts";
+import { InvalidReview, parseReview, reviewPrompt } from "../packages/tasks/src/features/milestoneReview/core/review.ts";
+import { MilestoneReviewService } from "../packages/tasks/src/features/milestoneReview/core/service.ts";
+import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
+import type { Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { git, makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-reviewer.mjs", import.meta.url));

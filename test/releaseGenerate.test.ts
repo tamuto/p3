@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
 import { CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
-import { GenerationRejected, parseSummary, ReleaseGenerator, SUMMARY_INPUT_LIMIT, summaryInput, type Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
-import { releaseMaterial, saveReleaseNote, startGeneration } from "../packages/tasks/src/core/releaseNotes/service.ts";
+import { GenerationRejected, parseSummary, ReleaseGenerator, SUMMARY_INPUT_LIMIT, summaryInput, type Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
+import { releaseMaterial, saveReleaseNote, startGeneration } from "../packages/tasks/src/features/releaseNotes/core/service.ts";
 import type { ReleaseGeneration } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 

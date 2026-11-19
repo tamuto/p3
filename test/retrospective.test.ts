@@ -3,9 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { confirmRetrospectiveTarget, retrospectiveView } from "../packages/tasks/src/core/retrospective.ts";
+import { confirmRetrospectiveTarget, retrospectiveView } from "../packages/tasks/src/features/retro/core/retrospective.ts";
 import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
-import { RetrospectiveError } from "../packages/tasks/src/shared/retrospective.ts";
+import { RetrospectiveError } from "../packages/tasks/src/features/retro/shared/retrospective.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, newTask, openTestProject, tempDir } from "./helpers.ts";
 

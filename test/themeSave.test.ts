@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Theme } from "../packages/tasks/src/shared/types.ts";
-import { createThemeSaver } from "../packages/tasks/src/web/lib/themeSave.ts";
+import { createThemeSaver } from "../packages/tasks/src/features/settings/web/lib/themeSave.ts";
 
 /** 保存を手で終わらせられる偽の API（応答の順を入れ替えられる） */
 function fakeApi() {

@@ -10,7 +10,7 @@ import { isMaterialized } from "../../../shared/preflightInput.ts";
 import { staleNotice } from "../../lib/requestEdit.ts";
 import { NOTE_INPUT_ID, focusNoteInput } from "./Notes.tsx";
 import { Drafts } from "./Drafts.tsx";
-import { Clarifications } from "./Clarifications.tsx";
+import { Clarifications } from "../../../features/requirements/web/Clarifications.tsx";
 import { ChildDrafts } from "./ChildDrafts.tsx";
 import { DirectTaskLink } from "./DirectTaskLink.tsx";
 import { preflightFailed } from "../../../shared/directTask.ts";

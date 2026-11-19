@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { InputField, InputMatch, PreflightInput, PreflightRun, Request } from "../../shared/types.ts";
 import { changedLabel, normalizeInput } from "../../shared/preflightInput.ts";
-import { readRequirement, renderRequirement, requestSubject, requirementInputKey, requirementInputOf, type RequirementInput } from "../../shared/requirementSource.ts";
+import { readRequirement, renderRequirement, requestSubject, requirementInputKey, requirementInputOf, type RequirementInput } from "../../features/requirements/shared/requirementSource.ts";
 
 export { normalizeInput };
 

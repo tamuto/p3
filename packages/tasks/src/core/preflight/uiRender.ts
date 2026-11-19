@@ -1,6 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { writeJsonRecord } from "../store/jsonRecord.ts";
 import type { PreflightLogEntry } from "../../shared/types.ts";
 import { RENDER_LIMITS, RenderError, renderHtml, type RenderJob, type RenderOptions } from "./render.ts";
 import { safeRelative, UI_DIR, UI_INDEX } from "./uiMaterials.ts";
@@ -82,5 +82,5 @@ export async function renderManuscripts(runDir: string, opts: RenderOptions & { 
       for (const item of byId.values()) item.renderError = message;
     }
   }
-  if (forged || jobs.length || items.some((x) => x.renderError)) await writeFileAtomic(indexFile, JSON.stringify(index, null, 2) + "\n");
+  if (forged || jobs.length || items.some((x) => x.renderError)) await writeJsonRecord(indexFile, index);
 }

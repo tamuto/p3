@@ -1,6 +1,6 @@
-import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "./acceptance.ts";
+import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "../features/requirements/shared/acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
-import type { QualitySnapshot, QualityState } from "./quality.ts";
+import type { QualitySnapshot, QualityState } from "../features/quality/shared/quality.ts";
 import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
@@ -232,10 +232,10 @@ export interface Request {
 }
 
 import type { HierarchyIssue } from "./hierarchy.ts";
-import type { CompletionRecord } from "./completionRecord.ts";
-import type { ReworkEntry } from "./reworkHistory.ts";
-import type { PremiseChange, ReviewState, ReviewSummary } from "./reviewCandidate.ts";
-import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "./requirementSource.ts";
+import type { CompletionRecord } from "../features/records/shared/completionRecord.ts";
+import type { ReworkEntry } from "../features/records/shared/reworkHistory.ts";
+import type { PremiseChange, ReviewState, ReviewSummary } from "../features/records/shared/reviewCandidate.ts";
+import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "../features/requirements/shared/requirementSource.ts";
 
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */

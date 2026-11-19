@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { reworkOf } from "../packages/tasks/src/shared/reworkHistory.ts";
+import { reworkOf } from "../packages/tasks/src/features/records/shared/reworkHistory.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
 import { withFileLock } from "../packages/kit/src/fsutil.ts";

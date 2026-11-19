@@ -1,3 +1,4 @@
+import { apiError } from "../../core/errorOutcome.ts";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
@@ -6,37 +7,31 @@ import { REQUEST_STATUSES, type Request, type ServerEvent, type Task, TASK_STATU
 import type { P3Context } from "../../core/context.ts";
 import { listTasks, progress, resolve } from "../../core/ops.ts";
 import { ConflictError, NotFoundError } from "../../core/store/collection.ts";
-import { ACCEPTANCE_RESULTS, AcceptanceInputError, acceptanceStatus, type EvidenceBasis } from "../../shared/acceptance.ts";
-import { requestRequirementView, RequirementInputError, type CriterionSource, type SourceOp } from "../../shared/requirementSource.ts";
-import { PremiseInputError } from "../../shared/reviewCandidate.ts";
-import { MILESTONE_REVIEW_SECTIONS, RetrospectiveError, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../shared/retrospective.ts";
-import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../core/retrospective.ts";
-import { metricScopeOf, metricsReport } from "../../core/metrics/index.ts";
-import { MetricsError } from "../../shared/metrics.ts";
-import { requestReview, reviewCandidates, taskReview } from "../../core/reviewCandidates.ts";
-import { BlockInputError } from "../../shared/taskBlock.ts";
-import { QualityInputError, taskQualityDiff, type QualityOp } from "../../shared/quality.ts";
-import { qualityTemplate, qualityView, updateQuality } from "../../core/quality.ts";
-import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement } from "../../core/qualityImprovement.ts";
+import { ACCEPTANCE_RESULTS, acceptanceStatus, type EvidenceBasis } from "../../features/requirements/shared/acceptance.ts";
+import { requestRequirementView, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
+import { MILESTONE_REVIEW_SECTIONS, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../features/retro/shared/retrospective.ts";
+import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../features/retro/core/retrospective.ts";
+import { metricsRoutes } from "../../features/metrics/server/metricsRoutes.ts";
+import { requestReview, reviewCandidates, taskReview } from "../../features/records/core/reviewCandidates.ts";
+import { taskQualityDiff, type QualityOp } from "../../features/quality/shared/quality.ts";
+import { qualityTemplate, qualityView, updateQuality } from "../../features/quality/core/quality.ts";
+import { diagnoseQuality, improvementDraft, registerImprovement } from "../../features/quality/core/qualityImprovement.ts";
 import { ATTACHMENT_LIMITS, ATTACHMENT_TYPES, AttachmentError, safeFileName } from "../../core/store/attachments.ts";
 import { bodyLimit } from "hono/body-limit";
-import { MilestonesConflictError, ReloadError } from "../../core/store/workspace.ts";
-import { ArchivedTaskReadError, getArchivedTask, listArchivedTasks } from "../../core/store/archivedTasks.ts";
+import { getArchivedTask, listArchivedTasks } from "../../core/store/archivedTasks.ts";
 import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
-import { HierarchyError, hierarchyView } from "../../core/hierarchy.ts";
+import { hierarchyView } from "../../core/hierarchy.ts";
 import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
-import { userThemeRoutes, userThemeScriptRoute } from "./userThemeRoutes.ts";
-import { UserConfigError } from "../../core/userConfig.ts";
+import { userThemeRoutes, userThemeScriptRoute } from "../../features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "./manifest.ts";
-import { repoRoutes } from "./repoRoutes.ts";
-import { releaseNoteRoutes } from "./releaseNoteRoutes.ts";
-import { milestoneReviewRoutes } from "./milestoneReviewRoutes.ts";
-import { taskReviewRoutes } from "./taskReviewRoutes.ts";
+import { repoRoutes } from "../../features/settings/server/repoRoutes.ts";
+import { releaseNoteRoutes } from "../../features/releaseNotes/server/releaseNoteRoutes.ts";
+import { milestoneReviewRoutes } from "../../features/milestoneReview/server/milestoneReviewRoutes.ts";
+import { taskReviewRoutes } from "../../features/taskReview/server/taskReviewRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality, saveClarifyAnswer, updateRequirement, recordPremise } from "../../core/requestOps.ts";
 import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
-import { StaleInputError } from "../../core/preflight/input.ts";
-import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftConflictError, PulseInputError } from "../../core/preflight/service.ts";
+import { CancelRefusedError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
  * ブラウザ用のローカル API。AI や人の操作は CLI（ファイルを直接読み書き）が主で、ここは画面のため。
@@ -48,7 +43,7 @@ import { CancelRefusedError, ChildConflictError, ChildDraftsChangedError, DraftC
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
- *   /metrics[?milestone=<ID>]              開発の指標（core/metrics。読むだけ）
+ *   /metrics[?milestone=<ID>]              開発の指標（features/metrics。読むだけ）
  *   /milestones/:mid/review[s...]          マイルストーンレビュー（milestoneReviewRoutes.ts）
  *   /requests/:rid/tasks/:tid/review[s...] タスクの AI レビュー（taskReviewRoutes.ts）
  */
@@ -191,46 +186,15 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   const notify = opts.notify ?? ((kind: "user" | "chatgpt") => ws.emit({ type: "changed", kind }));
   const app = new Hono();
 
+  // エラーの状態と code は core/errorOutcome.ts の表（CLI の終了コードと同じ所）。版の競合は今の値（要望・タスク）を添える
   app.onError((err, c) => {
-    if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
-    // 409 は code で分ける: rev_conflict（読み直してやり直す）/ stale_input（評価のあとで要望が変わった。再評価する）
-    if (err instanceof DraftConflictError || err instanceof ChildConflictError) return c.json({ error: err.message, code: "rev_conflict", current: err.current }, 409);
-    if (err instanceof ChildDraftsChangedError) return c.json({ error: err.message, code: err.code }, 409);
-    if (err instanceof StaleInputError) return c.json({ error: err.message, code: err.code, inputMatch: err.match }, 409);
     if (err instanceof ConflictError) {
       const current = err.id.includes("/") ? ws.task(err.id) : c.req.param("tid") ? ws.tasksOf(c.req.param("rid")!).get(err.id) : ws.requests.get(err.id);
       return c.json({ error: err.message, code: "rev_conflict", current }, 409);
     }
-    // 要望の親子（code: hierarchy_invalid・hierarchy_busy・has_children・has_parent。何も書いていない）
-    if (err instanceof HierarchyError) return c.json({ error: err.message, code: err.code, ...err.detail }, 409);
-    // マイルストーンの版が違う（編集を始めた後に他で変わった。何も書いていない）
-    if (err instanceof MilestonesConflictError) return c.json({ error: err.message, code: err.code, milestonesVersion: err.current }, 409);
     if (err instanceof z.ZodError) return c.json({ error: "invalid input", issues: err.issues }, 400);
-    // 受け入れ基準・証拠の操作が規則に合わない（何も書いていない）
-    if (err instanceof AcceptanceInputError) return c.json({ error: err.message, code: err.code }, 400);
-    // 要求の根拠・回答の操作が規則に合わない（何も書いていない）
-    if (err instanceof RequirementInputError) return c.json({ error: err.message, code: err.code }, 400);
-    // 前提の変更の操作が規則に合わない・対象が無い（何も書いていない）
-    if (err instanceof PremiseInputError) return c.json({ error: err.message, code: err.code }, 400);
-    // 振り返り: 候補でない・理由が無い → 400、版の競合・記録が読めない → 409（何も書いていない）
-    if (err instanceof RetrospectiveError) return c.json({ error: err.message, code: err.code }, err.code === "retro_invalid" ? 400 : 409);
-    // 指標: 知らない範囲（登録されていないマイルストーン）
-    if (err instanceof MetricsError) return c.json({ error: err.message, code: err.code }, 400);
-    // 停止の操作が規則に合わない・止まったままの移動（何も書いていない）
-    if (err instanceof BlockInputError) return c.json({ error: err.message, code: err.code }, err.code === "blocked" ? 409 : 400);
-    // 品質基準（版が違えば 409 quality_conflict。何も書いていない）
-    if (err instanceof QualityInputError) return c.json({ error: err.message, code: err.code }, err.code === "quality_conflict" ? 409 : 400);
-    // 改善要望（診断が変わった・登録先がある → 409。作っていない）
-    if (err instanceof ImprovementError) {
-      const status = err.code === "not_found" ? 404 : err.code === "diagnosis_changed" || err.code === "existing" || err.code === "closed_existing" ? 409 : 400;
-      return c.json({ error: err.message, code: err.code, ...(err.existing ? { existing: err.existing } : {}) }, status);
-    }
-    // 個人設定のファイルが読めない・壊れている（ファイルは変えていない）
-    if (err instanceof UserConfigError) return c.json({ error: err.message }, 500);
-    // データのフォルダが読めない（メモリ上の状態は変えていない）
-    if (err instanceof ReloadError) return c.json({ error: err.message }, 503);
-    // アーカイブのフォルダ・ファイルが読めない（無いのは 404）
-    if (err instanceof ArchivedTaskReadError) return c.json({ error: err.message, code: err.code }, 500);
+    const r = apiError(err);
+    if (r) return c.json(r.body, r.status);
     console.error(err);
     return c.json({ error: err.message }, 400);
   });
@@ -363,7 +327,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
-  app.get("/metrics", async (c) => c.json(await metricsReport(ctx, metricScopeOf(ctx, c.req.query("milestone")))));
+  app.route("/", metricsRoutes(ctx));
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
     return c.json(reviewCandidates(ctx, request ? { request } : {}));

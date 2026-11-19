@@ -1,4 +1,4 @@
-import { requestRequirementView } from "../shared/requirementSource.ts";
+import { requestRequirementView } from "../features/requirements/shared/requirementSource.ts";
 import { absRef } from "../shared/refs.ts";
 import { relationRole, type Request, type SupersededMark, type Task } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";

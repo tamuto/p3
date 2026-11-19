@@ -1,6 +1,6 @@
 @import "tailwindcss";
-/* 製品（tasks）のページと部品のクラスも拾う（画面のビルドは入口のパッケージで行う） */
-@source "../../../tasks/src/web";
+/* 製品（tasks）のページと部品（web と機能ごとの web）のクラスも拾う（画面のビルドは入口のパッケージで行う） */
+@source "../../../tasks/src";
 
 /* dark: は html の class "dark" で切り替える（個人設定のテーマ。system のときは OS に合わせて付け外しする。lib/theme.ts） */
 @custom-variant dark (&:where(.dark, .dark *));

@@ -1,9 +1,9 @@
-import { evidenceSummary } from "../shared/acceptance.ts";
+import { evidenceSummary } from "../features/requirements/shared/acceptance.ts";
 import { normalizeTaskId } from "../shared/refs.ts";
 import { REQUEST_STATUSES, type RequestProgress, type RequestStatus, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
 import { hierarchyNow } from "./requestStatus.ts";
-import { requestReviewCounts, taskReview } from "./reviewCandidates.ts";
+import { requestReviewCounts, taskReview } from "../features/records/core/reviewCandidates.ts";
 
 /**
  * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。

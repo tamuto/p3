@@ -24,9 +24,9 @@ import { latestOnly, STALE } from "../../../lib/latest.ts";
 import { createPulsePoller, latestNotice, shownRunChanged } from "../../../lib/preflightWatch.ts";
 import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx";
 import { DirectTaskLink } from "../../../components/request/DirectTaskLink.tsx";
-import { RequirementPanel } from "../../../components/request/RequirementPanel.tsx";
-import { RequestReviewNotice } from "../../../components/request/RequestReviewNotice.tsx";
-import { RetrospectivePanel } from "../../../components/request/Retrospective.tsx";
+import { RequirementPanel } from "../../../../features/requirements/web/RequirementPanel.tsx";
+import { RequestReviewNotice } from "../../../../features/records/web/RequestReviewNotice.tsx";
+import { RetrospectivePanel } from "../../../../features/retro/web/Retrospective.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */

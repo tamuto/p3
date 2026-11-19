@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { OwnerProbe } from "../packages/tasks/src/core/preflight/owner.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { ReviewCancelRefused, ReviewStoreError, RunControl } from "../packages/tasks/src/core/reviewRuns.ts";
-import { newTaskReviewRunId, parseTaskReviewKey } from "../packages/tasks/src/core/taskReview/store.ts";
-import type { TaskReviewInput, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/shared/taskReview.ts";
+import { newTaskReviewRunId, parseTaskReviewKey } from "../packages/tasks/src/features/taskReview/core/store.ts";
+import type { TaskReviewInput, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 /**

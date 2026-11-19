@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../packages/tasks/src/core/retrospective.ts";
+import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../packages/tasks/src/features/retro/core/retrospective.ts";
 import { createRequest, createTask, updateRequest, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { git, makeProject, newRequest, tempDir } from "./helpers.ts";

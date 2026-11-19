@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AcceptanceInputError, acceptanceStatus, applyAcceptanceOps, criteriaEditOps, parseEvidenceArg, parseEvidenceFile, type AcceptanceState } from "../packages/tasks/src/shared/acceptance.ts";
+import { AcceptanceInputError, acceptanceStatus, applyAcceptanceOps, criteriaEditOps, parseEvidenceArg, parseEvidenceFile, type AcceptanceState } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import { CHECK_CLEARED_BY_ACCEPTANCE, createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { checkStatusChange } from "../packages/tasks/src/core/requestStatus.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";

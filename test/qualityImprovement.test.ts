@@ -6,12 +6,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { updateQuality } from "../packages/tasks/src/core/quality.ts";
-import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement, tokenTag } from "../packages/tasks/src/core/qualityImprovement.ts";
+import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
+import { diagnoseQuality, ImprovementError, improvementDraft, registerImprovement, tokenTag } from "../packages/tasks/src/features/quality/core/qualityImprovement.ts";
 import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
-import { newTaskReviewRunId } from "../packages/tasks/src/core/taskReview/store.ts";
+import { newTaskReviewRunId } from "../packages/tasks/src/features/taskReview/core/store.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import type { TaskReviewInput, TaskReviewResult } from "../packages/tasks/src/shared/taskReview.ts";
+import type { TaskReviewInput, TaskReviewResult } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import { makeProject, newRequest, tempDir } from "./helpers.ts";
 
 const source = { type: "project" } as const;
@@ -79,6 +79,18 @@ describe("診断と原稿", () => {
     expect(draft.body).toContain("main@abc1234");
     expect(draft.body).toContain("判断できないは未導入という意味ではありません");
     expect(draft.body).not.toContain("未導入です");
+  });
+});
+
+describe("登録の記録のファイル（quality-improvements.json）", () => {
+  it("今の扱い: JSON として読めない記録は、診断（登録先の案内に読む）の時点で断り（invalid）、ファイルを変えない（JSON の記録の部品をまとめるとき 261119-vwgf8 で変えない）", async () => {
+    const { ctx, rid } = await setup();
+    const file = join(ctx.ws.dataDir, "quality-improvements.json");
+    writeFileSync(file, "{ 壊れた");
+    const run = await seedReview(ctx, rid, [q("Q1", "violated")]);
+    const src = { type: "task-review" as const, request: rid, task: "T001", run };
+    await expect(diagnoseQuality(ctx, src)).rejects.toMatchObject({ code: "invalid", message: expect.stringMatching(/quality-improvements\.json が読めません/) });
+    expect(readFileSync(file, "utf8")).toBe("{ 壊れた");
   });
 });
 

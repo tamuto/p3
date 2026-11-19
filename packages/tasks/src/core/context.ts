@@ -6,12 +6,12 @@ import { MockEngine } from "./preflight/mockEngine.ts";
 import { PreflightService } from "./preflight/service.ts";
 import { checkDataDir } from "./store/locate.ts";
 import { Workspace } from "./store/workspace.ts";
-import { ReleaseGenerator } from "./releaseNotes/generate.ts";
-import { MockSummarizer } from "./releaseNotes/mockSummarizer.ts";
-import { MilestoneReviewService } from "./milestoneReview/service.ts";
-import { MockReviewer } from "./milestoneReview/mockReviewer.ts";
-import { TaskReviewService } from "./taskReview/service.ts";
-import { MockTaskReviewer } from "./taskReview/mockReviewer.ts";
+import { ReleaseGenerator } from "../features/releaseNotes/core/generate.ts";
+import { MockSummarizer } from "../features/releaseNotes/core/mockSummarizer.ts";
+import { MilestoneReviewService } from "../features/milestoneReview/core/service.ts";
+import { MockReviewer } from "../features/milestoneReview/core/mockReviewer.ts";
+import { TaskReviewService } from "../features/taskReview/core/service.ts";
+import { MockTaskReviewer } from "../features/taskReview/core/mockReviewer.ts";
 
 export interface P3Context {
   ws: Workspace;

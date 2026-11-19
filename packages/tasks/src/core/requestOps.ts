@@ -1,7 +1,8 @@
-import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../shared/acceptance.ts";
-import { readManual } from "./metrics/manual.ts";
+import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
+import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
+import { readManual } from "../features/metrics/core/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
-import { qualityCriteria, standardHash, taskQualityDiff } from "../shared/quality.ts";
+import { qualityCriteria, standardHash, taskQualityDiff } from "../features/quality/shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
 import {
   answersKey,
@@ -17,12 +18,12 @@ import {
   type Clarification,
   type ClarifyAnswer,
   type SourceOp,
-} from "../shared/requirementSource.ts";
+} from "../features/requirements/shared/requirementSource.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
-import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../shared/completionRecord.ts";
-import { captureRefs } from "./completionRefs.ts";
-import { appendRework, reworkOf, REWORK_SKIPPED } from "../shared/reworkHistory.ts";
-import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../shared/reviewCandidate.ts";
+import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../features/records/shared/completionRecord.ts";
+import { captureRefs } from "../features/records/core/completionRefs.ts";
+import { appendRework, reworkOf, REWORK_SKIPPED } from "../features/records/shared/reworkHistory.ts";
+import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../features/records/shared/reviewCandidate.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
@@ -225,7 +226,7 @@ export async function createTask(
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceSourceSeq: _ass, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = input;
+  const plain = withoutManaged(input, TASK_FIELD_GROUPS);
   // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
   const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
   const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
@@ -259,7 +260,7 @@ export async function updateTask(
   const { checked, acceptance, blockOp, ...rest } = patch;
   // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
   // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
-  const { acceptanceCriteria: _c, acceptanceEvidence: _e, acceptanceSeq: _s, acceptanceSources: _as, acceptanceSourceSeq: _ass, acceptanceProblems: _p, block: _b, blockHistory: _bh, blockProblems: _bp, completionRecords: _cr, completionProblems: _cp, reworkHistory: _rh, reworkProblems: _rp, ...plain } = rest;
+  const plain = withoutManaged(rest, TASK_FIELD_GROUPS);
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
     checkRepoTarget(ctx.ws, patch.repo);
@@ -364,7 +365,7 @@ export async function createRequest(ctx: P3Context, input: Partial<Request> & { 
 export async function updateRequest(ctx: P3Context, rid: string, input: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
   // 要求の根拠・回答は操作（updateRequirement・answerClarification）でだけ変える（値をそのまま書く道は持たない）
   // 完了の記録も p3 が作る
-  const { requirementSources: _rs, requirementSeq: _sq, clarifyAnswers: _ca, requirementProblems: _rp, completionRecords: _cr, completionProblems: _cp, premiseChanges: _pc, premiseProblems: _pp, ...patch } = input;
+  const patch = withoutManaged(input, REQUEST_FIELD_GROUPS);
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
   // 対応済・完了済になりうる更新なら、参照先を書く前に取る

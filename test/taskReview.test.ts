@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
 import { CodexUnavailableError, CodexWorkspaceEngine } from "../packages/tasks/src/core/preflight/codexEngine.ts";
-import type { Summarizer } from "../packages/tasks/src/core/releaseNotes/generate.ts";
+import type { Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
-import { extractTaskReview } from "../packages/tasks/src/core/taskReview/material.ts";
-import { InvalidTaskReview, parseTaskReview, taskReviewPrompt } from "../packages/tasks/src/core/taskReview/review.ts";
-import { TaskReviewService } from "../packages/tasks/src/core/taskReview/service.ts";
+import { extractTaskReview } from "../packages/tasks/src/features/taskReview/core/material.ts";
+import { InvalidTaskReview, parseTaskReview, taskReviewPrompt } from "../packages/tasks/src/features/taskReview/core/review.ts";
+import { TaskReviewService } from "../packages/tasks/src/features/taskReview/core/service.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { rerunSpec } from "../packages/tasks/src/shared/taskReview.ts";
+import { rerunSpec } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import { git, makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/fake-task-reviewer.mjs", import.meta.url));

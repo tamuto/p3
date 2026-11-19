@@ -1,5 +1,6 @@
-import type { QualitySnapshot } from "../../shared/quality.ts";
+import type { QualitySnapshot } from "../../features/quality/shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
+import type { AskResult } from "./codexEngine.ts";
 import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
@@ -141,3 +142,12 @@ include: true
 - この作業範囲にした根拠（<参照先>:<ファイル> の箇所。確かめていなければ「推測」と書く）
 ## 未確認
 - 確かめられなかったこと（無ければ「なし」）`;
+
+/** 頼む先（CodexWorkspaceEngine の ask。テストでは偽物）。refs を渡すと、その参照先を読むだけでマウントする（マイルストーンのレビュー）。レビュー 2 つとリリースノートの要約が使う */
+export interface Summarizer {
+  ask(
+    input: { instructions: string; prompt: string; label: string; refs?: readonly ResolvedRef[] },
+    log: (e: Omit<PreflightLogEntry, "at">) => void,
+    signal: AbortSignal,
+  ): Promise<AskResult>;
+}

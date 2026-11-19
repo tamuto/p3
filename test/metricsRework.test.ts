@@ -1,12 +1,12 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { METRIC_DEFINITIONS, selectTaskReview, type MetricsInput } from "../packages/tasks/src/core/metrics/definitions.ts";
-import { metricsReport } from "../packages/tasks/src/core/metrics/index.ts";
+import { METRIC_DEFINITIONS, selectTaskReview, type MetricsInput } from "../packages/tasks/src/features/metrics/core/definitions.ts";
+import { metricsReport } from "../packages/tasks/src/features/metrics/core/index.ts";
 import { updateTask } from "../packages/tasks/src/core/requestOps.ts";
-import type { MetricResult } from "../packages/tasks/src/shared/metrics.ts";
-import type { ReworkEntry } from "../packages/tasks/src/shared/reworkHistory.ts";
-import type { TaskReviewListItem, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/shared/taskReview.ts";
+import type { MetricResult } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
+import type { ReworkEntry } from "../packages/tasks/src/features/records/shared/reworkHistory.ts";
+import type { TaskReviewListItem, TaskReviewResult, TaskReviewRun } from "../packages/tasks/src/features/taskReview/shared/taskReview.ts";
 import type { Request, Task } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, newTask } from "./helpers.ts";
 

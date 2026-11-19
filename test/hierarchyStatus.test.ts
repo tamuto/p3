@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { progress } from "../packages/tasks/src/core/ops.ts";
-import { materialOf } from "../packages/tasks/src/core/releaseNotes/material.ts";
-import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/core/releaseNotes/completeRequests.ts";
+import { materialOf } from "../packages/tasks/src/features/releaseNotes/core/material.ts";
+import { completeMilestoneRequests, completionPlan, CompletionRejected } from "../packages/tasks/src/features/releaseNotes/core/completeRequests.ts";
 import { createRequest, createTask, updateRequest, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { completionCheck, resolvedIssue, StatusRuleError } from "../packages/tasks/src/core/requestStatus.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";

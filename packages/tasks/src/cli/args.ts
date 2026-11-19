@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { basename, resolve as resolvePath } from "node:path";
 import { parseArgs } from "node:util";
 import { ATTACHMENT_LIMITS, AttachmentError, inspectAttachment } from "../core/store/attachments.ts";
-import { cleanBasis, EVIDENCE_BASIS_KINDS, isEvidenceBasisKind, parseEvidenceArg, parseEvidenceFile, parseEvidenceJson, type AcceptanceOp, type EvidenceBasis } from "../shared/acceptance.ts";
+import { cleanBasis, EVIDENCE_BASIS_KINDS, isEvidenceBasisKind, parseEvidenceArg, parseEvidenceFile, parseEvidenceJson, type AcceptanceOp, type EvidenceBasis } from "../features/requirements/shared/acceptance.ts";
 import { type Task, TASK_STATUSES, isTaskStatus, type TaskStatus } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { repoArg } from "../core/workTargets.ts";
