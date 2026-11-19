@@ -6,6 +6,7 @@ import type { PreflightAssessment, ProposedChild, ProposedTask } from "../../sha
 import { SPLIT_HINT_TASKS } from "../../shared/hierarchy.ts";
 import { stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
 import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { writeJsonRecord } from "../store/jsonRecord.ts";
 import type { EngineOutcome, PreflightEngine, PreflightJob } from "./engine.ts";
 
 const wait = (ms: number, signal: AbortSignal) =>
@@ -136,14 +137,14 @@ export class MockEngine implements PreflightEngine {
       },
     };
 
-    await writeFileAtomic(join(job.runDir, "assessment.json"), JSON.stringify(assessment, null, 2) + "\n");
+    await writeJsonRecord(join(job.runDir, "assessment.json"), assessment);
     if (split) {
       for (const c of children) {
         const { description, ...meta } = c;
         await writeFileAtomic(join(job.runDir, "children", `${c.key}.md`), stringifyFrontmatter(meta, description));
         log({ kind: "info", text: `✎ ${relative(job.dataDir, join(job.runDir, "children", `${c.key}.md`))}` });
       }
-      await writeFileAtomic(join(job.runDir, "ui", "index.json"), JSON.stringify({ needed: false, reason: "mock: 子の要望に分けたので、画面イメージは子の Preflight で作ります" }, null, 2) + "\n");
+      await writeJsonRecord(join(job.runDir, "ui", "index.json"), { needed: false, reason: "mock: 子の要望に分けたので、画面イメージは子の Preflight で作ります" });
       log({ kind: "message", text: assessment.summary });
       return { changed: [join(job.runDir, "assessment.json"), ...children.map((c) => join(job.runDir, "children", `${c.key}.md`)), join(job.runDir, "ui", "index.json")] };
     }
@@ -173,7 +174,7 @@ async function writeMockUi(job: PreflightJob, drafts: ProposedTask[]): Promise<s
   const ui = join(job.runDir, "ui");
   const r = job.request;
   if (!drafts.length || !UI_WORDS.test(`${r.title}\n${r.body}`)) {
-    await writeFileAtomic(join(ui, "index.json"), JSON.stringify({ needed: false, reason: "mock: 要望に画面に関わる語が無いので、画面を伴わない変更とみなしました" }, null, 2) + "\n");
+    await writeJsonRecord(join(ui, "index.json"), { needed: false, reason: "mock: 要望に画面に関わる語が無いので、画面を伴わない変更とみなしました" });
     return [];
   }
   const target = drafts[0].key;
@@ -196,7 +197,7 @@ async function writeMockUi(job: PreflightJob, drafts: ProposedTask[]): Promise<s
       },
     ],
   };
-  await writeFileAtomic(join(ui, "index.json"), JSON.stringify(index, null, 2) + "\n");
+  await writeJsonRecord(join(ui, "index.json"), index);
   return [join(ui, "U1.png"), join(ui, "src", "U1.html"), join(ui, "index.json")];
 }
 

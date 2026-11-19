@@ -1,8 +1,8 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MetricsError, type ManualRecord } from "../../shared/metrics.ts";
 import type { P3Context } from "../context.ts";
-import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { readJsonRecord, writeJsonRecord } from "../store/jsonRecord.ts";
 import { METRIC_DEFINITIONS, type ManualSpec } from "./definitions.ts";
 
 /**
@@ -65,22 +65,23 @@ function readRecord(raw: unknown, i: number): ManualRecord {
 
 /** 記録を読む。無ければ空、壊れていれば problem（空とみなさない） */
 export async function readManual(dataDir: string): Promise<{ records: ManualRecord[]; seq: number; problem?: string }> {
-  let text: string;
-  try {
-    text = await readFile(manualFile(dataDir), "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { records: [], seq: 0 };
-    return { records: [], seq: 0, problem: `読めません: ${(e as Error).message}` };
-  }
-  try {
-    const j = JSON.parse(text) as Partial<ManualFile>;
-    if (!j || typeof j !== "object" || j.version !== 1 || !Array.isArray(j.records)) throw new Error("{version: 1, records: [...]} の形ではありません");
-    const records = j.records.map(readRecord);
-    const seq = Math.max(Number.isInteger(j.seq) ? (j.seq as number) : 0, ...records.map((r) => Number(r.id.slice(1))));
-    return { records, seq };
-  } catch (e) {
-    return { records: [], seq: 0, problem: `${DIR}/${FILE} が読めません（直してください。記録は書き足しません）: ${(e as Error).message}` };
-  }
+  const broken = (m: string) => ({ records: [], seq: 0, problem: `${DIR}/${FILE} が読めません（直してください。記録は書き足しません）: ${m}` });
+  return readJsonRecord<{ records: ManualRecord[]; seq: number; problem?: string }>(manualFile(dataDir), {
+    missing: () => ({ records: [], seq: 0 }),
+    readFailed: (e) => ({ records: [], seq: 0, problem: `読めません: ${e.message}` }),
+    invalidJson: broken,
+    shape: (raw) => {
+      try {
+        const j = raw as Partial<ManualFile>;
+        if (!j || typeof j !== "object" || j.version !== 1 || !Array.isArray(j.records)) throw new Error("{version: 1, records: [...]} の形ではありません");
+        const records = j.records.map(readRecord);
+        const seq = Math.max(Number.isInteger(j.seq) ? (j.seq as number) : 0, ...records.map((r) => Number(r.id.slice(1))));
+        return { records, seq };
+      } catch (e) {
+        return broken((e as Error).message);
+      }
+    },
+  });
 }
 
 export interface ManualInput {
@@ -133,9 +134,7 @@ export function cleanManual(ctx: P3Context, i: ManualInput): Pick<ManualRecord, 
 
 const sameKey = (a: Pick<ManualRecord, "metric" | "scope" | "from" | "to" | "unit">, b: typeof a) => a.metric === b.metric && a.scope === b.scope && a.from === b.from && a.to === b.to && a.unit === b.unit;
 
-async function writeManual(dataDir: string, f: ManualFile) {
-  await writeFileAtomic(manualFile(dataDir), `${JSON.stringify(f, null, 2)}\n`);
-}
+const writeManual = (dataDir: string, f: ManualFile) => writeJsonRecord(manualFile(dataDir), f);
 
 async function locked<T>(dataDir: string, fn: (cur: { records: ManualRecord[]; seq: number }) => Promise<T>): Promise<T> {
   return withFileLock(lockFile(dataDir), async () => {

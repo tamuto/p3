@@ -844,6 +844,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
 | 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `shared/retrospective.ts`（保存は `core/retrospective.ts`） |
 | 開発の指標（定義・対象・算出・欠損の扱い・範囲）と人が記録する値 | `core/metrics/definitions.ts` の `METRIC_DEFINITIONS`（範囲と材料は `core/metrics/index.ts`、人の記録の保存は `core/metrics/manual.ts`、型は `shared/metrics.ts`） |
+| JSON の記録のファイルの読み書き（読むときの扱いを記録ごとに渡す・置き換えで書く） | `core/store/jsonRecord.ts` の `readJsonRecord`・`writeJsonRecord`（記録ごとの扱いの違いは [docs/refactoring.md](refactoring.md) の表） |
 | 要望・タスクの p3 が管理する frontmatter の項目のまとまり（読む・壊れた値の書き戻し・書かない項目・入力から外す項目） | `core/store/fieldGroups.ts` の `TASK_FIELD_GROUPS`・`REQUEST_FIELD_GROUPS`（まとまりごとの検査は各 `shared/*.ts`、書き戻しの仕組みは `core/store/collection.ts` の `keepRaw`） |
 | 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
 | 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `core/completionRefs.ts`） |

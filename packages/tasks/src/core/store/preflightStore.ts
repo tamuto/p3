@@ -20,6 +20,7 @@ function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknow
   };
 }
 import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { writeJsonRecord } from "./jsonRecord.ts";
 
 /**
  * requests/<要望ID>/preflight/<RUN-ID>/
@@ -41,7 +42,7 @@ export class PreflightStore {
   async save(run: PreflightRun): Promise<void> {
     // 中断の依頼は別のファイル（cancel-request.json。頼む側と実行する側が同じファイルを書き合わないように）
     const { drafts, children, cancelRequested, ...meta } = run;
-    await writeFileAtomic(join(this.runDir(run.requestId, run.id), "run.json"), JSON.stringify(meta, null, 2) + "\n");
+    await writeJsonRecord(join(this.runDir(run.requestId, run.id), "run.json"), meta);
   }
 
   async saveDrafts(requestId: string, runId: string, drafts: ProposedTask[]): Promise<void> {

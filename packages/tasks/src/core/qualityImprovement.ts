@@ -1,5 +1,4 @@
 import { createHash, randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkLine } from "../shared/quality.ts";
 import type { Request } from "../shared/types.ts";
@@ -8,7 +7,8 @@ import type { FindingKind, ImprovementDiagnosis, ImprovementFinding, Improvement
 export type { FindingKind, ImprovementDiagnosis, ImprovementFinding, ImprovementSource };
 import type { P3Context } from "./context.ts";
 import { createRequest } from "./requestOps.ts";
-import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { readJsonRecord, writeJsonRecord } from "./store/jsonRecord.ts";
 
 /**
  * 品質の不足から改善要望を作る（CLI の p3 quality improve・API の /quality/improvements）。
@@ -163,18 +163,21 @@ interface Ledger {
 const ledgerPath = (dataDir: string) => join(dataDir, "quality-improvements.json");
 export const tokenTag = (token: string) => `quality-improvement:${token}`;
 
-async function readLedger(dataDir: string): Promise<Ledger> {
-  const text = await readFile(ledgerPath(dataDir), "utf8").catch(() => "");
-  if (!text) return { version: 1, entries: {} };
-  try {
-    const v = JSON.parse(text) as Ledger;
-    return v && typeof v.entries === "object" ? v : { version: 1, entries: {} };
-  } catch {
-    throw new ImprovementError("invalid", `quality-improvements.json が読めません（${ledgerPath(dataDir)}）。直すか退けてからやり直してください`);
-  }
+/** 登録の記録を読む。無い・読めない（readFile の失敗）・空のファイル・形が違うものは空とみなし、JSON として読めなければ断る（今の扱い。docs/refactoring.md） */
+function readLedger(dataDir: string): Promise<Ledger> {
+  const empty = (): Ledger => ({ version: 1, entries: {} });
+  return readJsonRecord<Ledger>(ledgerPath(dataDir), {
+    missing: empty,
+    readFailed: empty,
+    blank: empty,
+    invalidJson: () => {
+      throw new ImprovementError("invalid", `quality-improvements.json が読めません（${ledgerPath(dataDir)}）。直すか退けてからやり直してください`);
+    },
+    shape: (v) => (v && typeof (v as Ledger).entries === "object" ? (v as Ledger) : empty()),
+  });
 }
 
-const writeLedger = (dataDir: string, l: Ledger) => writeFileAtomic(ledgerPath(dataDir), `${JSON.stringify(l, null, 2)}\n`);
+const writeLedger = (dataDir: string, l: Ledger) => writeJsonRecord(ledgerPath(dataDir), l);
 const CLOSED: Request["status"][] = ["done", "rejected"];
 
 /**

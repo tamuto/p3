@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { reworkLine } from "../shared/reworkHistory.ts";
 import type { Task } from "../shared/types.ts";
@@ -29,7 +28,8 @@ export type { EvidenceRef, RetrospectiveView } from "../shared/retrospective.ts"
 import type { P3Context } from "./context.ts";
 import { getArchivedTask, listArchivedTasks } from "./store/archivedTasks.ts";
 import { NotFoundError } from "./store/collection.ts";
-import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { readJsonRecord, writeJsonRecord } from "./store/jsonRecord.ts";
 
 /**
  * 要望の振り返りの保存と読み取り（規則は shared/retrospective.ts）。記録は requests/<要望ID>/retrospective.json で、要望のロック
@@ -40,22 +40,42 @@ export const RETRO_FILE = "retrospective.json";
 
 const pathOf = (ctx: P3Context, rid: string) => join(ctx.ws.requestsDir, rid, RETRO_FILE);
 
-/** 記録を読む（無ければ空。壊れていれば retro_unreadable） */
-export async function loadRetrospective(ctx: P3Context, rid: string): Promise<RetrospectiveFile> {
-  let text: string;
-  try {
-    text = await readFile(pathOf(ctx, rid), "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { version: 0, targets: [] };
-    throw e;
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (e) {
-    throw new RetrospectiveError("retro_unreadable", `retrospective.json が JSON として読めません: ${(e as Error).message}（ファイルを直してください）`);
-  }
-  return readRetrospective(raw);
+/** 記録を読む（無ければ空。JSON として読めなければ retro_unreadable、ほかの読めない理由はそのまま投げる） */
+export function loadRetrospective(ctx: P3Context, rid: string): Promise<RetrospectiveFile> {
+  return readJsonRecord<RetrospectiveFile>(pathOf(ctx, rid), {
+    missing: () => ({ version: 0, targets: [] }),
+    invalidJson: (m) => {
+      throw new RetrospectiveError("retro_unreadable", `retrospective.json が JSON として読めません: ${m}（ファイルを直してください）`);
+    },
+    shape: readRetrospective,
+  });
+}
+
+/**
+ * 記録を変える（確定・訂正・リスクの確認で共通）。要望のロックの中で、要望があること（アーカイブで移した後のフォルダに書き戻さない）を確かめ、
+ * 読み直して版を照らし（違えば retro_conflict）、change が返した記録を置き換えで書く。書いた後に変更を知らせ、今の表示を返す
+ */
+async function changeRetrospective(
+  ctx: P3Context,
+  rid: string,
+  expectedVersion: number | undefined,
+  change: (file: RetrospectiveFile) => Promise<RetrospectiveFile>,
+): Promise<RetrospectiveView> {
+  ctx.ws.requests.require(rid);
+  await withFileLock(
+    ctx.ws.requestLock(rid),
+    async () => {
+      if ("missing" in (await ctx.ws.requests.peek(rid))) throw new NotFoundError(rid);
+      const file = await loadRetrospective(ctx, rid);
+      if (expectedVersion !== undefined && expectedVersion !== file.version) {
+        throw new RetrospectiveError("retro_conflict", `振り返りの記録が他で変わりました（版 ${expectedVersion} → ${file.version}）。読み直してからやり直してください`);
+      }
+      await writeJsonRecord(pathOf(ctx, rid), await change(file));
+    },
+    { busyMessage: "別のプロセスがこの要望を保存中です。少し待ってやり直してください" },
+  );
+  ctx.ws.emit({ type: "changed", kind: "request", request: rid });
+  return retrospectiveView(ctx, rid);
 }
 
 /** 候補（新しい順）。runs と照らすタスク・子の要望はディスクと読み込んだ値から */
@@ -182,24 +202,11 @@ export async function judgeRisk(
   input: { risk: number; state: RiskState; facts?: string; scope?: string; reason?: string; evidence: EvidenceRef[] },
   opts: { expectedVersion?: number; actor?: string } = {},
 ): Promise<RetrospectiveView> {
-  ctx.ws.requests.require(rid);
-  await withFileLock(
-    ctx.ws.requestLock(rid),
-    async () => {
-      if ("missing" in (await ctx.ws.requests.peek(rid))) throw new NotFoundError(rid);
-      const file = await loadRetrospective(ctx, rid);
-      if (opts.expectedVersion !== undefined && opts.expectedVersion !== file.version) {
-        throw new RetrospectiveError("retro_conflict", `振り返りの記録が他で変わりました（版 ${opts.expectedVersion} → ${file.version}）。読み直してからやり直してください`);
-      }
-      const evidence: RetroEvidence[] = [];
-      for (const ref of input.evidence) evidence.push(await resolveEvidence(ctx, rid, ref));
-      const next = addJudgment(file, { ...input, evidence }, { now: new Date().toISOString(), actor: opts.actor });
-      await writeFileAtomic(pathOf(ctx, rid), `${JSON.stringify(next, null, 2)}\n`);
-    },
-    { busyMessage: "別のプロセスがこの要望を保存中です。少し待ってやり直してください" },
-  );
-  ctx.ws.emit({ type: "changed", kind: "request", request: rid });
-  return retrospectiveView(ctx, rid);
+  return changeRetrospective(ctx, rid, opts.expectedVersion, async (file) => {
+    const evidence: RetroEvidence[] = [];
+    for (const ref of input.evidence) evidence.push(await resolveEvidence(ctx, rid, ref));
+    return addJudgment(file, { ...input, evidence }, { now: new Date().toISOString(), actor: opts.actor });
+  });
 }
 
 /**
@@ -212,30 +219,16 @@ export async function confirmRetrospectiveTarget(
   input: { run: string; reason?: string },
   opts: { expectedVersion?: number; actor?: string } = {},
 ): Promise<RetrospectiveView> {
-  ctx.ws.requests.require(rid);
-  await withFileLock(
-    ctx.ws.requestLock(rid),
-    async () => {
-      // ロックの中で要望があることを確かめる（アーカイブで移した後のフォルダに書き戻さない）
-      if ("missing" in (await ctx.ws.requests.peek(rid))) throw new NotFoundError(rid);
-      const file = await loadRetrospective(ctx, rid);
-      if (opts.expectedVersion !== undefined && opts.expectedVersion !== file.version) {
-        throw new RetrospectiveError("retro_conflict", `振り返りの記録が他で変わりました（版 ${opts.expectedVersion} → ${file.version}）。読み直してからやり直してください`);
-      }
-      const { candidates, none, runs } = await retrospectiveCandidates(ctx, rid);
-      const runOf = (id: string) => runs.find((r) => r.id === id);
-      const next = confirmTarget(file, input, {
-        candidates,
-        none,
-        risksOf: (id) => runOf(id)?.assessment?.risks,
-        assessmentOf: (id) => runOf(id)?.assessment,
-        now: new Date().toISOString(),
-        actor: opts.actor,
-      });
-      await writeFileAtomic(pathOf(ctx, rid), `${JSON.stringify(next, null, 2)}\n`);
-    },
-    { busyMessage: "別のプロセスがこの要望を保存中です。少し待ってやり直してください" },
-  );
-  ctx.ws.emit({ type: "changed", kind: "request", request: rid });
-  return retrospectiveView(ctx, rid);
+  return changeRetrospective(ctx, rid, opts.expectedVersion, async (file) => {
+    const { candidates, none, runs } = await retrospectiveCandidates(ctx, rid);
+    const runOf = (id: string) => runs.find((r) => r.id === id);
+    return confirmTarget(file, input, {
+      candidates,
+      none,
+      risksOf: (id) => runOf(id)?.assessment?.risks,
+      assessmentOf: (id) => runOf(id)?.assessment,
+      now: new Date().toISOString(),
+      actor: opts.actor,
+    });
+  });
 }

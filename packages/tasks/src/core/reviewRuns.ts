@@ -1,7 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import type { PreflightLogEntry, RunOwner } from "../shared/types.ts";
 import { ownerState, systemProbe, type OwnerProbe, type OwnerState } from "./preflight/owner.ts";
-import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { readJsonRecord, writeJsonRecord } from "./store/jsonRecord.ts";
 
 /**
  * レビューの実行の記録の共通部分（マイルストーンレビュー・タスクの AI レビュー）。比較材料と結果の形は各レビューに残し、ここには
@@ -34,25 +34,27 @@ export class ReviewCancelRefused extends Error {
   }
 }
 
-export async function writeJson(path: string, v: unknown): Promise<void> {
-  await writeFileAtomic(path, `${JSON.stringify(v, null, 2)}\n`);
-}
+export const writeJson = writeJsonRecord;
 
-export async function readJson<T>(path: string, label: string, check: (x: unknown) => void): Promise<T> {
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") throw new ReviewStoreError("not_found", `レビューの記録がありません: ${label}`);
-    throw e;
-  }
-  try {
-    const v = JSON.parse(text) as unknown;
-    check(v);
-    return v as T;
-  } catch (e) {
-    throw new ReviewStoreError("broken", `レビューの記録を読めません: ${label}（${(e as Error).message}）`);
-  }
+/** run の記録を読む（無ければ not_found、JSON として読めない・形が違えば broken） */
+export function readJson<T>(path: string, label: string, check: (x: unknown) => void): Promise<T> {
+  const broken = (m: string) => new ReviewStoreError("broken", `レビューの記録を読めません: ${label}（${m}）`);
+  return readJsonRecord<T>(path, {
+    missing: () => {
+      throw new ReviewStoreError("not_found", `レビューの記録がありません: ${label}`);
+    },
+    invalidJson: (m) => {
+      throw broken(m);
+    },
+    shape: (v) => {
+      try {
+        check(v);
+      } catch (e) {
+        throw broken((e as Error).message);
+      }
+      return v as T;
+    },
+  });
 }
 
 /** フォルダの中のフォルダ（無ければ空。シンボリックリンクは含めない） */

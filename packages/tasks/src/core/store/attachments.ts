@@ -3,7 +3,8 @@ import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/
 import { join } from "node:path";
 import { ATTACHMENT_FILE_LIMITS, type Attachment, type AttachmentFormat, type FixedAttachment } from "../../shared/types.ts";
 import { imageInfo, UI_LIMITS } from "../preflight/uiMaterials.ts";
-import { nowIso, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { nowIso } from "@infodb/p3-kit/fsutil.ts";
+import { writeJsonRecord } from "./jsonRecord.ts";
 
 export const ATTACHMENT_ID = /^A-\d{8}-\d{6}-[0-9a-f]{4}$/;
 
@@ -220,7 +221,7 @@ export class AttachmentStore {
       const { requestId: _, ...rest } = a;
       fixed.push({ ...rest, path });
     }
-    if (fixed.length) await writeFileAtomic(join(runDir, "attachments.json"), JSON.stringify(fixed, null, 2) + "\n");
+    if (fixed.length) await writeJsonRecord(join(runDir, "attachments.json"), fixed);
     return fixed;
   }
 }
