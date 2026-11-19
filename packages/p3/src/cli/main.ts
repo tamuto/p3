@@ -18,6 +18,7 @@ import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
 import { observerCommand } from "@infodb/p3-observer/cli/observerCli.ts";
+import { parseProducts } from "../shared/products.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -76,6 +77,25 @@ async function main(argv: string[]): Promise<number> {
 
   // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
   if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
+  // --products は serve だけ。省くと tasks だけ（今までどおり）
+  if (o.products !== undefined && cmd !== "serve") throw new UsageError("--products は p3 serve でだけ使えます（例: p3 serve --products tasks,observer）");
+  const chosen = parseProducts(o.products);
+  if ("error" in chosen) throw new UsageError(chosen.error);
+  const products = chosen.products;
+  if (cmd === "serve" && !products.includes("tasks")) {
+    // tasks を使わない serve（今は observer だけ）。プロジェクトを決めない（--all-projects・--project・--dir は tasks のもの）
+    const tasksOnly = (["all-projects", "project", "dir"] as const).filter((k) => o[k] !== undefined);
+    if (tasksOnly.length) throw new UsageError(`${tasksOnly.map((k) => `--${k}`).join("・")} は tasks の serve の指定です。--products に tasks を含めてください（例: --products tasks,observer）`);
+    if (args.length) throw new UsageError(`serve は位置引数を取りません: ${args.join(" ")}`);
+    // 待ち受けの既定だけを個人設定から読む（壊れていても既定の値で起動する。登録・データは作らない）
+    const user = await loadUserConfig().catch((e: Error) => {
+      process.stderr.write(`⚠ ${e.message}（待ち受けは既定の値で起動します）\n`);
+      return { settings: {} };
+    });
+    const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
+    return serveUntilSignal(await startServer({ products, port: settings.serve.port, host: settings.serve.host, static: true }));
+  }
+
   // --all-projects は serve だけ。1つのプロジェクトを決める指定とは一緒に使えない（どちらかに黙って決めない）
   if (o["all-projects"]) {
     if (cmd !== "serve") throw new UsageError("--all-projects は p3 serve でだけ使えます");
@@ -89,7 +109,7 @@ async function main(argv: string[]): Promise<number> {
     });
     const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+    return serveUntilSignal(await startServer({ allProjects: true, products, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
   }
 
   // AI 向けの作業の手順。この CLI に同梱した原本を返すだけで、プロジェクトは決めない（未登録・壊れた定義でも読める）
@@ -205,7 +225,7 @@ async function main(argv: string[]): Promise<number> {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
     return serveUntilSignal(
-      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
+      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, products, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
     );
   }
 

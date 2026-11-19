@@ -16,7 +16,8 @@ export const AI_MANIFEST = {
   },
   relationTypes: RELATION_TYPES, // タスクの関係は depends_on と supersedes だけ（Preflight のタスク化が張る。手で張る API は無い）
   endpoints: [
-    { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects}" },
+    { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects | none（tasks を使わない）, products: この serve で使う製品（tasks・observer。p3 serve --products）}" },
+    { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。observer を選んだ serve だけ（選ばなければ 404）" },
     {
       method: "GET",
       path: "/api/projects",

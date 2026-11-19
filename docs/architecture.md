@@ -899,7 +899,7 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 - 配るのは入口の `@infodb/p3` の1つで、kit・製品は公開せずにビルドして同梱する（`lib/tasks/`・`lib/observer/`・`lib/kit/`。パッケージ名の import は同梱した先への
   相対パスに書き換える。`scripts/build-cli.mjs`）。利用者から見える名前・コマンド・データの場所・CLI・API・画面は変えない。Docker も同じ中身を使う
   （[開発ガイド](development.md#npm-で配る中身)）
-- 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に tasks のページのフォルダをそのまま付け（`tsr.config.json` の
+- 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に製品（tasks・observer）のページのフォルダをそのまま付け（`tsr.config.json` の
   `virtualRouteConfig`）、入口が知っている製品のページだけが入る
 - tasks の中は、層ごとの共通の土台と機能のまとまり（`features/<機能>/{shared,core,cli,server,web}`）に分ける。機能の中身はその機能・組み立ての場所・
   入口の層と画面の組み合わせだけが読み、機能の core どうしと循環は禁止（`test/featureBoundary.test.ts`）。配置・規則・まとめた仕組みと残した理由・前後の
@@ -959,6 +959,23 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 **CLI の振り分け**: 入口の `cli/main.ts` が、名前空間 `observer` を tasks のプロジェクトの解決・個人設定の読み込みより前に observer の
 `cli/observerCli.ts` へ渡す。名前空間の無いコマンドは今までどおり tasks（`runTasksCommand`）で、呼び方・出力・終了コードは変えない。
 入口が知っている名前空間だけを振り分け、入っている製品を実行時に探して読み込むことはしない。
+
+**serve と画面の製品の選び方**
+
+- 入口の `shared/products.ts` が組み込んだ製品と `--products` の解釈を持ち（省くと tasks だけ）、serve（`server/server.ts`）と画面（`web/Boot.tsx`）が
+  同じ選択を使う。serve は選択を `/api/mode` の `products` で返し、画面は開いたときに一度だけ読む（`web/shell.ts`）
+- API: observer を選んだときだけ `/api/observer`（observer の `server/api/routes.ts`）を付ける。tasks を選ばない serve はプロジェクトを開かず、
+  tasks の API・監視・Preflight の回復を動かさない（`/api/mode` の `mode` は `none`）。選んでいない製品の API は、どの構成でも `/api` の下の
+  404 の JSON になる（画面の HTML を成功として返さない。tasks を選ばないときは `code: product_disabled`）
+- 画面: `/observer`（observer の `web/routes/observer.tsx`）はプロジェクトに属さない URL で、tasks の URL（`/`・`/requests/...`・
+  `/projects/<名前>/...`）と重ならない。Boot は `/observer` では tasks のプロジェクトを決めず、`AppDataProvider`（tasks のプロジェクト情報・設定・
+  イベント）を作らない。observer を選んでいなければ「この起動では使えません」と出し、observer の API を読まない。observer だけの serve では
+  ほかの URL を `/observer` へ移す
+- ナビゲーション: observer を選んだ serve では tasks の画面に「観測基盤」を出し、observer の画面からは tasks の各ページ（プロジェクトを跨ぐ
+  serve ではプロジェクトの選択 `/`）へ戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
+- 共通の資材と公開の範囲: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含み、どの構成でも同じ静的な資材を配る
+  （選ばなかった製品のページのコードもブラウザから取れるが、そのページは API を読まずに無効と出す）。製品の選択で変わるのは API と画面の振る舞い。
+  最初のテーマのスクリプト（`/api/user-theme.js`。個人設定のテーマだけ）は、どの構成でも同じ見た目にするため tasks を選ばない serve でも返す
 
 **できること・できないこと（モジュラー化の範囲）**
 

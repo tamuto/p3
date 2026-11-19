@@ -10,6 +10,8 @@ export interface ObserverStatus {
   state: "ready";
   /** 観測データの保存先（予定は各プロジェクトの .p3/observer/。今は何も保存しないので null） */
   dataDir: null;
+  /** この serve で使える製品（API のときだけ。入口が起動のときの選択を渡す。CLI は製品を選ばないので無い） */
+  products?: string[];
 }
 
 /** 画面のページ（入口のルート一覧に付く）。tasks のページ（/・/requests/...・/projects/<名前>/...）と重ならない */

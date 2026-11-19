@@ -1,7 +1,7 @@
 // 配布物を作る（pnpm build から呼ぶ。画面は先に vite build で packages/p3/dist/web に出しておく）。利用者の環境では tsx（と esbuild）を使わずに動かすため、
 // 入口（packages/p3）・製品（tasks・observer）・kit の Node で動く部分を 1 つのパッケージ @infodb/p3 の JavaScript にまとめる（kit・製品は公開しない。同梱する）。
 //   1. 一時のフォルダ（packages/p3/build-src）に、配布物と同じ並びでソースを集める:
-//        入口の src/{cli,core,server} → cli・core・server、製品の src/{cli,core,server,shared,features}（画面の web/ を除く）→ tasks/・observer/、kit の src → kit/
+//        入口の src/{cli,core,server,shared} → cli・core・server・shared、製品の src/{cli,core,server,shared,features}（画面の web/ を除く）→ tasks/・observer/、kit の src → kit/
 //      パッケージ名の import（@infodb/p3-tasks/... ・@infodb/p3-observer/... ・@infodb/p3-kit/...）は、集めた先への相対パスに書き換える。
 //      製品を足すときは PRODUCTS と SPEC に足す（同梱の一覧はここだけ。tarball の中身の確認は scripts/verify-pack.mjs と test/pack.test.ts）
 //   2. tsc で packages/p3/lib に 1:1 で出す（相対の import の .ts は .js に書き換わる）。.ts 以外の資材（描画のイメージ・Mock の画面・起動の補助・
@@ -26,7 +26,7 @@ const pack = join(root, "dist", "package");
 const PRODUCTS = ["tasks", "observer"];
 /** 集める元と先（先は staging からの相対） */
 const SOURCES = [
-  ...["cli", "core", "server"].map((l) => [join(entry, "src", l), l]),
+  ...["cli", "core", "server", "shared"].map((l) => [join(entry, "src", l), l]),
   ...PRODUCTS.flatMap((p) => ["cli", "core", "server", "shared", "features"].map((l) => [join(root, "packages", p, "src", l), join(p, l)])),
   [join(root, "packages", "kit", "src"), "kit"],
 ];

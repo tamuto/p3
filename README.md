@@ -44,6 +44,9 @@ Claude Code などの AI エージェントや人が行い、p3 はその前後�
 
 P3 を Docker のコンテナで動かすこともできる（[導入ガイド: Docker で動かす](docs/installation.md#docker-で動かすプロジェクトを跨ぐ-serve)）。
 
+観測基盤 **p3-observer**（準備中。今は起動の確認だけ）も同じ `p3` に入っている。画面は `p3 serve`（tasks だけ。既定）・`p3 serve --products observer`（observer だけ）・
+`p3 serve --products tasks,observer`（両方）で起動する（[使い方: 製品](docs/how-to-use.md#製品tasks-と-observer)・[設計: p3-observer](docs/architecture.md#p3-observer)）。
+
 ## 文書
 
 | 読みたいこと | 文書 |

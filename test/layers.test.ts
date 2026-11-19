@@ -113,7 +113,7 @@ describe("層と依存の向き", () => {
   it("observer の src も同じ層に分かれ、層の検査の対象になる", () => {
     const layers = new Set(files(SRCS.observer).map((f) => layerOf(locate(f))));
     expect(layers.has(undefined)).toBe(false);
-    expect([...layers].map(String).sort((a, b) => a.localeCompare(b))).toEqual(["cli", "core", "server", "shared"]);
+    expect([...layers].map(String).sort((a, b) => a.localeCompare(b))).toEqual(["cli", "core", "server", "shared", "web"]);
   });
 
   it("確かめ方そのものが違反を見つける", () => {

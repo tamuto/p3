@@ -1295,6 +1295,14 @@ p3 observer status          # p3-observer 0.14.0 / state ready
 p3 whoami                   # 同じ p3 で tasks も使える
 ```
 
+画面（`p3 serve`）は、使う製品を `--products` で選ぶ。
+
+| 起動 | コマンド | 画面 |
+| --- | --- | --- |
+| tasks だけ（既定） | `p3 serve`・`p3 serve --all-projects` | 今までどおり。「観測基盤」は出ない（`/observer` を開いても使えないと出る） |
+| observer だけ | `p3 serve --products observer` | プロジェクトを決めない（登録が無くても起動する）。http://localhost:4310 を開くと `/observer`（起動状態・共通の版・有効な製品） |
+| 両方 | `p3 serve --products tasks,observer`（`--all-projects` も付けられる） | ヘッダーの「観測基盤」で observer へ、observer の画面から tasks の各ページ（プロジェクトを跨ぐ serve ではプロジェクトの選択）へ戻る |
+
 所有の境界と起動の構成は [設計: p3-observer](architecture.md#p3-observer)。
 
 ### 短い出力・JSON・終了コード

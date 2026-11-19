@@ -14,5 +14,5 @@
     "sourceMap": false,
     "declaration": false
   },
-  "include": ["packages/p3/src/cli", "packages/p3/src/core", "packages/p3/src/server", "packages/tasks/src/cli", "packages/tasks/src/core", "packages/tasks/src/server", "packages/tasks/src/shared", "packages/observer/src/cli", "packages/observer/src/core", "packages/observer/src/server", "packages/observer/src/shared", "packages/kit/src"]
+  "include": ["packages/p3/src/cli", "packages/p3/src/core", "packages/p3/src/server", "packages/p3/src/shared", "packages/tasks/src/cli", "packages/tasks/src/core", "packages/tasks/src/server", "packages/tasks/src/shared", "packages/observer/src/cli", "packages/observer/src/core", "packages/observer/src/server", "packages/observer/src/shared", "packages/kit/src"]
 }

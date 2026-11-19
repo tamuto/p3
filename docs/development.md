@@ -215,10 +215,11 @@ packages/
     bin/p3.mjs       CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
     src/cli/         main.ts（引数の解釈・プロジェクトの決定・serve・help・guide・init・join・agents）・project.ts（init / join / agents）・
                      guide.ts と guide.md（AI 向けの作業の手順の原本。p3 guide が返す）・agentsStatus.ts・help.ts
-    src/server/      server.ts（待ち受けと画面の配信）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
+    src/server/      server.ts（待ち受けと画面の配信。--products で選んだ製品の API を付ける）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
     src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）
-    src/web/         画面の外枠（main.tsx・Boot・App・router・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
-                     routeTree.gen.ts はルート一覧（自動生成。tasks のページも入る）
+    src/shared/      products.ts（組み込んだ製品と --products の解釈。CLI・serve・画面の共通）
+    src/web/         画面の外枠（main.tsx・Boot・App・router・shell.ts（この画面の製品）・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
+                     routeTree.gen.ts はルート一覧（自動生成。tasks と observer のページも入る）
   tasks/             @infodb/p3-tasks（今の p3 の機能。公開しない）。共通の土台（層ごと）と機能のまとまり（features/）に分ける
     src/shared/      型定義・参照の解き方・日付・判定（core と画面の共通。I/O と node: は使わない）
     src/cli/         tasksCli.ts（プロジェクトを開いた後の振り分け）・コマンドの種類ごと（taskCommands.ts など。変更は core/requestOps.ts を通す）・
@@ -286,11 +287,11 @@ URL と検索の値の宣言だけを置き、中身を機能の `web/` に書�
 
 | 何を | どうする |
 | --- | --- |
-| 公開する中身 | `pnpm build` が `dist/package/` に組み立てる（`npm pack ./dist/package`・`npm publish ./dist/package`）: 入口の `bin/`、`lib/`（ビルド済みの CLI・serve。入口は `lib/{cli,core,server}`、同梱した製品は `lib/tasks/`・`lib/observer/`、kit は `lib/kit/`。描画のイメージの資材 `lib/tasks/core/preflight/render-image/` などの .ts 以外の資材を含む）、`dist/web`（ビルド済みの画面）と、ルートの `skills/`（AI 向けスキルの原本）・`docs/`（README から辿る文書）・README・LICENSE |
+| 公開する中身 | `pnpm build` が `dist/package/` に組み立てる（`npm pack ./dist/package`・`npm publish ./dist/package`）: 入口の `bin/`、`lib/`（ビルド済みの CLI・serve。入口は `lib/{cli,core,server,shared}`、同梱した製品は `lib/tasks/`・`lib/observer/`、kit は `lib/kit/`。描画のイメージの資材 `lib/tasks/core/preflight/render-image/` などの .ts 以外の資材を含む）、`dist/web`（ビルド済みの画面）と、ルートの `skills/`（AI 向けスキルの原本）・`docs/`（README から辿る文書）・README・LICENSE |
 | 公開する manifest | `packages/p3/package.json` から開発だけの項目（`devDependencies` の workspace の参照・`scripts`）を外したもの。workspace のパッケージ（`@infodb/p3-tasks`・`@infodb/p3-observer`・`@infodb/p3-kit`）の名前は manifest にも実行時の import にも残らない（`test/pack.test.ts`） |
 | 同梱しないもの | `.env`・個人設定・デモデータ（`.p3-demo/`）・テスト・`scripts/`・TypeScript のソース（`packages/`・`src/`）・開発用のスキル（`.claude/`） |
 | 実行時の依存 | `hono`・`@hono/node-server`・`yaml`・`zod`・`@infodb/codex-workspace`・`@infodb/chatgpt-plan`（入口の `dependencies`）。`tsx`（esbuild）と React などの画面の部品は開発用 |
-| CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。一時のフォルダ `packages/p3/build-src/` に配布物と同じ並び（入口の src/{cli,core,server}・`tasks/`・`observer/`・`kit/`）でソースを集め、パッケージ名の import を集めた先への相対パスに書き換えてから、`tsc` で `packages/p3/lib/` に 1:1 で出す（相対の import の `.ts` は `.js` に書き換わる）。.ts 以外の資材は同じ場所に写す。入口の `lib/{cli,server}` は `src` と同じ深さなので、`import.meta.url` からの相対の参照（`../../package.json`・`dist/web`）はそのまま効く。スキルの原本は上へ探す（配布物は同梱した `skills/`、チェックアウトはルートの `skills/`）。tasks の資材はそのファイルと同じフォルダだけを参照する。資材を足すときは、その層のフォルダに置けば写る。`packages/p3/lib/`・`dist/` は git で追跡しない |
+| CLI・serve のビルド | `scripts/build-cli.mjs`（`pnpm build` の後半）。一時のフォルダ `packages/p3/build-src/` に配布物と同じ並び（入口の src/{cli,core,server,shared}・`tasks/`・`observer/`・`kit/`）でソースを集め、パッケージ名の import を集めた先への相対パスに書き換えてから、`tsc` で `packages/p3/lib/` に 1:1 で出す（相対の import の `.ts` は `.js` に書き換わる）。.ts 以外の資材は同じ場所に写す。入口の `lib/{cli,server}` は `src` と同じ深さなので、`import.meta.url` からの相対の参照（`../../package.json`・`dist/web`）はそのまま効く。スキルの原本は上へ探す（配布物は同梱した `skills/`、チェックアウトはルートの `skills/`）。tasks の資材はそのファイルと同じフォルダだけを参照する。資材を足すときは、その層のフォルダに置けば写る。`packages/p3/lib/`・`dist/` は git で追跡しない |
 | Node | `>=24`（`@infodb/codex-workspace`・`@infodb/chatgpt-plan` の `>=22` を満たす）。開発と Docker のイメージは Node 26 |
 | 公開前のビルド | ルートの `pnpm build`（`vite build` と `scripts/build-cli.mjs --require-web`）。入口の manifest にはスクリプトを書かない。利用者が入れるときにはビルドも Docker の操作もしない |
 | bin | `p3`（`packages/p3/bin/p3.mjs`）。`packages/p3/src/cli/main.ts` があるチェックアウトでは tsx でソースを、無ければ（配布物）`lib/cli/main.js` を動かす。ソースを動かすときは今いる場所の `tsconfig.json` を読まない。`INIT_CWD` に戻るのは P3 自身の `pnpm p3` スクリプト（ルートの `p3-workspace` か入口の `@infodb/p3`）のときだけ |
@@ -327,7 +328,8 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs
 スモークで確かめること: 起動の約束（ENTRYPOINT・既定の CMD・入れた道具）・2つのプロジェクトの一覧・登録世代つきの作成と手元の
 ファイル・同じ ID の分離・添付・ソケットが無いときのエンジンの状態・Mock の Preflight の同時実行と片方の取消・再起動のあとに残る
 こと・データのフォルダの欠落と復旧・`docker stop`（SIGTERM）で実行中の Preflight を取り消して止まること・コマンドの明示で通常の
-serve になること。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
+serve になること・製品の選び方（既定は tasks だけで observer の API は 404、`--products observer` はプロジェクトを開かずに observer の API だけ、
+`--all-projects --products tasks,observer` は両方）。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
 確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
 
 マウントするパスの自動の決め方（`packages/tasks/src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で

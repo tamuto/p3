@@ -6,6 +6,7 @@ import { chatgptRoutes } from "@infodb/p3-tasks/server/api/chatgptRoutes.ts";
 import { apiRoutes, eventStream } from "@infodb/p3-tasks/server/api/routes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
+import { DEFAULT_PRODUCTS, type Product } from "../../shared/products.ts";
 
 /** 変える操作に添える登録世代のヘッダー（GET でも添えれば、違うときは断る） */
 export const GENERATION_HEADER = "x-p3-project-generation";
@@ -15,7 +16,7 @@ const STATUS: Record<RegistryError["code"], 404 | 409 | 503> = { unknown: 404, c
 /**
  * プロジェクトを跨ぐ serve の API（/api の下）。個人設定に登録した名前だけを扱う。
  *
- *   GET  /mode                         { mode: "all-projects" }
+ *   GET  /mode                         { mode: "all-projects", products }（products はこの serve で使う製品）
  *   GET  /projects                     個人設定を読み直した一覧（登録世代・開けない理由・形の違う登録・個人設定の読めない理由）
  *   *    /projects/:project/...        そのプロジェクトの API（通常の serve の /api/... と同じ）。変える操作には登録世代のヘッダーが要る
  *   GET  /events                       一覧・テーマ・ChatGPT の接続の変更の知らせ（プロジェクトを選んでいない画面のため）
@@ -23,7 +24,8 @@ const STATUS: Record<RegistryError["code"], 404 | 409 | 503> = { unknown: 404, c
  *
  * プロジェクトを書かないデータの API（/api/requests など）は 404（code: project_required）で断る。
  */
-export function projectsRoutes(registry: ProjectRegistry) {
+export function projectsRoutes(registry: ProjectRegistry, opts: { products?: readonly Product[] } = {}) {
+  const products = opts.products ?? DEFAULT_PRODUCTS;
   const app = new Hono();
   /** 文脈ごとの API（文脈を閉じたら消える） */
   const routes = new WeakMap<P3Context, Hono>();
@@ -39,7 +41,7 @@ export function projectsRoutes(registry: ProjectRegistry) {
     return r;
   };
 
-  app.get("/mode", (c) => c.json({ mode: "all-projects" }));
+  app.get("/mode", (c) => c.json({ mode: "all-projects", products }));
   app.get("/projects", async (c) => {
     c.header("cache-control", "no-store");
     return c.json(await registry.refresh());

@@ -3,12 +3,13 @@
 //
 //   node scripts/verify-pack.mjs [--tgz <tarball>] [--docker [--render-dir <フォルダ>]] [--keep]
 //
-//   1. pnpm build（画面と CLI・serve。入口・tasks・kit を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
+//   1. pnpm build（画面と CLI・serve。入口・製品（tasks・observer）・kit を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
 //      --tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）。manifest と実行時の import に workspace の
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
 //   3. 別に作った git リポジトリを今の場所にし、個人設定・HOME も一時フォルダにして、入れた p3 を動かす:
-//      help / observer status（tasks の登録の前）/ guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts / serve（HTML・資産・API）
+//      help / observer status と serve --products observer（tasks の登録の前）/ guide / init --agents / init --agents codex と p3 agents / whoami / 既存形式の要望の参照 / request new / Mock の Preflight / メモを足した再評価 / drafts /
+//      serve（HTML・資産・API。tasks だけと、--products tasks,observer の両方）
 //   4. --docker を付けると、本物の Docker で codex update（未登録・未認証のまま、イメージを作り直して版を読む）と
 //      p3 render（配布物の描画の資材でイメージを作り、日本語の HTML を PNG にする）。DevContainer の中では
 //      --render-dir <Docker のホストから見えるフォルダ> と環境変数 P3_CODEX_PATH_MAP を渡す
@@ -159,6 +160,20 @@ try {
     return `${s.product} ${s.version} ${s.state}`;
   });
 
+  await step("p3 serve --products observer（tasks の登録の前。observer の API とページ、tasks の API は 404）", () =>
+    withServe(["--products", "observer"], async (base) => {
+      const mode = JSON.parse(await fetchText(`${base}/api/mode`));
+      check(JSON.stringify(mode) === JSON.stringify({ mode: "none", products: ["observer"] }), `/api/mode が observer だけになっていません: ${JSON.stringify(mode)}`);
+      const s = JSON.parse(await fetchText(`${base}/api/observer/status`));
+      check(s.state === "ready" && s.products?.join() === "observer", `observer の起動状態が違います: ${JSON.stringify(s)}`);
+      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
+      const tasksApi = await fetch(`${base}/api/requests`);
+      check(tasksApi.status === 404 && /json/.test(tasksApi.headers.get("content-type") ?? ""), `tasks の API が 404 の JSON ではありません: ${tasksApi.status}`);
+      check(!existsSync(join(repo, ".p3")) && !existsSync(join(home, ".config", "infodb-p3")), "observer だけの serve が tasks のデータ・個人設定を作りました");
+      return base;
+    }),
+  );
+
   await step("p3 guide（登録の前・配布物の原本と版）", () => {
     const installed = join(prefix, "node_modules", "@infodb", "p3");
     const g = p3json(["guide"]);
@@ -260,6 +275,9 @@ try {
       const requests = JSON.parse(await fetchText(`${base}/api/requests`));
       check(JSON.stringify(requests).includes(rid), "API に要望がありません");
       check(JSON.stringify(requests).includes(legacyId), "API に既存形式の要望がありません");
+      // 既定は tasks だけ。observer の API は付けない（404 の JSON）
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks", "既定の serve の products が tasks だけではありません");
+      check((await fetch(`${base}/api/observer/status`)).status === 404, "既定の serve で observer の API が動いています");
       return `${base}  ${asset}`;
     } catch (e) {
       throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
@@ -267,6 +285,16 @@ try {
       child.kill();
     }
   });
+
+  await step("p3 serve --products tasks,observer（同じ serve で両方の API とページ）", () =>
+    withServe(["--products", "tasks,observer"], async (base) => {
+      check(JSON.parse(await fetchText(`${base}/api/mode`)).products?.join() === "tasks,observer", "/api/mode の products が両方になっていません");
+      check(JSON.stringify(JSON.parse(await fetchText(`${base}/api/requests`))).includes(rid), "両方の serve で tasks の API に要望がありません");
+      check(JSON.parse(await fetchText(`${base}/api/observer/status`)).products?.join() === "tasks,observer", "両方の serve で observer の API が動きません");
+      check(/<div id="root">/.test(await fetchText(`${base}/observer`)), "/observer が画面の HTML ではありません");
+      return base;
+    }),
+  );
 
   if (flag("docker")) {
     await step("p3 codex update（本物の Docker。未登録・未認証のまま）", () => {
@@ -308,6 +336,24 @@ function freePort() {
     });
     s.on("error", rej);
   });
+}
+
+/** 入れた p3 の serve を引数つきで起こし、待ち受けたら f(base) を動かして止める */
+async function withServe(argv, f) {
+  const port = await freePort();
+  const child = spawn(join(prefix, "node_modules", ".bin", "p3"), ["serve", ...argv, "--port", String(port), "--host", "127.0.0.1"], { cwd: repo, env, stdio: ["ignore", "pipe", "pipe"] });
+  let log = "";
+  child.stdout.on("data", (d) => (log += d));
+  child.stderr.on("data", (d) => (log += d));
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    await retry(() => fetchText(`${base}/api/mode`));
+    return await f(base);
+  } catch (e) {
+    throw new Error(`${e.message}\n--- serve の出力 ---\n${log}`);
+  } finally {
+    child.kill();
+  }
 }
 
 async function fetchText(url) {
