@@ -16,8 +16,16 @@ export const AI_MANIFEST = {
   },
   relationTypes: RELATION_TYPES, // タスクの関係は depends_on と supersedes だけ（Preflight のタスク化が張る。手で張る API は無い）
   endpoints: [
-    { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects | none（tasks を使わない）, products: この serve で使う製品（既定は tasks・observer の両方。p3 serve --products で指定したものだけ）}" },
-    { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。observer を起動した serve だけ（--products で外せば 404）" },
+    { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects, products: この serve の製品（常に tasks・observer の両方）}" },
+    { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。どの serve でも使える" },
+    { method: "GET", path: "/api/observer/definitions", desc: "観測の定義の一覧 {definitions, unreadable（読めないファイルと理由）}。プロジェクトを跨ぐ serve では /api/projects/<名前>/observer/definitions" },
+    { method: "GET", path: "/api/observer/definitions/:id", desc: "観測の定義 {definition}" },
+    { method: "POST", path: "/api/observer/definitions", desc: "観測の定義を作る（本文 {title, category, description, measures, procedures}。項目は docs/how-to-use.md「観測の定義を登録する」）。誤りは 400 {code: invalid, problems: [{path, message}]}" },
+    { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
+    { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },
+    { method: "POST", path: "/api/observer/suggestions", desc: "入力中の定義から確認の手順の提案を始める（本文 {definition, note}。参照先は読めるものを全部渡す）。202 で実行 {id, status}。保存しない" },
+    { method: "GET", path: "/api/observer/suggestions/:id", desc: "提案の実行 {status: running|completed|failed|cancelled, result: {surface, rationale, procedures: [{procedure, evidence}], missing, warnings}, failure, error}" },
+    { method: "POST", path: "/api/observer/suggestions/:id/cancel", desc: "提案を取り消す" },
     {
       method: "GET",
       path: "/api/projects",

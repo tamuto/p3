@@ -37,6 +37,9 @@ const OPTIONS = {
   tag: { type: "string", multiple: true },
   attach: { type: "string", multiple: true },
   title: { type: "string" },
+  // p3 observer add / update（観測の定義の JSON と分類）
+  input: { type: "string" },
+  category: { type: "string" },
   done: { type: "boolean" },
   off: { type: "boolean" },
   body: { type: "string" },

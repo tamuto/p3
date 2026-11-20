@@ -17,8 +17,12 @@ import { readsOnly } from "@infodb/p3-tasks/cli/readOnly.ts";
 import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
-import { observerCommand } from "@infodb/p3-observer/cli/observerCli.ts";
-import { parseProducts } from "../shared/products.ts";
+import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
+import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
+import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
+import { openProject } from "@infodb/p3-tasks/core/context.ts";
+import { observerAssistant } from "../core/observerAssistant.ts";
+import { PRODUCTS_OPTION_REMOVED } from "../shared/products.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -62,6 +66,16 @@ function serveUntilSignal(server: RunningServer): Promise<number> {
   });
 }
 
+/** observer のコマンドの結果を出す（誤りは標準エラーと終了コード。1 入力の誤り / 2 見つからない / 3 版の競合） */
+function observerOutput(out: Output, r: ObserverResult): number {
+  if (r.code !== undefined) {
+    process.stderr.write(`${r.error}\n`);
+    return r.code;
+  }
+  out.result(r.data, () => r.text);
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   // 製品（tasks）が名乗る版は、配布の単位の版（この CLI のパッケージ）
   setAppVersion(cliVersion());
@@ -77,24 +91,8 @@ async function main(argv: string[]): Promise<number> {
 
   // --force は p3 agents だけ（ほかのコマンドで黙って無視しない）
   if (o.force && cmd !== "agents") throw new UsageError("--force は p3 agents でだけ使えます");
-  // --products は serve だけ。省くと全部の製品（tasks・observer）を起動し、指定したときは指定した製品だけ
-  if (o.products !== undefined && cmd !== "serve") throw new UsageError("--products は p3 serve でだけ使えます（例: p3 serve --products tasks,observer）");
-  const chosen = parseProducts(o.products);
-  if ("error" in chosen) throw new UsageError(chosen.error);
-  const products = chosen.products;
-  if (cmd === "serve" && !products.includes("tasks")) {
-    // tasks を使わない serve（今は observer だけ）。プロジェクトを決めない（--all-projects・--project・--dir は tasks のもの）
-    const tasksOnly = (["all-projects", "project", "dir"] as const).filter((k) => o[k] !== undefined);
-    if (tasksOnly.length) throw new UsageError(`${tasksOnly.map((k) => `--${k}`).join("・")} は tasks の serve の指定です。--products に tasks を含めてください（例: --products tasks,observer）`);
-    if (args.length) throw new UsageError(`serve は位置引数を取りません: ${args.join(" ")}`);
-    // 待ち受けの既定だけを個人設定から読む（壊れていても既定の値で起動する。登録・データは作らない）
-    const user = await loadUserConfig().catch((e: Error) => {
-      process.stderr.write(`⚠ ${e.message}（待ち受けは既定の値で起動します）\n`);
-      return { settings: {} };
-    });
-    const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
-    return serveUntilSignal(await startServer({ products, port: settings.serve.port, host: settings.serve.host, static: true }));
-  }
+  // 製品の選択（以前の --products）は廃止した。serve は常に tasks と observer の両方を起動する（黙って無視せず、外すよう案内する）
+  if (o.products !== undefined) throw new UsageError(PRODUCTS_OPTION_REMOVED);
 
   // --all-projects は serve だけ。1つのプロジェクトを決める指定とは一緒に使えない（どちらかに黙って決めない）
   if (o["all-projects"]) {
@@ -109,7 +107,7 @@ async function main(argv: string[]): Promise<number> {
     });
     const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    return serveUntilSignal(await startServer({ allProjects: true, products, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+    return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
   }
 
   // AI 向けの作業の手順。この CLI に同梱した原本を返すだけで、プロジェクトは決めない（未登録・壊れた定義でも読める）
@@ -165,12 +163,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  // observer の名前空間。tasks のプロジェクトの解決・個人設定の読み込みより前に振り分ける（登録が無くても動き、tasks のデータ・登録を作らない）
-  if (cmd === "observer") {
-    const r = observerCommand(args);
-    out.result(r.data, () => r.text);
-    return 0;
-  }
+  // observer の名前空間。起動状態（status）と使い方の誤りは、tasks のプロジェクトの解決・個人設定の読み込みより前に扱う
+  // （登録が無くても動き、tasks のデータ・登録を作らない）。観測の定義は下で tasks と同じ方法でプロジェクトを決めてから
+  if (cmd === "observer" && !observerNeedsProject(args)) return observerOutput(out, await observerCommand(args));
 
   // ChatGPT との接続はこのマシンのもの（どのプロジェクトにも属さない）なので、プロジェクトを決める前に扱う
   if (cmd === "chatgpt") {
@@ -214,18 +209,38 @@ async function main(argv: string[]): Promise<number> {
   const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
   // 登録が1つだけで決まった（今いる場所では決まっていない）なら、変える操作は何も読み書きする前に止め、読むだけなら警告する
   if (target.via === "only") {
-    const write = !readsOnly(cmd, args, o);
+    const write = cmd === "observer" ? observerWrites(args) : !readsOnly(cmd, args, o);
     if (write) throw new ProjectNotResolvedError(onlyRegistrationNotice(target, true));
     process.stderr.write(`${onlyRegistrationNotice(target, false)}\n`);
   }
   // マシンごとの設定は環境変数と個人設定から（.env は読まない）
   const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
 
+  // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
+  if (cmd === "observer") {
+    const r = await observerCommand(args, {
+      target: { project: target.name, dataDir: target.dataDir },
+      cwd,
+      actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
+      input: o.input,
+      title: o.title,
+      category: o.category,
+      body: o.body,
+      rev: o.rev,
+      repo: o.repos,
+      note: o.note,
+      // 手順の提案だけ tasks のプロジェクトを開く（Codex の接続と参照先のこのマシンのパスを使う。tasks のデータは変えない）
+      suggestions: async () =>
+        new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() }))),
+    });
+    return observerOutput(out, r);
+  }
+
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
     return serveUntilSignal(
-      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, products, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
+      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
     );
   }
 

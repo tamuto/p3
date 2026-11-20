@@ -72,14 +72,19 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                同じ指標・範囲・期間・単位の再送は何もしない。値を変える訂正は --rev 版（無い・違えば競合で終了コード 3）
   metrics records / rm <M1>     人の記録の全部 / 消す（--rev 版）
   whoami                       操作するプロジェクト・変更者・今の要望
-  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
+  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）。
+                               常にタスク管理（tasks）と観測基盤（observer。/observer）の両方を起動し、画面のナビゲーションで行き来する
                                --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）
-                               --products tasks|observer|tasks,observer  起動する製品（省くと両方。画面のナビゲーションで行き来する）。
-                                 指定した製品だけを起動する。observer だけならプロジェクトを決めず /observer を開く。--all-projects と一緒なら tasks を含める
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
-  observer status              p3-observer（観測基盤。準備中）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
+  observer status              p3-observer（観測基盤。試作）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
+  observer list | show <ID>    観測の定義の一覧・詳細（tasks と同じ方法で決めたプロジェクトのデータのフォルダの observer/）
+  observer add                 観測の定義を作る: --input <JSON のファイル|->（項目は docs/how-to-use.md「観測の定義を登録する」）か
+                                 --title --category --body（観測内容）
+  observer update <ID> --rev <今の版>   直す（--input か --title など。--input を省くと今の定義に重ねる。版が違えば終了コード 3）
+  observer suggest             入力中の定義から AI に確認の手順を提案してもらう（保存しない）: --input か --title・--category・--body、
+                                 --note <補足>。参照先は Preflight と同じく読めるものを全部渡す。--json の definition を編集して add --input に渡す
                                --json で product・version・state・dataDir（今は何も保存しないので null）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す

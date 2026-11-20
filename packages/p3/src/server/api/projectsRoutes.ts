@@ -7,6 +7,8 @@ import { apiRoutes, eventStream } from "@infodb/p3-tasks/server/api/routes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
 import type { Product } from "../../shared/products.ts";
+import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
+import type { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 
 /** 変える操作に添える登録世代のヘッダー（GET でも添えれば、違うときは断る） */
 export const GENERATION_HEADER = "x-p3-project-generation";
@@ -19,12 +21,13 @@ const STATUS: Record<RegistryError["code"], 404 | 409 | 503> = { unknown: 404, c
  *   GET  /mode                         { mode: "all-projects", products }（products はこの serve で使う製品）
  *   GET  /projects                     個人設定を読み直した一覧（登録世代・開けない理由・形の違う登録・個人設定の読めない理由）
  *   *    /projects/:project/...        そのプロジェクトの API（通常の serve の /api/... と同じ）。変える操作には登録世代のヘッダーが要る
+ *   *    /projects/:project/observer/... そのプロジェクトの観測の定義（products に observer があるときだけ。起動状態は入口の /api/observer/status）
  *   GET  /events                       一覧・テーマ・ChatGPT の接続の変更の知らせ（プロジェクトを選んでいない画面のため）
  *   /chatgpt・/user-theme・/user-theme.js・/ai/manifest  プロジェクトを選ばなくても使える（ローカルだけの操作は今までどおり）
  *
  * プロジェクトを書かないデータの API（/api/requests など）は 404（code: project_required）で断る。
  */
-export function projectsRoutes(registry: ProjectRegistry, opts: { products?: readonly Product[] } = {}) {
+export function projectsRoutes(registry: ProjectRegistry, opts: { products?: readonly Product[]; suggestions?: (ctx: P3Context) => SuggestionService } = {}) {
   // /api/mode で返すこの serve の製品（observer の API は startServer が付ける。この部品だけを使うときは tasks だけ）
   const products = opts.products ?? ["tasks"];
   const app = new Hono();
@@ -34,6 +37,7 @@ export function projectsRoutes(registry: ProjectRegistry, opts: { products?: rea
     let r = routes.get(ctx);
     if (!r) {
       r = new Hono();
+      if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir }, suggestions: opts.suggestions?.(ctx) }));
       r.route("/", apiRoutes(ctx, { notify: (kind) => registry.notify(kind) }));
       // 無い API は 404 の JSON（画面の index.html に流さない）
       r.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

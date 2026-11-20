@@ -2,17 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { App } from "./App.tsx";
 import { ProjectChooser, type ProjectListing } from "./components/ProjectChooser.tsx";
 import { fixScope, listRequested, projectFromPath, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
-import { isObserverPath, OBSERVER_PAGE } from "@infodb/p3-observer/shared/status.ts";
-import { isProduct, type Product } from "../shared/products.ts";
-import { fixShell } from "./shell.ts";
+import { fixObserverScope } from "@infodb/p3-observer/web/lib/scope.ts";
 
 type BootState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  /** tasks の画面（AppDataProvider あり）か、tasks を読まない製品の画面（observer のページ） */
-  | { kind: "app"; tasks: boolean }
-  /** この serve で選んでいない製品のページを開いた */
-  | { kind: "disabled"; product: Product; products: readonly Product[] }
+  | { kind: "app" }
   /** プロジェクトを跨ぐ serve で、まだ選んでいない・開けない（problem に理由） */
   | { kind: "chooser"; listing: ProjectListing; requested?: string; problem?: string };
 
@@ -24,31 +19,17 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 /**
- * ページを開いたときに、この画面の製品と対象を決める（shell.ts・lib/scope.ts）。
- *   /observer: observer を選んだ serve なら observer のページ（tasks のプロジェクトを決めず、tasks の API を読まない）。選んでいなければ無効と出す
- *   observer だけの serve: ほかの URL は /observer へ移る
+ * ページを開いたときに、この画面の対象を決める（lib/scope.ts。観測の画面の対象も同じプロジェクト）。
  *   通常の serve: そのまま画面を出す
  *   プロジェクトを跨ぐ serve: URL の /projects/<名前> を一覧で確かめ、開けたら画面を出す。入口（/）で登録が1つだけなら
  *   そのプロジェクトへ移る。ほかは一覧（選ぶだけ）。登録に無い・開けないときは一覧に理由を出す
  */
 async function boot(): Promise<BootState> {
-  const info = await getJson<{ mode: string; products: string[] }>("/api/mode");
-  const mode = info.mode === "all-projects" ? "all-projects" : info.mode === "none" ? "none" : "single";
-  const products = info.products.filter(isProduct);
-  if (isObserverPath(location.pathname)) {
-    if (!products.includes("observer")) return { kind: "disabled", product: "observer", products };
-    fixShell({ products, tasks: false, mode });
-    return { kind: "app", tasks: false };
-  }
-  if (!products.includes("tasks")) {
-    // tasks を使わない serve（observer だけ）。tasks の URL は開かず、observer のページへ移る（履歴に残さない）
-    location.replace(OBSERVER_PAGE);
-    return { kind: "loading" };
-  }
-  fixShell({ products, tasks: true, mode });
-  if (mode !== "all-projects") {
+  const info = await getJson<{ mode: string }>("/api/mode");
+  if (info.mode !== "all-projects") {
     fixScope({ mode: "single" });
-    return { kind: "app", tasks: true };
+    fixObserverScope({ apiBase: "/api/observer", headers: {} });
+    return { kind: "app" };
   }
   const listing = await getJson<ProjectListing>("/api/projects");
   const requested = projectFromPath(location.pathname);
@@ -71,7 +52,8 @@ async function boot(): Promise<BootState> {
     return { kind: "chooser", listing, requested, problem: (e as Error).message };
   }
   fixScope({ mode: "all-projects", project: requested, generation: p.generation });
-  return { kind: "app", tasks: true };
+  fixObserverScope({ apiBase: `/api${projectPath(requested)}/observer`, headers: { "x-p3-project-generation": p.generation } });
+  return { kind: "app" };
 }
 
 export function Boot() {
@@ -82,8 +64,7 @@ export function Boot() {
   }, []);
   useEffect(start, [start]);
 
-  if (state.kind === "app") return <App tasks={state.tasks} />;
-  if (state.kind === "disabled") return <DisabledProduct product={state.product} products={state.products} />;
+  if (state.kind === "app") return <App />;
   if (state.kind === "chooser") return <ProjectChooser initial={state.listing} requested={state.requested} problem={state.problem} />;
   if (state.kind === "error")
     return (
@@ -97,24 +78,4 @@ export function Boot() {
       </div>
     );
   return <div className="p-8 text-slate-500">Loading…</div>;
-}
-
-const PRODUCT_LABEL: Record<Product, string> = { tasks: "タスク管理（tasks）", observer: "観測基盤（observer）" };
-
-/** 選んでいない製品のページ（直接開いたとき）。その製品の API は読まない */
-function DisabledProduct({ product, products }: { product: Product; products: readonly Product[] }) {
-  return (
-    <div className="mx-auto max-w-xl space-y-3 p-10">
-      <h1 className="text-xl font-bold">{PRODUCT_LABEL[product]}はこの起動では使えません</h1>
-      <p role="alert">
-        この p3 serve で使える製品は {products.map((p) => PRODUCT_LABEL[p]).join("・")} です（--products で選んで起動しています）。使うには、
-        --products を外すか、
-        <code className="mx-1 rounded bg-slate-100 px-1 dark:bg-slate-800">--products {[...products, product].join(",")}</code>
-        で起動し直してください。
-      </p>
-      <a href="/" className="underline">
-        トップへ戻る
-      </a>
-    </div>
-  );
 }

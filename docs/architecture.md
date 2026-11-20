@@ -932,55 +932,78 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 
 ### p3-observer
 
-観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**準備の段階**で、パッケージ・配布・起動の構成だけを用意し、観測データの収集・
-保存・スキーマ・移行は持たない（将来の要望で仕様を決める）。tasks とは別の製品で、単独でも tasks と一緒にも使える。
+観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**試作の段階**で、観測の定義（何を観測し、どう確かめ、何を測るか）の登録だけを持つ。
+観測の実行・結果の保存・要望やタスクとの関連付けは持たない（将来の要望で仕様を決める）。tasks とは責務で分けた別の製品だが、相互に連携するツールとして常に一緒に起動する（製品ごとの ON/OFF は持たない）。
 
 **所有の境界**
 
 | | observer が持つ | observer が持たない |
 | --- | --- | --- |
-| コード | `packages/observer/src` の層（`shared` 起動状態の型・ページと API の場所、`core` 起動状態、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` のページ） | 入口の振り分け・serve の組み立て・画面の外枠（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
-| データ | 自分のサブフォルダだけ（設計の想定は `.p3/observer/`。置き場所は保存を足すときに決める。今は何も保存しない） | tasks の要望・タスク・run・設定・個人設定の登録。tasks のプロジェクトの解決を経ない |
+| コード | `packages/observer/src` の層（`shared` 起動状態と観測の定義の型・検証、`core` 起動状態と定義の保存、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` の一覧・登録・詳細・編集） | 入口の振り分け・プロジェクトの解決・serve の組み立て・画面の外枠と対象の決定（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
+| データ | 入口が解決したプロジェクトのデータのフォルダの `observer/` だけ（下の「観測の定義の保存」） | tasks の要望・タスク・run・設定・個人設定の登録。プロジェクトの解決は入口が tasks の方法で行い、observer はデータのフォルダを値で受け取る |
 | 版 | 入口が渡す共通の版（kit の `appInfo.ts`）を名乗る | 自分の版・タグ |
 
 **観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。kit の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
 API（`server/api`）・ページ（`web`）は、どれも `packages/observer/src` の同じ層に足す。tasks の記録（証拠・レビュー・指標）を読む連携が要るときは、
-製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今回の準備では連携しない）。保存を足すときは、入れ物（`.p3/observer/`）の
-形と移行を先に決める。
+製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今は連携しない）。保存の形を変えるときは、形の版（`format`）を上げ、
+移行を先に決める。
 
-**起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は既定で全部を起動し、`--products` で指定したときは指定した製品だけを起動する）
+**観測の定義の保存**
 
-| 構成 | CLI | serve |
+- 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
+  （kit の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
+  決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
+- 形: `{ format: 1, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。項目と種別ごとの
+  手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
+- 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（kit の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
+  置き換える（kit の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
+  更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
+- 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
+- 画面: 入口の Boot が tasks と同じ対象で observer の API の基点と登録世代のヘッダーを決め（`web/lib/scope.ts`）、observer の画面はそれだけを使う。
+  プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
+
+**手順の提案**
+
+- 入力中（未保存）の定義・補足と、プロジェクトの参照先を材料に、AI に操作面と確認の手順を頼む。提案は入力用のデータで保存しない。依頼文・応答の読み方
+  （JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・Mock の提案・実行（このプロセスの中だけの実行。取り消し・
+  時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ
+- AI を呼ぶのは入口が渡すアダプター（`p3/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
+  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。observer は tasks を読まない
+- 失敗は種類（接続を使えない・使用量の上限・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
+  プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
+  画面はページ（プロジェクト）ごとに作り直すので、切り替える前の応答を別のプロジェクトの入力に取り込まない
+
+**起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は常に全部を起動する）
+
+| | CLI | serve |
 | --- | --- | --- |
-| 両方（既定） | 同じ `p3` から両方のコマンドを呼ぶ | `p3 serve`・`p3 serve --all-projects` |
-| tasks だけ | 名前空間の無いコマンド（`p3 <コマンド>`） | `p3 serve --products tasks`（`--all-projects` も一緒に使える） |
-| observer だけ | `p3 observer status`（プロジェクトの登録が無くても動く） | `p3 serve --products observer` |
+| tasks | 名前空間の無いコマンド（`p3 <コマンド>`） | `p3 serve`・`p3 serve --all-projects` のどちらでも両方の製品を起動する |
+| observer | `p3 observer status`（プロジェクトの登録が無くても動く） | 同上 |
+
+以前の要望で入れた製品の選択（`p3 serve --products`）は撤回した。付けると、外せば両方を起動することを案内して使い方の誤りにする
+（黙って無視しない。`shared/products.ts` の `PRODUCTS_OPTION_REMOVED`）。
 
 **CLI の振り分け**: 入口の `cli/main.ts` が、名前空間 `observer` を tasks のプロジェクトの解決・個人設定の読み込みより前に observer の
 `cli/observerCli.ts` へ渡す。名前空間の無いコマンドは今までどおり tasks（`runTasksCommand`）で、呼び方・出力・終了コードは変えない。
 入口が知っている名前空間だけを振り分け、入っている製品を実行時に探して読み込むことはしない。
 
-**serve と画面の製品の選び方**
+**serve と画面の製品**
 
-- 入口の `shared/products.ts` が組み込んだ製品と `--products` の解釈を持ち（省くと全部の製品。指定したときは指定した製品だけ）、serve（`server/server.ts`）と画面（`web/Boot.tsx`）が
-  同じ選択を使う。serve は選択を `/api/mode` の `products` で返し、画面は開いたときに一度だけ読む（`web/shell.ts`）
-- API: observer を起動したときだけ `/api/observer`（observer の `server/api/routes.ts`）を付ける。tasks を選ばない serve はプロジェクトを開かず、
-  tasks の API・監視・Preflight の回復を動かさない（`/api/mode` の `mode` は `none`）。選んでいない製品の API は、どの構成でも `/api` の下の
-  404 の JSON になる（画面の HTML を成功として返さない。tasks を選ばないときは `code: product_disabled`）
-- 画面: `/observer`（observer の `web/routes/observer.tsx`）はプロジェクトに属さない URL で、tasks の URL（`/`・`/requests/...`・
-  `/projects/<名前>/...`）と重ならない。Boot は `/observer` では tasks のプロジェクトを決めず、`AppDataProvider`（tasks のプロジェクト情報・設定・
-  イベント）を作らない。observer を起動していなければ（`--products tasks`）「この起動では使えません」と出し、observer の API を読まない。observer だけの serve では
-  ほかの URL を `/observer` へ移す
-- ナビゲーション: 両方を起動した serve では tasks の画面に「観測基盤」を出し、observer の画面からは tasks の各ページ（プロジェクトを跨ぐ
-  serve ではプロジェクトの選択 `/`）へ戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
-- 共通の資材と公開の範囲: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含み、どの構成でも同じ静的な資材を配る
-  （選ばなかった製品のページのコードもブラウザから取れるが、そのページは API を読まずに無効と出す）。製品の選択で変わるのは API と画面の振る舞い。
-  最初のテーマのスクリプト（`/api/user-theme.js`。個人設定のテーマだけ）は、どの構成でも同じ見た目にするため tasks を選ばない serve でも返す
+- 入口の `shared/products.ts` が組み込んだ製品（`PRODUCTS`）を持つ。serve（`server/server.ts`）は全部の製品の API を付け、`/api/mode` の
+  `products` で取り付けた製品を返す（部品の `singleProjectApp`・`projectsRoutes` だけを使うときは observer を付けないので `tasks` だけを返す。
+  返す一覧と実際のルートを一致させる）
+- API: `/api/observer`（observer の `server/api/routes.ts`）は tasks の API（`/api` の下の 404 の JSON）より先に付ける。無い API は画面の HTML を
+  成功として返さず 404 の JSON にする
+- 画面: 観測のページ（observer の `web/routes/observer/`）は tasks のページと同じルーター・同じ外枠（`routes/__root.tsx` の Layout。プロジェクト名・
+  プロジェクトの切り替え・再読み込み）・同じ対象で出す。URL はプロジェクトの URL の基点の下の `/observer`（プロジェクトを跨ぐ serve は
+  `/projects/<名前>/observer`）。観測のページだけの外枠や分岐は持たない
+- ナビゲーション: 進捗・観測・リリースノート・開発の指標・設定の順（ルーターの中の移動）
+- 共通の資材: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含む
 
 **できること・できないこと（モジュラー化の範囲）**
 
-- できる: ビルドのときに入口へ組み込んだ製品（tasks・observer）を、全部まとめて起動する（serve の既定）か、起動のときに選ぶ（CLI は名前空間、serve は `--products`）。選ばなかった製品の
-  処理（tasks のプロジェクトの解決・初期化・監視、observer の API）は動かさない
+- できる: ビルドのときに入口へ組み込んだ製品（tasks・observer）を、同じ serve で全部まとめて起動する。CLI は名前空間で製品に振り分ける
+  （observer の名前空間は tasks のプロジェクトの解決を経ない）
 - できない: 配布した後に製品を足す・外す（別の npm パッケージを入れると現れる、など）。そうするには、入口が製品を見つけて読み込む登録の仕組み
   （製品の一覧の置き場所・読み込みの約束・版の互換の確かめ方）と、画面のルート一覧を実行時に組み立てる仕組みが別に要る（今は作らない。
   ルート一覧と CSS はビルドのときに決まる）

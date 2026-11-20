@@ -44,8 +44,12 @@ Claude Code などの AI エージェントや人が行い、p3 はその前後�
 
 P3 を Docker のコンテナで動かすこともできる（[導入ガイド: Docker で動かす](docs/installation.md#docker-で動かすプロジェクトを跨ぐ-serve)）。
 
-観測基盤 **p3-observer**（準備中。今は起動の確認だけ）も同じ `p3` に入っている。`p3 serve` は両方を起動し、
-`p3 serve --products tasks`（tasks だけ）・`p3 serve --products observer`（observer だけ）で指定した製品だけを起動する（[使い方: 製品](docs/how-to-use.md#製品tasks-と-observer)・[設計: p3-observer](docs/architecture.md#p3-observer)）。
+観測基盤 **p3-observer**（試作。今は観測の定義の登録だけ）も同じ `p3` に入っている。`p3 serve` は常に tasks と observer の両方を起動し、
+画面のナビゲーションで行き来する（[使い方: 製品](docs/how-to-use.md#製品tasks-と-observer)・[設計: p3-observer](docs/architecture.md#p3-observer)）。
+観測の定義（タイトル・カテゴリ・観測内容・測定項目・確認の手順）は CLI（`p3 observer add` など）と画面の「観測」の両方で登録できる
+（[使い方: 観測の定義を登録する](docs/how-to-use.md#観測の定義を登録する)・[保存の仕様: 設計 p3-observer の「観測の定義の保存」](docs/architecture.md#p3-observer)）。
+入力中の定義から AI に確認の手順を提案してもらうこともできる（CLI の `p3 observer suggest`・画面の「AI に手順を提案してもらう」。操作例と AI に渡す材料は
+[使い方: AI に確認の手順を提案してもらう](docs/how-to-use.md#ai-に確認の手順を提案してもらう)）。
 
 ## 文書
 
@@ -63,7 +67,7 @@ P3 を Docker のコンテナで動かすこともできる（[導入ガイド: 
 | 設計の方針と規則（なぜそうするか） | [docs/architecture.md](docs/architecture.md) |
 | 開発の工程ごとに P3 が受け持つこと・意図して持たないこと | [設計: 開発の工程と P3 の受け持ち](docs/architecture.md#開発の工程と-p3-の受け持ち) |
 | パッケージの構成（入口・製品・kit）と製品ごとの設計の置き場所・機能の棚卸し | [設計: パッケージの構成](docs/architecture.md#パッケージの構成)・[機能の棚卸し](docs/feature-inventory.md) |
-| 観測基盤 p3-observer（準備中）の所有の境界・起動の構成（既定の両方・tasks だけ・observer だけ）・観測の実装を置く範囲 | [設計: p3-observer](docs/architecture.md#p3-observer) |
+| 観測基盤 p3-observer（試作）の所有の境界・起動の構成（常に両方）・観測の定義の保存・観測の実装を置く範囲 | [設計: p3-observer](docs/architecture.md#p3-observer) |
 | ChatGPT のサインインの設計 | [docs/chatgpt-sign-in.md](docs/chatgpt-sign-in.md) |
 | npm への公開の手順 | [docs/publishing.md](docs/publishing.md) |
 
