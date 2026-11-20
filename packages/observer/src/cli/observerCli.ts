@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
-import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
-import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type FileState, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
+import { DefinitionError, DefinitionStore, PreparationStore } from "../core/definitionStore.ts";
+import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type ObservationDefinition, type Procedure, type References } from "../shared/definition.ts";
+import { SLOT_LABEL, SLOTS, type Preparation, type Slot } from "../shared/preparation.ts";
 import { fileChecker } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
@@ -19,15 +20,21 @@ export const OBSERVER_USAGE = [
   "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
   "p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>（置き換え候補のスクリプトに切り替える）",
   "p3 observer suggest --input <定義の JSON|-> [--title ..] [--body ..] [--note ..]（ID の無い互換の経路。保存しない）",
+  "p3 observer prep list | show <準備 ID>（準備の一覧・詳細と、それを使う観測）",
+  "p3 observer prep add [--input <JSON のファイル|->] [--title <名前>] [--body <説明>]",
+  "p3 observer prep update <準備 ID> --rev <今の版> [--input ..] [--title <名前>] [--body <説明>]",
+  "p3 observer prep switch <準備 ID> <check|setup|teardown> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>",
+  "p3 observer prep rm <準備 ID> --rev <今の版>（使っている観測があれば断る）",
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest", "suggestions", "switch"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest", "suggestions", "switch", "prep"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
 export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "switch"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
-export const observerWrites = (args: string[]) => (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1);
+export const observerWrites = (args: string[]) =>
+  (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1) || (args[0] === "prep" && ["add", "update", "switch", "rm"].includes(args[1] ?? ""));
 
 export interface ObserverCliOptions {
   /** 入口が解決したプロジェクト（status 以外で要る） */
@@ -55,7 +62,7 @@ export interface ObserverCliOptions {
 
 export type ObserverResult = { data: unknown; text: string; code?: undefined } | { code: 1 | 2 | 3; error: string };
 
-const EXIT: Record<DefinitionError["code"], 1 | 2 | 3> = { invalid: 1, unreadable: 1, not_found: 2, conflict: 3 };
+const EXIT: Record<DefinitionError["code"], 1 | 2 | 3> = { invalid: 1, unreadable: 1, not_found: 2, conflict: 3, in_use: 3 };
 /** 保存の層が付ける項目（show --json の出力をそのまま --input に渡せるよう、入力からは落とす） */
 const META = ["format", "id", "rev", "createdAt", "createdBy", "updatedAt", "updatedBy"];
 
@@ -97,7 +104,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const [id, ...extra] = rest;
       if (!id || extra.length) throw new UsageError(`観測の定義の ID を1つ指定してください: p3 observer show <ID>`);
       const d = await store.get(id);
-      return { data: d, text: describe(d, files) };
+      return { data: d, text: describe(d, files, await store.references(d)) };
     }
     const fromFlags = (base: Record<string, unknown>) => ({
       ...base,
@@ -113,6 +120,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const d = await store.create(fromFlags(input.input), actor);
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
+    if (sub === "prep") return await prepCommand(rest, opts, actor, files);
     if (sub === "switch") {
       const [id, pid, ...extra] = rest;
       if (!id || !pid || extra.length) throw new UsageError("p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>");
@@ -154,8 +162,10 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const job = await (await opts.suggestions()).run(v.value);
       if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}`.trim() };
       // 取り込んだ形（今の測定項目と手順に、候補と提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
-      const definition = { ...v.value.definition, measures: [...v.value.definition.measures, ...job.result.measures], procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
-      return { data: { ...job, definition }, text: `${suggestionText(job, files)}\n\n保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます` };
+      const r = job.result;
+      const ids = (now: string[] | undefined, add: { id: string }[]) => [...new Set([...(now ?? []), ...add.map((x) => x.id)])];
+      const definition = { ...v.value.definition, prerequisites: ids(v.value.definition.prerequisites, r.prerequisites), preparations: ids(v.value.definition.preparations, r.preparations), measures: [...v.value.definition.measures, ...r.measures], procedures: [...v.value.definition.procedures, ...r.procedures.map((p) => p.procedure)] };
+      return { data: { ...job, definition }, text: `${suggestionText(job, files)}\n\n保存はしていません。--json の definition（今の手順・前提・使う準備に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます（新しい準備の案は先に p3 observer prep add で登録する）` };
     }
     // update
     const [id, ...extra] = rest;
@@ -215,11 +225,15 @@ async function readStdin(): Promise<string> {
 type Files = ((repo: string, path: string) => FileState) | undefined;
 const fileNote = (files: Files, repo: string, path: string) => `［${FILE_STATE_LABEL[files?.(repo, path) ?? "unverified"]}］`;
 
-/** 手順を読める文にする（今の実行方法・置き換え候補・切り替えの履歴。ファイルは有無を添える） */
+/** 手順を読める文にする（見出しと、実行できるものの中身） */
 function procedureLines(p: Procedure, files: Files, indent = "  "): string[] {
+  return [`${indent}${p.id ? `${p.id} ` : ""}${p.title}（${RUN_KIND_LABEL[p.run.kind]}）${p.measures.length ? `  測る: ${p.measures.join("・")}` : ""}`, ...executableLines(p, files, `${indent}  `)];
+}
+
+/** 今の実行方法・置き換え候補・切り替えの履歴を読める文にする（ファイルは有無を添える。手順と準備で共通） */
+function executableLines(p: Executable, files: Files, i2: string): string[] {
   const r = p.run;
-  const out = [`${indent}${p.id ? `${p.id} ` : ""}${p.title}（${RUN_KIND_LABEL[r.kind]}）${p.measures.length ? `  測る: ${p.measures.join("・")}` : ""}`];
-  const i2 = `${indent}  `;
+  const out: string[] = [];
   if (r.kind === "ai-instruction") {
     if (r.premise) out.push(`${i2}前提: ${r.premise}`);
     out.push(`${i2}対象: ${r.target}`, ...r.steps.map((x, j) => `${i2}${j + 1}. ${x}`), `${i2}判定: ${r.judge}`, `${i2}記録: ${r.record}`);
@@ -240,16 +254,88 @@ function suggestionText(job: SuggestionJob, files?: Files): string {
   const lines = [`操作面: ${SURFACE_LABEL[r.surface]}（${job.engine}）`, `根拠: ${r.rationale}`];
   for (const m of r.measures ?? []) lines.push(`測定項目の候補: ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}.`, ...procedureLines(p.procedure, files, "  "), `    根拠: ${p.evidence}`));
+  const c = job.request?.candidates;
+  for (const p of r.prerequisites) lines.push(`前提の観測の候補: ${p.id} ${c?.observations.find((o) => o.id === p.id)?.title ?? ""} — ${p.reason}`);
+  for (const p of r.preparations) lines.push(`使う準備の候補（既にある）: ${p.id} ${c?.preparations.find((x) => x.id === p.id)?.name ?? ""} — ${p.reason}`);
+  for (const p of r.newPreparations) lines.push(`新しい準備の案: ${p.preparation.name}（${SLOTS.filter((s) => p.preparation[s]).map((s) => SLOT_LABEL[s]).join("・") || "中身なし"}）— ${p.reason}`);
   for (const m of r.missing) lines.push(`足りない材料: ${MISSING_LABEL[m.field]} — ${m.reason}`);
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
   return lines.join("\n");
 }
 
-function describe(d: ObservationDefinition, files: Files): string {
-  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), "", `測定項目 ${d.measures.length} 件`];
+function describe(d: ObservationDefinition, files: Files, refs: References): string {
+  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), ""];
+  if (refs.prerequisites.length) lines.push(`前提の観測（失敗したらこの観測は未確認）: ${refs.prerequisites.map((r) => `${r.id} ${r.title ?? "（見つからない）"}`).join("・")}`);
+  if (refs.preparations.length) lines.push(`使う準備: ${refs.preparations.map((r) => `${r.id} ${r.name ?? "（見つからない）"}`).join("・")}`);
+  lines.push(`測定項目 ${d.measures.length} 件`);
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
   for (const p of d.procedures) lines.push(...procedureLines(p, files));
   lines.push("", `作成 ${d.createdAt} ${d.createdBy} / 更新 ${d.updatedAt} ${d.updatedBy}`);
+  return lines.join("\n");
+}
+
+/** p3 observer prep <list|show|add|update|switch|rm>（準備。観測の定義と同じ保存の層・検証） */
+async function prepCommand(args: string[], opts: ObserverCliOptions, actor: string, files: Files): Promise<ObserverResult> {
+  const [sub, id, ...rest] = args;
+  const store = new PreparationStore(opts.target!.dataDir, files);
+  const one = (usage: string, n = 0) => {
+    if (!id || rest.length !== n) throw new UsageError(`p3 observer prep ${usage}`);
+  };
+  const fromFlags = (base: Record<string, unknown>) => ({ ...base, ...(opts.title !== undefined ? { name: opts.title } : {}), ...(opts.body !== undefined ? { description: opts.body } : {}) });
+  if (sub === "list" || sub === "ls") {
+    if (id) throw new UsageError("prep list は引数を取りません");
+    const l = await store.list();
+    const lines = [`準備 ${l.items.length} 件`, ...l.items.map((p) => `${p.id}  v${p.rev}  ${p.name}  （${SLOTS.filter((s) => p[s]).map((s) => SLOT_LABEL[s]).join("・") || "中身なし"}${p.exclusive.length ? `・占有 ${p.exclusive.join("・")}` : ""}）`)];
+    for (const u of l.unreadable) lines.push(`⚠ 読めないファイル ${u.file}: ${u.reason}`);
+    return { data: l, text: lines.join("\n") };
+  }
+  if (sub === "show") {
+    one("show <準備 ID>");
+    const p = await store.get(id);
+    const usedBy = await store.usedBy(p.id);
+    return { data: { preparation: p, usedBy }, text: describePreparation(p, usedBy.definitions, files) };
+  }
+  if (sub === "add") {
+    if (id) throw new UsageError(`prep add は位置引数を取りません: ${id}（中身は --input か --title・--body）`);
+    const input = opts.input !== undefined ? (await readInput(opts)).input : {};
+    const p = await store.create(fromFlags(input), actor);
+    return { data: p, text: `作成しました: ${p.id}（v${p.rev}）${p.name}` };
+  }
+  if (sub === "update") {
+    one("update <準備 ID> --rev <今の版> [--input ..] [--title <名前>] [--body <説明>]");
+    let rev = opts.rev !== undefined ? parseRev(opts.rev) : undefined;
+    let base: Record<string, unknown>;
+    if (opts.input !== undefined) {
+      const r = await readInput(opts);
+      base = r.input;
+      rev ??= r.rev;
+    } else base = { ...(await store.get(id)) };
+    for (const k of META) delete base[k];
+    if (rev === undefined) throw new UsageError("更新には今の版を --rev で添えてください（p3 observer prep show <準備 ID> で読める）");
+    const p = await store.update(id, rev, fromFlags(base), actor);
+    return { data: p, text: `更新しました: ${p.id}（v${p.rev}）` };
+  }
+  if (sub === "switch") {
+    one("switch <準備 ID> <check|setup|teardown> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>", 1);
+    if (opts.rev === undefined) throw new UsageError("切り替えには今の版を --rev で添えてください");
+    const slot = rest[0] as Slot;
+    const p = await store.switchSlot(id, parseRev(opts.rev), slot, { invoke: opts.command, evidence: opts.body }, actor);
+    return { data: p, text: `切り替えました: ${p.id} の${SLOT_LABEL[slot]}（v${p.rev}）\n${executableLines(p[slot]!, files, "  ").join("\n")}` };
+  }
+  if (sub === "rm") {
+    one("rm <準備 ID> --rev <今の版>");
+    if (opts.rev === undefined) throw new UsageError("消すには今の版を --rev で添えてください");
+    await store.remove(id, parseRev(opts.rev));
+    return { data: { deleted: id }, text: `消しました: ${id}` };
+  }
+  throw new UsageError(`prep のサブコマンドではありません: ${sub ?? ""}（list・show・add・update・switch・rm）`);
+}
+
+function describePreparation(p: Preparation, usedBy: { id: string; title: string }[], files: Files): string {
+  const lines = [`${p.id}  v${p.rev}  ${p.name}`, ...(p.description ? ["", p.description] : []), "", `占有: ${p.exclusive.join("・") || "なし"}`];
+  for (const s of SLOTS) lines.push(`${SLOT_LABEL[s]}: ${p[s] ? RUN_KIND_LABEL[p[s].run.kind] : "なし"}`, ...(p[s] ? executableLines(p[s], files, "  ") : []));
+  lines.push(`使う観測 ${usedBy.length} 件`, ...usedBy.map((d) => `  ${d.id}  ${d.title}`));
+  lines.push("", `作成 ${p.createdAt} ${p.createdBy} / 更新 ${p.updatedAt} ${p.updatedBy}`);
   return lines.join("\n");
 }

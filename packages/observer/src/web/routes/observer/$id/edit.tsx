@@ -9,10 +9,15 @@ import { DefinitionForm } from "../../../components/DefinitionForm.tsx";
  * /observer/<ID>/edit: 観測の定義を直し、AI に提案を頼む。編集途中の入力は観測に残り、読み直しても戻る。
  * 確定の保存は開いたときの版を添える（ほかで更新されていれば断られ、入力は残る）。下書きが今の版より古いときは知らせ、選んだときだけ開く
  */
-export const Route = createFileRoute("/observer/$id/edit")({ component: EditDefinition });
+export const Route = createFileRoute("/observer/$id/edit")({
+  component: EditDefinition,
+  // addPreparation: 準備の登録の画面（AI の新しい準備の案）で保存して戻ったときの準備の ID
+  validateSearch: (s: Record<string, unknown>): { addPreparation?: string } => ({ addPreparation: typeof s.addPreparation === "string" ? s.addPreparation : undefined }),
+});
 
 function EditDefinition() {
   const { id } = Route.useParams();
+  const { addPreparation } = Route.useSearch();
   const navigate = useNavigate();
   const load = useLoad(async () => ({ ...(await fetchDefinition(id)), ...(await fetchDraft(id)) }), id);
   const [useOld, setUseOld] = useState(false);
@@ -45,6 +50,7 @@ function EditDefinition() {
               initial={d}
               saved={draft ?? undefined}
               restore={!!draft && (!old || useOld)}
+              addPreparation={addPreparation}
               submitLabel="保存する"
               onSave={(input) => updateDefinition(id, d.rev, input)}
               onSaved={() => void navigate({ to: "/observer/$id", params: { id } })}

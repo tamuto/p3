@@ -105,6 +105,26 @@ export function Field({ label, children, hint, error }: { label: string; childre
   );
 }
 
+/** 複数を選ぶチェックボックスの並び（見出しは legend。説明と項目の誤りは Field と同じく下に出す） */
+export function CheckGroup({ label, options, value, onChange, hint, error, empty }: { label: string; options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void; hint?: ReactNode; error?: ReactNode; empty?: ReactNode }) {
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-1">
+      <legend className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</legend>
+      {options.length === 0 && <span className="text-slate-500 dark:text-slate-400">{empty ?? "選べるものがありません。"}</span>}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {options.map((o) => (
+          <label key={o.value} className="flex min-w-0 items-center gap-1 break-words">
+            <input type="checkbox" checked={value.includes(o.value)} aria-invalid={!!error} onChange={(e) => onChange(e.target.checked ? [...value, o.value] : value.filter((x) => x !== o.value))} />
+            {o.label}
+          </label>
+        ))}
+      </div>
+      {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
+      {error && <span className="text-rose-600">{error}</span>}
+    </fieldset>
+  );
+}
+
 export const inputCls =
   "w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-base ring-1 ring-slate-300 ring-inset focus:ring-2 focus:ring-indigo-500 focus:outline-none aria-[invalid=true]:ring-rose-500 disabled:opacity-50 dark:bg-slate-900 dark:ring-slate-700";
 
@@ -135,14 +155,14 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-500 dark:border-slate-700">{children}</p>;
 }
 
-/** 失敗・注意の知らせ（支援技術にも伝える）。box は枠の中に、warn は注意の色で出す */
+/** 失敗・注意の知らせ（支援技術にも伝える）。box は枠の中に、warn は注意の色で出す。中に一覧なども置ける */
 export function Alert({ children, box, warn, className }: { children: ReactNode; box?: boolean; warn?: boolean; className?: string }) {
   const tone = warn ? "text-amber-800 dark:text-amber-300" : box ? "text-rose-800 dark:text-rose-300" : "text-rose-600";
   const frame = box && (warn ? "rounded-md bg-amber-50 px-3 py-2 dark:bg-amber-950" : "rounded-md bg-rose-50 px-3 py-2 dark:bg-rose-950");
   return (
-    <p role="alert" className={cx("text-base break-words whitespace-pre-wrap", tone, frame, className)}>
+    <div role="alert" className={cx("text-base break-words whitespace-pre-wrap", tone, frame, className)}>
       {children}
-    </p>
+    </div>
   );
 }
 

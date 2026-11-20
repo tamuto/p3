@@ -4,8 +4,11 @@
  * 観測の実行・結果の保存・要望やタスクとの関連付けはまだ無い（別の要望）。
  */
 
-/** 保存の形の版（定義のファイルの format）。1 は読むときに今の形に移し、更新のときに 2 で書く。知らない版のファイルは読むだけで上書きしない */
-export const DEFINITION_FORMAT = 2;
+/**
+ * 保存の形の版（定義のファイルの format）。1・2 は読むときに今の形に移し（1 は手順の形、2 までは前提の観測・使う準備が無い）、
+ * 更新のときに 3 で書く。知らない版のファイルは読むだけで上書きしない
+ */
+export const DEFINITION_FORMAT = 3;
 
 /** 測定項目の型 */
 export const MEASURE_TYPES = ["number", "boolean", "string"] as const;
@@ -87,16 +90,20 @@ export interface Switch {
   evidence: string;
 }
 
-/** 確認の手順。run が今の実行方法 */
-export interface Procedure {
+/** 実行できるもの（確認の手順と準備の確かめ・前処理・後処理で共通）。run が今の実行方法 */
+export interface Executable {
+  run: Run;
+  replacement?: Replacement;
+  history?: Switch[];
+}
+
+/** 確認の手順 */
+export interface Procedure extends Executable {
   /** 手順の識別子（P1, P2 ...。定義の中で一意。保存の層が付ける） */
   id: string;
   title: string;
   /** この手順で得る測定項目（Measure の name） */
   measures: string[];
-  run: Run;
-  replacement?: Replacement;
-  history?: Switch[];
 }
 
 /** 登録・更新で受け取る中身（ID・版・記録は保存の層が付ける） */
@@ -107,6 +114,10 @@ export interface DefinitionInput {
   description: string;
   /** 期待する結果（どうなっていれば期待どおりか。任意） */
   expected?: string;
+  /** 前提の観測（ほかの観測の ID）。前提が失敗したら、この観測は失敗ではなく未確認として扱う（実行の段階で扱う） */
+  prerequisites?: string[];
+  /** 使う準備の ID（入力は名前でもよく、保存の層が ID にする） */
+  preparations?: string[];
   measures: Measure[];
   procedures: Procedure[];
 }
@@ -123,6 +134,12 @@ export interface ObservationDefinition extends DefinitionInput {
   updatedBy: string;
 }
 
+/** 前提の観測と使う準備の名前（見つからない・読めないものは名前が無い。詳細の表示用） */
+export interface References {
+  prerequisites: { id: string; title?: string }[];
+  preparations: { id: string; name?: string }[];
+}
+
 /** 入力の誤り。path は項目の場所（title・measures[0].unit・procedures[1].run.path など） */
 export interface DefinitionProblem {
   path: string;
@@ -136,9 +153,9 @@ export const DEFINITION_ID = /^obs-\d{6}-[0-9a-hjkmnp-tv-z]{5}$/;
 export const isDefinitionId = (v: string) => DEFINITION_ID.test(v);
 
 const MEASURE_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-const LIMIT = { title: 200, category: 100, description: 10_000, unit: 30, text: 2_000, body: 20_000, items: 50, args: 100 };
+export const LIMIT = { name: 100, title: 200, category: 100, description: 10_000, unit: 30, text: 2_000, body: 20_000, items: 50, args: 100 };
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isMeasureType = (v: unknown): v is MeasureType => (MEASURE_TYPES as readonly unknown[]).includes(v);
 
 /** 相対パス（絶対パス・.. で外へ出るもの・空は不可） */
@@ -148,14 +165,8 @@ function badRelative(p: string): string | undefined {
   return undefined;
 }
 
-/**
- * 登録・更新の中身を確かめる。誤りは項目ごとに全部返す（最初の1つで止めない）。前後の空白は落とし、空の任意項目は省く
- */
-export function validateDefinitionInput(input: unknown): ValidationResult {
-  const problems: DefinitionProblem[] = [];
-  const add = (path: string, message: string) => problems.push({ path, message });
-  if (!isRecord(input)) return { ok: false, problems: [{ path: "", message: "観測の定義は JSON のオブジェクトで渡してください" }] };
-
+/** 項目ごとの検証の部品（観測の定義と準備で共通）。誤りは add に足し、続けて確かめる */
+export function fieldChecker(add: (path: string, message: string) => unknown) {
   const text = (path: string, v: unknown, max: number, required: boolean): string | undefined => {
     if (v === undefined || v === null || v === "") {
       if (required) add(path, "入力してください");
@@ -173,45 +184,6 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
     if (s.length > max) add(path, `${max} 文字以内で入力してください`);
     return s;
   };
-
-  const known = new Set(["title", "category", "description", "expected", "measures", "procedures"]);
-  for (const k of Object.keys(input)) if (!known.has(k)) add(k, `知らない項目です（${[...known].join("・")}）`);
-
-  const title = text("title", input.title, LIMIT.title, true) ?? "";
-  // カテゴリは後から決めてよい（タイトルと観測内容だけで先に保存して ID を付ける）
-  const category = text("category", input.category, LIMIT.category, false) ?? "";
-  const description = text("description", input.description, LIMIT.description, true) ?? "";
-  const expected = text("expected", input.expected, LIMIT.description, false);
-
-  const measures: Measure[] = [];
-  const rawMeasures = input.measures ?? [];
-  if (!Array.isArray(rawMeasures)) add("measures", "測定項目は配列で渡してください");
-  else {
-    if (rawMeasures.length > LIMIT.items) add("measures", `測定項目は ${LIMIT.items} 件までです`);
-    const seen = new Set<string>();
-    rawMeasures.forEach((m, i) => {
-      const at = `measures[${i}]`;
-      if (!isRecord(m)) return add(at, "測定項目はオブジェクトで渡してください");
-      for (const k of Object.keys(m)) if (!["name", "type", "unit", "description"].includes(k)) add(`${at}.${k}`, "知らない項目です（name・type・unit・description）");
-      const name = text(`${at}.name`, m.name, 64, true);
-      if (name !== undefined) {
-        if (!MEASURE_NAME.test(name)) add(`${at}.name`, "英数字で始まり、英数字・_・- だけの64文字以内にしてください");
-        else if (seen.has(name)) add(`${at}.name`, `同じ名前の測定項目があります: ${name}`);
-        seen.add(name);
-      }
-      let type: MeasureType | undefined;
-      if (!isMeasureType(m.type)) add(`${at}.type`, `型は ${MEASURE_TYPES.join(" / ")} のどれかです`);
-      else type = m.type;
-      const unit = text(`${at}.unit`, m.unit, LIMIT.unit, false);
-      if (unit !== undefined && type !== undefined && type !== "number") add(`${at}.unit`, "単位は数値の測定項目だけに付けられます");
-      const desc = text(`${at}.description`, m.description, LIMIT.text, false);
-      if (name !== undefined && type !== undefined) measures.push({ name, type, ...(unit !== undefined && type === "number" ? { unit } : {}), ...(desc !== undefined ? { description: desc } : {}) });
-    });
-  }
-  const measureNames = new Set(measures.map((m) => m.name));
-
-  const procedures: Procedure[] = [];
-  const rawProcedures = input.procedures ?? [];
   const isKind = <K extends string>(list: readonly K[], v: unknown): v is K => (list as readonly unknown[]).includes(v);
   const relPath = (at: string, v: unknown, required: boolean) => {
     const p = text(at, v, LIMIT.text, required);
@@ -221,6 +193,20 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
   };
   const only = (at: string, o: Record<string, unknown>, keys: string[]) => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) add(`${at}.${k}`, `使わない項目です（${keys.join("・")}）`);
+  };
+  /** 文字列の並び（前後の空白を落とし、空と重複は誤り） */
+  const strings = (at: string, v: unknown, max: number): string[] => {
+    const out: string[] = [];
+    if (v === undefined || v === null) return out;
+    if (!Array.isArray(v)) return void add(at, "文字列の配列で渡してください"), out;
+    if (v.length > LIMIT.items) add(at, `${LIMIT.items} 件までです`);
+    v.forEach((x, j) => {
+      const s = text(`${at}[${j}]`, x, max, true);
+      if (s === undefined) return;
+      if (out.includes(s)) add(`${at}[${j}]`, `同じものがあります: ${s}`);
+      else out.push(s);
+    });
+    return out;
   };
   const runOf = (at: string, r: unknown): Run | undefined => {
     if (!isRecord(r)) return void add(at, "実行方法をオブジェクトで渡してください");
@@ -257,6 +243,67 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
     const invoke = t("invoke", false);
     return { kind: r.kind as FileKind, repo: t("repo") ?? "", path: relPath(`${at}.path`, r.path, true) ?? "", operation: t("operation") ?? "", output: t("output") ?? "", compare: t("compare") ?? "", switchWhen: t("switchWhen") ?? "", ...(invoke ? { invoke } : {}) };
   };
+  /** 実行方法・置き換え候補・切り替えの履歴（履歴は入力では使わず、保存の層が今の定義のものを残す） */
+  const executableOf = (at: string, p: Record<string, unknown>): Executable | undefined => {
+    const run = runOf(`${at}.run`, p.run);
+    const replacement = replacementOf(`${at}.replacement`, p.replacement);
+    const history = Array.isArray(p.history) ? (p.history as Switch[]) : undefined;
+    return run && { run, ...(replacement ? { replacement } : {}), ...(history?.length ? { history } : {}) };
+  };
+  return { text, isKind, only, strings, executableOf };
+}
+
+/**
+ * 登録・更新の中身を確かめる。誤りは項目ごとに全部返す（最初の1つで止めない）。前後の空白は落とし、空の任意項目は省く。
+ * 前提の観測・使う準備は形だけ確かめる（自分自身・循環・存在しない参照は、保存の層がロックの中で確かめる）
+ */
+export function validateDefinitionInput(input: unknown): ValidationResult {
+  const problems: DefinitionProblem[] = [];
+  const add = (path: string, message: string) => problems.push({ path, message });
+  if (!isRecord(input)) return { ok: false, problems: [{ path: "", message: "観測の定義は JSON のオブジェクトで渡してください" }] };
+  const { text, only, strings, executableOf } = fieldChecker(add);
+
+  const known = ["title", "category", "description", "expected", "prerequisites", "preparations", "measures", "procedures"];
+  for (const k of Object.keys(input)) if (!known.includes(k)) add(k, `知らない項目です（${known.join("・")}）`);
+
+  const title = text("title", input.title, LIMIT.title, true) ?? "";
+  // カテゴリは後から決めてよい（タイトルと観測内容だけで先に保存して ID を付ける）
+  const category = text("category", input.category, LIMIT.category, false) ?? "";
+  const description = text("description", input.description, LIMIT.description, true) ?? "";
+  const expected = text("expected", input.expected, LIMIT.description, false);
+  const prerequisites = strings("prerequisites", input.prerequisites, 100);
+  prerequisites.forEach((r, j) => !isDefinitionId(r) && add(`prerequisites[${j}]`, `観測の ID（obs-<作成日>-<5文字>）ではありません: ${r}`));
+  const preparations = strings("preparations", input.preparations, LIMIT.name);
+
+  const measures: Measure[] = [];
+  const rawMeasures = input.measures ?? [];
+  if (!Array.isArray(rawMeasures)) add("measures", "測定項目は配列で渡してください");
+  else {
+    if (rawMeasures.length > LIMIT.items) add("measures", `測定項目は ${LIMIT.items} 件までです`);
+    const seen = new Set<string>();
+    rawMeasures.forEach((m, i) => {
+      const at = `measures[${i}]`;
+      if (!isRecord(m)) return add(at, "測定項目はオブジェクトで渡してください");
+      for (const k of Object.keys(m)) if (!["name", "type", "unit", "description"].includes(k)) add(`${at}.${k}`, "知らない項目です（name・type・unit・description）");
+      const name = text(`${at}.name`, m.name, 64, true);
+      if (name !== undefined) {
+        if (!MEASURE_NAME.test(name)) add(`${at}.name`, "英数字で始まり、英数字・_・- だけの64文字以内にしてください");
+        else if (seen.has(name)) add(`${at}.name`, `同じ名前の測定項目があります: ${name}`);
+        seen.add(name);
+      }
+      let type: MeasureType | undefined;
+      if (!isMeasureType(m.type)) add(`${at}.type`, `型は ${MEASURE_TYPES.join(" / ")} のどれかです`);
+      else type = m.type;
+      const unit = text(`${at}.unit`, m.unit, LIMIT.unit, false);
+      if (unit !== undefined && type !== undefined && type !== "number") add(`${at}.unit`, "単位は数値の測定項目だけに付けられます");
+      const desc = text(`${at}.description`, m.description, LIMIT.text, false);
+      if (name !== undefined && type !== undefined) measures.push({ name, type, ...(unit !== undefined && type === "number" ? { unit } : {}), ...(desc !== undefined ? { description: desc } : {}) });
+    });
+  }
+  const measureNames = new Set(measures.map((m) => m.name));
+
+  const procedures: Procedure[] = [];
+  const rawProcedures = input.procedures ?? [];
   if (!Array.isArray(rawProcedures)) add("procedures", "確認の手順は配列で渡してください");
   else {
     if (rawProcedures.length > LIMIT.items) add("procedures", `確認の手順は ${LIMIT.items} 件までです`);
@@ -279,15 +326,20 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
           if (typeof r !== "string" || !measureNames.has(r)) add(`${at}.measures[${j}]`, `定義に無い測定項目です: ${String(r)}`);
           else if (!refs.includes(r)) refs.push(r);
         });
-      const run = runOf(`${at}.run`, p.run);
-      const replacement = replacementOf(`${at}.replacement`, p.replacement);
-      const history = Array.isArray(p.history) ? (p.history as Switch[]) : undefined;
-      if (run) procedures.push({ id, title: text(`${at}.title`, p.title, LIMIT.title, true) ?? "", measures: refs, run, ...(replacement ? { replacement } : {}), ...(history?.length ? { history } : {}) });
+      const e = executableOf(at, p);
+      if (e) procedures.push({ id, title: text(`${at}.title`, p.title, LIMIT.title, true) ?? "", measures: refs, ...e });
     });
   }
 
   if (problems.length) return { ok: false, problems };
-  return { ok: true, value: { title, category, description, ...(expected ? { expected } : {}), measures, procedures } };
+  return { ok: true, value: { title, category, description, ...(expected ? { expected } : {}), ...(prerequisites.length ? { prerequisites } : {}), ...(preparations.length ? { preparations } : {}), measures, procedures } };
+}
+
+/** 前提をたどると self に戻るか（観測の ID → 今の前提の並び）。循環の確かめと、提案の前提の候補から外すものに使う */
+export function reachesSelf(definitions: { id: string; prerequisites?: string[] }[], self: string | undefined): (from: string) => boolean {
+  const edges = new Map(definitions.map((d) => [d.id, d.prerequisites ?? []]));
+  const reaches = (from: string, seen: Set<string>): boolean => from === self || (!seen.has(from) && (seen.add(from), (edges.get(from) ?? []).some((n) => reaches(n, seen))));
+  return (from) => self !== undefined && reaches(from, new Set());
 }
 
 /** 誤りを人が読む文にする（CLI のエラー・画面の項目に付かない誤り） */

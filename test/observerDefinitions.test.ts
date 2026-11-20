@@ -96,7 +96,7 @@ describe("観測の定義の保存", () => {
     const dataDir = tempDir("p3-obs-store-");
     const store = new DefinitionStore(dataDir);
     const d = await store.create(SAMPLE, "ai:test");
-    expect(d).toMatchObject({ format: 2, rev: 1, id: expect.stringMatching(/^obs-\d{6}-[0-9a-z]{5}$/), createdBy: "ai:test", ...SAMPLE });
+    expect(d).toMatchObject({ format: 3, rev: 1, id: expect.stringMatching(/^obs-\d{6}-[0-9a-z]{5}$/), createdBy: "ai:test", ...SAMPLE });
     expect(existsSync(join(dataDir, "observer", "definitions", `${d.id}.json`))).toBe(true);
     const u = await store.update(d.id, 1, { ...SAMPLE, title: "変えた" }, "human:a");
     expect(u).toMatchObject({ rev: 2, title: "変えた", createdBy: "ai:test", updatedBy: "human:a" });
@@ -118,15 +118,15 @@ describe("観測の定義の保存", () => {
   it("壊れた・知らない形の版のファイルは一覧に理由を出し、更新しない", async () => {
     const store = new DefinitionStore(tempDir("p3-obs-broken-"));
     const d = await store.create(SAMPLE, "a");
-    const future = { ...(await store.get(d.id)), format: 3 };
+    const future = { ...(await store.get(d.id)), format: 4 };
     writeFileSync(join(store.dir, `${d.id}.json`), JSON.stringify(future));
     await writeFile(join(store.dir, "obs-261120-zzzzz.json"), "{ 壊れた");
     const l = await store.list();
     expect(l.definitions).toEqual([]);
-    expect(l.unreadable.map((u) => u.file).sort()).toEqual([`${d.id}.json`, "obs-261120-zzzzz.json"]);
+    expect(l.unreadable.map((u) => u.file).sort()).toEqual([`${d.id}.json`, "obs-261120-zzzzz.json"].sort());
     expect(l.unreadable.find((u) => u.file === `${d.id}.json`)?.reason).toContain("知らない形の版");
     await expect(store.update(d.id, 1, SAMPLE, "a")).rejects.toMatchObject({ code: "unreadable" });
-    expect(JSON.parse(readFileSync(join(store.dir, `${d.id}.json`), "utf8")).format).toBe(3);
+    expect(JSON.parse(readFileSync(join(store.dir, `${d.id}.json`), "utf8")).format).toBe(4);
   });
 });
 

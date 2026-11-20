@@ -6,6 +6,8 @@ import { useFileStates } from "../lib/files.ts";
 import { ProcedureEditor } from "./ProcedureEditor.tsx";
 import { ObserverApiError, saveDraft, type DraftRecord } from "../lib/api.ts";
 import { SuggestPanel } from "./SuggestPanel.tsx";
+import { SaveProblems } from "./SaveProblems.tsx";
+import { RefPicker } from "./RefPicker.tsx";
 
 /**
  * 観測の定義の入力欄（編集の画面）。保存の前に共通の検証（shared/definition.ts）で項目ごとの誤りを出し、保存の応答の誤り（API の problems）も
@@ -52,6 +54,7 @@ export function DefinitionForm({
   rev,
   saved,
   restore,
+  addPreparation,
 }: {
   initial?: DefinitionInput;
   submitLabel: string;
@@ -63,11 +66,16 @@ export function DefinitionForm({
   /** 保存した編集途中の入力（restore のときだけ入力欄に戻す。版は上書きの確かめに使う） */
   saved?: DraftRecord;
   restore?: boolean;
+  /** 準備の登録の画面で保存した新しい準備（使う準備に足し、編集途中の入力として残す） */
+  addPreparation?: string;
 }) {
   const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? draftOf(saved.input) : toDraft(initial)));
   const status = useDraftSave(id, rev, draft, saved);
+  useEffect(() => {
+    if (addPreparation) setDraft((d) => (d.preparations.includes(addPreparation) ? d : { ...d, preparations: [...d.preparations, addPreparation] }));
+  }, [addPreparation]);
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
-  const [error, setError] = useState<{ message: string; conflict?: ObservationDefinition }>();
+  const [error, setError] = useState<{ message: string; conflict?: { rev: number } }>();
   const [saving, setSaving] = useState(false);
   const err = (path: string) => problems.find((p) => p.path === path)?.message;
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -112,21 +120,7 @@ export function DefinitionForm({
         <p role="status" className="text-slate-600 dark:text-slate-400">
           {status.text}
         </p>
-      {(problems.length > 0 || error) && (
-        <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-          {error && <p>保存できませんでした: {error.message}</p>}
-          {error?.conflict && <p>入力は残しています。ページを読み直すと今の定義（版 {error.conflict.rev}）を開けます。</p>}
-          {problems.length > 0 && (
-            <ul className="list-disc pl-5">
-              {problems.map((p) => (
-                <li key={`${p.path}:${p.message}`}>
-                  {p.path || "全体"}: {p.message}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        <SaveProblems problems={problems} error={error} />
       </div>
 
       <section aria-labelledby="items-heading" className="space-y-3 lg:col-start-1 lg:row-start-2">
@@ -145,6 +139,7 @@ export function DefinitionForm({
         <Field label="期待する結果（任意）" error={err("expected")} hint="どうなっていれば期待どおりか（判定のもとになる）">
           <textarea className={inputCls} rows={3} value={draft.expected} aria-invalid={!!err("expected")} onChange={(e) => set({ expected: e.target.value })} />
         </Field>
+        <RefPicker self={id} value={{ prerequisites: draft.prerequisites, preparations: draft.preparations }} onChange={set} problems={problems} />
       </section>
 
       <div className="lg:sticky lg:top-4 lg:col-start-2 lg:row-span-4 lg:row-start-2 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
@@ -155,6 +150,8 @@ export function DefinitionForm({
         measures={draft.measures.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), type: m.type, ...(m.unit ? { unit: m.unit } : {}) }))}
         onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))}
         onAdoptMeasure={adoptMeasure}
+        refs={{ prerequisites: draft.prerequisites, preparations: draft.preparations }}
+        onAdoptRef={(key, ref) => setDraft((d) => (d[key].includes(ref) ? d : { ...d, [key]: [...d[key], ref] }))}
       />
       </div>
 

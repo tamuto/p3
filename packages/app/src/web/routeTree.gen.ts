@@ -19,10 +19,14 @@ import { Route as RequestsRequestIdRouteImport } from './../../../tasks/src/web/
 import { Route as RequestsNewRouteImport } from './../../../tasks/src/web/routes/requests/new'
 import { Route as ObserverIdIndexRouteImport } from './../../../observer/src/web/routes/observer/$id/index'
 import { Route as ObserverIdEditRouteImport } from './../../../observer/src/web/routes/observer/$id/edit'
+import { Route as ObserverPreparationsIndexRouteImport } from './../../../observer/src/web/routes/observer/preparations/index'
+import { Route as ObserverPreparationsNewRouteImport } from './../../../observer/src/web/routes/observer/preparations/new'
 import { Route as RequestsRequestIdIndexRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/index'
 import { Route as RequestsRequestIdArchiveRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/archive'
 import { Route as RequestsRequestIdBoardRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/board'
 import { Route as RequestsRequestIdDoneRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/done'
+import { Route as ObserverPreparationsPidIndexRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/index'
+import { Route as ObserverPreparationsPidEditRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -74,6 +78,17 @@ const ObserverIdEditRoute = ObserverIdEditRouteImport.update({
   path: '/observer/$id/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ObserverPreparationsIndexRoute =
+  ObserverPreparationsIndexRouteImport.update({
+    id: '/observer/preparations/',
+    path: '/observer/preparations/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ObserverPreparationsNewRoute = ObserverPreparationsNewRouteImport.update({
+  id: '/observer/preparations/new',
+  path: '/observer/preparations/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RequestsRequestIdIndexRoute = RequestsRequestIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -95,6 +110,18 @@ const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
   path: '/done',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
+const ObserverPreparationsPidIndexRoute =
+  ObserverPreparationsPidIndexRouteImport.update({
+    id: '/observer/preparations/$pid/',
+    path: '/observer/preparations/$pid/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ObserverPreparationsPidEditRoute =
+  ObserverPreparationsPidEditRouteImport.update({
+    id: '/observer/preparations/$pid/edit',
+    path: '/observer/preparations/$pid/edit',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -106,11 +133,15 @@ export interface FileRoutesByFullPath {
   '/requests/new': typeof RequestsNewRoute
   '/observer/': typeof ObserverIndexRoute
   '/observer/$id/edit': typeof ObserverIdEditRoute
+  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/observer/$id/': typeof ObserverIdIndexRoute
+  '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
+  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
+  '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -121,11 +152,15 @@ export interface FileRoutesByTo {
   '/requests/new': typeof RequestsNewRoute
   '/observer': typeof ObserverIndexRoute
   '/observer/$id/edit': typeof ObserverIdEditRoute
+  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/observer/$id': typeof ObserverIdIndexRoute
+  '/observer/preparations': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
+  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
+  '/observer/preparations/$pid': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -138,11 +173,15 @@ export interface FileRoutesById {
   '/requests/new': typeof RequestsNewRoute
   '/observer/': typeof ObserverIndexRoute
   '/observer/$id/edit': typeof ObserverIdEditRoute
+  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/observer/$id/': typeof ObserverIdIndexRoute
+  '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
+  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
+  '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -156,11 +195,15 @@ export interface FileRouteTypes {
     | '/requests/new'
     | '/observer/'
     | '/observer/$id/edit'
+    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/observer/$id/'
+    | '/observer/preparations/'
     | '/requests/$requestId/'
+    | '/observer/preparations/$pid/edit'
+    | '/observer/preparations/$pid/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -171,11 +214,15 @@ export interface FileRouteTypes {
     | '/requests/new'
     | '/observer'
     | '/observer/$id/edit'
+    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/observer/$id'
+    | '/observer/preparations'
     | '/requests/$requestId'
+    | '/observer/preparations/$pid/edit'
+    | '/observer/preparations/$pid'
   id:
     | '__root__'
     | '/'
@@ -187,11 +234,15 @@ export interface FileRouteTypes {
     | '/requests/new'
     | '/observer/'
     | '/observer/$id/edit'
+    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
     | '/observer/$id/'
+    | '/observer/preparations/'
     | '/requests/$requestId/'
+    | '/observer/preparations/$pid/edit'
+    | '/observer/preparations/$pid/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -204,7 +255,11 @@ export interface RootRouteChildren {
   RequestsNewRoute: typeof RequestsNewRoute
   ObserverIndexRoute: typeof ObserverIndexRoute
   ObserverIdEditRoute: typeof ObserverIdEditRoute
+  ObserverPreparationsNewRoute: typeof ObserverPreparationsNewRoute
   ObserverIdIndexRoute: typeof ObserverIdIndexRoute
+  ObserverPreparationsIndexRoute: typeof ObserverPreparationsIndexRoute
+  ObserverPreparationsPidEditRoute: typeof ObserverPreparationsPidEditRoute
+  ObserverPreparationsPidIndexRoute: typeof ObserverPreparationsPidIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -279,6 +334,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ObserverIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/observer/preparations/': {
+      id: '/observer/preparations/'
+      path: '/observer/preparations'
+      fullPath: '/observer/preparations/'
+      preLoaderRoute: typeof ObserverPreparationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/observer/preparations/new': {
+      id: '/observer/preparations/new'
+      path: '/observer/preparations/new'
+      fullPath: '/observer/preparations/new'
+      preLoaderRoute: typeof ObserverPreparationsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/requests/$requestId/': {
       id: '/requests/$requestId/'
       path: '/'
@@ -306,6 +375,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/requests/$requestId/done'
       preLoaderRoute: typeof RequestsRequestIdDoneRouteImport
       parentRoute: typeof RequestsRequestIdRoute
+    }
+    '/observer/preparations/$pid/': {
+      id: '/observer/preparations/$pid/'
+      path: '/observer/preparations/$pid'
+      fullPath: '/observer/preparations/$pid/'
+      preLoaderRoute: typeof ObserverPreparationsPidIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/observer/preparations/$pid/edit': {
+      id: '/observer/preparations/$pid/edit'
+      path: '/observer/preparations/$pid/edit'
+      fullPath: '/observer/preparations/$pid/edit'
+      preLoaderRoute: typeof ObserverPreparationsPidEditRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -337,7 +420,11 @@ const rootRouteChildren: RootRouteChildren = {
   RequestsNewRoute: RequestsNewRoute,
   ObserverIndexRoute: ObserverIndexRoute,
   ObserverIdEditRoute: ObserverIdEditRoute,
+  ObserverPreparationsNewRoute: ObserverPreparationsNewRoute,
   ObserverIdIndexRoute: ObserverIdIndexRoute,
+  ObserverPreparationsIndexRoute: ObserverPreparationsIndexRoute,
+  ObserverPreparationsPidEditRoute: ObserverPreparationsPidEditRoute,
+  ObserverPreparationsPidIndexRoute: ObserverPreparationsPidIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -3,7 +3,10 @@ import { filesOf, fileKey, MEASURE_TYPE_LABEL, type Measure, type Procedure } fr
 import { useFileStates } from "../lib/files.ts";
 import { ProcedureView } from "./ProcedureView.tsx";
 import { MISSING_LABEL, SURFACE_LABEL, type SuggestionContext, type SuggestionJob } from "../../shared/suggestion.ts";
-import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, buttonCls, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Link } from "@tanstack/react-router";
+import { SLOT_LABEL, SLOTS } from "../../shared/preparation.ts";
+import type { Refs } from "./RefPicker.tsx";
 import { cancelSuggestion, fetchSuggestion, fetchSuggestionContext, listSuggestions, ObserverApiError, startSuggestion } from "../lib/api.ts";
 
 const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
@@ -26,6 +29,8 @@ export function SuggestPanel({
   measures,
   onAdopt,
   onAdoptMeasure,
+  refs,
+  onAdoptRef,
 }: {
   id: string;
   rev: number;
@@ -34,6 +39,9 @@ export function SuggestPanel({
   measures: Measure[];
   onAdopt: (p: Procedure) => void;
   onAdoptMeasure: (m: Measure) => void;
+  /** 今の入力の前提の観測と使う準備（取り込み済みの候補を見分ける） */
+  refs: Refs;
+  onAdoptRef: (key: keyof Refs, id: string) => void;
 }) {
   const [ctx, setCtx] = useState<SuggestionContext>();
   const [ctxError, setCtxError] = useState<string>();
@@ -167,6 +175,7 @@ export function SuggestPanel({
               </Button>
             </ProcedureView>
           ))}
+          <RefSuggestions id={id} job={job} refs={refs} onAdopt={onAdoptRef} />
           {job.result.missing.length > 0 && (
             <div className="rounded-md bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="suggestion-missing">
               <p className="font-medium">判断に足りない材料（補足に書くか、観測内容に足して頼み直す）</p>
@@ -186,6 +195,48 @@ export function SuggestPanel({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * 前提の観測・再利用する準備・新しい準備の案（どれも任意）。前提と既にある準備は入力に取り込むだけで、保存のときに循環や存在しない参照が確かめられる。
+ * 新しい準備の案は、案を入れた準備の登録の画面で確かめて保存してから、この観測の編集に戻って使う準備に足す（編集途中の入力は観測に残っている）
+ */
+function RefSuggestions({ id, job, refs, onAdopt }: { id: string; job: SuggestionJob; refs: Refs; onAdopt: (key: keyof Refs, id: string) => void }) {
+  const r = job.result!;
+  const c = job.request?.candidates;
+  if (!r.prerequisites.length && !r.preparations.length && !r.newPreparations.length) return null;
+  const item = (key: keyof Refs, x: { id: string; reason: string }, label: string) => {
+    const taken = refs[key].includes(x.id);
+    return (
+      <li key={`${key}:${x.id}`} className="space-y-1">
+        <p>
+          <span className="font-medium">{label}</span>　{x.reason}
+        </p>
+        <Button disabled={taken} onClick={() => onAdopt(key, x.id)}>
+          {taken ? "取り込みました" : key === "prerequisites" ? "前提に取り込む" : "使う準備に取り込む"}
+        </Button>
+      </li>
+    );
+  };
+  return (
+    <section aria-label="前提と準備の候補" className="space-y-2">
+      <h3 className="text-lg font-semibold">前提と準備の候補</h3>
+      <ul className="space-y-3">
+        {r.prerequisites.map((x) => item("prerequisites", x, `前提の観測: ${c?.observations.find((o) => o.id === x.id)?.title ?? x.id}`))}
+        {r.preparations.map((x) => item("preparations", x, `既にある準備: ${c?.preparations.find((p) => p.id === x.id)?.name ?? x.id}`))}
+        {r.newPreparations.map((x, n) => (
+          <li key={`new:${n}`} className="space-y-1">
+            <p>
+              <span className="font-medium">新しい準備の案: {x.preparation.name}</span>（{SLOTS.filter((s) => x.preparation[s]).map((s) => SLOT_LABEL[s]).join("・") || "中身なし"}）　{x.reason}
+            </p>
+            <Link to="/observer/preparations/new" search={{ from: id, sid: job.id, n }} className={buttonCls()}>
+              準備の登録の画面で確かめる
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

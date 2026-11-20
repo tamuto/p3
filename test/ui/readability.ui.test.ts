@@ -8,7 +8,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "", observation: "" };
+const ids = { board: "", drafts: "", observation: "", preparation: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -38,6 +38,9 @@ async function prepare(env: UiEnv) {
       },
     ],
   };
+  // 準備: 長い名前・占有と、置き換え候補のある前処理
+  const prep = { name: `準備（${LONG_TITLE}）`, description: LONG_TITLE, exclusive: [`account:${"x".repeat(60)}`], setup: { run: obs.procedures[0].run, replacement: obs.procedures[0].replacement } };
+  ids.preparation = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify(prep))).id;
   ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
   await env.p3(["observer", "suggest", ids.observation, "--note", LONG_TITLE]);
 }
@@ -134,6 +137,34 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     },
   },
   {
+    name: "準備の一覧",
+    open: async (page) => {
+      await page.goto("/observer/preparations");
+      await until.visible(page.getByRole("link", { name: /準備（経費精算/ }));
+    },
+  },
+  {
+    name: "準備の登録",
+    open: async (page) => {
+      await page.goto("/observer/preparations/new");
+      await until.visible(page.getByRole("heading", { name: "準備を登録" }));
+    },
+  },
+  {
+    name: "準備の詳細",
+    open: async (page) => {
+      await page.goto(`/observer/preparations/${ids.preparation}`);
+      await until.visible(page.getByRole("region", { name: /の置き換え候補$/ }).getByText(/新規予定（まだ無い）/));
+    },
+  },
+  {
+    name: "準備の編集",
+    open: async (page) => {
+      await page.goto(`/observer/preparations/${ids.preparation}/edit`);
+      await until.value(page.getByLabel("名前", { exact: true }), `準備（${LONG_TITLE}）`);
+    },
+  },
+  {
     name: "リリースノート（レビュー）",
     open: async (page) => {
       await page.goto("/release-notes?tab=review");
@@ -224,12 +255,29 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.getByLabel("補足（任意）").focus();
       none(await tabTo(page, page.getByRole("button", { name: "もう一度頼む" }), "提案を頼む"), at("観測の編集"));
       none(await tabTo(page, page.getByTestId("suggestion").getByRole("button", { name: /編集欄に取り込む|測る項目を先に取り込んでください/ }).first(), "取り込む", 80), at("観測の編集"));
+      none(await tabTo(page, page.getByTestId("suggestion").getByRole("link", { name: "準備の登録の画面で確かめる" }), "新しい準備の案", 80), at("観測の編集"));
       none(await tabTo(page, page.getByRole("button", { name: "保存する" }), "保存する", 200), at("観測の編集"));
     }, page);
     await s.step(at("観測の詳細の編集への移動"), async () => {
       await page.goto(`/observer/${ids.observation}`);
       await until.visible(page.getByRole("heading", { name: /観測（経費精算/ }));
       none(await tabTo(page, page.getByRole("link", { name: "編集・AI に提案を頼む" }), "編集"), at("観測の詳細"));
+    }, page);
+    await s.step(at("準備の一覧から登録・詳細から編集・登録と編集の保存"), async () => {
+      await page.goto("/observer/preparations");
+      await until.visible(page.getByRole("link", { name: /準備（経費精算/ }));
+      none(await tabTo(page, page.getByRole("link", { name: "＋ 新しい準備" }), "新しい準備"), at("準備の一覧"));
+      await page.goto("/observer/preparations/new");
+      await page.getByLabel("名前", { exact: true }).fill(LONG_TITLE);
+      await page.getByLabel("名前", { exact: true }).focus();
+      none(await tabTo(page, page.getByRole("button", { name: "保存する" }), "保存する"), at("準備の登録"));
+      await page.goto(`/observer/preparations/${ids.preparation}`);
+      await until.visible(page.getByRole("heading", { name: /準備（経費精算/ }));
+      none(await tabTo(page, page.getByRole("link", { name: "編集", exact: true }), "編集"), at("準備の詳細"));
+      await page.goto(`/observer/preparations/${ids.preparation}/edit`);
+      await until.value(page.getByLabel("名前", { exact: true }), `準備（${LONG_TITLE}）`);
+      await page.getByLabel("名前", { exact: true }).focus();
+      none(await tabTo(page, page.getByRole("button", { name: "保存する" }), "保存する", 120), at("準備の編集"));
     }, page);
     await s.step(at("タスクの詳細の保存と閉じる"), async () => {
       await screens[4].open(page);

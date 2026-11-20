@@ -1,20 +1,21 @@
 import { Hono, type Context } from "hono";
 import { observerStatus } from "../../core/status.ts";
-import { DefinitionError, DefinitionStore } from "../../core/definitionStore.ts";
+import { DefinitionError, DefinitionStore, PreparationStore } from "../../core/definitionStore.ts";
 import { WorkStore } from "../../core/workStore.ts";
 import { fileChecker } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
 import { validateSuggestionRequest } from "../../shared/suggestion.ts";
+import type { Slot } from "../../shared/preparation.ts";
 
-const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid: 400, not_found: 404, conflict: 409, unreadable: 422 };
+const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid: 400, not_found: 404, conflict: 409, in_use: 409, unreadable: 422 };
 
 /**
  * observer の API。アプリの serve が /api/observer（プロジェクトを跨ぐ serve の観測は /api/projects/<名前>/observer）の下に付ける。
  *   GET  /status                       起動状態（ObserverStatus）。プロジェクトを決めなくても使える
  *   GET  /definitions                  観測の定義の一覧 { definitions, unreadable }
  *   POST /definitions                  作成（タイトルと観測内容だけでよい）。201 で作った定義（ID が付く）
- *   GET  /definitions/:id              1つの定義 { definition }
+ *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前 { definition, references }
  *   PUT  /definitions/:id              更新（{ rev: 今の版, definition }）。版が違えば 409（current に今の定義）
  *   GET  /definitions/:id/draft        編集途中の入力 { draft }（無ければ null）
  *   PUT  /definitions/:id/draft        保存（{ version: 読んだ版か null, basedOnRev, input }）。版が違えば 409
@@ -22,6 +23,10 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   POST /definitions/:id/suggestions  提案を頼む（{ definition: 頼むときの入力, note, basedOnRev }）。依頼を保存してから始め、202
  *   GET  /definitions/:id/suggestions/:sid  1件 / POST .../:sid/cancel 取り消す
  *   POST /definitions/:id/procedures/:pid/switch  手順を置き換え候補のスクリプトに切り替える（{ rev, invoke, evidence }。ファイルが有ること・今の版が要る）
+ *   GET  /preparations                 準備の一覧 { items, unreadable } / POST 作成（201）
+ *   GET  /preparations/:id             1つの準備と、それを使う観測 { preparation, usedBy: { definitions, unreadable } }
+ *   PUT  /preparations/:id             更新（{ rev, preparation }）/ DELETE ?rev=<今の版> 消す（使っている観測があれば 409 の in_use）
+ *   POST /preparations/:id/:slot/switch  確かめ・前処理・後処理（check|setup|teardown）を置き換え候補に切り替える（{ rev, invoke, evidence }）
  *   GET  /files?ref=<参照先>:<パス>   ファイルの有無 { files: { "<参照先>:<パス>": { state: exists|planned|unverified, checkedAt } } }
  *   GET  /suggestions/context          頼む先の状態とプロジェクトの参照先
  *   POST /suggestions・GET /suggestions/:sid・POST .../cancel  ID の無い互換の経路（未保存の入力。このプロセスの中だけで保存しない）
@@ -50,18 +55,40 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
       return typeof b === "object" && b !== null ? (b as Record<string, unknown>) : {};
     };
     const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
     const id = async (c: Context) => (await store.get(c.req.param("id")!)).id;
     app.get("/definitions", async (c) => c.json(await store.list()));
     app.post("/definitions", async (c) => c.json(await store.create(await body(c), actorOf(c)), 201));
-    app.get("/definitions/:id", async (c) => c.json({ definition: await store.get(c.req.param("id")) }));
+    app.get("/definitions/:id", async (c) => {
+      const d = await store.get(c.req.param("id"));
+      return c.json({ definition: d, references: await store.references(d) });
+    });
     app.put("/definitions/:id", async (c) => {
       const b = await body(c);
       return c.json(await store.update(c.req.param("id"), num(b.rev), b.definition, actorOf(c)));
     });
     app.post("/definitions/:id/procedures/:pid/switch", async (c) => {
       const b = await body(c);
-      const str = (v: unknown) => (typeof v === "string" ? v : undefined);
       return c.json(await store.switchProcedure(c.req.param("id"), num(b.rev), c.req.param("pid"), { invoke: str(b.invoke), evidence: str(b.evidence) }, actorOf(c)));
+    });
+    const preps = new PreparationStore(target.dataDir, files);
+    app.get("/preparations", async (c) => c.json(await preps.list()));
+    app.post("/preparations", async (c) => c.json(await preps.create(await body(c), actorOf(c)), 201));
+    app.get("/preparations/:id", async (c) => {
+      const p = await preps.get(c.req.param("id"));
+      return c.json({ preparation: p, usedBy: await preps.usedBy(p.id) });
+    });
+    app.put("/preparations/:id", async (c) => {
+      const b = await body(c);
+      return c.json(await preps.update(c.req.param("id"), num(b.rev), b.preparation, actorOf(c)));
+    });
+    app.delete("/preparations/:id", async (c) => {
+      await preps.remove(c.req.param("id"), Number(c.req.query("rev")));
+      return c.json({ deleted: c.req.param("id") });
+    });
+    app.post("/preparations/:id/:slot/switch", async (c) => {
+      const b = await body(c);
+      return c.json(await preps.switchSlot(c.req.param("id"), num(b.rev), c.req.param("slot") as Slot, { invoke: str(b.invoke), evidence: str(b.evidence) }, actorOf(c)));
     });
     app.get("/files", (c) => {
       const checkedAt = new Date().toISOString();
