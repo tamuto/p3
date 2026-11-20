@@ -5,12 +5,14 @@
  *   tasks     この画面が tasks の画面か（tasks のプロジェクトを決め、AppDataProvider で tasks のデータ・設定・イベントを読む）。
  *             observer のページ（/observer）では false で、tasks のものを何も要求しない
  *   mode      serve の形（single / all-projects）
+ *   project   プロジェクトを跨ぐ serve で開いているプロジェクト（選んでいない・通常の serve は undefined）
  *
  * 製品の間の移動はページごと移る（a 要素の遷移）。前の製品の取得・通知はページと一緒に消える
  */
 export interface Shell {
   tasks: boolean;
   mode: "single" | "all-projects";
+  project: string | undefined;
 }
 
 let shell: Shell | undefined;

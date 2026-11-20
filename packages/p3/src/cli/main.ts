@@ -17,7 +17,8 @@ import { readsOnly } from "@infodb/p3-tasks/cli/readOnly.ts";
 import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
-import { observerCommand } from "@infodb/p3-observer/cli/observerCli.ts";
+import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
+import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 import { PRODUCTS_OPTION_REMOVED } from "../shared/products.ts";
 
 /**
@@ -60,6 +61,16 @@ function serveUntilSignal(server: RunningServer): Promise<number> {
     process.on("SIGTERM", () => stop("SIGTERM"));
     process.on("SIGINT", () => stop("SIGINT"));
   });
+}
+
+/** observer のコマンドの結果を出す（誤りは標準エラーと終了コード。1 入力の誤り / 2 見つからない / 3 版の競合） */
+function observerOutput(out: Output, r: ObserverResult): number {
+  if (r.code !== undefined) {
+    process.stderr.write(`${r.error}\n`);
+    return r.code;
+  }
+  out.result(r.data, () => r.text);
+  return 0;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -149,12 +160,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  // observer の名前空間。tasks のプロジェクトの解決・個人設定の読み込みより前に振り分ける（登録が無くても動き、tasks のデータ・登録を作らない）
-  if (cmd === "observer") {
-    const r = observerCommand(args);
-    out.result(r.data, () => r.text);
-    return 0;
-  }
+  // observer の名前空間。起動状態（status）と使い方の誤りは、tasks のプロジェクトの解決・個人設定の読み込みより前に扱う
+  // （登録が無くても動き、tasks のデータ・登録を作らない）。観測の定義は下で tasks と同じ方法でプロジェクトを決めてから
+  if (cmd === "observer" && !observerNeedsProject(args)) return observerOutput(out, await observerCommand(args));
 
   // ChatGPT との接続はこのマシンのもの（どのプロジェクトにも属さない）なので、プロジェクトを決める前に扱う
   if (cmd === "chatgpt") {
@@ -198,12 +206,27 @@ async function main(argv: string[]): Promise<number> {
   const target = resolveProject({ cwd, dir: o.dir, project: o.project, user });
   // 登録が1つだけで決まった（今いる場所では決まっていない）なら、変える操作は何も読み書きする前に止め、読むだけなら警告する
   if (target.via === "only") {
-    const write = !readsOnly(cmd, args, o);
+    const write = cmd === "observer" ? observerWrites(args) : !readsOnly(cmd, args, o);
     if (write) throw new ProjectNotResolvedError(onlyRegistrationNotice(target, true));
     process.stderr.write(`${onlyRegistrationNotice(target, false)}\n`);
   }
   // マシンごとの設定は環境変数と個人設定から（.env は読まない）
   const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
+
+  // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
+  if (cmd === "observer") {
+    const r = await observerCommand(args, {
+      target: { project: target.name, dataDir: target.dataDir },
+      cwd,
+      actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
+      input: o.input,
+      title: o.title,
+      category: o.category,
+      body: o.body,
+      rev: o.rev,
+    });
+    return observerOutput(out, r);
+  }
 
   if (cmd === "serve") {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す

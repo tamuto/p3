@@ -233,8 +233,9 @@ packages/
     src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: metrics・records（完了の記録・手戻り・見直し候補・前提）・
                      quality・retro・requirements（要求の根拠・回答・受け入れ基準）・settings・taskReview・milestoneReview・releaseNotes。
                      読んでよいものは docs/refactoring.md「モジュール構成」（test/featureBoundary.test.ts）
-  observer/          @infodb/p3-observer（観測基盤。準備中で、今は起動の確認だけ。公開しない）: shared/status.ts（起動状態の型・ページと API の場所）・
-                     core/status.ts・cli/observerCli.ts（p3 observer）・server/api/routes.ts（/api/observer）・web/（/observer のページ）
+  observer/          @infodb/p3-observer（観測基盤。試作で、起動の確認と観測の定義の登録。公開しない）: shared/status.ts（起動状態の型・ページと API の場所）・
+                     shared/definition.ts（観測の定義の型と検証。CLI・API・画面で共通）・core/status.ts・core/definitionStore.ts（定義の保存）・
+                     cli/observerCli.ts（p3 observer）・server/api/routes.ts（/api/observer）・web/（/observer の一覧・登録・詳細・編集と、入口が決める対象 lib/scope.ts）
   kit/               @infodb/p3-kit（入口と製品が使う最小限の共通処理。公開しない）: fsutil.ts・frontmatter.ts・usage.ts・appInfo.ts
 skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）
 scripts/             配布物のビルド（build-cli.mjs）・デモデータ・配布物の確認・使い方の動画（video/）

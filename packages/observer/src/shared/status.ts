@@ -1,6 +1,6 @@
 /**
  * observer の起動状態（CLI の p3 observer status・API の GET /api/observer/status・画面の /observer が同じ形を返す）。
- * 観測データの収集・保存はまだ無い（docs/architecture.md「p3-observer」）。tasks のデータ・登録には触れない
+ * 観測の定義の登録はプロジェクトごと（definition.ts）。起動状態はプロジェクトを決めずに返す（docs/architecture.md「p3-observer」）
  */
 export interface ObserverStatus {
   product: "observer";
@@ -8,7 +8,7 @@ export interface ObserverStatus {
   version: string;
   /** 起動の状態。今は動いていれば ready だけ */
   state: "ready";
-  /** 観測データの保存先（予定は各プロジェクトの .p3/observer/。今は何も保存しないので null） */
+  /** 起動状態はプロジェクトを決めないので null（観測の定義の保存先は定義の一覧の target） */
   dataDir: null;
   /** この serve の製品（API のときだけ。入口が取り付けた製品を渡す。CLI には無い） */
   products?: string[];
@@ -20,3 +20,13 @@ export const OBSERVER_PAGE = "/observer";
 export const OBSERVER_API = "/api/observer";
 
 export const isObserverPath = (pathname: string): boolean => pathname === OBSERVER_PAGE || pathname.startsWith(`${OBSERVER_PAGE}/`);
+
+/** プロジェクトの URL の基点（/ か /projects/<名前>）の下の、観測の画面の URL */
+export const observerPage = (base: string) => `${base.replace(/\/$/, "")}${OBSERVER_PAGE}`;
+
+/** 観測の定義の登録先（入口が解決したプロジェクト。dataDir はそのデータのフォルダ） */
+export interface DefinitionTarget {
+  /** 個人設定に登録したプロジェクトの名前（分からなければ省く） */
+  project?: string;
+  dataDir: string;
+}

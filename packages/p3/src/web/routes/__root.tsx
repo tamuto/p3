@@ -3,7 +3,8 @@ import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
 import { buttonCls, cx, Empty } from "@infodb/p3-tasks/web/components/ui.tsx";
 import { useAppCtx } from "@infodb/p3-tasks/web/lib/appCtx.ts";
 import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
-import { OBSERVER_PAGE } from "@infodb/p3-observer/shared/status.ts";
+import { observerPage } from "@infodb/p3-observer/shared/status.ts";
+import { pageBase, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { currentShell } from "../shell.ts";
 
 /**
@@ -20,8 +21,9 @@ import { currentShell } from "../shell.ts";
  *
  * 要望の中のページでは ?task=T003 でタスク詳細を重ねて開く。URL を共有すれば同じ画面が開ける。
  *
- * 製品（Boot.tsx が決める shell.ts）: tasks の画面は下の Layout（tasks のプロジェクト・データを使う）。observer のページ（/observer）は
- * ProductLayout で、tasks のデータを読まない。製品の間の移動は a 要素でページごと移る（observer を選んだ serve だけ「観測基盤」を出す）
+ * 製品（Boot.tsx が決める shell.ts）: tasks の画面は下の Layout（tasks のプロジェクト・データを使う）。observer のページ（/observer。
+ * プロジェクトを跨ぐ serve では /projects/<名前>/observer）は ProductLayout で、tasks のデータを読まない。製品の間の移動は a 要素でページごと移り、
+ * 同じプロジェクトの tasks と観測の一覧を行き来する
  */
 export const Route = createRootRoute({
   component: () => (currentShell().tasks ? <Layout /> : <ProductLayout />),
@@ -84,7 +86,7 @@ function Layout() {
               {n.label}
             </Link>
           ))}
-          <a href={OBSERVER_PAGE} title={OBSERVER_HINT} className={cx(navCls, navIdle)}>
+          <a href={observerPage(pageBase())} title={OBSERVER_HINT} className={cx(navCls, navIdle)}>
             観測基盤
           </a>
         </nav>
@@ -128,31 +130,38 @@ function Layout() {
   );
 }
 
-const OBSERVER_HINT = "p3-observer の起動状態（準備中）";
+const OBSERVER_HINT = "このプロジェクトの観測の定義（p3-observer）";
 
 /**
- * tasks のデータを読まない画面（observer のページ）の外枠。tasks へ戻る導線を出す:
- * 通常の serve は tasks の各ページ、プロジェクトを跨ぐ serve はプロジェクトの選択（/。今までの一覧・登録が1つなら開く）
+ * tasks のデータを読まない画面（observer のページ）の外枠。同じプロジェクトの tasks へ戻る導線を出す:
+ * 通常の serve は tasks の各ページ、プロジェクトを跨ぐ serve は開いているプロジェクトの tasks の各ページ（選んでいなければプロジェクトの選択 /）
  */
 function ProductLayout() {
   const shell = currentShell();
+  const base = shell.mode === "all-projects" && shell.project ? projectPath(shell.project) : "";
   const tasksNav =
-    shell.mode === "all-projects"
+    shell.mode === "all-projects" && !shell.project
       ? [{ to: "/", label: "タスク管理", hint: "プロジェクトを選んでタスク管理の画面へ" }]
-      : NAV.map((n) => ({ to: n.to as string, label: n.label as string, hint: n.hint as string }));
+      : NAV.map((n) => ({ to: `${base}${n.to as string}`, label: n.label as string, hint: n.hint as string }));
+  const here = observerPage(base || "/");
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-2.5 sm:gap-6 dark:border-slate-800 dark:bg-slate-900">
-        <a href={OBSERVER_PAGE} className="flex min-w-0 items-center gap-3" title="infodb p3">
+        <a href={here} className="flex min-w-0 items-center gap-3" title="infodb p3">
           <Logo />
         </a>
+        {shell.project && (
+          <span className="truncate text-base text-slate-600 dark:text-slate-400" title="開いているプロジェクト">
+            {shell.project}
+          </span>
+        )}
         <nav className="flex min-w-0 shrink gap-1 overflow-x-auto">
           {tasksNav.map((n) => (
             <a key={n.to} href={n.to} title={n.hint} className={cx(navCls, navIdle)}>
               {n.label}
             </a>
           ))}
-          <a href={OBSERVER_PAGE} title={OBSERVER_HINT} aria-current="page" className={cx(navCls, navActive)}>
+          <a href={here} title={OBSERVER_HINT} aria-current="page" className={cx(navCls, navActive)}>
             観測基盤
           </a>
         </nav>

@@ -62,14 +62,16 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   let ctx: P3Context | undefined;
   let registry: ProjectRegistry | undefined;
   // observer の API は tasks の API（/api の下の 404 の JSON）より先に付ける
-  app.route("/api/observer", observerRoutes({ products }));
   if (opts.allProjects) {
     const settings = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : { path: "", get: async () => opts.settings as MachineSettings };
     registry = new ProjectRegistry({ settings, chatgpt: chatgptAccount() });
     await registry.refresh();
+    // 起動状態だけ。観測の定義はプロジェクトごと（/api/projects/<名前>/observer。projectsRoutes が付ける）
+    app.route("/api/observer", observerRoutes({ products }));
     app.route("/api", projectsRoutes(registry, { products }));
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
+    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir } }));
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける

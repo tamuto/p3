@@ -1282,21 +1282,72 @@ Clipboard API が無い）ときはそう出るので、ID をクリックして
 ### 製品（tasks と observer）
 
 `p3` には2つの製品が入っている。この文書のほかの節は全部 **tasks**（要望・タスク・Preflight など）の使い方。**observer**（観測基盤）は
-準備中で、今は起動の確認だけができる（観測データの収集・保存はまだ無い）。2つは別々に使っても、同じ `p3` から一緒に使ってもよい。
-版は共通（`p3 observer status` の版と `p3 guide --json` の `cliVersion` は同じ）。
+試作の段階で、今は観測の定義（何を観測し、どう確かめ、何を測るか）の登録ができる（観測の実行・結果の保存はまだ無い）。2つは責務で分けた
+別の製品で、同じ `p3` から一緒に使う。版は共通（`p3 observer status` の版と `p3 guide --json` の `cliVersion` は同じ）。
 
 | 製品 | CLI の呼び方 | 既定の挙動 |
 | --- | --- | --- |
 | tasks | `p3 <コマンド>`（`p3 ls`・`p3 request ...` など、名前空間を付けない今までの呼び方） | 今いる場所・個人設定から操作するプロジェクトを決める（[プロジェクトと今の要望](#プロジェクトと今の要望)） |
-| observer | `p3 observer status [--json]` | プロジェクトを決めず、個人設定も読まない。tasks の登録が無くても動き、何も作らない。`--json` は `product`・`version`・`state`・`dataDir`（今は `null`） |
+| observer | `p3 observer status [--json]` | プロジェクトを決めず、個人設定も読まない。tasks の登録が無くても動き、何も作らない |
+| observer | `p3 observer list / show / add / update` | 観測の定義。tasks と同じ方法で操作するプロジェクトを決め（`--project` / `--dir` も使える）、そのデータのフォルダの `observer/` だけを読み書きする |
 
 ```bash
 p3 observer status          # p3-observer 0.14.0 / state ready
 p3 whoami                   # 同じ p3 で tasks も使える
 ```
 
+#### 観測の定義を登録する
+
+観測の定義は、次の項目を持つ（項目と検証は CLI・API・画面で共通）。
+
+| 項目 | 中身 |
+| --- | --- |
+| `title`・`category`・`description` | タイトル・カテゴリ・観測内容（何を観測するか）。どれも必須 |
+| `measures` | 測定項目（何を測定・記録するか）。`name`（英数字・`_`・`-`。手順から参照する）・`type`（`number` / `boolean` / `string`）・`unit`（数値だけ。`ms` など）・`description` |
+| `procedures` | 確認の手順（繰り返し確かめる方法）。種別 `kind` ごとに項目が違う。どの種別も `title` と、その手順で測る項目 `measures`（測定項目の `name` の配列） |
+
+| 種別（`kind`） | 項目 |
+| --- | --- |
+| `command`（コマンド） | `command`（実行名）・`args`（引数の配列）・`repo`（作業場所の参照先の名前。任意）・`cwd`（参照先の中の相対パス。任意） |
+| `test`（ユニットテスト）・`ui-script`（画面操作スクリプト） | `repo`（参照先の名前）・`path`（参照先の中の相対パス）・`invoke`（呼び出し方。任意） |
+| `ai-instruction`（AI への指示） | `body`（指示文） |
+
+繰り返し確かめるので、できるだけコマンドかテストにする。画面の操作はスクリプト、汎用の確認は AI への指示で書く。
+
+CLI では JSON（`--input <ファイル>`、`-` で標準入力）か、`--title`・`--category`・`--body`（観測内容）で渡す:
+
+```bash
+cat > obs.json <<'JSON'
+{
+  "title": "一覧 API の応答時間",
+  "category": "性能",
+  "description": "要望の一覧 API が 200ms 以内に返るかを見る",
+  "measures": [{ "name": "elapsed", "type": "number", "unit": "ms" }, { "name": "ok", "type": "boolean" }],
+  "procedures": [
+    { "kind": "command", "title": "curl で測る", "command": "curl", "args": ["-s", "http://localhost:4310/api/requests"], "measures": ["elapsed"] },
+    { "kind": "test", "title": "性能テスト", "repo": "app", "path": "test/perf.test.ts", "invoke": "pnpm vitest run test/perf.test.ts", "measures": ["ok"] }
+  ]
+}
+JSON
+p3 observer add --input obs.json                    # 作成しました: obs-261120-k7m3x（v1）  登録先: プロジェクト app（…/observer/definitions）
+p3 observer list                                    # 一覧（登録先・ID・版・カテゴリ・タイトル）
+p3 observer show obs-261120-k7m3x --json > cur.json # 今の定義（ID・版 rev・記録つき）
+p3 observer update obs-261120-k7m3x --input cur.json        # 編集した JSON で更新（中の rev を今の版として添える）
+p3 observer update obs-261120-k7m3x --rev 2 --category 速度  # --input を省くと今の定義に重ねる（--rev は必須）
+```
+
+更新には今の版（`rev`）を添える。ほかで更新されていれば終了コード 3（競合）で断り、記録は変えない（`show` で読み直してやり直す）。
+入力の誤りは、項目の場所（`measures[0].unit` など）ごとに理由を出して終了コード 1。見つからない ID は 2。
+
+画面では、ヘッダーの「観測基盤」から観測の一覧を開き、「＋ 観測を登録」で登録する（測定項目・手順は「＋」で足し、手順ごとに測る項目を選ぶ）。
+一覧・詳細・登録・編集の画面の上に登録先（プロジェクトと保存の場所）が出る。誤りは該当する項目の下に出て、保存しない。編集を開いた後に
+ほかで更新されていれば、保存は断られて入力は残る（読み直すと今の定義が開く）。プロジェクトを跨ぐ serve では、プロジェクトの画面の「観測基盤」で
+そのプロジェクトの観測の一覧（`/projects/<名前>/observer`）へ移る。`/observer` を直接開いたときは、プロジェクトを選んでから移る。
+
+保存の場所と形は [設計: p3-observer](architecture.md#p3-observer) の「観測の定義の保存」。
+
 画面（`p3 serve`・`p3 serve --all-projects`）は、常に両方の製品を起動する（製品ごとに切り替える指定は無い）。ヘッダーの「観測基盤」で
-observer（`/observer`）へ移り、observer の画面から tasks の各ページ（プロジェクトを跨ぐ serve ではプロジェクトの選択）へ戻る。
+observer（`/observer`。プロジェクトを跨ぐ serve では `/projects/<名前>/observer`）へ移り、observer の画面から同じプロジェクトの tasks の各ページへ戻る。
 以前の `--products` を付けると使い方の誤り（終了コード 1）になるので、外して起動する。
 
 所有の境界と起動の構成は [設計: p3-observer](architecture.md#p3-observer)。

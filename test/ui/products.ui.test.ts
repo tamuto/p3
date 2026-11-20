@@ -15,7 +15,7 @@ function apiRequests(page: Page) {
 }
 
 /** tasks のデータ・設定・イベントの API か */
-const isTasksApi = (p: string) => !["/api/mode", "/api/user-theme.js"].includes(p) && !p.startsWith("/api/observer/");
+const isTasksApi = (p: string) => !["/api/mode", "/api/user-theme.js", "/api/projects"].includes(p) && !p.startsWith("/api/observer/") && !/^\/api\/projects\/[^/]+\/observer\//.test(p);
 
 const observerNav = (page: Page) => page.getByRole("navigation").getByRole("link", { name: "観測基盤" });
 
@@ -34,15 +34,16 @@ describe.skipIf(!inject("chromium").available)("serve の製品（常に両方�
       await until.visible(page.getByRole("link", { name: "進捗" }));
       await observerNav(page).click();
       await until.url(page, /\/observer$/);
-      await until.visible(page.getByText("p3-tasks、p3-observer"));
+      await until.visible(page.getByRole("heading", { name: "観測の定義" }));
+      await until.visible(page.getByText("起動中・共通バージョン"));
     });
     await step("直リンクで開き、再読み込みしても起動確認のページ。observer の画面は tasks の API を読まない", async () => {
       const fresh = await s!.open({ width: 1280 });
       const requests = apiRequests(fresh);
       await fresh.goto("/observer");
-      await until.visible(fresh.getByText("起動中"));
+      await until.visible(fresh.getByText("起動中・共通バージョン"));
       await fresh.reload();
-      await until.visible(fresh.getByText("起動中"));
+      await until.visible(fresh.getByText("起動中・共通バージョン"));
       expect(requests().filter(isTasksApi)).toEqual([]);
     });
     await step("観測基盤から tasks の設定と進捗へ戻る", async () => {
@@ -56,25 +57,35 @@ describe.skipIf(!inject("chromium").available)("serve の製品（常に両方�
     });
   });
 
-  it("両方（プロジェクトを跨ぐ serve）: プロジェクトの画面から観測基盤へ移り、戻る導線で今までのプロジェクトの選択が使える", async () => {
+  it("両方（プロジェクトを跨ぐ serve）: プロジェクトの画面からそのプロジェクトの観測へ移り、同じプロジェクトの tasks へ戻る。選んでいなければ選んでから", async () => {
     s = await openScenario("両方・プロジェクトを跨ぐ", { serveArgs: ["--all-projects"] });
     const { page, step } = s;
     await step("プロジェクトを開き（登録が1つなら一覧を飛ばす）、観測基盤へ移る", async () => {
       await page.goto("/");
       await until.url(page, /\/projects\/uitest\/$/);
       await observerNav(page).click();
-      await until.url(page, /\/observer$/);
-      await until.visible(page.getByText("起動中"));
+      await until.url(page, /\/projects\/uitest\/observer$/);
+      await until.visible(page.getByTestId("observer-target"));
+      await until.text(page.getByTestId("observer-target"), /登録先: プロジェクト uitest/);
     });
-    await step("「タスク管理」でプロジェクトの選択（入口）に戻り、プロジェクトの画面が開く", async () => {
-      await page.getByRole("navigation").getByRole("link", { name: "タスク管理" }).click();
+    await step("「進捗」で同じプロジェクトの tasks に戻る", async () => {
+      await page.getByRole("navigation").getByRole("link", { name: "進捗" }).click();
       await until.url(page, /\/projects\/uitest\/$/);
       await until.visible(page.getByRole("link", { name: /新しい要望/ }).first());
     });
-    await step("一覧（?list）からも選べる", async () => {
-      await page.goto("/?list");
-      await until.visible(page.getByRole("link", { name: "uitest" }));
-      expect(new URL(page.url()).pathname).toBe("/");
+    await step("プロジェクトを決めずに /observer を開くと、プロジェクトを選んでから観測の一覧へ移る", async () => {
+      const requests = apiRequests(page);
+      await page.goto("/observer");
+      await until.visible(page.getByRole("heading", { name: "観測を登録するプロジェクトを選んでください" }));
+      await page.getByRole("link", { name: "uitest" }).click();
+      await until.url(page, /\/projects\/uitest\/observer$/);
+      await until.visible(page.getByRole("heading", { name: "観測の定義" }));
+      expect(requests().filter(isTasksApi)).toEqual([]);
+    });
+    await step("「タスク管理」（選んでいない観測の画面から）でプロジェクトの選択（入口）に戻る", async () => {
+      await page.goto("/observer");
+      await page.getByRole("navigation").getByRole("link", { name: "タスク管理" }).click();
+      await until.url(page, /\/projects\/uitest\/$/);
     });
   });
 });

@@ -78,7 +78,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
-  observer status              p3-observer（観測基盤。準備中）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
+  observer status              p3-observer（観測基盤。試作）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
+  observer list | show <ID>    観測の定義の一覧・詳細（tasks と同じ方法で決めたプロジェクトのデータのフォルダの observer/）
+  observer add                 観測の定義を作る: --input <JSON のファイル|->（項目は docs/how-to-use.md「観測の定義を登録する」）か
+                                 --title --category --body（観測内容）
+  observer update <ID> --rev <今の版>   直す（--input か --title など。--input を省くと今の定義に重ねる。版が違えば終了コード 3）
                                --json で product・version・state・dataDir（今は何も保存しないので null）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す

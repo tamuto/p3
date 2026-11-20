@@ -932,21 +932,35 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 
 ### p3-observer
 
-観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**準備の段階**で、パッケージ・配布・起動の構成だけを用意し、観測データの収集・
-保存・スキーマ・移行は持たない（将来の要望で仕様を決める）。tasks とは責務で分けた別の製品だが、相互に連携するツールとして常に一緒に起動する（製品ごとの ON/OFF は持たない）。
+観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**試作の段階**で、観測の定義（何を観測し、どう確かめ、何を測るか）の登録だけを持つ。
+観測の実行・結果の保存・要望やタスクとの関連付けは持たない（将来の要望で仕様を決める）。tasks とは責務で分けた別の製品だが、相互に連携するツールとして常に一緒に起動する（製品ごとの ON/OFF は持たない）。
 
 **所有の境界**
 
 | | observer が持つ | observer が持たない |
 | --- | --- | --- |
-| コード | `packages/observer/src` の層（`shared` 起動状態の型・ページと API の場所、`core` 起動状態、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` のページ） | 入口の振り分け・serve の組み立て・画面の外枠（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
-| データ | 自分のサブフォルダだけ（設計の想定は `.p3/observer/`。置き場所は保存を足すときに決める。今は何も保存しない） | tasks の要望・タスク・run・設定・個人設定の登録。tasks のプロジェクトの解決を経ない |
+| コード | `packages/observer/src` の層（`shared` 起動状態と観測の定義の型・検証、`core` 起動状態と定義の保存、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` の一覧・登録・詳細・編集） | 入口の振り分け・プロジェクトの解決・serve の組み立て・画面の外枠と対象の決定（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
+| データ | 入口が解決したプロジェクトのデータのフォルダの `observer/` だけ（下の「観測の定義の保存」） | tasks の要望・タスク・run・設定・個人設定の登録。プロジェクトの解決は入口が tasks の方法で行い、observer はデータのフォルダを値で受け取る |
 | 版 | 入口が渡す共通の版（kit の `appInfo.ts`）を名乗る | 自分の版・タグ |
 
 **観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。kit の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
 API（`server/api`）・ページ（`web`）は、どれも `packages/observer/src` の同じ層に足す。tasks の記録（証拠・レビュー・指標）を読む連携が要るときは、
-製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今回の準備では連携しない）。保存を足すときは、入れ物（`.p3/observer/`）の
-形と移行を先に決める。
+製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今は連携しない）。保存の形を変えるときは、形の版（`format`）を上げ、
+移行を先に決める。
+
+**観測の定義の保存**
+
+- 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
+  （kit の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
+  決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
+- 形: `{ format: 1, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。項目と種別ごとの
+  手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
+- 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（kit の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
+  置き換える（kit の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
+  更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
+- 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
+- 画面: 入口の Boot が対象を決め（`web/lib/scope.ts` に API の基点・登録世代のヘッダー・プロジェクトを渡す）、observer の画面はそれだけを使う。
+  プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
 
 **起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は常に全部を起動する）
 
@@ -969,11 +983,11 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
   返す一覧と実際のルートを一致させる）
 - API: `/api/observer`（observer の `server/api/routes.ts`）は tasks の API（`/api` の下の 404 の JSON）より先に付ける。無い API は画面の HTML を
   成功として返さず 404 の JSON にする
-- 画面: `/observer`（observer の `web/routes/observer.tsx`）はプロジェクトに属さない URL で、tasks の URL（`/`・`/requests/...`・
-  `/projects/<名前>/...`）と重ならない。Boot は `/observer` では tasks のプロジェクトを決めず、`AppDataProvider`（tasks のプロジェクト情報・設定・
-  イベント）を作らない（`web/shell.ts` の `tasks`）
-- ナビゲーション: tasks の画面に「観測基盤」を出し、observer の画面からは tasks の各ページ（プロジェクトを跨ぐ serve ではプロジェクトの選択 `/`）へ
-  戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
+- 画面: 観測の画面（observer の `web/routes/observer/`）は、プロジェクトの URL の基点の下の `/observer`（通常の serve は `/observer`、プロジェクトを
+  跨ぐ serve は `/projects/<名前>/observer`）。Boot はそこでは `AppDataProvider`（tasks のプロジェクト情報・設定・イベント）を作らない（`web/shell.ts` の
+  `tasks`）。プロジェクトを跨ぐ serve の `/observer`（プロジェクトを選んでいない）は、プロジェクトを選ぶ一覧を出す
+- ナビゲーション: tasks の画面に「観測基盤」を出し（同じプロジェクトの観測の一覧へ）、observer の画面からは同じプロジェクトの tasks の各ページ
+  （プロジェクトを選んでいなければプロジェクトの選択 `/`）へ戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
 - 共通の資材: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含む
 
 **できること・できないこと（モジュラー化の範囲）**
