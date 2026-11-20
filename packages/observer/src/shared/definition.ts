@@ -141,7 +141,8 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
   for (const k of Object.keys(input)) if (!known.has(k)) add(k, `知らない項目です（${[...known].join("・")}）`);
 
   const title = text("title", input.title, LIMIT.title, true) ?? "";
-  const category = text("category", input.category, LIMIT.category, true) ?? "";
+  // カテゴリは後から決めてよい（タイトルと観測内容だけで先に保存して ID を付ける）
+  const category = text("category", input.category, LIMIT.category, false) ?? "";
   const description = text("description", input.description, LIMIT.description, true) ?? "";
 
   const measures: Measure[] = [];

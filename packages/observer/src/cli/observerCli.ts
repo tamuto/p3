@@ -5,6 +5,7 @@ import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
+import { WorkStore } from "../core/workStore.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
 
 export const OBSERVER_USAGE = [
@@ -13,16 +14,18 @@ export const OBSERVER_USAGE = [
   "p3 observer show <ID> [--json]",
   "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
   "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
-  "p3 observer suggest [--input <定義の JSON|->] [--title ..] [--category ..] [--body ..] [--note <補足>]",
+  "p3 observer suggest <ID> [--note <補足>]（保存した観測に提案を頼み、依頼と結果を観測に残す）",
+  "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
+  "p3 observer suggest --input <定義の JSON|-> [--title ..] [--body ..] [--note ..]（ID の無い互換の経路。保存しない）",
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest", "suggestions"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
 export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
-export const observerWrites = (args: string[]) => (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
+export const observerWrites = (args: string[]) => (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1);
 
 export interface ObserverCliOptions {
   /** 入口が解決したプロジェクト（status 以外で要る） */
@@ -102,8 +105,33 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const d = await store.create(fromFlags(input.input), actor);
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
+    if (sub === "suggestions") {
+      const [id, sid, ...extra] = rest;
+      if (!id || extra.length) throw new UsageError("p3 observer suggestions <ID> [<提案 ID>]");
+      const work = new WorkStore(opts.target.dataDir);
+      const def = await store.get(id);
+      if (sid) {
+        const j = await work.getSuggestion(def.id, sid);
+        if (!j) return { code: 2, error: `提案がありません: ${sid}` };
+        return { data: j, text: j.result ? suggestionText(j) : `${j.id}  ${j.status}${j.error ? `  ${j.error}` : ""}` };
+      }
+      const list = await work.listSuggestions(def.id);
+      return { data: { suggestions: list }, text: [`提案 ${list.length} 件（${def.id}・今の版 v${def.rev}）`, ...list.map((j) => `${j.id}  ${j.status}  v${j.basedOnRev}  ${j.startedAt}${j.error ? `  ${j.error}` : ""}`)].join("\n") };
+    }
+    if (sub === "suggest" && rest.length) {
+      // 保存した観測に頼む: 依頼（今の定義・版・補足）を観測に残してから始め、結果も残す
+      const [id, ...extra] = rest;
+      if (extra.length || opts.input !== undefined) throw new UsageError("p3 observer suggest <ID> [--note <補足>]（材料は保存した観測。--input は ID の無い互換の経路）");
+      const def = await store.get(id);
+      const { format: _f, id: _i, rev: _r, createdAt: _ca, createdBy: _cb, updatedAt: _ua, updatedBy: _ub, ...content } = def;
+      const v = validateSuggestionRequest({ definition: content, ...(opts.note !== undefined ? { note: opts.note } : {}) });
+      if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
+      if (!opts.suggestions) throw new Error("observer: 提案の実行が渡されていません");
+      const job = await (await opts.suggestions()).run(v.value, { definition: def.id, basedOnRev: def.rev });
+      if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}（p3 observer suggestions ${def.id} ${job.id} で読める）`.trim() };
+      return { data: job, text: `${suggestionText(job)}\n提案 ${job.id} を ${def.id} に残しました` };
+    }
     if (sub === "suggest") {
-      if (rest.length) throw new UsageError(`suggest は位置引数を取りません: ${rest.join(" ")}（材料は --input か --title・--category・--body）`);
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
       const v = validateSuggestionRequest({ definition: fromFlags(input.input), ...(opts.note !== undefined ? { note: opts.note } : {}) });
       if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
@@ -112,7 +140,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}`.trim() };
       // 取り込んだ形（今の手順に提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
       const definition = { ...v.value.definition, procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
-      return { data: { ...job, definition }, text: suggestionText(job) };
+      return { data: { ...job, definition }, text: `${suggestionText(job)}\n\n保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます` };
     }
     // update
     const [id, ...extra] = rest;
@@ -181,7 +209,6 @@ function suggestionText(job: SuggestionJob): string {
   r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}. ${PROCEDURE_KIND_LABEL[p.procedure.kind]}: ${p.procedure.title}`, `    ${procedureLine(p.procedure)}`, `    根拠: ${p.evidence}`));
   for (const m of r.missing) lines.push(`足りない材料: ${MISSING_LABEL[m.field]} — ${m.reason}`);
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
-  lines.push("", "保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます");
   return lines.join("\n");
 }
 

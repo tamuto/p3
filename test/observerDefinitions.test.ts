@@ -159,7 +159,8 @@ describe("CLI: p3 observer list / show / add / update", () => {
     const id = ok.json().id as string;
     const bad = p3(root, ["observer", "add", "--title", "x", "--json"]);
     expect(bad.code).toBe(1);
-    expect(bad.err).toContain("category: 入力してください");
+    // カテゴリは後から決めてよい（タイトルと観測内容だけで作れる）
+    expect(bad.err).not.toContain("category");
     expect(bad.err).toContain("description: 入力してください");
     writeFileSync(join(root, "bad.json"), JSON.stringify({ ...SAMPLE, measures: [{ name: "n", type: "string", unit: "ms" }], procedures: [] }));
     expect(p3(root, ["observer", "add", "--input", "bad.json"]).err).toContain("measures[0].unit: 単位は数値の測定項目だけに付けられます");

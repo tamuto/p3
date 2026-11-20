@@ -116,7 +116,7 @@ describe("提案の実行（代替の接続）", () => {
     const slow = fake((_i, signal) => new Promise<string>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")))));
     expect(await new SuggestionService(slow.adapter, { timeoutMs: 50 }).run(request())).toMatchObject({ status: "failed", failure: "timeout" });
     const svc = new SuggestionService(slow.adapter);
-    const job = svc.start(request());
+    const job = await svc.start(request());
     expect(svc.get(job.id)?.status).toBe("running");
     await new Promise((r) => setTimeout(r, 20));
     expect(svc.cancel(job.id)).toBe(true);

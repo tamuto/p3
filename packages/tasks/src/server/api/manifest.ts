@@ -22,8 +22,10 @@ export const AI_MANIFEST = {
     { method: "GET", path: "/api/observer/definitions/:id", desc: "観測の定義 {definition}" },
     { method: "POST", path: "/api/observer/definitions", desc: "観測の定義を作る（本文 {title, category, description, measures, procedures}。項目は docs/how-to-use.md「観測の定義を登録する」）。誤りは 400 {code: invalid, problems: [{path, message}]}" },
     { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
+    { method: "GET", path: "/api/observer/definitions/:id/draft", desc: "観測の編集途中の入力 {draft: {version, basedOnRev, input, savedAt} | null}。PUT {version: 読んだ版か null, basedOnRev, input} で保存（版が違えば 409）" },
+    { method: "POST", path: "/api/observer/definitions/:id/suggestions", desc: "保存した観測に手順の提案を頼む {definition: 頼むときの入力, note, basedOnRev}。依頼を観測に残してから始める（202）。GET で履歴（新しい順。中断は interrupted）、GET .../:sid で1件、POST .../:sid/cancel で取り消す" },
     { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },
-    { method: "POST", path: "/api/observer/suggestions", desc: "入力中の定義から確認の手順の提案を始める（本文 {definition, note}。参照先は読めるものを全部渡す）。202 で実行 {id, status}。保存しない" },
+    { method: "POST", path: "/api/observer/suggestions", desc: "ID の無い互換の経路: 未保存の入力から確認の手順の提案を始める（本文 {definition, note}）。202 で実行 {id, status}。保存しない（このプロセスの中だけ）" },
     { method: "GET", path: "/api/observer/suggestions/:id", desc: "提案の実行 {status: running|completed|failed|cancelled, result: {surface, rationale, procedures: [{procedure, evidence}], missing, warnings}, failure, error}" },
     { method: "POST", path: "/api/observer/suggestions/:id/cancel", desc: "提案を取り消す" },
     {

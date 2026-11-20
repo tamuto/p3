@@ -25,18 +25,20 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       await page.getByRole("link", { name: "＋ 観測を登録" }).click();
       await until.url(page, /\/observer\/new$/);
     });
-    await step("必須の項目が空・単位の誤り・定義に無い測定項目は、該当する項目に誤りが出て保存しない", async () => {
-      await page.getByRole("button", { name: "登録する" }).click();
-      const alert = page.getByRole("alert");
-      await until.visible(alert);
-      await until.text(alert, /title: 入力してください/);
-      expect(await alert.innerText()).toContain("category: 入力してください");
-      expect(await alert.innerText()).toContain("description: 入力してください");
+    await step("タイトル・観測内容が空なら該当する項目に誤りが出る。カテゴリは任意", async () => {
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.text(page.getByRole("alert"), /観測の定義に誤りがあります/);
+      await until.visible(page.getByText("入力してください").first());
+      expect(await page.getByText("入力してください").count()).toBe(2);
     });
-    await step("タイトル・カテゴリ・観測内容と、測定項目・手順を入れて登録する", async () => {
+    await step("タイトルと観測内容だけで保存すると ID が付き、編集の画面へ移る", async () => {
       await page.getByLabel("タイトル").fill("一覧の応答時間");
-      await page.getByLabel("カテゴリ").fill("性能");
       await page.getByLabel("観測内容").fill("要望の一覧が速く返るか");
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.url(page, /\/observer\/obs-\d{6}-[0-9a-z]{5}\/edit$/);
+    });
+    await step("編集の画面で測定項目・手順を入れる。入力は自動で保存され、読み直しても戻る", async () => {
+      await page.getByLabel("カテゴリ").fill("性能");
       await page.getByRole("button", { name: "＋ 測定項目を足す" }).click();
       await page.getByRole("button", { name: "＋ 測定項目を足す" }).click();
       const m1 = page.getByRole("group", { name: "測定項目 1" });
@@ -63,11 +65,15 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       await p3.getByLabel("種別").selectOption("ai-instruction");
       await p3.getByLabel("手順の名前").fill("見た目");
       await p3.getByLabel("指示文").fill("一覧の読み込み中の表示が残らないかを確かめる");
-      await page.getByRole("button", { name: "登録する" }).click();
+      await until.text(page.getByRole("status").filter({ hasText: "入力" }), /入力は保存されています/);
+      await page.reload();
+      await until.value(page.getByRole("group", { name: "手順 3", exact: true }).getByLabel("指示文"), "一覧の読み込み中の表示が残らないかを確かめる");
+      await until.value(page.getByRole("group", { name: "手順 2", exact: true }).getByLabel("ファイル（参照先の中の相対パス）"), "../outside.ts");
+      await page.getByRole("button", { name: "保存する" }).click();
       // 参照先の外を指すパスは、その項目に誤りが出る
       await until.visible(p2.getByText("参照先の外を指す .. は使えません"));
       await p2.getByLabel("ファイル（参照先の中の相対パス）").fill("test/perf.test.ts");
-      await page.getByRole("button", { name: "登録する" }).click();
+      await page.getByRole("button", { name: "保存する" }).click();
       await until.url(page, /\/observer\/obs-\d{6}-[0-9a-z]{5}$/);
       await until.visible(page.getByRole("heading", { name: "一覧の応答時間" }));
       await until.visible(page.getByRole("article", { name: "手順 1: curl で測る" }).getByText("測る項目: elapsed（数値・ms）"));
@@ -78,7 +84,7 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       const d = JSON.parse(await env.p3(["observer", "show", id, "--json"]));
       expect(d).toMatchObject({
         id,
-        rev: 1,
+        rev: 2,
         title: "一覧の応答時間",
         category: "性能",
         createdBy: "human:web",
@@ -97,19 +103,20 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       await page.getByRole("link", { name: "編集" }).click();
       await until.url(page, /\/edit$/);
       await until.value(page.getByLabel("タイトル"), "一覧の応答時間");
-      await env.p3(["observer", "update", id, "--rev", "1", "--category", "速度"]);
+      await env.p3(["observer", "update", id, "--rev", "2", "--category", "速度"]);
       await page.getByLabel("タイトル").fill("画面で直した");
       await page.getByRole("button", { name: "保存する" }).click();
-      await until.text(page.getByRole("alert"), /今の版 2/);
+      await until.text(page.getByRole("alert"), /今の版 3/);
       await until.value(page.getByLabel("タイトル"), "画面で直した");
-      expect(JSON.parse(await env.p3(["observer", "show", id, "--json"]))).toMatchObject({ rev: 2, title: "一覧の応答時間", category: "速度" });
+      expect(JSON.parse(await env.p3(["observer", "show", id, "--json"]))).toMatchObject({ rev: 3, title: "一覧の応答時間", category: "速度" });
       await page.reload();
+      await until.visible(page.getByText(/より古い版（v2）をもとにした編集途中の入力があります/));
       await until.value(page.getByLabel("カテゴリ"), "速度");
       await page.getByLabel("タイトル").fill("画面で直した");
       await page.getByRole("button", { name: "保存する" }).click();
       await until.url(page, new RegExp(`/observer/${id}$`));
       await until.visible(page.getByRole("heading", { name: "画面で直した" }));
-      expect(JSON.parse(await env.p3(["observer", "show", id, "--json"]))).toMatchObject({ rev: 3, title: "画面で直した", category: "速度" });
+      expect(JSON.parse(await env.p3(["observer", "show", id, "--json"]))).toMatchObject({ rev: 4, title: "画面で直した", category: "速度" });
     });
     await step("一覧に出る", async () => {
       await page.getByRole("link", { name: "← 観測の一覧" }).click();

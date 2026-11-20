@@ -41,8 +41,19 @@ export const updateDefinition = (id: string, rev: number, input: unknown) =>
 
 export type { DefinitionInput };
 
+export interface DraftRecord {
+  version: number;
+  basedOnRev: number;
+  input: unknown;
+  savedAt: string;
+}
+const def = (id: string) => `${project().apiBase}/definitions/${encodeURIComponent(id)}`;
+export const fetchDraft = (id: string) => call<{ draft: DraftRecord | null }>(`${def(id)}/draft`, { headers: project().headers });
+export const saveDraft = (id: string, version: number | null, basedOnRev: number, input: unknown) =>
+  call<DraftRecord>(`${def(id)}/draft`, { method: "PUT", headers: project().headers, body: JSON.stringify({ version, basedOnRev, input }) });
 export const fetchSuggestionContext = () => call<SuggestionContext>(`${project().apiBase}/suggestions/context`, { headers: project().headers });
-export const startSuggestion = (body: { definition: unknown; note?: string }) =>
-  call<SuggestionJob>(`${project().apiBase}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
-export const fetchSuggestion = (id: string) => call<SuggestionJob>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}`, { headers: project().headers });
-export const cancelSuggestion = (id: string) => call<{ cancelled: boolean }>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: project().headers });
+export const listSuggestions = (id: string) => call<{ suggestions: SuggestionJob[] }>(`${def(id)}/suggestions`, { headers: project().headers });
+export const startSuggestion = (id: string, body: { definition: unknown; note?: string; basedOnRev: number }) =>
+  call<SuggestionJob>(`${def(id)}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
+export const fetchSuggestion = (id: string, sid: string) => call<SuggestionJob>(`${def(id)}/suggestions/${sid}`, { headers: project().headers });
+export const cancelSuggestion = (id: string, sid: string) => call<{ cancelled: boolean }>(`${def(id)}/suggestions/${sid}/cancel`, { method: "POST", headers: project().headers });

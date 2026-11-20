@@ -48,13 +48,20 @@ export interface Suggestion {
   warnings: string[];
 }
 
-export type SuggestionStatus = "running" | "completed" | "failed" | "cancelled";
+/** interrupted: 実行していたプロセスが終わっている（強制終了など）。同じ入力で頼み直せる */
+export type SuggestionStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 /** 失敗の種類: unavailable 接続が使えない / usage_limit 使用量の上限 / invalid_output 応答の形の不備 / timeout 時間切れ / error そのほか */
 export type SuggestionFailure = "unavailable" | "usage_limit" | "invalid_output" | "timeout" | "error";
 
-/** 提案の実行（このプロセスの中だけ。保存しない） */
+/** 提案の実行。観測の ID に結び付けたものは observer/work/<ID>/suggestions/ に保存する（ID の無い互換の経路はこのプロセスの中だけ） */
 export interface SuggestionJob {
   id: string;
+  /** 観測の ID と、頼んだときの定義の版・依頼（保存したものだけ） */
+  definition?: string;
+  basedOnRev?: number;
+  request?: SuggestionRequest;
+  /** 実行しているプロセス（同じマシンでプロセスが終わっていれば interrupted と読む） */
+  owner?: { host: string; pid: number };
   status: SuggestionStatus;
   engine: string;
   startedAt: string;

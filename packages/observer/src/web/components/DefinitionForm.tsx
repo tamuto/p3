@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import {
   MEASURE_TYPE_LABEL,
@@ -13,7 +13,7 @@ import {
   type Procedure,
   type ProcedureKind,
 } from "../../shared/definition.ts";
-import { ObserverApiError } from "../lib/api.ts";
+import { ObserverApiError, saveDraft, type DraftRecord } from "../lib/api.ts";
 import { SuggestPanel } from "./SuggestPanel.tsx";
 
 /**
@@ -57,6 +57,40 @@ function procedureDraft(p: Procedure): ProcedureDraft {
   return { ...base, repo: p.repo, path: p.path, invoke: p.invoke ?? "" };
 }
 
+const isDraft = (v: unknown): v is Draft => typeof v === "object" && v !== null && Array.isArray((v as Draft).measures) && Array.isArray((v as Draft).procedures);
+
+/**
+ * 編集途中の入力を観測に残す（変えてから少し待って保存。検証の前の不完全な入力もそのまま）。保存の状況を文で返す。
+ * flush は確定の保存のあとに、確定した版をもとにした入力として残す（次に開いたときに古い下書きを出さない）
+ */
+function useDraftSave(id: string, rev: number, draft: Draft, saved?: DraftRecord) {
+  const version = useRef<number | null>(saved?.version ?? null);
+  const first = useRef(true);
+  const [text, setText] = useState(saved ? `入力は保存されています（${new Date(saved.savedAt).toLocaleString()}）` : "入力はまだ保存されていません");
+  const save = async (basedOnRev: number) => {
+    setText("入力を保存しています…");
+    try {
+      const d = await saveDraft(id, version.current, basedOnRev, draft);
+      version.current = d.version;
+      setText(`入力は保存されています（${new Date(d.savedAt).toLocaleTimeString()}）`);
+    } catch (e) {
+      setText(`入力を保存できません: ${(e as Error).message}`);
+    }
+  };
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setText("保存していない変更があります");
+    const t = setTimeout(() => void save(rev), 800);
+    return () => clearTimeout(t);
+    // 入力が変わったときだけ保存する
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- save は描画ごとに作り直されるが、保存するのは入力が変わったときだけ
+  }, [draft]);
+  return { text, flush: save };
+}
+
 function toDraft(d?: DefinitionInput): Draft {
   if (!d) return { title: "", category: "", description: "", measures: [], procedures: [] };
   return {
@@ -89,13 +123,24 @@ export function DefinitionForm({
   submitLabel,
   onSave,
   onSaved,
+  id,
+  rev,
+  saved,
+  restore,
 }: {
   initial?: DefinitionInput;
   submitLabel: string;
   onSave: (input: unknown) => Promise<ObservationDefinition>;
   onSaved: (d: ObservationDefinition) => void;
+  /** 保存した観測の ID と版 */
+  id: string;
+  rev: number;
+  /** 保存した編集途中の入力（restore のときだけ入力欄に戻す。版は上書きの確かめに使う） */
+  saved?: DraftRecord;
+  restore?: boolean;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => toDraft(initial));
+  const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? saved.input : toDraft(initial)));
+  const status = useDraftSave(id, rev, draft, saved);
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
   const [error, setError] = useState<{ message: string; conflict?: ObservationDefinition }>();
   const [saving, setSaving] = useState(false);
@@ -116,7 +161,9 @@ export function DefinitionForm({
     setProblems([]);
     setSaving(true);
     try {
-      onSaved(await onSave(v.value));
+      const d = await onSave(v.value);
+      await status.flush(d.rev);
+      onSaved(d);
     } catch (e) {
       if (e instanceof ObserverApiError && e.problems.length) setProblems(e.problems);
       setError({ message: (e as Error).message, conflict: e instanceof ObserverApiError && e.code === "conflict" ? e.current : undefined });
@@ -203,7 +250,10 @@ export function DefinitionForm({
         ))}
       </section>
 
-      <SuggestPanel material={() => toInput(draft)} onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))} />
+      <p role="status" className="text-slate-600 dark:text-slate-400">
+        {status.text}
+      </p>
+      <SuggestPanel id={id} rev={rev} material={() => toInput(draft)} onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))} />
 
       <section aria-labelledby="procedures-heading" className="space-y-3">
         <div className="flex items-center justify-between">

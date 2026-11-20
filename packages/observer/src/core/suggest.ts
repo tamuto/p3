@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
+import type { WorkStore } from "./workStore.ts";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KINDS } from "../shared/definition.ts";
 import {
   InvalidSuggestion,
@@ -127,16 +128,20 @@ export class SuggestionService {
 
   constructor(
     private readonly adapter: SuggestAdapter,
-    private readonly opts: { timeoutMs?: number; keep?: number } = {},
+    private readonly opts: { timeoutMs?: number; keep?: number; store?: WorkStore } = {},
   ) {}
 
   context(): Promise<SuggestionContext> {
     return this.adapter.context();
   }
 
-  /** 始める（すぐ返る）。参照先は Preflight と同じく、読めるものを全部渡す（読めないものは外す） */
-  start(req: SuggestionRequest): SuggestionJob {
-    const job: SuggestionJob = { id: `sg-${randomBytes(6).toString("hex")}`, status: "running", engine: "", startedAt: nowIso() };
+  /**
+   * 始める（AI の応答を待たずに返る）。参照先は Preflight と同じく、読めるものを全部渡す（読めないものは外す）。
+   * target（観測の ID と頼んだときの定義の版）を渡すと、依頼を保存してから始め、結果を保存してから完了にする
+   */
+  async start(req: SuggestionRequest, target?: { definition: string; basedOnRev: number }): Promise<SuggestionJob> {
+    const job: SuggestionJob = { id: `sg-${randomBytes(6).toString("hex")}`, status: "running", engine: "", startedAt: nowIso(), ...(target ? { ...target, request: req } : {}) };
+    if (target) await this.opts.store!.createSuggestion(job);
     const abort = new AbortController();
     this.jobs.set(job.id, job);
     this.aborts.set(job.id, abort);
@@ -146,8 +151,8 @@ export class SuggestionService {
   }
 
   /** 始めて終わるまで待つ（CLI） */
-  async run(req: SuggestionRequest, signal?: AbortSignal): Promise<SuggestionJob> {
-    const job = this.start(req);
+  async run(req: SuggestionRequest, target?: { definition: string; basedOnRev: number }, signal?: AbortSignal): Promise<SuggestionJob> {
+    const job = await this.start(req, target);
     const onAbort = () => this.cancel(job.id);
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
@@ -193,6 +198,8 @@ export class SuggestionService {
     const timeoutMs = this.opts.timeoutMs ?? SUGGEST_TIMEOUT_MS;
     const timeout = AbortSignal.timeout(timeoutMs);
     const signal = AbortSignal.any([abort.signal, timeout]);
+    // 終わりの状態は、保存してから job に入れる（API で保存前の「終わった」を見せない）
+    let end: Partial<SuggestionJob>;
     try {
       const ctx = await this.adapter.context();
       job.engine = ctx.engine.name;
@@ -200,22 +207,19 @@ export class SuggestionService {
       const repos = ctx.repos.filter((r) => r.available).map((r) => r.name);
       const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, repos), repos, request: req }, () => {}, signal);
       if (signal.aborted) throw signal.reason;
-      job.engine = r.engine;
-      job.result = parseSuggestion(r.message, req.definition.measures);
-      job.status = "completed";
+      end = { engine: r.engine, result: parseSuggestion(r.message, req.definition.measures), status: "completed" };
     } catch (e) {
-      if (abort.signal.aborted) {
-        job.status = "cancelled";
-        job.error = "取り消しました";
-      } else {
-        job.status = "failed";
-        if (timeout.aborted) [job.failure, job.error] = ["timeout", `時間切れです（${Math.round(timeoutMs / 1000)} 秒）`];
-        else if (e instanceof SuggestionError) [job.failure, job.error] = [e.kind, e.message];
-        else if (e instanceof InvalidSuggestion) [job.failure, job.error] = ["invalid_output", `応答の形が違います: ${e.message}`];
-        else [job.failure, job.error] = ["error", (e as Error)?.message ?? String(e)];
-      }
+      if (abort.signal.aborted) end = { status: "cancelled", error: "取り消しました" };
+      else if (timeout.aborted) end = { status: "failed", failure: "timeout", error: `時間切れです（${Math.round(timeoutMs / 1000)} 秒）` };
+      else if (e instanceof SuggestionError) end = { status: "failed", failure: e.kind, error: e.message };
+      else if (e instanceof InvalidSuggestion) end = { status: "failed", failure: "invalid_output", error: `応答の形が違います: ${e.message}` };
+      else end = { status: "failed", failure: "error", error: (e as Error)?.message ?? String(e) };
     }
-    job.finishedAt = nowIso();
+    end.finishedAt = nowIso();
+    if (job.definition) {
+      end = await this.opts.store!.finishSuggestion({ ...job, ...end }).catch((e: Error) => ({ ...end, status: "failed" as const, failure: "error" as const, error: `結果を保存できません: ${e.message}` }));
+    }
+    Object.assign(job, end);
     this.aborts.delete(job.id);
     return { ...job };
   }
