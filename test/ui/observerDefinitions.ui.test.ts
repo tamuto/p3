@@ -13,16 +13,33 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
   it("画面で登録・編集し、CLI と同じ定義を読む。古い版の保存は断る", async () => {
     s = await openScenario("観測の定義");
     const { page, step, env } = s;
-    await step("ナビゲーションの「観測」から一覧を開き、登録の画面へ移る。外枠（プロジェクト名）は tasks と同じ", async () => {
+    const newObservation = page.getByRole("banner").getByRole("link", { name: "新しい観測", exact: true });
+    await step("進捗のツールバーの「新しい観測」（「新しい要望」の隣）から登録の画面が開く", async () => {
       await page.goto("/");
       const nav = page.getByRole("banner").getByRole("navigation");
       await until.visible(nav.getByRole("link", { name: "進捗" }));
       expect(await nav.getByRole("link").allInnerTexts()).toEqual(["進捗", "観測", "リリースノート", "開発の指標", "設定"]);
-      await nav.getByRole("link", { name: "観測" }).click();
+      // 二つの作成の操作は同じまとまりで隣り合う（要望 → 観測の順）
+      const group = newObservation.locator("..");
+      expect(await group.getByRole("link").allInnerTexts()).toEqual(["＋新しい要望", "＋新しい観測"]);
+      await newObservation.click();
+      await until.url(page, /\/observer\/new$/);
+      await until.visible(page.getByRole("heading", { name: "観測を登録" }));
+    });
+    await step("ナビゲーションの「観測」の一覧には登録の操作が無く、見出しのすぐ下が状態の表示。ツールバーから登録の画面へ移る", async () => {
+      await page.getByRole("banner").getByRole("navigation").getByRole("link", { name: "観測" }).click();
       await until.url(page, /\/observer$/);
       await until.visible(page.getByRole("banner").getByText("uitest"));
-      await until.visible(page.getByText("まだ観測の定義がありません。"));
-      await page.getByRole("link", { name: "＋ 観測を登録" }).click();
+      const empty = page.getByText("まだ観測の定義がありません。");
+      await until.visible(empty);
+      expect(await page.getByRole("main").getByRole("link", { name: /観測を登録|新しい観測/ }).count()).toBe(0);
+      // 見出しと状態の表示だけで、本文の上端から状態の表示までが詰まっている（以前の操作の段と余白は 80px 余り）
+      const mainTop = (await page.getByRole("main").boundingBox())!.y;
+      const heading = (await page.getByRole("heading", { name: "観測", exact: true }).boundingBox())!;
+      const emptyTop = (await empty.boundingBox())!.y;
+      expect(heading.y - mainTop).toBeLessThanOrEqual(16);
+      expect(emptyTop - mainTop).toBeLessThanOrEqual(64);
+      await newObservation.click();
       await until.url(page, /\/observer\/new$/);
     });
     await step("タイトル・観測内容が空なら該当する項目に誤りが出る。カテゴリは任意", async () => {

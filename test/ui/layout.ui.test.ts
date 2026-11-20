@@ -84,6 +84,7 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
         none(
           [
             ...(await reachable(page.getByRole("link", { name: /新しい要望/ }), "新しい要望")),
+            ...(await reachable(page.getByRole("link", { name: /新しい観測/ }), "新しい観測")),
             ...(await reachable(page.getByRole("button", { name: "今日" }), "今日")),
             // 表は横に局所スクロールする。今日のタスクの印へ届く
             ...(await reachable(schedule.locator("button").first(), "タスクの印")),
@@ -91,6 +92,12 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
           at("進捗の操作"),
         );
         for (const row of await schedule.getByRole("link", { name: /経費精算の申請と承認/ }).all()) none(await escapes(row), at("進捗の要望の行"));
+        // 二つの作成の操作は見た目の文字でも区別できる（狭い画面は ＋要望・＋観測）
+        const banner = page.getByRole("banner");
+        expect(
+          [await banner.getByRole("link", { name: /新しい要望/ }).innerText(), await banner.getByRole("link", { name: /新しい観測/ }).innerText()],
+          at("作成の操作の文字"),
+        ).toEqual(width >= 640 ? ["＋新しい要望", "＋新しい観測"] : ["＋要望", "＋観測"]);
       }, page);
 
       await s.step(at("新しい要望"), async () => {

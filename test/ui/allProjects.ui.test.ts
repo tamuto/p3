@@ -100,6 +100,26 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
     });
   });
 
+  it("ツールバーの「新しい観測」は選んでいるプロジェクトの URL で開き、そのプロジェクトに保存する", async () => {
+    const { page, step } = s;
+    await step("second を開き、ツールバーの「新しい観測」から登録して編集の画面へ移る", async () => {
+      await page.goto("/projects/second/");
+      await until.value(page.getByLabel("プロジェクト", { exact: true }), "second");
+      await page.getByRole("banner").getByRole("link", { name: /新しい観測/ }).click();
+      await until.url(page, /\/projects\/second\/observer\/new$/);
+      await page.getByLabel("タイトル").fill("second の観測");
+      await page.getByLabel("観測内容").fill("second だけに保存される");
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.url(page, /\/projects\/second\/observer\/obs-\d{6}-[0-9a-z]{5}\/edit$/);
+    });
+    await step("CLI から見ても second にだけある", async () => {
+      const list = (project: string) =>
+        (JSON.parse(execFileSync("node", [P3_BIN, "observer", "list", "--project", project, "--json"], { cwd: s.env.repo, env: s.env.env, encoding: "utf8" })) as { definitions: { title: string }[] }).definitions.map((d) => d.title);
+      expect(list("second")).toContain("second の観測");
+      expect(list("uitest")).not.toContain("second の観測");
+    });
+  });
+
   it("保存していない入力があれば切り替える前に確かめ、残るか破棄するかを選べる", async () => {
     const { page, step } = s;
     const switcher = page.getByLabel("プロジェクト", { exact: true });
@@ -223,6 +243,7 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
                 ["切り替えの欄", switcher],
                 ["再読み込み", header.getByRole("button", { name: /再読み込み|読み込み中/ })],
                 ["新しい要望", header.getByRole("link", { name: /新しい要望/ })],
+                ["新しい観測", header.getByRole("link", { name: /新しい観測/ })],
                 ["ナビゲーション", header.locator("nav")],
               ] as const) {
                 expect(await inViewport(page, l, name), at(name)).toEqual([]);

@@ -51,10 +51,7 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header
-        className={cx(
-          "flex items-center gap-3 border-b sm:gap-6 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900",
-          allProjects && "flex-wrap gap-y-2",
-        )}
+        className="flex flex-wrap items-center gap-3 gap-y-2 border-b sm:gap-6 sm:gap-y-2 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900"
       >
         {/* 狭い画面ではプロジェクト名を出さず（ロゴの title にある）、見出しが画面の幅に収まるようにする。
             プロジェクトを跨ぐ serve では、名前の代わりに切り替えの欄をロゴの横（リンクの外）に置き、狭い画面でも隠さない */}
@@ -65,9 +62,9 @@ function Layout() {
           </Link>
           {switcher.picker}
         </div>
-        {/* 狭い画面では、ナビゲーションを横にスクロールさせて画面の幅に収める（ページ全体は横にはみ出さない）。
-            プロジェクトを跨ぐ serve の狭い画面では、切り替えの欄の幅を空けるため次の行に回す */}
-        <nav className={cx("flex min-w-0 shrink gap-1 overflow-x-auto", allProjects && "order-last basis-full sm:order-none sm:basis-auto")}>
+        {/* 広い画面（lg 未満）でなければ、ナビゲーションを次の行に回し、ロゴ・切り替えの欄・再読み込み・作成の操作に1行目の幅を空ける。
+            それでも収まらない幅では横にスクロールさせる（ページ全体は横にはみ出さない） */}
+        <nav className="order-last flex min-w-0 basis-full gap-1 overflow-x-auto lg:order-none lg:shrink lg:basis-auto">
           {NAV.map((n) => (
             <Link
               key={n.to}
@@ -83,10 +80,16 @@ function Layout() {
           ))}
         </nav>
         <RefreshButton running={ctx.refreshing.running} onClick={() => void ctx.refresh()} />
-        {/* 狭い画面では「＋」だけにして、ナビゲーションの幅を空ける */}
-        <Link to="/requests/new" className={buttonCls("primary", "whitespace-nowrap")} title="新しい要望">
-          ＋<span className="sr-only sm:not-sr-only">新しい要望</span>
-        </Link>
+        {/* 作成の操作は隣り合わせにまとめる。狭い画面では「新しい」を出さずに（＋要望・＋観測。読み上げは aria-label で「新しい要望」「新しい観測」）、
+            ナビゲーションの幅を空けつつ二つを見分けられるようにする。観測は二つ目の操作として控えめの色にする */}
+        <div className="flex shrink-0 items-center gap-2">
+          <Link to="/requests/new" className={buttonCls("primary", "whitespace-nowrap")} title="新しい要望" aria-label="新しい要望">
+            <span>＋<span className="hidden sm:inline">新しい</span>要望</span>
+          </Link>
+          <Link to="/observer/new" className={buttonCls("secondary", "whitespace-nowrap")} title="新しい観測" aria-label="新しい観測">
+            <span>＋<span className="hidden sm:inline">新しい</span>観測</span>
+          </Link>
+        </div>
         {errors.length > 0 && (
           <span className="text-base text-rose-600" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>
             ⚠ 読めないファイル {errors.length} 件

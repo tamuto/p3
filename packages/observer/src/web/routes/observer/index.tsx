@@ -1,21 +1,16 @@
-import { Alert, Empty, Loading, buttonCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Empty, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { fetchDefinitions, type DefinitionListing } from "../../lib/api.ts";
 import { useLoad } from "../../lib/useLoad.ts";
 
-/** /observer: このプロジェクトの観測の定義の一覧（登録・詳細への導線）。observer の API だけを読む */
+/** /observer: このプロジェクトの観測の定義の一覧（詳細への導線。登録は共通のツールバーの「新しい観測」から）。observer の API だけを読む */
 export const Route = createFileRoute("/observer/")({ component: DefinitionList });
 
 function DefinitionList() {
   const load = useLoad<DefinitionListing>(fetchDefinitions);
   return (
-    <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">観測</h1>
-        <Link to="/observer/new" className={buttonCls("primary")}>
-          ＋ 観測を登録
-        </Link>
-      </div>
+    <div className="w-full space-y-2 px-4 py-3 sm:px-6 lg:px-8">
+      <h1 className="text-xl font-bold">観測</h1>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (
