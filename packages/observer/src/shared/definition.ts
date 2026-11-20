@@ -134,6 +134,12 @@ export interface ObservationDefinition extends DefinitionInput {
   updatedBy: string;
 }
 
+/** 前提の観測と使う準備の名前（見つからない・読めないものは名前が無い。詳細の表示用） */
+export interface References {
+  prerequisites: { id: string; title?: string }[];
+  preparations: { id: string; name?: string }[];
+}
+
 /** 入力の誤り。path は項目の場所（title・measures[0].unit・procedures[1].run.path など） */
 export interface DefinitionProblem {
   path: string;

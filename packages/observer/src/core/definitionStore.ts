@@ -13,6 +13,7 @@ import {
   validateDefinitionInput,
   type DefinitionProblem,
   type ObservationDefinition,
+  type References,
 } from "../shared/definition.ts";
 import { isPreparationId, PREPARATION_FORMAT, PREPARATIONS_DIR, SLOT_LABEL, validatePreparationInput, type Preparation, type PreparationInput, type Slot } from "../shared/preparation.ts";
 
@@ -265,6 +266,15 @@ export class DefinitionStore {
         problems.push({ path: at, message: !got.ok && got.missing ? `観測がありません: ${r}` : `観測を読めないので確かめられません: ${r}` });
       } else if (self && reaches(r)) problems.push({ path: at, message: `前提が循環します（${r} の前提をたどるとこの観測に戻ります）` });
     }
+  }
+
+  /** 前提の観測と使う準備の名前（見つからない・読めないものは名前が無い） */
+  async references(d: ObservationDefinition): Promise<References> {
+    const [defs, preps] = await Promise.all([d.prerequisites?.length ? this.f.defs.list() : undefined, d.preparations?.length ? this.f.preps.list() : undefined]);
+    return {
+      prerequisites: (d.prerequisites ?? []).map((id) => ({ id, title: defs?.items.find((x) => x.id === id)?.title })),
+      preparations: (d.preparations ?? []).map((id) => ({ id, name: preps?.items.find((x) => x.id === id)?.name })),
+    };
   }
 
   async create(input: unknown, actor: string): Promise<ObservationDefinition> {

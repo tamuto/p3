@@ -15,7 +15,7 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /status                       起動状態（ObserverStatus）。プロジェクトを決めなくても使える
  *   GET  /definitions                  観測の定義の一覧 { definitions, unreadable }
  *   POST /definitions                  作成（タイトルと観測内容だけでよい）。201 で作った定義（ID が付く）
- *   GET  /definitions/:id              1つの定義 { definition }
+ *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前 { definition, references }
  *   PUT  /definitions/:id              更新（{ rev: 今の版, definition }）。版が違えば 409（current に今の定義）
  *   GET  /definitions/:id/draft        編集途中の入力 { draft }（無ければ null）
  *   PUT  /definitions/:id/draft        保存（{ version: 読んだ版か null, basedOnRev, input }）。版が違えば 409
@@ -59,7 +59,10 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
     const id = async (c: Context) => (await store.get(c.req.param("id")!)).id;
     app.get("/definitions", async (c) => c.json(await store.list()));
     app.post("/definitions", async (c) => c.json(await store.create(await body(c), actorOf(c)), 201));
-    app.get("/definitions/:id", async (c) => c.json({ definition: await store.get(c.req.param("id")) }));
+    app.get("/definitions/:id", async (c) => {
+      const d = await store.get(c.req.param("id"));
+      return c.json({ definition: d, references: await store.references(d) });
+    });
     app.put("/definitions/:id", async (c) => {
       const b = await body(c);
       return c.json(await store.update(c.req.param("id"), num(b.rev), b.definition, actorOf(c)));

@@ -74,5 +74,34 @@ describe.skipIf(!inject("chromium").available)("準備の登録と編集", () =>
       await until.visible(row);
       expect(await row.innerText()).toMatch(/確かめ・前処理\s+db:orders・account:demo\s+v2/);
     });
+    let obs = "";
+    await step("観測の登録で使う準備を選ぶと、観測の詳細に準備へのリンク、準備の詳細に観測へのリンクが出て、準備は消せない", async () => {
+      await page.goto("/observer/new");
+      await page.getByLabel("タイトル").fill("注文の一覧");
+      await page.getByLabel("観測内容").fill("注文の一覧が出るか");
+      await page.getByRole("group", { name: "使う準備（任意）" }).getByLabel("注文が1件ある").check();
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.url(page, /\/observer\/obs-\d{6}-[0-9a-z]{5}\/edit$/);
+      obs = page.url().split("/").at(-2)!;
+      await page.goto(`/observer/${obs}`);
+      await page.getByRole("region", { name: "前提の観測と使う準備" }).getByRole("link", { name: "注文が1件ある" }).click();
+      await until.url(page, new RegExp(`/observer/preparations/${id}$`));
+      await until.visible(page.getByRole("region", { name: "この準備を使う観測" }).getByRole("link", { name: "注文の一覧" }));
+      expect(await page.getByRole("button", { name: "消す" }).isDisabled()).toBe(true);
+    });
+    await step("前提の観測を選ぶと下書きに残り、読み直しても戻る。循環する前提は前提の欄に誤りが出て保存しない", async () => {
+      const base = JSON.parse(await env.p3(["observer", "add", "--title", "サインイン", "--body", "サインインできる", "--json"])).id as string;
+      await env.p3(["observer", "update", base, "--rev", "1", "--input", "-"], JSON.stringify({ title: "サインイン", description: "サインインできる", prerequisites: [obs] }));
+      await page.goto(`/observer/${obs}/edit`);
+      const pre = page.getByRole("group", { name: "前提の観測（任意）" });
+      await pre.getByLabel("サインイン").check();
+      await until.visible(page.getByText(/入力は保存されています（/));
+      await page.reload();
+      await until.visible(page.getByRole("group", { name: "前提の観測（任意）" }).getByLabel("サインイン"));
+      expect(await page.getByRole("group", { name: "前提の観測（任意）" }).getByLabel("サインイン").isChecked()).toBe(true);
+      await page.getByRole("button", { name: "保存する" }).click();
+      await until.text(page.getByRole("group", { name: "前提の観測（任意）" }), /前提が循環します/);
+      expect(JSON.parse(await env.p3(["observer", "show", obs, "--json"]))).not.toHaveProperty("prerequisites");
+    });
   });
 });

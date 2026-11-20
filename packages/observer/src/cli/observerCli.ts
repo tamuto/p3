@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore, PreparationStore } from "../core/definitionStore.ts";
-import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
+import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type ObservationDefinition, type Procedure, type References } from "../shared/definition.ts";
 import { SLOT_LABEL, SLOTS, type Preparation, type Slot } from "../shared/preparation.ts";
 import { fileChecker } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
@@ -104,7 +104,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const [id, ...extra] = rest;
       if (!id || extra.length) throw new UsageError(`観測の定義の ID を1つ指定してください: p3 observer show <ID>`);
       const d = await store.get(id);
-      return { data: d, text: describe(d, files) };
+      return { data: d, text: describe(d, files, await store.references(d)) };
     }
     const fromFlags = (base: Record<string, unknown>) => ({
       ...base,
@@ -257,8 +257,11 @@ function suggestionText(job: SuggestionJob, files?: Files): string {
   return lines.join("\n");
 }
 
-function describe(d: ObservationDefinition, files: Files): string {
-  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), "", `測定項目 ${d.measures.length} 件`];
+function describe(d: ObservationDefinition, files: Files, refs: References): string {
+  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), ""];
+  if (refs.prerequisites.length) lines.push(`前提の観測（失敗したらこの観測は未確認）: ${refs.prerequisites.map((r) => `${r.id} ${r.title ?? "（見つからない）"}`).join("・")}`);
+  if (refs.preparations.length) lines.push(`使う準備: ${refs.preparations.map((r) => `${r.id} ${r.name ?? "（見つからない）"}`).join("・")}`);
+  lines.push(`測定項目 ${d.measures.length} 件`);
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
   for (const p of d.procedures) lines.push(...procedureLines(p, files));

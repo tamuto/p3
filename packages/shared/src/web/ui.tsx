@@ -105,6 +105,26 @@ export function Field({ label, children, hint, error }: { label: string; childre
   );
 }
 
+/** 複数を選ぶチェックボックスの並び（見出しは legend。説明と項目の誤りは Field と同じく下に出す） */
+export function CheckGroup({ label, options, value, onChange, hint, error, empty }: { label: string; options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void; hint?: ReactNode; error?: ReactNode; empty?: ReactNode }) {
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-1">
+      <legend className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</legend>
+      {options.length === 0 && <span className="text-slate-500 dark:text-slate-400">{empty ?? "選べるものがありません。"}</span>}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {options.map((o) => (
+          <label key={o.value} className="flex min-w-0 items-center gap-1 break-words">
+            <input type="checkbox" checked={value.includes(o.value)} aria-invalid={!!error} onChange={(e) => onChange(e.target.checked ? [...value, o.value] : value.filter((x) => x !== o.value))} />
+            {o.label}
+          </label>
+        ))}
+      </div>
+      {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
+      {error && <span className="text-rose-600">{error}</span>}
+    </fieldset>
+  );
+}
+
 export const inputCls =
   "w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-base ring-1 ring-slate-300 ring-inset focus:ring-2 focus:ring-indigo-500 focus:outline-none aria-[invalid=true]:ring-rose-500 disabled:opacity-50 dark:bg-slate-900 dark:ring-slate-700";
 

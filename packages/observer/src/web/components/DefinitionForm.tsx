@@ -7,6 +7,7 @@ import { ProcedureEditor } from "./ProcedureEditor.tsx";
 import { ObserverApiError, saveDraft, type DraftRecord } from "../lib/api.ts";
 import { SuggestPanel } from "./SuggestPanel.tsx";
 import { SaveProblems } from "./SaveProblems.tsx";
+import { RefPicker } from "./RefPicker.tsx";
 
 /**
  * 観測の定義の入力欄（編集の画面）。保存の前に共通の検証（shared/definition.ts）で項目ごとの誤りを出し、保存の応答の誤り（API の problems）も
@@ -132,6 +133,7 @@ export function DefinitionForm({
         <Field label="期待する結果（任意）" error={err("expected")} hint="どうなっていれば期待どおりか（判定のもとになる）">
           <textarea className={inputCls} rows={3} value={draft.expected} aria-invalid={!!err("expected")} onChange={(e) => set({ expected: e.target.value })} />
         </Field>
+        <RefPicker self={id} value={{ prerequisites: draft.prerequisites, preparations: draft.preparations }} onChange={set} problems={problems} />
       </section>
 
       <div className="lg:sticky lg:top-4 lg:col-start-2 lg:row-span-4 lg:row-start-2 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">

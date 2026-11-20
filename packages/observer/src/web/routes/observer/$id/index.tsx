@@ -1,7 +1,7 @@
 import { Alert, buttonCls, Empty, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition } from "../../../../shared/definition.ts";
+import { Fragment, useState } from "react";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type References } from "../../../../shared/definition.ts";
 import { fetchDefinition, switchProcedure } from "../../../lib/api.ts";
 import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
@@ -25,12 +25,12 @@ function DefinitionDetail() {
       </Link>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
-      {load.kind === "ok" && <Detail d={load.value.definition} reload={() => setTick((t) => t + 1)} />}
+      {load.kind === "ok" && <Detail d={load.value.definition} refs={load.value.references} reload={() => setTick((t) => t + 1)} />}
     </div>
   );
 }
 
-function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void }) {
+function Detail({ d, refs, reload }: { d: ObservationDefinition; refs: References; reload: () => void }) {
   const files = useFileStates(filesOf(d.procedures).map((f) => fileKey(f.repo, f.path)));
   return (
     <>
@@ -56,6 +56,46 @@ function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void })
           期待する結果
         </h2>
         {d.expected ? <p className="whitespace-pre-wrap">{d.expected}</p> : <Empty>まだ書かれていません（編集で書ける）。</Empty>}
+      </section>
+      <section aria-labelledby="refs-heading" className="space-y-2">
+        <h2 id="refs-heading" className="text-xl font-semibold">
+          前提の観測と使う準備
+        </h2>
+        {refs.prerequisites.length + refs.preparations.length === 0 && <Empty>ありません（編集で選べる）。</Empty>}
+        {refs.prerequisites.length > 0 && (
+          <p>
+            前提の観測（失敗したらこの観測は未確認）:{" "}
+            {refs.prerequisites.map((r, i) => (
+              <Fragment key={r.id}>
+                {i > 0 && "・"}
+                {r.title ? (
+                  <Link to="/observer/$id" params={{ id: r.id }} className={linkCls}>
+                    {r.title}
+                  </Link>
+                ) : (
+                  `${r.id}（見つからない）`
+                )}
+              </Fragment>
+            ))}
+          </p>
+        )}
+        {refs.preparations.length > 0 && (
+          <p>
+            使う準備:{" "}
+            {refs.preparations.map((r, i) => (
+              <Fragment key={r.id}>
+                {i > 0 && "・"}
+                {r.name ? (
+                  <Link to="/observer/preparations/$pid" params={{ pid: r.id }} className={linkCls}>
+                    {r.name}
+                  </Link>
+                ) : (
+                  `${r.id}（見つからない）`
+                )}
+              </Fragment>
+            ))}
+          </p>
+        )}
       </section>
       <section aria-labelledby="m-heading" className="space-y-2">
         <h2 id="m-heading" className="text-xl font-semibold">
