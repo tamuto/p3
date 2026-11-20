@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { observerStatus } from "../../core/status.ts";
 import { DefinitionError, DefinitionStore } from "../../core/definitionStore.ts";
 import { WorkStore } from "../../core/workStore.ts";
+import { fileChecker } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
 import { validateSuggestionRequest } from "../../shared/suggestion.ts";
@@ -20,6 +21,8 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /definitions/:id/suggestions  提案の履歴（新しい順。実行していたプロセスが終わっていれば interrupted）
  *   POST /definitions/:id/suggestions  提案を頼む（{ definition: 頼むときの入力, note, basedOnRev }）。依頼を保存してから始め、202
  *   GET  /definitions/:id/suggestions/:sid  1件 / POST .../:sid/cancel 取り消す
+ *   POST /definitions/:id/procedures/:pid/switch  手順を置き換え候補のスクリプトに切り替える（{ rev, invoke, evidence }。ファイルが有ること・今の版が要る）
+ *   GET  /files?ref=<参照先>:<パス>   ファイルの有無 { files: { "<参照先>:<パス>": { state: exists|planned|unverified, checkedAt } } }
  *   GET  /suggestions/context          頼む先の状態とプロジェクトの参照先
  *   POST /suggestions・GET /suggestions/:sid・POST .../cancel  ID の無い互換の経路（未保存の入力。このプロセスの中だけで保存しない）
  * 入力の誤りは 400 の { error, code: "invalid", problems: [{ path, message }] }（CLI・画面と同じ検証）。
@@ -38,7 +41,8 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
   app.get("/status", (c) => c.json({ ...observerStatus(), ...(opts.products ? { products: [...opts.products] } : {}) }));
   const { target, suggestions } = opts;
   if (target) {
-    const store = new DefinitionStore(target.dataDir);
+    const files = target.repoPath && fileChecker(target.repoPath);
+    const store = new DefinitionStore(target.dataDir, files);
     const work = new WorkStore(target.dataDir);
     const actorOf = (c: Context) => c.req.header("x-p3-actor") ?? "human:web";
     const body = async (c: Context): Promise<Record<string, unknown>> => {
@@ -53,6 +57,16 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
     app.put("/definitions/:id", async (c) => {
       const b = await body(c);
       return c.json(await store.update(c.req.param("id"), num(b.rev), b.definition, actorOf(c)));
+    });
+    app.post("/definitions/:id/procedures/:pid/switch", async (c) => {
+      const b = await body(c);
+      const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+      return c.json(await store.switchProcedure(c.req.param("id"), num(b.rev), c.req.param("pid"), { invoke: str(b.invoke), evidence: str(b.evidence) }, actorOf(c)));
+    });
+    app.get("/files", (c) => {
+      const checkedAt = new Date().toISOString();
+      const entries = c.req.queries("ref") ?? [];
+      return c.json({ files: Object.fromEntries(entries.map((k) => [k, { state: files && k.includes(":") ? files(k.slice(0, k.indexOf(":")), k.slice(k.indexOf(":") + 1)) : "unverified", checkedAt }])) });
     });
     app.get("/definitions/:id/draft", async (c) => c.json({ draft: (await work.readDraft(await id(c))) ?? null }));
     app.put("/definitions/:id/draft", async (c) => {

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -26,15 +26,21 @@ const SAMPLE: DefinitionInput = {
     { name: "note", type: "string" },
   ],
   procedures: [
-    { kind: "command", title: "curl で測る", command: "curl", args: ["-s", "-o", "/dev/null", "-w", "%{time_total}", "http://localhost:4310/api/requests"], repo: "app", cwd: ".", measures: ["elapsed"] },
-    { kind: "test", title: "Vitest の性能テスト", repo: "app", path: "test/perf.test.ts", invoke: "pnpm vitest run test/perf.test.ts", measures: ["elapsed", "ok"] },
-    { kind: "ui-script", title: "一覧を開く", repo: "app", path: "scripts/open-list.mjs", measures: ["ok"] },
-    { kind: "ai-instruction", title: "見た目の確認", body: "一覧の画面を開き、読み込み中の表示が残らないかを確かめて note に書く", measures: ["note"] },
+    { id: "P1", title: "curl で測る", measures: ["elapsed"], run: { kind: "command", command: "curl", args: ["-s", "-o", "/dev/null", "-w", "%{time_total}", "http://localhost:4310/api/requests"], repo: "app", cwd: "." } },
+    { id: "P2", title: "Vitest の性能テスト", measures: ["elapsed", "ok"], run: { kind: "test", repo: "app", path: "test/perf.test.ts", invoke: "pnpm vitest run test/perf.test.ts" } },
+    {
+      id: "P3",
+      title: "一覧を開く",
+      measures: ["ok"],
+      run: { kind: "ai-instruction", premise: "p3 serve を起動しておく", target: "http://localhost:4310/", steps: ["一覧を開く", "読み込み中の表示が消えるのを待つ"], judge: "要望の一覧が出る", record: "ok に出たかを書く" },
+      replacement: { kind: "ui-script", repo: "app", path: "scripts/open-list.mjs", operation: "一覧を開いて表示を待つ", output: "{ ok: boolean } を JSON で出す", compare: "同じデータで2回とも同じ値", switchWhen: "スクリプトで同じ判定が出たとき", invoke: "node scripts/open-list.mjs" },
+    },
+    { id: "P4", title: "見た目の確認", measures: ["note"], run: { kind: "ai-instruction", target: "一覧の画面", steps: ["読み込み中の表示が残らないかを確かめる"], judge: "残らない", record: "note に気づいたことを書く" } },
   ],
 };
 
 describe("観測の定義の検証（共通）", () => {
-  it("タイトル・分類・観測内容・測定項目・4種の手順を受け付け、前後の空白を落とす", () => {
+  it("タイトル・分類・観測内容・測定項目と、手順（今の実行方法・置き換え候補）を受け付け、前後の空白を落とす", () => {
     const r = validateDefinitionInput({ ...SAMPLE, title: "  一覧 API の応答時間 " });
     expect(r).toEqual({ ok: true, value: SAMPLE });
   });
@@ -49,9 +55,10 @@ describe("観測の定義の検証（共通）", () => {
         { name: "flag", type: "date" },
       ],
       procedures: [
-        { kind: "command", title: "x", command: "", cwd: "/etc", measures: ["missing"] },
-        { kind: "test", title: "t", repo: "app", path: "../outside.ts", body: "x" },
-        { kind: "shell", title: "s" },
+        { title: "x", measures: ["missing"], run: { kind: "command", command: "", cwd: "/etc" } },
+        { title: "t", run: { kind: "test", repo: "app", path: "../outside.ts", body: "x" } },
+        { title: "s", run: { kind: "shell" } },
+        { title: "a", run: { kind: "ai-instruction", target: "画面", steps: [] }, replacement: { kind: "test", repo: "app", path: "x.ts" } },
       ],
       extra: 1,
     });
@@ -67,13 +74,18 @@ describe("観測の定義の検証（共通）", () => {
         "measures[1].unit",
         "measures[2].name",
         "measures[2].type",
-        "procedures[0].command",
-        "procedures[0].cwd",
-        "procedures[0].repo",
+        "procedures[0].run.command",
+        "procedures[0].run.cwd",
+        "procedures[0].run.repo",
         "procedures[0].measures[0]",
-        "procedures[1].path",
-        "procedures[1].body",
-        "procedures[2].kind",
+        "procedures[1].run.path",
+        "procedures[1].run.body",
+        "procedures[2].run.kind",
+        "procedures[3].run.steps",
+        "procedures[3].run.judge",
+        "procedures[3].run.record",
+        "procedures[3].replacement.operation",
+        "procedures[3].replacement.switchWhen",
       ]),
     );
   });
@@ -84,7 +96,7 @@ describe("観測の定義の保存", () => {
     const dataDir = tempDir("p3-obs-store-");
     const store = new DefinitionStore(dataDir);
     const d = await store.create(SAMPLE, "ai:test");
-    expect(d).toMatchObject({ format: 1, rev: 1, id: expect.stringMatching(/^obs-\d{6}-[0-9a-z]{5}$/), createdBy: "ai:test", ...SAMPLE });
+    expect(d).toMatchObject({ format: 2, rev: 1, id: expect.stringMatching(/^obs-\d{6}-[0-9a-z]{5}$/), createdBy: "ai:test", ...SAMPLE });
     expect(existsSync(join(dataDir, "observer", "definitions", `${d.id}.json`))).toBe(true);
     const u = await store.update(d.id, 1, { ...SAMPLE, title: "変えた" }, "human:a");
     expect(u).toMatchObject({ rev: 2, title: "変えた", createdBy: "ai:test", updatedBy: "human:a" });
@@ -106,7 +118,7 @@ describe("観測の定義の保存", () => {
   it("壊れた・知らない形の版のファイルは一覧に理由を出し、更新しない", async () => {
     const store = new DefinitionStore(tempDir("p3-obs-broken-"));
     const d = await store.create(SAMPLE, "a");
-    const future = { ...(await store.get(d.id)), format: 2 };
+    const future = { ...(await store.get(d.id)), format: 3 };
     writeFileSync(join(store.dir, `${d.id}.json`), JSON.stringify(future));
     await writeFile(join(store.dir, "obs-261120-zzzzz.json"), "{ 壊れた");
     const l = await store.list();
@@ -114,13 +126,16 @@ describe("観測の定義の保存", () => {
     expect(l.unreadable.map((u) => u.file).sort()).toEqual([`${d.id}.json`, "obs-261120-zzzzz.json"]);
     expect(l.unreadable.find((u) => u.file === `${d.id}.json`)?.reason).toContain("知らない形の版");
     await expect(store.update(d.id, 1, SAMPLE, "a")).rejects.toMatchObject({ code: "unreadable" });
-    expect(JSON.parse(readFileSync(join(store.dir, `${d.id}.json`), "utf8")).format).toBe(2);
+    expect(JSON.parse(readFileSync(join(store.dir, `${d.id}.json`), "utf8")).format).toBe(3);
   });
 });
 
 describe("CLI: p3 observer list / show / add / update", () => {
   it("--input の JSON で作り、show・list で同じ ID・版・項目を読む。show --json をそのまま更新に使える", async () => {
     const { root } = await initialized();
+    // 今の実行方法のテストのファイルは参照先の中に有る（新規予定のファイルは今の実行方法に使えない）
+    mkdirSync(join(root, "test"), { recursive: true });
+    writeFileSync(join(root, "test", "perf.test.ts"), "");
     const tasksBefore = snapshot(join(root, ".p3", "requests"));
     writeFileSync(join(root, "def.json"), JSON.stringify(SAMPLE));
     const add = p3(root, ["observer", "add", "--input", "def.json", "--json"], { P3_ACTOR: "ai:test" });
@@ -136,8 +151,10 @@ describe("CLI: p3 observer list / show / add / update", () => {
     const text = p3(root, ["observer", "show", created.id]).out;
     expect(text).toContain("一覧 API の応答時間");
     expect(text).toContain("elapsed  数値（ms）");
-    expect(text).toContain("ユニットテスト: Vitest の性能テスト");
-    expect(text).toContain("測る: elapsed・ok");
+    expect(text).toContain("P2 Vitest の性能テスト（ユニットテスト）  測る: elapsed・ok");
+    expect(text).toContain("app:test/perf.test.ts ［既にある］");
+    expect(text).toContain("置き換え候補: 画面操作スクリプト app:scripts/open-list.mjs ［新規予定（まだ無い）］");
+    expect(text).toContain("    2. 読み込み中の表示が消えるのを待つ");
     const list = p3(root, ["observer", "list", "--json"]).json();
     expect(list).toEqual({ definitions: [created], unreadable: [] });
     expect(p3(root, ["observer", "list"]).out).toContain(`${created.id}  v1  [性能]  一覧 API の応答時間`);
@@ -222,6 +239,9 @@ async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "hos
 describe("API と CLI の往復", () => {
   it("通常の serve: 画面の API で作った定義を CLI で読み、CLI で直した定義を API で読む。再起動のあとも同じ", async () => {
     const { root } = await initialized();
+    // 今の実行方法のテストのファイルは参照先の中に有る（新規予定のファイルは今の実行方法に使えない）
+    mkdirSync(join(root, "test"), { recursive: true });
+    writeFileSync(join(root, "test", "perf.test.ts"), "");
     const dataDir = join(root, ".p3");
     const s = await serve({ dataDir, projectName: "app" });
     const invalid = await s.call("POST", "/observer/definitions", { ...SAMPLE, title: "" });

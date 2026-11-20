@@ -946,8 +946,15 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 - 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
   （shared の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
   決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
-- 形: `{ format: 1, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。項目と種別ごとの
-  手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
+- 形: `{ format: 2, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。手順は
+  `{ id: P1…, title, measures, run: 今の実行方法, replacement?: 置き換え候補, history?: 切り替えの履歴 }`。形の版 1（手順に kind を直に持つ）は読むときに今の形に移し
+  （`migrateProcedures`。提案の記録も同じ）、更新のときに 2 で書く。手順の識別子は保存の層が付け、履歴は保存の層だけが書く（入力の履歴は使わない）
+- 確認の手順の段取り: スクリプト等が無いあいだは AI への指示（前提・対象・順に行う操作・判定・測定値の記録方法）で確かめ、毎回同じ動作で結果を機械的に処理できる
+  ようになったら、置き換え候補（用意するファイル・再現する操作・出力の形・比べる条件・切り替えの条件）のスクリプトを別の作業で用意し、`switchProcedure` で切り替える。
+  切り替えには、参照先の中にファイルが有ること・今の版・確かめた呼び出し方と結果の根拠が要り、今の実行方法と呼び出し方が同じ更新で変わる
+- ファイルの有無（`core/files.ts`）: AI の出力とは別に、入口・アプリが渡す参照先のこのマシンのパスの中で照らす（参照先の外・シンボリックリンクの先が外なら新規予定、
+  参照先を読めなければ未確認）。新規予定のファイルは今の実行方法に使えない（保存で断る）。`GET /files` で画面に、`show` で CLI に出す
+- 項目と手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
 - 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（shared の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
   置き換える（shared の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
   更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）

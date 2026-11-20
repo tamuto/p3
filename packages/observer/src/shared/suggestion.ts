@@ -1,4 +1,4 @@
-import { validateDefinitionInput, type DefinitionProblem, type Measure, type Procedure } from "./definition.ts";
+import { migrateProcedures, validateDefinitionInput, type DefinitionProblem, type Measure, type Procedure } from "./definition.ts";
 
 /**
  * 観測の定義の入力から、AI に確認の手順を提案してもらう（docs/architecture.md「p3-observer」の手順の提案）。
@@ -39,12 +39,14 @@ export interface SuggestedProcedure {
 
 export interface Suggestion {
   surface: Surface;
+  /** 測定項目の候補（定義に無いものだけ。取り込むと手順から参照できる） */
+  measures: Measure[];
   /** 操作面と手順をそう判断した根拠 */
   rationale: string;
   procedures: SuggestedProcedure[];
   /** 判断に足りない材料（無ければ空） */
   missing: { field: MissingField; reason: string }[];
-  /** 応答を読むときに落としたもの（定義に無い測定項目の参照など） */
+  /** 応答を読むときに理由を付けて外したもの（名前の衝突・定義にも候補にも無い測定項目の参照など） */
   warnings: string[];
 }
 
@@ -125,17 +127,18 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
 export class InvalidSuggestion extends Error {}
 
 /**
- * AI の応答（最後の文）から提案を読む。JSON（コードブロックの中でもよい）で、手順は定義と同じ検証を通す。
- * 定義に無い測定項目の参照は落として warnings に書く。形が違えば InvalidSuggestion
+ * AI の応答（最後の文）から提案を読む。JSON（コードブロックの中でもよい）で、測定項目の候補と手順は定義と同じ検証を通す。
+ * 定義に既にある名前の候補は外し、定義にも候補にも無い測定項目の参照は外して、どちらも理由を warnings に書く。形が違えば InvalidSuggestion
  */
 export function parseSuggestion(message: string, measures: Measure[]): Suggestion {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(message)?.[1];
-  const start = (fenced ?? message).indexOf("{");
-  const end = (fenced ?? message).lastIndexOf("}");
+  const src = fenced ?? message;
+  const start = src.indexOf("{");
+  const end = src.lastIndexOf("}");
   if (start < 0 || end < start) throw new InvalidSuggestion("応答に JSON がありません");
   let data: unknown;
   try {
-    data = JSON.parse((fenced ?? message).slice(start, end + 1));
+    data = JSON.parse(src.slice(start, end + 1));
   } catch (e) {
     throw new InvalidSuggestion(`応答の JSON を読めません（${(e as Error).message}）`);
   }
@@ -143,26 +146,48 @@ export function parseSuggestion(message: string, measures: Measure[]): Suggestio
   const surface = (SURFACES as readonly unknown[]).includes(data.surface) ? (data.surface as Surface) : undefined;
   if (!surface) throw new InvalidSuggestion(`surface が ${SURFACES.join(" / ")} のどれでもありません`);
   if (typeof data.rationale !== "string" || !data.rationale.trim()) throw new InvalidSuggestion("判断の根拠（rationale）がありません");
-  if (!Array.isArray(data.procedures)) throw new InvalidSuggestion("procedures が配列ではありません");
-  if (!Array.isArray(data.missing)) throw new InvalidSuggestion("missing が配列ではありません");
-  const names = new Set(measures.map((m) => m.name));
+  for (const k of ["procedures", "missing"]) if (!Array.isArray(data[k])) throw new InvalidSuggestion(`${k} が配列ではありません`);
+  if (data.measures !== undefined && !Array.isArray(data.measures)) throw new InvalidSuggestion("measures が配列ではありません");
   const warnings: string[] = [];
-  const procedures: SuggestedProcedure[] = data.procedures.map((raw, i) => {
+  const have = new Set(measures.map((m) => m.name));
+  const candidates: Measure[] = [];
+  for (const [i, raw] of ((data.measures as unknown[] | undefined) ?? []).entries()) {
+    const v = validateDefinitionInput({ title: "提案", description: "提案", measures: [raw] });
+    if (!v.ok) throw new InvalidSuggestion(`measures[${i}] が測定項目の形に合いません（${v.problems.map((p) => `${p.path.replace(/^measures\[0\]\.?/, "")}: ${p.message}`).join("・")}）`);
+    const m = v.value.measures[0];
+    if (have.has(m.name)) warnings.push(`測定項目の候補 ${m.name} は定義に同じ名前があるので外しました`);
+    else if (candidates.some((c) => c.name === m.name)) warnings.push(`測定項目の候補 ${m.name} が重なっているので1つにしました`);
+    else candidates.push(m);
+  }
+  const all = [...measures, ...candidates];
+  const names = new Set(all.map((m) => m.name));
+  const procedures: SuggestedProcedure[] = (data.procedures as unknown[]).map((raw, i) => {
     if (!isRecord(raw)) throw new InvalidSuggestion(`procedures[${i}] がオブジェクトではありません`);
-    const { evidence, ...rest } = raw;
+    const { evidence, id: _id, ...rest } = raw;
     if (typeof evidence !== "string" || !evidence.trim()) throw new InvalidSuggestion(`procedures[${i}] の根拠（evidence）がありません`);
     const refs = Array.isArray(rest.measures) ? rest.measures : [];
     const kept = refs.filter((r) => typeof r === "string" && names.has(r));
-    for (const r of refs) if (!kept.includes(r)) warnings.push(`手順 ${i + 1} の測定項目 ${String(r)} は定義に無いので外しました`);
-    const v = validateDefinitionInput({ title: "提案", category: "提案", description: "提案", measures, procedures: [{ ...rest, measures: kept }] });
+    for (const r of refs) if (!kept.includes(r)) warnings.push(`手順 ${i + 1} の測定項目 ${String(r)} は定義にも候補にも無いので外しました`);
+    const v = validateDefinitionInput({ title: "提案", description: "提案", measures: all, procedures: [{ ...rest, measures: kept }] });
     if (!v.ok) throw new InvalidSuggestion(`procedures[${i}] が手順の形に合いません（${v.problems.map((p) => `${p.path.replace(/^procedures\[0\]\.?/, "")}: ${p.message}`).join("・")}）`);
     return { procedure: v.value.procedures[0], evidence: evidence.trim() };
   });
-  const missing = data.missing.map((raw, i) => {
+  const missing = (data.missing as unknown[]).map((raw, i) => {
     if (!isRecord(raw) || typeof raw.reason !== "string" || !raw.reason.trim()) throw new InvalidSuggestion(`missing[${i}] に理由（reason）がありません`);
     const field = (MISSING_FIELDS as readonly unknown[]).includes(raw.field) ? (raw.field as MissingField) : "other";
     return { field, reason: raw.reason.trim() };
   });
-  if (!procedures.length && !missing.length) throw new InvalidSuggestion("手順の提案も、足りない材料もありません");
-  return { surface, rationale: data.rationale.trim(), procedures, missing, warnings };
+  if (!procedures.length && !missing.length && !candidates.length) throw new InvalidSuggestion("手順の提案も、測定項目の候補も、足りない材料もありません");
+  return { surface, rationale: data.rationale.trim(), measures: candidates, procedures, missing, warnings };
+}
+
+/** 形の版 1 のときに保存した提案（手順に kind を直に持つ）を今の形で読む */
+export function migrateSuggestion<T extends { result?: Suggestion; request?: SuggestionRequest }>(j: T): T {
+  const result = j.result && {
+    ...j.result,
+    measures: j.result.measures ?? [],
+    procedures: j.result.procedures.map((p) => ({ ...p, procedure: { ...(migrateProcedures([p.procedure]) as Procedure[])[0], id: "" } })),
+  };
+  const request = j.request && { ...j.request, definition: { ...j.request.definition, procedures: migrateProcedures(j.request.definition.procedures) as Procedure[] } };
+  return { ...j, ...(result ? { result } : {}), ...(request ? { request } : {}) };
 }

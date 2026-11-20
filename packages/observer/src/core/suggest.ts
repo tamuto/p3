@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 import type { WorkStore } from "./workStore.ts";
-import { MEASURE_TYPE_LABEL, PROCEDURE_KINDS } from "../shared/definition.ts";
+import { FILE_KINDS, MEASURE_TYPE_LABEL, MEASURE_TYPES, RUN_KIND_LABEL, type Measure, type Run } from "../shared/definition.ts";
 import {
   InvalidSuggestion,
   MISSING_FIELDS,
@@ -31,12 +31,19 @@ export interface SuggestAdapter {
 export const SUGGEST_TIMEOUT_MS = 10 * 60_000;
 
 export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測（繰り返し確かめて測る作業）の手順を設計する補助です。
-利用者が書いた観測の定義（タイトル・カテゴリ・観測内容・測定項目）と、読むだけで渡された参照先（/workspace/<名前>）を材料に、
-観測の対象の操作面と、繰り返し使える確認の手順を提案してください。
+利用者が書いた観測の定義と、読むだけで渡された参照先を材料に、観測の対象の操作面と、実際に実行できる確認の手順を提案してください。
 
-- 繰り返し確かめるので、できるだけコマンドかユニットテストで表す。画面の操作が要るなら画面操作スクリプト、汎用の確認だけが残るなら AI への指示にする
-- 参照先にあるコマンド・テスト・スクリプトを根拠にするときは、そのファイルや script の名前を根拠（evidence）に書く。無いものを有るように書かない
-- 測定項目は利用者の定義にあるものだけを使う（新しく作らない）
+手順は段取りで考えます:
+1. 確かめるスクリプト等がまだ無いときは、今の実行方法（run）を「AI への指示」（ai-instruction）にし、AI か人がそのまま実行できる具体的なやることを書く:
+   前提（premise: 起動しておくもの・用意するデータ）・対象（target: 画面の URL・コマンド・ファイル）・順に行う操作（steps: 1つが1手）・
+   判定（judge: 何をもって期待どおりとするか）・測定値の記録方法（record: どの測定項目に何を書くか）
+2. その手順が毎回同じ動作になり、結果も機械的に処理できるなら、置き換え候補（replacement）に用意するスクリプトの案を書く:
+   作るファイル（repo・path）・そこで再現する操作（operation）・測定値の出力形式（output）・同じ入力で結果を比べる条件（compare）・
+   切り替えの条件（switchWhen）・呼び出し方の案（invoke）。スクリプトを用意するのは別の作業で、用意して確かめた後に利用者が切り替える
+3. 参照先に既に使えるコマンド・テスト・スクリプトがあれば、それを今の実行方法にし、根拠（evidence）にそのファイルや script の名前を書く
+
+- まだ無いファイルを今の実行方法（run）に書かない（置き換え候補に書く）。無いものを有るように書かない
+- 測定項目が足りなければ候補（measures）を出す（名前は英数字・_・-、型 ${MEASURE_TYPES.join(" / ")}、数値なら単位、説明）。定義に既にある名前は使わない
 - 判断に必要な材料が足りなければ、推測で手順を作らず、足りない材料を missing に書く（どの材料が・なぜ要るか）
 - ファイルを作ったり、コマンドを実行して確かめたりしない（提案だけ）
 - 最後の応答は次の形の JSON だけにする（説明の文を付けない）
@@ -44,81 +51,107 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
 {
   "surface": "${SURFACES.join(" | ")}",
   "rationale": "操作面と手順をそう判断した根拠",
+  "measures": [{ "name": "elapsed_ms", "type": "number", "unit": "ms", "description": "..." }],
   "procedures": [
-    { "kind": "command", "title": "...", "command": "実行名", "args": ["引数"], "repo": "参照先の名前（任意）", "cwd": "参照先の中の相対パス（任意）", "measures": ["測定項目の name"], "evidence": "根拠" },
-    { "kind": "test" または "ui-script", "title": "...", "repo": "参照先の名前", "path": "参照先の中の相対パス", "invoke": "呼び出し方（任意）", "measures": [], "evidence": "根拠" },
-    { "kind": "ai-instruction", "title": "...", "body": "指示文", "measures": [], "evidence": "根拠" }
+    {
+      "title": "...",
+      "measures": ["測定項目の name（定義か measures の候補にあるもの）"],
+      "run": { "kind": "ai-instruction", "premise": "...", "target": "...", "steps": ["...", "..."], "judge": "...", "record": "..." },
+      "replacement": { "kind": "${FILE_KINDS.join(" | ")}", "repo": "参照先の名前", "path": "参照先の中の相対パス", "operation": "...", "output": "...", "compare": "...", "switchWhen": "...", "invoke": "..." },
+      "evidence": "根拠"
+    }
   ],
   "missing": [{ "field": "${MISSING_FIELDS.join(" | ")}", "reason": "その材料が要る理由と、何を書けばよいか" }]
-}`;
+}
+run は ai-instruction のほか、既にあるものなら { "kind": "command", "command": "...", "args": [], "repo": "...", "cwd": "..." } か
+{ "kind": "${FILE_KINDS.join(" | ")}", "repo": "...", "path": "...", "invoke": "..." }。replacement は無ければ省く。`;
 
-/** 依頼文（定義の入力・参照先・補足） */
+const runLine = (r: Run) =>
+  r.kind === "ai-instruction" ? `AI への指示（対象: ${r.target}）` : r.kind === "command" ? `コマンド ${[r.command, ...r.args].join(" ")}` : `${RUN_KIND_LABEL[r.kind]} ${r.repo}:${r.path}`;
+
+/** 依頼文（プロジェクトの文脈・定義の入力・参照先・補足） */
 export function suggestPrompt(req: SuggestionRequest, repos: string[], project?: string): string {
   const d = req.definition;
   const lines = [
     ...(project ? [project, ""] : []),
-    "## 観測の定義（未保存の入力）",
+    "## 観測の定義",
     `- タイトル: ${d.title || "（未入力）"}`,
     `- カテゴリ: ${d.category || "（未入力）"}`,
     "- 観測内容:",
     d.description ? d.description.split("\n").map((l) => `  ${l}`).join("\n") : "  （未入力）",
     "",
     "## 測定項目",
-    ...(d.measures.length ? d.measures.map((m) => `- ${m.name}: ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? ` — ${m.description}` : ""}`) : ["（まだ無い。手順の measures は空にし、必要なら missing に measure を書く）"]),
+    ...(d.measures.length ? d.measures.map((m) => `- ${m.name}: ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? ` — ${m.description}` : ""}`) : ["（まだ無い。要るものを measures の候補に出す）"]),
     "",
     "## 今ある手順（参考。重ねて提案しない）",
-    ...(d.procedures.length ? d.procedures.map((p) => `- ${p.kind}: ${p.title}`) : ["（無い）"]),
+    ...(d.procedures.length ? d.procedures.map((p) => `- ${p.title}: ${runLine(p.run)}${p.replacement ? `（置き換え候補 ${p.replacement.repo}:${p.replacement.path}）` : ""}`) : ["（無い）"]),
     "",
     "## 読める参照先",
     ...(repos.length ? repos.map((r) => `- ${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
   ];
   if (req.note) lines.push("", "## 利用者の補足", req.note);
-  lines.push("", `手順の kind は ${PROCEDURE_KINDS.join(" / ")} のどれか。最後の応答は指示どおりの JSON だけにしてください。`);
+  lines.push("", "最後の応答は指示どおりの JSON だけにしてください。");
   return lines.join("\n");
 }
 
 /**
  * Mock の提案（個人設定の preflight.engine が mock のとき。AI を呼ばない）。材料の言葉で操作面を決める:
- * コマンド・CLI の言葉があればコマンド、画面の言葉があれば画面操作スクリプト、どちらも無ければ足りない材料を返す
+ * コマンド・CLI の言葉があればコマンド、画面の言葉があれば AI への指示と画面操作スクリプトへの置き換え候補、どちらも無ければ足りない材料を返す。
+ * 測定項目が無ければ候補を1つ出す
  */
 export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggestion {
   const d = req.definition;
   const text = `${d.title}\n${d.description}\n${req.note ?? ""}`;
-  const measures = d.measures.map((m) => m.name);
+  const candidate: Measure[] = d.measures.length ? [] : [{ name: "ok", type: "boolean", description: "判定のとおりだったか" }];
+  const measures = [...d.measures, ...candidate].map((m) => m.name);
   const repo = repos[0];
+  const evidence = "Mock: 材料の言葉から決めました（参照先は読んでいません）";
+  const base = { measures: candidate, warnings: [] };
   if (/(CLI|コマンド|command|\bp3 |pnpm|npm|curl)/i.test(text)) {
     return {
+      ...base,
       surface: "cli",
       rationale: "Mock: 材料に CLI・コマンドの言葉があるので、コマンドで確かめる手順にしました",
-      procedures: [{ procedure: { kind: "command", title: `${d.title || "観測"}をコマンドで確かめる`, command: "pnpm", args: ["-s", "test"], ...(repo ? { repo } : {}), measures }, evidence: "Mock: 材料の言葉から決めました（参照先は読んでいません）" }],
+      procedures: [{ procedure: { id: "", title: `${d.title || "観測"}をコマンドで確かめる`, measures, run: { kind: "command", command: "pnpm", args: ["-s", "test"], ...(repo ? { repo } : {}) } }, evidence }],
       missing: [],
-      warnings: [],
     };
   }
   if (/(画面|ページ|ボタン|クリック|UI|ブラウザ)/i.test(text)) {
     return {
+      ...base,
       surface: "ui",
-      rationale: "Mock: 材料に画面の言葉があるので、画面操作スクリプトで確かめる手順にしました",
-      procedures: [{ procedure: { kind: "ui-script", title: `${d.title || "観測"}を画面で確かめる`, repo: repo ?? "app", path: "scripts/observe.ui.mjs", measures }, evidence: "Mock: 材料の言葉から決めました（参照先は読んでいません）" }],
+      rationale: "Mock: 材料に画面の言葉があるので、まず AI への指示で確かめ、画面操作スクリプトに置き換える段取りにしました",
+      procedures: [
+        {
+          procedure: {
+            id: "",
+            title: `${d.title || "観測"}を画面で確かめる`,
+            measures,
+            run: { kind: "ai-instruction", premise: "p3 serve を起動しておく", target: "ブラウザで開いた画面", steps: ["画面を開く", "観測内容の操作を順に行う"], judge: "観測内容のとおりに表示が変わる", record: `${measures[0] ?? "ok"} に判定の結果を書く` },
+            ...(repo ? { replacement: { kind: "ui-script" as const, repo, path: "test/ui/observe.ui.test.ts", operation: "上の操作を Playwright で再現する", output: "測定項目ごとの値を JSON で標準出力に書く", compare: "同じデータで2回実行して同じ値になる", switchWhen: "スクリプトで同じ判定の結果が出ることを確かめたとき", invoke: "pnpm vitest run -c vitest.ui.config.ts test/ui/observe.ui.test.ts" } } : {}),
+          },
+          evidence,
+        },
+      ],
       missing: repo ? [] : [{ field: "repo", reason: "画面操作スクリプトを置く参照先が分かりません（読める参照先がありません。このマシンのパスを登録してください）" }],
-      warnings: [],
     };
   }
   return {
+    ...base,
     surface: "unknown",
     rationale: "Mock: 材料から操作面（CLI・画面など）を判断できません",
+    measures: [],
     procedures: [],
     missing: [
       { field: "surface", reason: "観測の対象が CLI・画面・API のどれか分かりません。観測内容か補足に書いてください" },
       { field: "entry", reason: "対象の入口（コマンド名・画面の URL など）が分かりません" },
     ],
-    warnings: [],
   };
 }
 
 /** 提案を AI の応答の形（procedures の各項目に evidence を並べる）にする（Mock の応答・テストの代替の接続が使う） */
-export function suggestionMessage(s: Pick<Suggestion, "surface" | "rationale" | "procedures" | "missing">): string {
-  return JSON.stringify({ surface: s.surface, rationale: s.rationale, procedures: s.procedures.map((p) => ({ ...p.procedure, evidence: p.evidence })), missing: s.missing });
+export function suggestionMessage(s: Pick<Suggestion, "surface" | "rationale" | "procedures" | "missing"> & { measures?: Measure[] }): string {
+  return JSON.stringify({ surface: s.surface, rationale: s.rationale, measures: s.measures ?? [], procedures: s.procedures.map(({ procedure: { id: _id, ...p }, evidence }) => ({ ...p, evidence })), missing: s.missing });
 }
 
 /** 実行中の提案（このプロセスの中だけ。保存しない。終わったものは少しのあいだ残す） */

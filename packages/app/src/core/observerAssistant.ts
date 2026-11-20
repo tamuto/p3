@@ -43,3 +43,6 @@ export function observerAssistant(ctx: P3Context): SuggestAdapter {
     },
   };
 }
+
+/** 参照先の名前 → このマシンのパス（読める参照先だけ。observer がファイルの有無を照らすのに使う。画面・API には出さない） */
+export const readablePath = (ctx: P3Context) => (name: string) => ctx.ws.refs().find((r) => r.name === name && r.status === "ok")?.local;

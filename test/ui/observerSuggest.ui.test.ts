@@ -42,7 +42,8 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       await until.visible(result.getByText("操作面: CLI・コマンド"));
       await until.visible(result.getByText(/根拠: Mock: 材料に CLI・コマンドの言葉がある/));
       const proposal = result.getByRole("article").first();
-      await until.visible(proposal.getByText("pnpm -s test（repo:.）"));
+      await until.visible(proposal.getByText("pnpm -s test"));
+      await until.visible(proposal.getByText("repo:."));
       await proposal.getByRole("button", { name: "編集欄に取り込む" }).click();
       await until.visible(proposal.getByRole("button", { name: "取り込みました" }));
       const p1 = page.getByRole("group", { name: "手順 1", exact: true });
@@ -62,7 +63,10 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       await panel.getByLabel("補足（任意）").fill("");
       await panel.getByRole("button", { name: "もう一度頼む" }).click();
       await until.visible(panel.getByTestId("suggestion").getByText("操作面: 画面"));
-      await until.visible(panel.getByRole("article").first().getByText(/画面操作スクリプト/));
+      // スクリプトが無いので AI への指示で確かめ、画面操作スクリプトを置き換え候補にする（ファイルは新規予定）
+      const ui = panel.getByRole("article").first();
+      await until.visible(ui.getByText(/今の実行方法: AI への指示/));
+      await until.visible(ui.getByRole("region", { name: /の置き換え候補$/ }).getByText(/新規予定（まだ無い）/));
     });
     await step("手がかりが無ければ、足りない材料と理由を出す（手順は出さない）", async () => {
       await page.getByLabel("観測内容").fill("速さを見る");
@@ -80,7 +84,7 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       const id = new URL(page.url()).pathname.split("/").pop()!;
       expect(JSON.parse(await env.p3(["observer", "suggestions", id, "--json"])).suggestions.map((j: { status: string }) => j.status)).toEqual(["completed", "completed", "completed"]);
       const d = JSON.parse(await env.p3(["observer", "show", id, "--json"]));
-      expect(d.procedures).toEqual([{ kind: "command", title: "ls の時間を測る", command: "pnpm", args: ["-s", "test"], repo: "repo", measures: ["elapsed"] }]);
+      expect(d.procedures).toEqual([{ id: "P1", title: "ls の時間を測る", measures: ["elapsed"], run: { kind: "command", command: "pnpm", args: ["-s", "test"], repo: "repo" } }]);
     });
   });
 });

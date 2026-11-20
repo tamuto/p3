@@ -61,23 +61,27 @@ describe("依頼と応答の読み方", () => {
         JSON.stringify({
           surface: "cli",
           rationale: "package.json に bench がある",
-          procedures: [{ kind: "command", title: "bench", command: "pnpm", args: ["bench"], repo: "app", measures: ["elapsed", "nope"], evidence: "package.json の scripts.bench" }],
+          measures: [{ name: "runs", type: "number", unit: "回" }, { name: "elapsed", type: "number" }],
+          procedures: [{ title: "bench", measures: ["elapsed", "runs", "nope"], run: { kind: "command", command: "pnpm", args: ["bench"], repo: "app" }, evidence: "package.json の scripts.bench" }],
           missing: [{ field: "weird", reason: "その他" }],
         }) +
         "\n```",
       MEASURES,
     );
-    expect(s.procedures).toEqual([{ procedure: { kind: "command", title: "bench", command: "pnpm", args: ["bench"], repo: "app", measures: ["elapsed"] }, evidence: "package.json の scripts.bench" }]);
+    expect(s.measures).toEqual([{ name: "runs", type: "number", unit: "回" }]);
+    expect(s.procedures).toEqual([{ procedure: { id: "", title: "bench", measures: ["elapsed", "runs"], run: { kind: "command", command: "pnpm", args: ["bench"], repo: "app" } }, evidence: "package.json の scripts.bench" }]);
     expect(s.missing).toEqual([{ field: "other", reason: "その他" }]);
-    expect(s.warnings).toEqual(["手順 1 の測定項目 nope は定義に無いので外しました"]);
+    expect(s.warnings).toEqual(["測定項目の候補 elapsed は定義に同じ名前があるので外しました", "手順 1 の測定項目 nope は定義にも候補にも無いので外しました"]);
   });
 
   it("形の違う応答は InvalidSuggestion（理由つき）", () => {
     const bad = (o: unknown) => () => parseSuggestion(typeof o === "string" ? o : JSON.stringify(o), MEASURES);
     expect(bad("すみません、わかりません")).toThrow(InvalidSuggestion);
     expect(bad({ surface: "desktop", rationale: "x", procedures: [], missing: [] })).toThrow(/surface/);
-    expect(bad({ surface: "cli", rationale: "x", procedures: [{ kind: "test", title: "t", path: "/abs.ts", measures: [], evidence: "e" }], missing: [] })).toThrow(/procedures\[0\]/);
-    expect(bad({ surface: "cli", rationale: "x", procedures: [{ kind: "command", title: "t", command: "c", measures: [] }], missing: [] })).toThrow(/evidence/);
+    expect(bad({ surface: "cli", rationale: "x", procedures: [{ title: "t", run: { kind: "test", path: "/abs.ts" }, evidence: "e" }], missing: [] })).toThrow(/procedures\[0\]/);
+    expect(bad({ surface: "cli", rationale: "x", procedures: [{ title: "t", run: { kind: "ai-instruction", target: "画面", steps: ["見る"] }, evidence: "e" }], missing: [] })).toThrow(/judge/);
+    expect(bad({ surface: "cli", rationale: "x", procedures: [{ title: "t", run: { kind: "command", command: "c" } }], missing: [] })).toThrow(/evidence/);
+    expect(bad({ surface: "cli", rationale: "x", measures: [{ name: "x y", type: "number" }], procedures: [], missing: [] })).toThrow(/measures\[0\]/);
     expect(bad({ surface: "unknown", rationale: "x", procedures: [], missing: [] })).toThrow(/足りない材料もありません/);
   });
 });
@@ -86,9 +90,15 @@ describe("提案の実行（代替の接続）", () => {
   it("CLI を示す材料ではコマンド、画面を示す材料では画面操作スクリプトを提案する（Mock）。手がかりが無ければ足りない材料と理由を返す", async () => {
     const svc = new SuggestionService(fake((input) => suggestionMessage(mockSuggestion(input.request, input.repos))).adapter);
     const cli = await svc.run(request());
-    expect(cli).toMatchObject({ status: "completed", result: { surface: "cli", procedures: [{ procedure: { kind: "command", measures: ["elapsed", "ok"] } }], missing: [] } });
+    expect(cli).toMatchObject({ status: "completed", result: { surface: "cli", measures: [], procedures: [{ procedure: { run: { kind: "command" }, measures: ["elapsed", "ok"] } }], missing: [] } });
     const ui = await svc.run(request({ description: "要望の画面でボタンを押すと一覧が出るか" }));
-    expect(ui).toMatchObject({ status: "completed", result: { surface: "ui", procedures: [{ procedure: { kind: "ui-script", repo: "app" } }] } });
+    // スクリプトが無い画面の観測は、AI への指示（前提・対象・操作・判定・記録）を今の実行方法にし、画面操作スクリプトを置き換え候補にする
+    expect(ui).toMatchObject({
+      status: "completed",
+      result: { surface: "ui", procedures: [{ procedure: { run: { kind: "ai-instruction", target: expect.any(String), steps: expect.any(Array), judge: expect.any(String), record: expect.any(String) }, replacement: { kind: "ui-script", repo: "app", output: expect.any(String), compare: expect.any(String), switchWhen: expect.any(String) } } }] },
+    });
+    const noMeasure = await svc.run(request({ measures: [], description: "画面を開く" }));
+    expect(noMeasure.result?.measures).toEqual([{ name: "ok", type: "boolean", description: "判定のとおりだったか" }]);
     const none = await svc.run(request({ title: "観測", description: "速さを見る" }));
     expect(none.result?.surface).toBe("unknown");
     expect(none.result?.procedures).toEqual([]);
@@ -170,7 +180,7 @@ describe("API と CLI（Mock の頼む先）", () => {
     const started = await call("POST", "/observer/suggestions", { definition: request().definition, note: "補足" });
     expect(started.status).toBe(202);
     const done = await waitDone(call, `/observer/suggestions/${started.body.id}`);
-    expect(done).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli", procedures: [{ procedure: { repo: "app" } }] } });
+    expect(done).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli", procedures: [{ procedure: { run: { repo: "app" } } }] } });
     expect((await call("GET", "/observer/definitions")).body.definitions).toEqual([]);
     expect((await call("GET", "/observer/suggestions/sg-000000000000")).status).toBe(404);
   });
@@ -203,19 +213,20 @@ describe("API と CLI（Mock の頼む先）", () => {
     const r = p3(root, ["observer", "suggest", "--input", "draft.json", "--note", "pnpm を使う", "--json"], { P3_PREFLIGHT_ENGINE: "mock" });
     expect(r.code, r.err).toBe(0);
     const out = r.json();
-    expect(out).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli" }, definition: { title: "一覧の応答時間", procedures: [{ kind: "command", repo: "app" }] } });
+    expect(out).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli" }, definition: { title: "一覧の応答時間", procedures: [{ run: { kind: "command", repo: "app" } }] } });
     expect(snapshot(join(root, ".p3"))).toEqual(before);
     const text = p3(root, ["observer", "suggest", "--title", "画面", "--body", "画面のボタンを押す"], { P3_PREFLIGHT_ENGINE: "mock" });
     expect(text.out).toContain("操作面: 画面");
-    expect(text.out).toContain("画面操作スクリプト: 画面を画面で確かめる");
+    expect(text.out).toContain("画面を画面で確かめる（AI への指示）");
+    expect(text.out).toContain("置き換え候補: 画面操作スクリプト app:test/ui/observe.ui.test.ts ［新規予定（まだ無い）］");
     expect(text.out).toContain("保存はしていません");
     // 編集して保存（誤りは定義の検証で断る）
-    writeFileSync(join(root, "bad.json"), JSON.stringify({ ...out.definition, procedures: [{ ...out.definition.procedures[0], cwd: "../x" }] }));
-    expect(p3(root, ["observer", "add", "--input", "bad.json"]).err).toContain("procedures[0].cwd");
+    writeFileSync(join(root, "bad.json"), JSON.stringify({ ...out.definition, procedures: [{ ...out.definition.procedures[0], run: { ...out.definition.procedures[0].run, cwd: "../x" } }] }));
+    expect(p3(root, ["observer", "add", "--input", "bad.json"]).err).toContain("procedures[0].run.cwd");
     writeFileSync(join(root, "edited.json"), JSON.stringify({ ...out.definition, procedures: [{ ...out.definition.procedures[0], title: "直した" }] }));
     const saved = p3(root, ["observer", "add", "--input", "edited.json", "--json"]);
     expect(saved.code, saved.err).toBe(0);
-    expect(saved.json().procedures[0]).toMatchObject({ kind: "command", title: "直した" });
+    expect(saved.json().procedures[0]).toMatchObject({ id: "P1", run: { kind: "command" }, title: "直した" });
     // --repo は使わない（黙って無視しない）。材料の不足は理由を出して 1
     const repo = p3(root, ["observer", "suggest", "--input", "draft.json", "--repo", "app"], { P3_PREFLIGHT_ENGINE: "mock" });
     expect([repo.code, repo.err]).toEqual([1, expect.stringContaining("--repo を使いません")]);

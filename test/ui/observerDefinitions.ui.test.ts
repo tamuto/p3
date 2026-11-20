@@ -50,24 +50,37 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       await page.getByRole("button", { name: "＋ 手順を足す" }).click();
       const p1 = page.getByRole("group", { name: "手順 1", exact: true });
       await p1.getByLabel("手順の名前").fill("curl で測る");
+      await p1.getByLabel("今の実行方法").selectOption("command");
       await p1.getByLabel("実行名").fill("curl");
       await p1.getByLabel("引数（1行に1つ）").fill("-s\nhttp://localhost:4310/api/requests");
       await p1.getByRole("checkbox", { name: "elapsed" }).check();
       await page.getByRole("button", { name: "＋ 手順を足す" }).click();
       const p2 = page.getByRole("group", { name: "手順 2", exact: true });
-      await p2.getByLabel("種別").selectOption("test");
+      await p2.getByLabel("今の実行方法").selectOption("test");
       await p2.getByLabel("手順の名前").fill("性能テスト");
       await p2.getByLabel("参照先", { exact: true }).fill("uitest");
       await p2.getByLabel("ファイル（参照先の中の相対パス）").fill("../outside.ts");
       await p2.getByRole("checkbox", { name: "ok" }).check();
       await page.getByRole("button", { name: "＋ 手順を足す" }).click();
       const p3 = page.getByRole("group", { name: "手順 3", exact: true });
-      await p3.getByLabel("種別").selectOption("ai-instruction");
+      // スクリプトが無い手順は AI への指示（前提・対象・操作・判定・記録）と、置き換え候補（用意するスクリプト）
       await p3.getByLabel("手順の名前").fill("見た目");
-      await p3.getByLabel("指示文").fill("一覧の読み込み中の表示が残らないかを確かめる");
+      await p3.getByLabel("対象").fill("要望の一覧の画面");
+      await p3.getByLabel("順に行う操作（1行に1つ）").fill("一覧を開く\n読み込み中の表示が残らないかを確かめる");
+      await p3.getByLabel("判定").fill("読み込み中の表示が残らない");
+      await p3.getByLabel("測定値の記録方法").fill("ok に結果を書く");
+      await p3.getByRole("button", { name: "置き換え候補を書く" }).click();
+      await p3.getByLabel("置き換え先の参照先").fill("repo");
+      await p3.getByLabel("用意するファイル").fill("test/ui/list.ui.test.ts");
+      await until.text(p3.getByText(/ファイル: 新規予定/), /新規予定（まだ無い）/);
+      await p3.getByLabel("再現する操作").fill("一覧を開いて表示を待つ");
+      await p3.getByLabel("測定値の出力形式").fill("ok を JSON で出す");
+      await p3.getByLabel("結果を比べる条件").fill("2回とも同じ");
+      await p3.getByLabel("切り替えの条件").fill("スクリプトで同じ判定が出たとき");
       await until.text(page.getByRole("status").filter({ hasText: "入力" }), /入力は保存されています/);
       await page.reload();
-      await until.value(page.getByRole("group", { name: "手順 3", exact: true }).getByLabel("指示文"), "一覧の読み込み中の表示が残らないかを確かめる");
+      await until.value(page.getByRole("group", { name: "手順 3", exact: true }).getByLabel("順に行う操作（1行に1つ）"), "一覧を開く\n読み込み中の表示が残らないかを確かめる");
+      await until.value(page.getByRole("group", { name: "手順 3", exact: true }).getByLabel("切り替えの条件"), "スクリプトで同じ判定が出たとき");
       await until.value(page.getByRole("group", { name: "手順 2", exact: true }).getByLabel("ファイル（参照先の中の相対パス）"), "../outside.ts");
       await page.getByRole("button", { name: "保存する" }).click();
       // 参照先の外を指すパスは、その項目に誤りが出る
@@ -76,8 +89,12 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
       await page.getByRole("button", { name: "保存する" }).click();
       await until.url(page, /\/observer\/obs-\d{6}-[0-9a-z]{5}$/);
       await until.visible(page.getByRole("heading", { name: "一覧の応答時間" }));
-      await until.visible(page.getByRole("article", { name: "手順 1: curl で測る" }).getByText("測る項目: elapsed（数値・ms）"));
-      await until.visible(page.getByRole("article", { name: "手順 2: 性能テスト" }).getByText("uitest:test/perf.test.ts"));
+      await until.visible(page.getByRole("article", { name: "P1: curl で測る" }).getByText("elapsed（数値・ms）"));
+      await until.visible(page.getByRole("article", { name: "P2: 性能テスト" }).getByText("uitest:test/perf.test.ts"));
+      const p3view = page.getByRole("article", { name: "P3: 見た目" });
+      await until.visible(p3view.getByRole("listitem").filter({ hasText: "読み込み中の表示が残らないかを確かめる" }));
+      await until.visible(p3view.getByRole("region", { name: "P3: 見た目 の置き換え候補" }).getByText(/新規予定（まだ無い）/));
+      expect(await p3view.getByRole("button", { name: "スクリプトに切り替える" }).isDisabled()).toBe(true);
     });
     const id = new URL(page.url()).pathname.split("/").pop()!;
     await step("CLI で同じ ID・版・項目を読める", async () => {
@@ -93,9 +110,9 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
           { name: "ok", type: "boolean" },
         ],
         procedures: [
-          { kind: "command", command: "curl", args: ["-s", "http://localhost:4310/api/requests"], measures: ["elapsed"] },
-          { kind: "test", repo: "uitest", path: "test/perf.test.ts", measures: ["ok"] },
-          { kind: "ai-instruction", body: "一覧の読み込み中の表示が残らないかを確かめる", measures: [] },
+          { id: "P1", run: { kind: "command", command: "curl", args: ["-s", "http://localhost:4310/api/requests"] }, measures: ["elapsed"] },
+          { id: "P2", run: { kind: "test", repo: "uitest", path: "test/perf.test.ts" }, measures: ["ok"] },
+          { id: "P3", run: { kind: "ai-instruction", target: "要望の一覧の画面", steps: ["一覧を開く", "読み込み中の表示が残らないかを確かめる"], judge: "読み込み中の表示が残らない", record: "ok に結果を書く" }, replacement: { kind: "ui-script", repo: "repo", path: "test/ui/list.ui.test.ts" } },
         ],
       });
     });

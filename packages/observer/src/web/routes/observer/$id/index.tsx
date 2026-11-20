@@ -1,50 +1,57 @@
-import { Alert, Empty, Loading, buttonCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, buttonCls, Empty, Field, inputCls, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, type ObservationDefinition, type Procedure } from "../../../../shared/definition.ts";
-import { fetchDefinition } from "../../../lib/api.ts";
+import { useState } from "react";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type Procedure } from "../../../../shared/definition.ts";
+import { fetchDefinition, switchProcedure } from "../../../lib/api.ts";
+import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
+import { ProcedureView } from "../../../components/ProcedureView.tsx";
 
-/** /observer/<ID>: 観測の定義の詳細（項目・測定項目・確認の手順と、手順が測る項目） */
+/**
+ * /observer/<ID>: 観測の定義の詳細。観測内容・測定項目・確認の手順（今の実行方法・置き換え候補・ファイルの有無・切り替えの履歴）。
+ * 置き換え候補のスクリプトを用意して確かめたら、ここで切り替える（確かめた呼び出し方と結果を添える）
+ */
 export const Route = createFileRoute("/observer/$id/")({ component: DefinitionDetail });
 
 function DefinitionDetail() {
   const { id } = Route.useParams();
-  const load = useLoad(() => fetchDefinition(id), id);
+  const [tick, setTick] = useState(0);
+  const load = useLoad(() => fetchDefinition(id), `${id}:${tick}`);
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-5 py-8">
+    <div className="mx-auto max-w-4xl space-y-6 px-5 py-8">
       <Link to="/observer" className={linkCls}>
         ← 観測の一覧
       </Link>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
-      {load.kind === "ok" && <Detail d={load.value.definition} />}
+      {load.kind === "ok" && <Detail d={load.value.definition} reload={() => setTick((t) => t + 1)} />}
     </div>
   );
 }
 
-function Detail({ d }: { d: ObservationDefinition }) {
-  const measureOf = (name: string) => d.measures.find((m) => m.name === name);
+function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void }) {
+  const files = useFileStates(filesOf(d.procedures).map((f) => fileKey(f.repo, f.path)));
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
           <h1 className="text-2xl font-bold">{d.title}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {d.id}・版 {d.rev}・カテゴリ {d.category}
+          <p className="text-slate-600 dark:text-slate-400">
+            {d.category || "カテゴリ未設定"}・版 v{d.rev}・<span data-aux>{d.id}</span>
           </p>
         </div>
         <Link to="/observer/$id/edit" params={{ id: d.id }} className={buttonCls("primary")}>
-          編集
+          編集・AI に提案を頼む
         </Link>
-      </div>
-      <section aria-labelledby="desc-heading" className="space-y-1">
-        <h2 id="desc-heading" className="font-semibold">
+      </header>
+      <section aria-labelledby="desc-heading" className="space-y-2">
+        <h2 id="desc-heading" className="text-xl font-semibold">
           観測内容
         </h2>
         <p className="whitespace-pre-wrap">{d.description}</p>
       </section>
       <section aria-labelledby="m-heading" className="space-y-2">
-        <h2 id="m-heading" className="font-semibold">
+        <h2 id="m-heading" className="text-xl font-semibold">
           測定項目
         </h2>
         {d.measures.length === 0 ? (
@@ -53,7 +60,7 @@ function Detail({ d }: { d: ObservationDefinition }) {
           <ul className="space-y-1">
             {d.measures.map((m) => (
               <li key={m.name}>
-                <span className="font-mono">{m.name}</span>　{MEASURE_TYPE_LABEL[m.type]}
+                <code>{m.name}</code>　{MEASURE_TYPE_LABEL[m.type]}
                 {m.unit ? `（${m.unit}）` : ""}
                 {m.description ? `　${m.description}` : ""}
               </li>
@@ -61,56 +68,63 @@ function Detail({ d }: { d: ObservationDefinition }) {
           </ul>
         )}
       </section>
-      <section aria-labelledby="p-heading" className="space-y-2">
-        <h2 id="p-heading" className="font-semibold">
+      <section aria-labelledby="p-heading" className="space-y-3">
+        <h2 id="p-heading" className="text-xl font-semibold">
           確認の手順
         </h2>
         {d.procedures.length === 0 && <Empty>ありません。</Empty>}
-        {d.procedures.map((p, i) => (
-          <article key={i} aria-label={`手順 ${i + 1}: ${p.title}`} className="space-y-1 rounded border border-slate-200 p-3 dark:border-slate-800">
-            <h3 className="font-medium">
-              <span className="mr-2 rounded bg-slate-100 px-1.5 text-sm dark:bg-slate-800">{PROCEDURE_KIND_LABEL[p.kind]}</span>
-              {p.title}
-            </h3>
-            <ProcedureBody p={p} />
-            <p className="text-sm">
-              測る項目:{" "}
-              {p.measures.length === 0
-                ? "なし"
-                : p.measures.map((n) => {
-                    const m = measureOf(n);
-                    return `${n}（${m ? MEASURE_TYPE_LABEL[m.type] : "?"}${m?.unit ? `・${m.unit}` : ""}）`;
-                  }).join("、")}
-            </p>
-          </article>
+        {d.procedures.map((p) => (
+          <ProcedureView key={p.id} p={p} label={`${p.id}: ${p.title}`} measures={d.measures} files={files}>
+            {p.replacement && <SwitchForm d={d} p={p} ready={files[fileKey(p.replacement.repo, p.replacement.path)]?.state === "exists"} onDone={reload} />}
+          </ProcedureView>
         ))}
       </section>
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        作成 {d.createdAt} {d.createdBy}／更新 {d.updatedAt} {d.updatedBy}
+      <p className="text-slate-600 dark:text-slate-400" data-aux>
+        作成 {new Date(d.createdAt).toLocaleString()} {d.createdBy}／更新 {new Date(d.updatedAt).toLocaleString()} {d.updatedBy}
       </p>
     </>
   );
 }
 
-function ProcedureBody({ p }: { p: Procedure }) {
-  if (p.kind === "ai-instruction") return <p className="whitespace-pre-wrap">{p.body}</p>;
-  if (p.kind === "command")
+/** 置き換え候補のスクリプトに切り替える（ファイルが有ること・確かめた呼び出し方と結果が要る。今の版を添える） */
+function SwitchForm({ d, p, ready, onDone }: { d: ObservationDefinition; p: Procedure; ready: boolean; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [invoke, setInvoke] = useState(p.replacement?.invoke ?? "");
+  const [evidence, setEvidence] = useState("");
+  const [error, setError] = useState<string>();
+  if (!open)
     return (
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 text-sm">
-        <dt className="text-slate-500">コマンド</dt>
-        <dd className="font-mono break-all">{[p.command, ...p.args].join(" ")}</dd>
-        <dt className="text-slate-500">作業場所</dt>
-        <dd className="font-mono">{p.repo ? `${p.repo}:${p.cwd ?? "."}` : "決めない"}</dd>
-      </dl>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={() => setOpen(true)} disabled={!ready}>
+          スクリプトに切り替える
+        </Button>
+        {!ready && <span className="text-slate-600 dark:text-slate-400">用意するファイルが参照先の中に有ることを確かめられるまで切り替えられません</span>}
+      </div>
     );
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 text-sm">
-      <dt className="text-slate-500">ファイル</dt>
-      <dd className="font-mono break-all">
-        {p.repo}:{p.path}
-      </dd>
-      <dt className="text-slate-500">呼び出し方</dt>
-      <dd className="font-mono break-all">{p.invoke ?? "決めない"}</dd>
-    </dl>
+    <form
+      className="space-y-3"
+      aria-label={`${p.id} をスクリプトに切り替える`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        switchProcedure(d.id, p.id, d.rev, invoke, evidence).then(onDone, (x: Error) => setError(x.message));
+      }}
+    >
+      {error && <Alert box>{error}</Alert>}
+      <Field label="確かめた呼び出し方">
+        <input className={inputCls} value={invoke} onChange={(e) => setInvoke(e.target.value)} />
+      </Field>
+      <Field label="確かめた結果" hint="その呼び出し方で、同じ測定項目の値が出ることを確かめた内容">
+        <textarea className={inputCls} rows={3} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
+      </Field>
+      <div className="flex gap-3">
+        <Button type="submit" variant="primary">
+          切り替える
+        </Button>
+        <Button variant="cancel" onClick={() => setOpen(false)}>
+          やめる
+        </Button>
+      </div>
+    </form>
   );
 }

@@ -224,7 +224,7 @@ async function main(argv: string[]): Promise<number> {
   // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
   if (cmd === "observer") {
     const r = await observerCommand(args, {
-      target: { project: target.name, dataDir: target.dataDir },
+      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
       input: o.input,
@@ -232,6 +232,7 @@ async function main(argv: string[]): Promise<number> {
       category: o.category,
       body: o.body,
       rev: o.rev,
+      command: o.command,
       repo: o.repos,
       note: o.note,
       // 手順の提案だけ tasks のプロジェクトを開く（Codex の接続と参照先のこのマシンのパスを使う。tasks のデータは変えない）

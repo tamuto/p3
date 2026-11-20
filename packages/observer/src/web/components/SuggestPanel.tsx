@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { PROCEDURE_KIND_LABEL, type Procedure } from "../../shared/definition.ts";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type Measure, type Procedure } from "../../shared/definition.ts";
+import { useFileStates } from "../lib/files.ts";
+import { ProcedureView } from "./ProcedureView.tsx";
 import { MISSING_LABEL, SURFACE_LABEL, type SuggestionContext, type SuggestionJob } from "../../shared/suggestion.ts";
 import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { cancelSuggestion, fetchSuggestion, fetchSuggestionContext, listSuggestions, ObserverApiError, startSuggestion } from "../lib/api.ts";
@@ -17,7 +19,22 @@ const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
  * 依頼と結果は観測に残るので、読み直しや serve の再起動のあとも最新の提案を出す。実行していたプロセスが終わっていれば中断と出し、同じ入力で頼み直せる。
  * 提案の手順は「編集欄に取り込む」で手順の欄に足すだけ（保存は利用者の明示の操作）。今の版と違う版への提案は、確かめてから取り込む
  */
-export function SuggestPanel({ id, rev, material, onAdopt }: { id: string; rev: number; material: () => unknown; onAdopt: (p: Procedure) => void }) {
+export function SuggestPanel({
+  id,
+  rev,
+  material,
+  measures,
+  onAdopt,
+  onAdoptMeasure,
+}: {
+  id: string;
+  rev: number;
+  material: () => unknown;
+  /** 今の入力の測定項目（候補の名前の衝突と、手順の測る項目が揃っているかを見る） */
+  measures: Measure[];
+  onAdopt: (p: Procedure) => void;
+  onAdoptMeasure: (m: Measure) => void;
+}) {
   const [ctx, setCtx] = useState<SuggestionContext>();
   const [ctxError, setCtxError] = useState<string>();
   const [note, setNote] = useState("");
@@ -65,7 +82,9 @@ export function SuggestPanel({ id, rev, material, onAdopt }: { id: string; rev: 
       if (alive.current) setError([(e as Error).message, ...problems].join("\n"));
     }
   }
+  const measureNames = measures.map((m) => m.name);
   const stale = job?.basedOnRev !== undefined && job.basedOnRev !== rev;
+  const files = useFileStates(job?.result ? filesOf(job.result.procedures.map((p) => p.procedure)).map((f) => fileKey(f.repo, f.path)) : []);
 
   const running = job?.status === "running";
   return (
@@ -108,32 +127,48 @@ export function SuggestPanel({ id, rev, material, onAdopt }: { id: string; rev: 
       {job?.status === "completed" && job.result && (
         <div className="space-y-3" data-testid="suggestion">
           <p>
-            <span className="font-medium">操作面: {SURFACE_LABEL[job.result.surface]}</span>
-            <span className="ml-2 text-sm text-slate-500">（{job.engine}）</span>
+            <span className="font-semibold">操作面: {SURFACE_LABEL[job.result.surface]}</span>
+            <span className="ml-2 text-slate-600 dark:text-slate-400">（{job.engine}）</span>
           </p>
-          <p className="text-sm">根拠: {job.result.rationale}</p>
+          <p>根拠: {job.result.rationale}</p>
+          {job.result.measures.length > 0 && (
+            <section aria-label="測定項目の候補" className="space-y-2">
+              <h3 className="text-lg font-semibold">測定項目の候補</h3>
+              <ul className="space-y-2">
+                {job.result.measures.map((m) => {
+                  const taken = measureNames.includes(m.name);
+                  return (
+                    <li key={m.name} className="flex flex-wrap items-center gap-3">
+                      <span>
+                        <code>{m.name}</code>（{MEASURE_TYPE_LABEL[m.type]}
+                        {m.unit ? `・${m.unit}` : ""}）{m.description ? `　${m.description}` : ""}
+                      </span>
+                      <Button disabled={taken} onClick={() => onAdoptMeasure(m)}>
+                        {taken ? "同じ名前の測定項目があります" : "測定項目に取り込む"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           {job.result.procedures.map((p, i) => (
-            <article key={i} aria-label={`提案 ${i + 1}: ${p.procedure.title}`} className="space-y-1 rounded border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <h3 className="font-medium">
-                <span className="mr-2 rounded bg-slate-100 px-1.5 text-sm dark:bg-slate-800">{PROCEDURE_KIND_LABEL[p.procedure.kind]}</span>
-                {p.procedure.title}
-              </h3>
-              <p className="font-mono text-sm break-all">{summary(p.procedure)}</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400">根拠: {p.evidence}</p>
+            <ProcedureView key={i} p={p.procedure} label={`提案 ${i + 1}: ${p.procedure.title}`} measures={[...measures, ...(job.result?.measures ?? [])]} files={files}>
+              <p>根拠: {p.evidence}</p>
               <Button
-                disabled={adopted.includes(i)}
+                disabled={adopted.includes(i) || p.procedure.measures.some((n) => !measureNames.includes(n))}
                 onClick={() => {
                   if (stale && !window.confirm(`版 v${job.basedOnRev} への提案です。今の入力（v${rev}）に取り込みますか？`)) return;
                   onAdopt(p.procedure);
                   setAdopted([...adopted, i]);
                 }}
               >
-                {adopted.includes(i) ? "取り込みました" : "編集欄に取り込む"}
+                {adopted.includes(i) ? "取り込みました" : p.procedure.measures.some((n) => !measureNames.includes(n)) ? "測る項目を先に取り込んでください" : "編集欄に取り込む"}
               </Button>
-            </article>
+            </ProcedureView>
           ))}
           {job.result.missing.length > 0 && (
-            <div className="rounded border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950" data-testid="suggestion-missing">
+            <div className="rounded-md bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="suggestion-missing">
               <p className="font-medium">判断に足りない材料（補足に書くか、観測内容に足して頼み直す）</p>
               <ul className="list-disc pl-5">
                 {job.result.missing.map((m, i) => (
@@ -145,18 +180,12 @@ export function SuggestPanel({ id, rev, material, onAdopt }: { id: string; rev: 
             </div>
           )}
           {job.result.warnings.map((w) => (
-            <p key={w} className="text-sm text-amber-700">
+            <Alert key={w} warn>
               ⚠ {w}
-            </p>
+            </Alert>
           ))}
         </div>
       )}
     </section>
   );
-}
-
-function summary(p: Procedure): string {
-  if (p.kind === "command") return `${[p.command, ...p.args].join(" ")}${p.repo ? `（${p.repo}:${p.cwd ?? "."}）` : ""}`;
-  if (p.kind === "ai-instruction") return p.body;
-  return `${p.repo}:${p.path}${p.invoke ? `（${p.invoke}）` : ""}`;
 }

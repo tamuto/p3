@@ -1304,29 +1304,39 @@ p3 whoami                   # 同じ p3 で tasks も使える
 | --- | --- |
 | `title`・`category`・`description` | タイトル・カテゴリ・観測内容（何を観測するか）。タイトルと観測内容は必須、カテゴリは後から決めてよい |
 | `measures` | 測定項目（何を測定・記録するか）。`name`（英数字・`_`・`-`。手順から参照する）・`type`（`number` / `boolean` / `string`）・`unit`（数値だけ。`ms` など）・`description` |
-| `procedures` | 確認の手順（繰り返し確かめる方法）。種別 `kind` ごとに項目が違う。どの種別も `title` と、その手順で測る項目 `measures`（測定項目の `name` の配列） |
+| `procedures` | 確認の手順。`id`（P1, P2 …。保存のときに付く）・`title`・測る項目 `measures`・今の実行方法 `run`・置き換え候補 `replacement`（任意）・切り替えの履歴 `history`（保存の層が付ける） |
 
-| 種別（`kind`） | 項目 |
+手順は段取りで書く。確かめるスクリプト等がまだ無いあいだは、今の実行方法を「AI への指示」にして、AI か人がそのまま実行できる具体的なやることを書く。
+毎回同じ動作になり、結果も機械的に処理できるようになったら、置き換え候補にスクリプトの案を書き、別の作業でスクリプトを用意して確かめてから切り替える
+（切り替えで今の実行方法と呼び出し方が変わり、前の実行方法は履歴に残る）。
+
+| 今の実行方法（`run.kind`） | 項目 |
 | --- | --- |
-| `command`（コマンド） | `command`（実行名）・`args`（引数の配列）・`repo`（作業場所の参照先の名前。任意）・`cwd`（参照先の中の相対パス。任意） |
-| `test`（ユニットテスト）・`ui-script`（画面操作スクリプト） | `repo`（参照先の名前）・`path`（参照先の中の相対パス）・`invoke`（呼び出し方。任意） |
-| `ai-instruction`（AI への指示） | `body`（指示文） |
+| `ai-instruction`（AI への指示） | `premise`（前提。任意）・`target`（対象: 画面の URL・コマンド・ファイル）・`steps`（順に行う操作の配列）・`judge`（判定）・`record`（測定値の記録方法） |
+| `command`（コマンド） | `command`（実行名）・`args`（引数の配列）・`repo`（作業場所の参照先。任意）・`cwd`（参照先の中の相対パス。任意） |
+| `test`・`ui-script`・`script`（ユニットテスト・画面操作スクリプト・スクリプト） | `repo`（参照先の名前）・`path`（参照先の中の相対パス。**既にあるファイルだけ**）・`invoke`（呼び出し方。任意） |
 
-繰り返し確かめるので、できるだけコマンドかテストにする。画面の操作はスクリプト、汎用の確認は AI への指示で書く。
+置き換え候補（`replacement`）は `kind`（`test` / `ui-script` / `script`）・`repo`・`path`（用意するファイル。まだ無くてよい）・`operation`（そこで再現する操作）・
+`output`（測定値の出力形式）・`compare`（同じ入力で結果を比べる条件）・`switchWhen`（切り替えの条件）・`invoke`（呼び出し方の案。任意）。
+ファイルの有無（既にある・新規予定・未確認）は、AI の出力とは別に P3 が参照先の中で照らして画面と `show` に出す。参照先の中にまだ無いファイル（新規予定）を
+今の実行方法にすると、保存のときに断る（置き換え候補に書く）。
 
 CLI では JSON（`--input <ファイル>`、`-` で標準入力）か、`--title`・`--category`・`--body`（観測内容）で渡す:
 
 ```bash
 cat > obs.json <<'JSON'
 {
-  "title": "一覧 API の応答時間",
-  "category": "性能",
-  "description": "要望の一覧 API が 200ms 以内に返るかを見る",
-  "measures": [{ "name": "elapsed", "type": "number", "unit": "ms" }, { "name": "ok", "type": "boolean" }],
-  "procedures": [
-    { "kind": "command", "title": "curl で測る", "command": "curl", "args": ["-s", "http://localhost:4310/api/requests"], "measures": ["elapsed"] },
-    { "kind": "test", "title": "性能テスト", "repo": "app", "path": "test/perf.test.ts", "invoke": "pnpm vitest run test/perf.test.ts", "measures": ["ok"] }
-  ]
+  "title": "一覧の表示",
+  "description": "要望の一覧が出るか",
+  "measures": [{ "name": "ok", "type": "boolean" }],
+  "procedures": [{
+    "title": "一覧を開く", "measures": ["ok"],
+    "run": { "kind": "ai-instruction", "premise": "p3 serve を起動しておく", "target": "http://localhost:4310/",
+             "steps": ["一覧を開く", "読み込み中の表示が消えるのを待つ"], "judge": "要望の一覧が出る", "record": "ok に出たかを書く" },
+    "replacement": { "kind": "ui-script", "repo": "app", "path": "test/ui/list.ui.test.ts", "operation": "一覧を開いて表示を待つ",
+                     "output": "{\"ok\": true} を JSON で出す", "compare": "同じデータで2回とも同じ値", "switchWhen": "スクリプトで同じ判定が出たとき",
+                     "invoke": "pnpm vitest run -c vitest.ui.config.ts test/ui/list.ui.test.ts" }
+  }]
 }
 JSON
 p3 observer add --input obs.json                    # 作成しました: obs-261120-k7m3x（v1）
@@ -1334,7 +1344,13 @@ p3 observer list                                    # 一覧（ID・版・カテ
 p3 observer show obs-261120-k7m3x --json > cur.json # 今の定義（ID・版 rev・記録つき）
 p3 observer update obs-261120-k7m3x --input cur.json        # 編集した JSON で更新（中の rev を今の版として添える）
 p3 observer update obs-261120-k7m3x --rev 2 --category 速度  # --input を省くと今の定義に重ねる（--rev は必須）
+# 置き換え候補のスクリプトを用意して確かめたら切り替える（ファイルが参照先の中に有ること・今の版・確かめた呼び出し方と結果が要る）
+p3 observer switch obs-261120-k7m3x P1 --rev 3 --command "pnpm vitest run -c vitest.ui.config.ts test/ui/list.ui.test.ts" --body "2回とも ok: true"
 ```
+
+画面では、観測の詳細の「スクリプトに切り替える」で、確かめた呼び出し方と結果を書いて切り替える（ファイルが有ると確かめられるまで押せない）。
+前の形（形の版 1。手順に `kind` を直に持つ）で保存した定義と提案は、今の形で読む（AI への指示の本文は「順に行う操作」に入り、足りない項目は「（未記入）」）。
+次に保存したときに今の形（形の版 2）で書く。
 
 更新には今の版（`rev`）を添える。ほかで更新されていれば終了コード 3（競合）で断り、記録は変えない（`show` で読み直してやり直す）。
 入力の誤りは、項目の場所（`measures[0].unit` など）ごとに理由を出して終了コード 1。見つからない ID は 2。

@@ -1,4 +1,4 @@
-import type { DefinitionInput, DefinitionProblem, ObservationDefinition } from "../../shared/definition.ts";
+import type { DefinitionInput, DefinitionProblem, FileState, ObservationDefinition } from "../../shared/definition.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
 import { observerScope } from "./scope.ts";
@@ -51,6 +51,10 @@ const def = (id: string) => `${project().apiBase}/definitions/${encodeURICompone
 export const fetchDraft = (id: string) => call<{ draft: DraftRecord | null }>(`${def(id)}/draft`, { headers: project().headers });
 export const saveDraft = (id: string, version: number | null, basedOnRev: number, input: unknown) =>
   call<DraftRecord>(`${def(id)}/draft`, { method: "PUT", headers: project().headers, body: JSON.stringify({ version, basedOnRev, input }) });
+export const fetchFiles = (keys: string[]) =>
+  call<{ files: Record<string, { state: FileState; checkedAt: string }> }>(`${project().apiBase}/files?${keys.map((k) => `ref=${encodeURIComponent(k)}`).join("&")}`, { headers: project().headers });
+export const switchProcedure = (id: string, pid: string, rev: number, invoke: string, evidence: string) =>
+  call<ObservationDefinition>(`${def(id)}/procedures/${pid}/switch`, { method: "POST", headers: project().headers, body: JSON.stringify({ rev, invoke, evidence }) });
 export const fetchSuggestionContext = () => call<SuggestionContext>(`${project().apiBase}/suggestions/context`, { headers: project().headers });
 export const listSuggestions = (id: string) => call<{ suggestions: SuggestionJob[] }>(`${def(id)}/suggestions`, { headers: project().headers });
 export const startSuggestion = (id: string, body: { definition: unknown; note?: string; basedOnRev: number }) =>

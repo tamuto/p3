@@ -46,7 +46,7 @@ P3 を Docker のコンテナで動かすこともできる（[導入ガイド: 
 
 観測基盤 **p3-observer**（試作。今は観測の定義の登録だけ）も同じ `p3` に入っている。`p3 serve` は常に tasks と observer の両方を起動し、
 画面のナビゲーションで行き来する（[使い方: 製品](docs/how-to-use.md#製品tasks-と-observer)・[設計: p3-observer](docs/architecture.md#p3-observer)）。
-観測の定義はタイトルと観測内容で先に保存して ID を付け、測定項目・確認の手順・AI への提案の依頼をその ID で続ける（入力と提案は観測に残り、落ちても戻る）。CLI（`p3 observer add`・`suggest <ID>` など）と画面の「観測」の両方で使える
+観測の定義はタイトルと観測内容で先に保存して ID を付け、測定項目・確認の手順・AI への提案の依頼をその ID で続ける（入力と提案は観測に残り、落ちても戻る）。確認の手順は、スクリプトが無いあいだは AI への具体的な指示で確かめ、安定したらスクリプトに切り替える段取りで書く（[使い方: 観測の定義を登録する](docs/how-to-use.md#観測の定義を登録する)に移行と置き換えの例）。CLI（`p3 observer add`・`suggest <ID>`・`switch` など）と画面の「観測」の両方で使える
 （[使い方: 観測の定義を登録する](docs/how-to-use.md#観測の定義を登録する)・[保存の仕様: 設計 p3-observer の「観測の定義の保存」](docs/architecture.md#p3-observer)）。
 入力中の定義から AI に確認の手順を提案してもらうこともできる（CLI の `p3 observer suggest`・画面の「AI に手順を提案してもらう」。操作例と AI に渡す材料は
 [使い方: AI に確認の手順を提案してもらう](docs/how-to-use.md#ai-に確認の手順を提案してもらう)）。

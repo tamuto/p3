@@ -24,6 +24,8 @@ export const AI_MANIFEST = {
     { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
     { method: "GET", path: "/api/observer/definitions/:id/draft", desc: "観測の編集途中の入力 {draft: {version, basedOnRev, input, savedAt} | null}。PUT {version: 読んだ版か null, basedOnRev, input} で保存（版が違えば 409）" },
     { method: "POST", path: "/api/observer/definitions/:id/suggestions", desc: "保存した観測に手順の提案を頼む {definition: 頼むときの入力, note, basedOnRev}。依頼を観測に残してから始める（202）。GET で履歴（新しい順。中断は interrupted）、GET .../:sid で1件、POST .../:sid/cancel で取り消す" },
+    { method: "POST", path: "/api/observer/definitions/:id/procedures/:pid/switch", desc: "手順を置き換え候補のスクリプトに切り替える {rev, invoke, evidence}。ファイルが参照先の中に有ること・今の版が要る。前の実行方法は history に残る" },
+    { method: "GET", path: "/api/observer/files", desc: "ファイルの有無 ?ref=<参照先>:<パス>（繰り返せる）→ {files: {<参照先>:<パス>: {state: exists|planned|unverified, checkedAt}}}" },
     { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },
     { method: "POST", path: "/api/observer/suggestions", desc: "ID の無い互換の経路: 未保存の入力から確認の手順の提案を始める（本文 {definition, note}）。202 で実行 {id, status}。保存しない（このプロセスの中だけ）" },
     { method: "GET", path: "/api/observer/suggestions/:id", desc: "提案の実行 {status: running|completed|failed|cancelled, result: {surface, rationale, procedures: [{procedure, evidence}], missing, warnings}, failure, error}" },

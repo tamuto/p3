@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { DefinitionError } from "./definitionStore.ts";
-import type { SuggestionJob } from "../shared/suggestion.ts";
+import { migrateSuggestion, type SuggestionJob } from "../shared/suggestion.ts";
 
 /**
  * 観測ごとの作業の記録（docs/architecture.md「p3-observer」）。確定した定義（observer/definitions/）とは別に、観測の ID に結び付けて
@@ -87,7 +87,8 @@ export class WorkStore {
   /** 1件。実行していたプロセスが終わっていれば interrupted と読む */
   async getSuggestion(id: string, sid: string): Promise<SuggestionJob | undefined> {
     if (!/^sg-[0-9a-f]{12}$/.test(sid)) return undefined;
-    const j = await this.read<SuggestionJob>(join(this.dir(id), "suggestions", `${sid}.json`));
+    const raw = await this.read<SuggestionJob>(join(this.dir(id), "suggestions", `${sid}.json`));
+    const j = raw && migrateSuggestion(raw);
     return j && (j.status === "running" && !alive(j.owner) ? { ...j, status: "interrupted", error: "実行していたプロセスが終わっています（中断）。同じ入力で頼み直せます" } : j);
   }
 
