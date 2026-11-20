@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { FILE_KINDS, FILE_STATE_LABEL, fileKey, RUN_KIND_LABEL, RUN_KINDS, type FileKind, type FileState, type RunKind } from "../../shared/definition.ts";
-import type { ProcedureDraft, ReplacementDraft, RunDraft } from "../lib/formDraft.ts";
+import type { ExecDraft, ProcedureDraft, ReplacementDraft, RunDraft } from "../lib/formDraft.ts";
 
 /**
  * 確認の手順1つの入力欄。今の実行方法（スクリプトが無いあいだは AI への指示: 前提・対象・順に行う操作・判定・測定値の記録方法）と、
@@ -24,6 +25,43 @@ export function ProcedureEditor({
   onRemove: () => void;
 }) {
   const at = `procedures[${i}]`;
+  return (
+    <fieldset aria-label={`手順 ${i + 1}`} className="space-y-4 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <Field label={`手順の名前${p.id ? `（${p.id}）` : ""}`} error={err(`${at}.title`)}>
+          <input className={inputCls} value={p.title} aria-invalid={!!err(`${at}.title`)} onChange={(e) => onChange({ ...p, title: e.target.value })} />
+        </Field>
+        <div className="flex items-end">
+          <Button onClick={onRemove}>この手順を外す</Button>
+        </div>
+      </div>
+      <ExecutableEditor
+        e={p}
+        at={at}
+        err={err}
+        files={files}
+        onChange={(x) => onChange({ ...p, ...x })}
+        measures={
+          <div role="group" aria-label={`手順 ${i + 1} で測る項目`} className="space-y-1">
+            <span className="font-medium text-slate-700 dark:text-slate-300">この手順で測る項目</span>
+            {measureNames.length === 0 && <p className="text-slate-500">測定項目を先に足してください。</p>}
+            <div className="flex flex-wrap gap-3">
+              {measureNames.map((name) => (
+                <label key={name} className="flex items-center gap-1">
+                  <input type="checkbox" checked={p.measures.includes(name)} onChange={(e) => onChange({ ...p, measures: e.target.checked ? [...p.measures, name] : p.measures.filter((x) => x !== name) })} />
+                  {name}
+                </label>
+              ))}
+            </div>
+          </div>
+        }
+      />
+    </fieldset>
+  );
+}
+
+/** 実行できるもの1つの入力欄（手順と準備の確かめ・前処理・後処理で共通）。measures は今の実行方法と置き換え候補の間に置く欄 */
+export function ExecutableEditor({ e: p, at, err, files, onChange, measures }: { e: ExecDraft; at: string; err: (path: string) => string | undefined; files: Record<string, { state: FileState }>; onChange: (e: ExecDraft) => void; measures?: ReactNode }) {
   const run = (patch: Partial<RunDraft>) => onChange({ ...p, run: { ...p.run, ...patch } });
   const rep = (patch: Partial<ReplacementDraft>) => onChange({ ...p, replacement: { ...p.replacement, ...patch } });
   const state = (repo: string, path: string) => {
@@ -41,13 +79,7 @@ export function ProcedureEditor({
   );
   const r = p.run;
   return (
-    <fieldset aria-label={`手順 ${i + 1}`} className="space-y-4 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        {text(`手順の名前${p.id ? `（${p.id}）` : ""}`, `${at}.title`, p.title, (v) => onChange({ ...p, title: v }))}
-        <div className="flex items-end">
-          <Button onClick={onRemove}>この手順を外す</Button>
-        </div>
-      </div>
+    <>
       <div className="space-y-3">
         <Field label="今の実行方法" error={err(`${at}.run.kind`)}>
           <select className={inputCls} value={r.kind} onChange={(e) => run({ kind: e.target.value as RunKind })}>
@@ -83,18 +115,7 @@ export function ProcedureEditor({
           </div>
         )}
       </div>
-      <div role="group" aria-label={`手順 ${i + 1} で測る項目`} className="space-y-1">
-        <span className="font-medium text-slate-700 dark:text-slate-300">この手順で測る項目</span>
-        {measureNames.length === 0 && <p className="text-slate-500">測定項目を先に足してください。</p>}
-        <div className="flex flex-wrap gap-3">
-          {measureNames.map((name) => (
-            <label key={name} className="flex items-center gap-1">
-              <input type="checkbox" checked={p.measures.includes(name)} onChange={(e) => onChange({ ...p, measures: e.target.checked ? [...p.measures, name] : p.measures.filter((x) => x !== name) })} />
-              {name}
-            </label>
-          ))}
-        </div>
-      </div>
+      {measures}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-medium text-slate-700 dark:text-slate-300">置き換え候補（毎回同じ動作で、結果を機械的に処理できるようになったら用意するスクリプト）</span>
@@ -121,6 +142,6 @@ export function ProcedureEditor({
           </div>
         )}
       </div>
-    </fieldset>
+    </>
   );
 }

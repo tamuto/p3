@@ -1,11 +1,12 @@
-import { Alert, Button, buttonCls, Empty, Field, inputCls, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, buttonCls, Empty, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type Procedure } from "../../../../shared/definition.ts";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition } from "../../../../shared/definition.ts";
 import { fetchDefinition, switchProcedure } from "../../../lib/api.ts";
 import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
 import { ProcedureView } from "../../../components/ProcedureView.tsx";
+import { SwitchForm } from "../../../components/SwitchForm.tsx";
 
 /**
  * /observer/<ID>: 観測の定義の詳細。観測内容・測定項目・確認の手順（今の実行方法・置き換え候補・ファイルの有無・切り替えの履歴）。
@@ -81,7 +82,9 @@ function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void })
         {d.procedures.length === 0 && <Empty>ありません。</Empty>}
         {d.procedures.map((p) => (
           <ProcedureView key={p.id} p={p} label={`${p.id}: ${p.title}`} measures={d.measures} files={files}>
-            {p.replacement && <SwitchForm d={d} p={p} ready={files[fileKey(p.replacement.repo, p.replacement.path)]?.state === "exists"} onDone={reload} />}
+            {p.replacement && (
+              <SwitchForm label={p.id} replacement={p.replacement} files={files} onSwitch={(invoke, evidence) => switchProcedure(d.id, p.id, d.rev, invoke, evidence)} onDone={reload} />
+            )}
           </ProcedureView>
         ))}
       </section>
@@ -89,48 +92,5 @@ function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void })
         作成 {new Date(d.createdAt).toLocaleString()} {d.createdBy}／更新 {new Date(d.updatedAt).toLocaleString()} {d.updatedBy}
       </p>
     </>
-  );
-}
-
-/** 置き換え候補のスクリプトに切り替える（ファイルが有ること・確かめた呼び出し方と結果が要る。今の版を添える） */
-function SwitchForm({ d, p, ready, onDone }: { d: ObservationDefinition; p: Procedure; ready: boolean; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [invoke, setInvoke] = useState(p.replacement?.invoke ?? "");
-  const [evidence, setEvidence] = useState("");
-  const [error, setError] = useState<string>();
-  if (!open)
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={() => setOpen(true)} disabled={!ready}>
-          スクリプトに切り替える
-        </Button>
-        {!ready && <span className="text-slate-600 dark:text-slate-400">用意するファイルが参照先の中に有ることを確かめられるまで切り替えられません</span>}
-      </div>
-    );
-  return (
-    <form
-      className="space-y-3"
-      aria-label={`${p.id} をスクリプトに切り替える`}
-      onSubmit={(e) => {
-        e.preventDefault();
-        switchProcedure(d.id, p.id, d.rev, invoke, evidence).then(onDone, (x: Error) => setError(x.message));
-      }}
-    >
-      {error && <Alert box>{error}</Alert>}
-      <Field label="確かめた呼び出し方">
-        <input className={inputCls} value={invoke} onChange={(e) => setInvoke(e.target.value)} />
-      </Field>
-      <Field label="確かめた結果" hint="その呼び出し方で、同じ測定項目の値が出ることを確かめた内容">
-        <textarea className={inputCls} rows={3} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
-      </Field>
-      <div className="flex gap-3">
-        <Button type="submit" variant="primary">
-          切り替える
-        </Button>
-        <Button variant="cancel" onClick={() => setOpen(false)}>
-          やめる
-        </Button>
-      </div>
-    </form>
   );
 }

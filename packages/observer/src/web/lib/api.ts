@@ -1,4 +1,5 @@
 import type { DefinitionInput, DefinitionProblem, FileState, ObservationDefinition } from "../../shared/definition.ts";
+import type { Preparation, Slot } from "../../shared/preparation.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
 import { observerScope } from "./scope.ts";
@@ -10,7 +11,7 @@ export class ObserverApiError extends Error {
     readonly status: number,
     readonly code?: string,
     readonly problems: DefinitionProblem[] = [],
-    readonly current?: ObservationDefinition,
+    readonly current?: { rev: number },
   ) {
     super(message);
   }
@@ -23,7 +24,7 @@ export interface DefinitionListing {
 
 async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init, headers: { "content-type": "application/json", ...(init.headers as Record<string, string> | undefined) } });
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string; problems?: DefinitionProblem[]; current?: ObservationDefinition };
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string; problems?: DefinitionProblem[]; current?: { rev: number } };
   if (!res.ok) throw new ObserverApiError(data.error ?? `${res.status} ${res.statusText}`, res.status, data.code, data.problems ?? [], data.current);
   return data;
 }
@@ -61,3 +62,16 @@ export const startSuggestion = (id: string, body: { definition: unknown; note?: 
   call<SuggestionJob>(`${def(id)}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
 export const fetchSuggestion = (id: string, sid: string) => call<SuggestionJob>(`${def(id)}/suggestions/${sid}`, { headers: project().headers });
 export const cancelSuggestion = (id: string, sid: string) => call<{ cancelled: boolean }>(`${def(id)}/suggestions/${sid}/cancel`, { method: "POST", headers: project().headers });
+
+export interface PreparationDetail {
+  preparation: Preparation;
+  usedBy: { definitions: { id: string; title: string; rev: number }[]; unreadable: DefinitionListing["unreadable"] };
+}
+const prep = (id = "") => `${project().apiBase}/preparations${id ? `/${encodeURIComponent(id)}` : ""}`;
+export const fetchPreparations = () => call<{ items: Preparation[]; unreadable: DefinitionListing["unreadable"] }>(prep(), { headers: project().headers });
+export const fetchPreparation = (id: string) => call<PreparationDetail>(prep(id), { headers: project().headers });
+export const createPreparation = (input: unknown) => call<Preparation>(prep(), { method: "POST", headers: project().headers, body: JSON.stringify(input) });
+export const updatePreparation = (id: string, rev: number, input: unknown) => call<Preparation>(prep(id), { method: "PUT", headers: project().headers, body: JSON.stringify({ rev, preparation: input }) });
+export const deletePreparation = (id: string, rev: number) => call<{ deleted: string }>(`${prep(id)}?rev=${rev}`, { method: "DELETE", headers: project().headers });
+export const switchSlot = (id: string, slot: Slot, rev: number, invoke: string, evidence: string) =>
+  call<Preparation>(`${prep(id)}/${slot}/switch`, { method: "POST", headers: project().headers, body: JSON.stringify({ rev, invoke, evidence }) });

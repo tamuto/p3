@@ -88,6 +88,8 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   observer suggest --input …   ID の無い互換の経路（未保存の入力に頼んで出すだけ。保存しない）
   observer switch <ID> <P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>
                                手順を置き換え候補のスクリプトに切り替える（ファイルが参照先の中に有ることが要る。前の実行方法は履歴に残る）
+  observer prep list | show | add | update | switch | rm   準備（観測の前後で状態を作る・戻すもの）の一覧・詳細・作成・更新・切り替え・削除
+                               add / update は --input か --title <名前>・--body <説明>。switch は <準備 ID> <check|setup|teardown>。rm は使う観測が無いときだけ
                                --json で product・version・state・dataDir（今は何も保存しないので null）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す

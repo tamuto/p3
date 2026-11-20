@@ -135,14 +135,14 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-500 dark:border-slate-700">{children}</p>;
 }
 
-/** 失敗・注意の知らせ（支援技術にも伝える）。box は枠の中に、warn は注意の色で出す */
+/** 失敗・注意の知らせ（支援技術にも伝える）。box は枠の中に、warn は注意の色で出す。中に一覧なども置ける */
 export function Alert({ children, box, warn, className }: { children: ReactNode; box?: boolean; warn?: boolean; className?: string }) {
   const tone = warn ? "text-amber-800 dark:text-amber-300" : box ? "text-rose-800 dark:text-rose-300" : "text-rose-600";
   const frame = box && (warn ? "rounded-md bg-amber-50 px-3 py-2 dark:bg-amber-950" : "rounded-md bg-rose-50 px-3 py-2 dark:bg-rose-950");
   return (
-    <p role="alert" className={cx("text-base break-words whitespace-pre-wrap", tone, frame, className)}>
+    <div role="alert" className={cx("text-base break-words whitespace-pre-wrap", tone, frame, className)}>
       {children}
-    </p>
+    </div>
   );
 }
 

@@ -1,11 +1,31 @@
-import type { ReactNode } from "react";
-import { FILE_STATE_LABEL, fileKey, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, type FileState, type Measure, type Procedure } from "../../shared/definition.ts";
+import { Fragment, type ReactNode } from "react";
+import { FILE_STATE_LABEL, fileKey, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, type Executable, type FileState, type Measure, type Procedure } from "../../shared/definition.ts";
 
 /**
  * 確認の手順1つの表示（観測の詳細と AI の提案で共通）。今の実行方法・測る項目・置き換え候補・切り替えの履歴を見出しとラベルで分け、
  * ファイルには参照先の中での有無（既にある・新規予定・未確認）と確認した時刻を添える
  */
-export function ProcedureView({ p, label, measures, files, children }: { p: Procedure; label: string; measures: Measure[]; files: Record<string, { state: FileState; checkedAt: string }>; children?: ReactNode }) {
+type FileStates = Record<string, { state: FileState; checkedAt: string }>;
+
+export function ProcedureView({ p, label, measures, files, children }: { p: Procedure; label: string; measures: Measure[]; files: FileStates; children?: ReactNode }) {
+  const measureOf = (n: string) => measures.find((m) => m.name === n);
+  const text = p.measures.length
+    ? p.measures
+        .map((n) => {
+          const m = measureOf(n);
+          return `${n}（${m ? MEASURE_TYPE_LABEL[m.type] : "?"}${m?.unit ? `・${m.unit}` : ""}）`;
+        })
+        .join("、")
+    : "なし";
+  return (
+    <ExecutableView e={p} label={label} files={files} rows={[["測る項目", text]]}>
+      {children}
+    </ExecutableView>
+  );
+}
+
+/** 実行できるもの1つの表示（手順と準備の確かめ・前処理・後処理で共通）。rows は今の実行方法の後に足す行 */
+export function ExecutableView({ e: p, label, files, rows = [], children }: { e: Executable; label: string; files: FileStates; rows?: [string, ReactNode][]; children?: ReactNode }) {
   const r = p.run;
   const file = (repo: string, path: string) => {
     const f = files[fileKey(repo, path)];
@@ -24,7 +44,6 @@ export function ProcedureView({ p, label, measures, files, children }: { p: Proc
       <dd className="min-w-0 break-words">{value}</dd>
     </>
   );
-  const measureOf = (n: string) => measures.find((m) => m.name === n);
   return (
     <article aria-label={label} className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
       <h3 className="text-lg font-semibold">
@@ -60,17 +79,9 @@ export function ProcedureView({ p, label, measures, files, children }: { p: Proc
             {row("呼び出し方", r.invoke ? <code className="break-all">{r.invoke}</code> : "決めない")}
           </>
         )}
-        {row(
-          "測る項目",
-          p.measures.length
-            ? p.measures
-                .map((n) => {
-                  const m = measureOf(n);
-                  return `${n}（${m ? MEASURE_TYPE_LABEL[m.type] : "?"}${m?.unit ? `・${m.unit}` : ""}）`;
-                })
-                .join("、")
-            : "なし",
-        )}
+        {rows.map(([t, v]) => (
+          <Fragment key={t}>{row(t, v)}</Fragment>
+        ))}
       </dl>
       {p.replacement && (
         <section aria-label={`${label} の置き換え候補`} className="space-y-1 rounded-md bg-indigo-50 p-3 dark:bg-indigo-950/40">

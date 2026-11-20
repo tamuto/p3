@@ -6,6 +6,7 @@ import { useFileStates } from "../lib/files.ts";
 import { ProcedureEditor } from "./ProcedureEditor.tsx";
 import { ObserverApiError, saveDraft, type DraftRecord } from "../lib/api.ts";
 import { SuggestPanel } from "./SuggestPanel.tsx";
+import { SaveProblems } from "./SaveProblems.tsx";
 
 /**
  * 観測の定義の入力欄（編集の画面）。保存の前に共通の検証（shared/definition.ts）で項目ごとの誤りを出し、保存の応答の誤り（API の problems）も
@@ -67,7 +68,7 @@ export function DefinitionForm({
   const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? draftOf(saved.input) : toDraft(initial)));
   const status = useDraftSave(id, rev, draft, saved);
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
-  const [error, setError] = useState<{ message: string; conflict?: ObservationDefinition }>();
+  const [error, setError] = useState<{ message: string; conflict?: { rev: number } }>();
   const [saving, setSaving] = useState(false);
   const err = (path: string) => problems.find((p) => p.path === path)?.message;
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -112,21 +113,7 @@ export function DefinitionForm({
         <p role="status" className="text-slate-600 dark:text-slate-400">
           {status.text}
         </p>
-      {(problems.length > 0 || error) && (
-        <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-          {error && <p>保存できませんでした: {error.message}</p>}
-          {error?.conflict && <p>入力は残しています。ページを読み直すと今の定義（版 {error.conflict.rev}）を開けます。</p>}
-          {problems.length > 0 && (
-            <ul className="list-disc pl-5">
-              {problems.map((p) => (
-                <li key={`${p.path}:${p.message}`}>
-                  {p.path || "全体"}: {p.message}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        <SaveProblems problems={problems} error={error} />
       </div>
 
       <section aria-labelledby="items-heading" className="space-y-3 lg:col-start-1 lg:row-start-2">

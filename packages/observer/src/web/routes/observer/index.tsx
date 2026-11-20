@@ -3,14 +3,19 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { fetchDefinitions, type DefinitionListing } from "../../lib/api.ts";
 import { useLoad } from "../../lib/useLoad.ts";
 
-/** /observer: このプロジェクトの観測の定義の一覧（詳細への導線。登録は共通のツールバーの「新しい観測」から）。observer の API だけを読む */
+/** /observer: このプロジェクトの観測の定義の一覧（詳細と準備の一覧への導線。登録は共通のツールバーの「新しい観測」から）。observer の API だけを読む */
 export const Route = createFileRoute("/observer/")({ component: DefinitionList });
 
 function DefinitionList() {
   const load = useLoad<DefinitionListing>(fetchDefinitions);
   return (
     <div className="w-full space-y-2 px-4 py-3 sm:px-6 lg:px-8">
-      <h1 className="text-xl font-bold">観測</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold">観測</h1>
+        <Link to="/observer/preparations" className={linkCls}>
+          準備（観測の前後で状態を作る・戻すもの）
+        </Link>
+      </div>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (
