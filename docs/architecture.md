@@ -959,7 +959,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
   置き換える（kit の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
   更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
 - 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
-- 画面: 入口の Boot が対象を決め（`web/lib/scope.ts` に API の基点・登録世代のヘッダー・プロジェクトを渡す）、observer の画面はそれだけを使う。
+- 画面: 入口の Boot が tasks と同じ対象で observer の API の基点と登録世代のヘッダーを決め（`web/lib/scope.ts`）、observer の画面はそれだけを使う。
   プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
 
 **手順の提案**
@@ -994,11 +994,10 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
   返す一覧と実際のルートを一致させる）
 - API: `/api/observer`（observer の `server/api/routes.ts`）は tasks の API（`/api` の下の 404 の JSON）より先に付ける。無い API は画面の HTML を
   成功として返さず 404 の JSON にする
-- 画面: 観測の画面（observer の `web/routes/observer/`）は、プロジェクトの URL の基点の下の `/observer`（通常の serve は `/observer`、プロジェクトを
-  跨ぐ serve は `/projects/<名前>/observer`）。Boot はそこでは `AppDataProvider`（tasks のプロジェクト情報・設定・イベント）を作らない（`web/shell.ts` の
-  `tasks`）。プロジェクトを跨ぐ serve の `/observer`（プロジェクトを選んでいない）は、プロジェクトを選ぶ一覧を出す
-- ナビゲーション: tasks の画面に「観測基盤」を出し（同じプロジェクトの観測の一覧へ）、observer の画面からは同じプロジェクトの tasks の各ページ
-  （プロジェクトを選んでいなければプロジェクトの選択 `/`）へ戻る。製品の間の移動はページごと移り、前の製品の取得・通知を持ち越さない
+- 画面: 観測のページ（observer の `web/routes/observer/`）は tasks のページと同じルーター・同じ外枠（`routes/__root.tsx` の Layout。プロジェクト名・
+  プロジェクトの切り替え・再読み込み）・同じ対象で出す。URL はプロジェクトの URL の基点の下の `/observer`（プロジェクトを跨ぐ serve は
+  `/projects/<名前>/observer`）。観測のページだけの外枠や分岐は持たない
+- ナビゲーション: 進捗・観測・リリースノート・開発の指標・設定の順（ルーターの中の移動）
 - 共通の資材: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含む
 
 **できること・できないこと（モジュラー化の範囲）**

@@ -13,12 +13,17 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
   it("画面で登録・編集し、CLI と同じ定義を読む。古い版の保存は断る", async () => {
     s = await openScenario("観測の定義");
     const { page, step, env } = s;
-    await step("観測の一覧から登録の画面を開き、登録先が出る", async () => {
-      await page.goto("/observer");
+    await step("ナビゲーションの「観測」から一覧を開き、登録の画面へ移る。外枠（プロジェクト名）は tasks と同じ", async () => {
+      await page.goto("/");
+      const nav = page.getByRole("banner").getByRole("navigation");
+      await until.visible(nav.getByRole("link", { name: "進捗" }));
+      expect(await nav.getByRole("link").allInnerTexts()).toEqual(["進捗", "観測", "リリースノート", "開発の指標", "設定"]);
+      await nav.getByRole("link", { name: "観測" }).click();
+      await until.url(page, /\/observer$/);
+      await until.visible(page.getByRole("banner").getByText("uitest"));
       await until.visible(page.getByText("まだ観測の定義がありません。"));
       await page.getByRole("link", { name: "＋ 観測を登録" }).click();
       await until.url(page, /\/observer\/new$/);
-      await until.text(page.getByTestId("observer-target"), /登録先: プロジェクト uitest/);
     });
     await step("必須の項目が空・単位の誤り・定義に無い測定項目は、該当する項目に誤りが出て保存しない", async () => {
       await page.getByRole("button", { name: "登録する" }).click();

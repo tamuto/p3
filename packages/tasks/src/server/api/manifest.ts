@@ -18,8 +18,8 @@ export const AI_MANIFEST = {
   endpoints: [
     { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects, products: この serve の製品（常に tasks・observer の両方）}" },
     { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。どの serve でも使える" },
-    { method: "GET", path: "/api/observer/definitions", desc: "観測の定義の一覧 {target: 登録先（project・dataDir・dir）, definitions, unreadable（読めないファイルと理由）}。プロジェクトを跨ぐ serve では /api/projects/<名前>/observer/definitions" },
-    { method: "GET", path: "/api/observer/definitions/:id", desc: "観測の定義 {target, definition}" },
+    { method: "GET", path: "/api/observer/definitions", desc: "観測の定義の一覧 {definitions, unreadable（読めないファイルと理由）}。プロジェクトを跨ぐ serve では /api/projects/<名前>/observer/definitions" },
+    { method: "GET", path: "/api/observer/definitions/:id", desc: "観測の定義 {definition}" },
     { method: "POST", path: "/api/observer/definitions", desc: "観測の定義を作る（本文 {title, category, description, measures, procedures}。項目は docs/how-to-use.md「観測の定義を登録する」）。誤りは 400 {code: invalid, problems: [{path, message}]}" },
     { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
     { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },

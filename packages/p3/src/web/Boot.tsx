@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { App } from "./App.tsx";
 import { ProjectChooser, type ProjectListing } from "./components/ProjectChooser.tsx";
-import { fixScope, listRequested, pageBase, projectFromPath, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
-import { isObserverPath, observerPage } from "@infodb/p3-observer/shared/status.ts";
+import { fixScope, listRequested, projectFromPath, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { fixObserverScope } from "@infodb/p3-observer/web/lib/scope.ts";
-import { fixShell } from "./shell.ts";
 
 type BootState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  /** tasks の画面（AppDataProvider あり）か、tasks を読まない製品の画面（observer のページ）。basepath はルーターの URL の基点 */
-  | { kind: "app"; tasks: boolean; basepath: string }
+  | { kind: "app" }
   /** プロジェクトを跨ぐ serve で、まだ選んでいない・開けない（problem に理由） */
   | { kind: "chooser"; listing: ProjectListing; requested?: string; problem?: string };
 
@@ -22,38 +19,21 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 /**
- * ページを開いたときに、この画面の製品と対象を決める（shell.ts・lib/scope.ts）。
- *   観測の画面（/observer、プロジェクトを跨ぐ serve では /projects/<名前>/observer）: observer のページ。tasks の API を読まない。
- *   プロジェクトを跨ぐ serve の /observer はプロジェクトを選ぶ一覧（serve は常に tasks と observer の両方を起動する）
+ * ページを開いたときに、この画面の対象を決める（lib/scope.ts。観測の画面の対象も同じプロジェクト）。
  *   通常の serve: そのまま画面を出す
  *   プロジェクトを跨ぐ serve: URL の /projects/<名前> を一覧で確かめ、開けたら画面を出す。入口（/）で登録が1つだけなら
  *   そのプロジェクトへ移る。ほかは一覧（選ぶだけ）。登録に無い・開けないときは一覧に理由を出す
  */
 async function boot(): Promise<BootState> {
   const info = await getJson<{ mode: string }>("/api/mode");
-  const mode = info.mode === "all-projects" ? "all-projects" : "single";
-  if (mode !== "all-projects") {
-    if (isObserverPath(location.pathname)) {
-      fixShell({ tasks: false, mode, project: undefined });
-      fixObserverScope({ kind: "project", apiBase: "/api/observer", headers: {}, tasksHref: "/" });
-      return { kind: "app", tasks: false, basepath: "/" };
-    }
-    fixShell({ tasks: true, mode, project: undefined });
+  if (info.mode !== "all-projects") {
     fixScope({ mode: "single" });
-    return { kind: "app", tasks: true, basepath: pageBase() };
+    fixObserverScope({ apiBase: "/api/observer", headers: {} });
+    return { kind: "app" };
   }
   const listing = await getJson<ProjectListing>("/api/projects");
   const requested = projectFromPath(location.pathname);
   if (!requested) {
-    if (isObserverPath(location.pathname)) {
-      // 観測の画面でプロジェクトを選んでいない: 選ぶ一覧を出す（選ぶと /projects/<名前>/observer へ移る）
-      fixShell({ tasks: false, mode, project: undefined });
-      fixObserverScope({
-        kind: "choose",
-        projects: listing.projects.map((p) => ({ name: p.name, href: observerPage(projectPath(p.name)), ...(p.state === "error" ? { error: p.error } : {}) })),
-      });
-      return { kind: "app", tasks: false, basepath: "/" };
-    }
     // 登録が1つで開けるなら一覧を飛ばす（知らせることがあるとき・一覧を求められたときは出す）。履歴に一覧を残さない
     const only = listing.projects.length === 1 ? listing.projects[0] : undefined;
     if (only?.state === "ok" && !listing.invalid.length && !listing.configError && !listRequested(location.search)) {
@@ -65,22 +45,15 @@ async function boot(): Promise<BootState> {
   const p = listing.projects.find((x) => x.name === requested);
   if (!p) return { kind: "chooser", listing, requested, problem: `プロジェクト「${requested}」は個人設定に登録されていません。` };
   if (p.state === "error") return { kind: "chooser", listing, requested, problem: p.error };
-  const base = projectPath(requested);
-  if (isObserverPath(location.pathname.slice(base.length))) {
-    // そのプロジェクトの観測の画面（tasks の API は読まない。観測の API に登録世代を添える）
-    fixShell({ tasks: false, mode, project: requested });
-    fixObserverScope({ kind: "project", project: requested, apiBase: `/api${base}/observer`, headers: { "x-p3-project-generation": p.generation }, tasksHref: `${base}/` });
-    return { kind: "app", tasks: false, basepath: base };
-  }
   // 開けるかを先に確かめる（開けなければ理由を出して一覧に戻す。読み込み中のままにしない）
   try {
-    await getJson(`/api${base}/project`);
+    await getJson(`/api${projectPath(requested)}/project`);
   } catch (e) {
     return { kind: "chooser", listing, requested, problem: (e as Error).message };
   }
-  fixShell({ tasks: true, mode, project: requested });
   fixScope({ mode: "all-projects", project: requested, generation: p.generation });
-  return { kind: "app", tasks: true, basepath: pageBase() };
+  fixObserverScope({ apiBase: `/api${projectPath(requested)}/observer`, headers: { "x-p3-project-generation": p.generation } });
+  return { kind: "app" };
 }
 
 export function Boot() {
@@ -91,7 +64,7 @@ export function Boot() {
   }, []);
   useEffect(start, [start]);
 
-  if (state.kind === "app") return <App tasks={state.tasks} basepath={state.basepath} />;
+  if (state.kind === "app") return <App />;
   if (state.kind === "chooser") return <ProjectChooser initial={state.listing} requested={state.requested} problem={state.problem} />;
   if (state.kind === "error")
     return (

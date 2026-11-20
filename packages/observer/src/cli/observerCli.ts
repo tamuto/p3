@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-kit/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
-import { DEFINITIONS_DIR, MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
+import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
@@ -68,7 +68,6 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const store = new DefinitionStore(opts.target.dataDir);
   const actor = opts.actor ?? "human:cli";
-  const where = `${opts.target.project ? `プロジェクト ${opts.target.project}` : "プロジェクト"}（${store.dir}）`;
   const fail = (e: unknown): ObserverResult => {
     if (!(e instanceof DefinitionError)) throw e;
     return { code: EXIT[e.code], error: e.problems.length ? `${e.message}:\n${problemText(e.problems)}` : e.message };
@@ -77,10 +76,10 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
     if (sub === "list" || sub === "ls") {
       if (rest.length) throw new UsageError(`list は引数を取りません: ${rest.join(" ")}`);
       const l = await store.list();
-      const lines = [`観測の定義 ${l.definitions.length} 件  登録先: ${where}`];
+      const lines = [`観測の定義 ${l.definitions.length} 件`];
       for (const d of l.definitions) lines.push(`${d.id}  v${d.rev}  [${d.category}]  ${d.title}  （測定 ${d.measures.length}・手順 ${d.procedures.length}）`);
       for (const u of l.unreadable) lines.push(`⚠ 読めないファイル ${u.file}: ${u.reason}`);
-      return { data: { target: { project: opts.target.project ?? null, dataDir: opts.target.dataDir, dir: DEFINITIONS_DIR }, ...l }, text: lines.join("\n") };
+      return { data: l, text: lines.join("\n") };
     }
     if (sub === "show") {
       const [id, ...extra] = rest;
@@ -99,7 +98,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       if (opts.rev !== undefined) throw new UsageError("add に --rev は要りません（版は作成で 1 になる）");
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
       const d = await store.create(fromFlags(input.input), actor);
-      return { data: d, text: `作成しました: ${d.id}（v${d.rev}）  登録先: ${where}` };
+      return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
     if (sub === "suggest") {
       if (rest.length) throw new UsageError(`suggest は位置引数を取りません: ${rest.join(" ")}（材料は --input か --title・--category・--body）`);
@@ -129,7 +128,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
     }
     if (rev === undefined) throw new UsageError("更新には今の定義の版を --rev で添えてください（p3 observer show <ID> で読める）");
     const d = await store.update(id, rev, fromFlags(base), actor);
-    return { data: d, text: `更新しました: ${d.id}（v${d.rev}）  登録先: ${where}` };
+    return { data: d, text: `更新しました: ${d.id}（v${d.rev}）` };
   } catch (e) {
     return fail(e);
   }

@@ -16,13 +16,7 @@ export class ObserverApiError extends Error {
   }
 }
 
-export interface DefinitionTargetInfo {
-  project: string | null;
-  dataDir: string;
-  dir: string;
-}
 export interface DefinitionListing {
-  target: DefinitionTargetInfo;
   definitions: ObservationDefinition[];
   unreadable: { file: string; reason: string }[];
 }
@@ -34,16 +28,12 @@ async function call<T>(url: string, init: RequestInit = {}): Promise<T> {
   return data;
 }
 
-function project() {
-  const s = observerScope();
-  if (s.kind !== "project") throw new Error("プロジェクトを選んでから観測の定義を開いてください");
-  return s;
-}
+const project = observerScope;
 
 export const fetchStatus = () => call<ObserverStatus>(`${OBSERVER_API}/status`);
 export const fetchDefinitions = () => call<DefinitionListing>(`${project().apiBase}/definitions`, { headers: project().headers });
 export const fetchDefinition = (id: string) =>
-  call<{ target: DefinitionTargetInfo; definition: ObservationDefinition }>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { headers: project().headers });
+  call<{ definition: ObservationDefinition }>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { headers: project().headers });
 export const createDefinition = (input: unknown) =>
   call<ObservationDefinition>(`${project().apiBase}/definitions`, { method: "POST", headers: project().headers, body: JSON.stringify(input) });
 export const updateDefinition = (id: string, rev: number, input: unknown) =>

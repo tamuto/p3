@@ -1329,8 +1329,8 @@ cat > obs.json <<'JSON'
   ]
 }
 JSON
-p3 observer add --input obs.json                    # 作成しました: obs-261120-k7m3x（v1）  登録先: プロジェクト app（…/observer/definitions）
-p3 observer list                                    # 一覧（登録先・ID・版・カテゴリ・タイトル）
+p3 observer add --input obs.json                    # 作成しました: obs-261120-k7m3x（v1）
+p3 observer list                                    # 一覧（ID・版・カテゴリ・タイトル）
 p3 observer show obs-261120-k7m3x --json > cur.json # 今の定義（ID・版 rev・記録つき）
 p3 observer update obs-261120-k7m3x --input cur.json        # 編集した JSON で更新（中の rev を今の版として添える）
 p3 observer update obs-261120-k7m3x --rev 2 --category 速度  # --input を省くと今の定義に重ねる（--rev は必須）
@@ -1339,10 +1339,8 @@ p3 observer update obs-261120-k7m3x --rev 2 --category 速度  # --input を省�
 更新には今の版（`rev`）を添える。ほかで更新されていれば終了コード 3（競合）で断り、記録は変えない（`show` で読み直してやり直す）。
 入力の誤りは、項目の場所（`measures[0].unit` など）ごとに理由を出して終了コード 1。見つからない ID は 2。
 
-画面では、ヘッダーの「観測基盤」から観測の一覧を開き、「＋ 観測を登録」で登録する（測定項目・手順は「＋」で足し、手順ごとに測る項目を選ぶ）。
-一覧・詳細・登録・編集の画面の上に登録先（プロジェクトと保存の場所）が出る。誤りは該当する項目の下に出て、保存しない。編集を開いた後に
-ほかで更新されていれば、保存は断られて入力は残る（読み直すと今の定義が開く）。プロジェクトを跨ぐ serve では、プロジェクトの画面の「観測基盤」で
-そのプロジェクトの観測の一覧（`/projects/<名前>/observer`）へ移る。`/observer` を直接開いたときは、プロジェクトを選んでから移る。
+画面では、ナビゲーションの「観測」（進捗の次）から観測の一覧を開き、「＋ 観測を登録」で登録する（測定項目・手順は「＋」で足し、手順ごとに測る
+項目を選ぶ）。誤りは該当する項目の下に出て、保存しない。編集を開いた後にほかで更新されていれば、保存は断られて入力は残る（読み直すと今の定義が開く）。
 
 保存の場所と形は [設計: p3-observer](architecture.md#p3-observer) の「観測の定義の保存」。
 
@@ -1378,8 +1376,8 @@ jq .definition suggested.json > edited.json && p3 observer add --input edited.js
 
 提案できなかったとき（接続を使えない・参照先の誤り・応答の形の違いなど）は、理由の種類と文を出して終了コード 1。
 
-画面（`p3 serve`・`p3 serve --all-projects`）は、常に両方の製品を起動する（製品ごとに切り替える指定は無い）。ヘッダーの「観測基盤」で
-observer（`/observer`。プロジェクトを跨ぐ serve では `/projects/<名前>/observer`）へ移り、observer の画面から同じプロジェクトの tasks の各ページへ戻る。
+画面（`p3 serve`・`p3 serve --all-projects`）は、常に両方の製品を起動する（製品ごとに切り替える指定は無い）。ナビゲーションの「観測」で
+observer（`/observer`。プロジェクトを跨ぐ serve では `/projects/<名前>/observer`）へ移る。ヘッダー（プロジェクト名・プロジェクトの切り替え）は tasks の画面と同じ。
 以前の `--products` を付けると使い方の誤り（終了コード 1）になるので、外して起動する。
 
 所有の境界と起動の構成は [設計: p3-observer](architecture.md#p3-observer)。

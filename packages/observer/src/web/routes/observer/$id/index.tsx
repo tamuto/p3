@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, type ObservationDefinition, type Procedure } from "../../../../shared/definition.ts";
 import { fetchDefinition } from "../../../lib/api.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
-import { linkCls, primaryCls, TargetLine } from "../../../components/Target.tsx";
+import { linkCls, primaryCls } from "../../../components/styles.ts";
 
 /** /observer/<ID>: 観測の定義の詳細（項目・測定項目・確認の手順と、手順が測る項目） */
 export const Route = createFileRoute("/observer/$id/")({ component: DefinitionDetail });
@@ -21,12 +21,12 @@ function DefinitionDetail() {
           観測の定義を読めませんでした: {load.message}
         </p>
       )}
-      {load.kind === "ok" && <Detail d={load.value.definition} target={load.value.target} />}
+      {load.kind === "ok" && <Detail d={load.value.definition} />}
     </div>
   );
 }
 
-function Detail({ d, target }: { d: ObservationDefinition; target: Parameters<typeof TargetLine>[0]["target"] }) {
+function Detail({ d }: { d: ObservationDefinition }) {
   const measureOf = (name: string) => d.measures.find((m) => m.name === name);
   return (
     <>
@@ -41,7 +41,6 @@ function Detail({ d, target }: { d: ObservationDefinition; target: Parameters<ty
           編集
         </Link>
       </div>
-      <TargetLine target={target} />
       <section aria-labelledby="desc-heading" className="space-y-1">
         <h2 id="desc-heading" className="font-semibold">
           観測内容

@@ -139,8 +139,8 @@ describe("CLI: p3 observer list / show / add / update", () => {
     expect(text).toContain("ユニットテスト: Vitest の性能テスト");
     expect(text).toContain("測る: elapsed・ok");
     const list = p3(root, ["observer", "list", "--json"]).json();
-    expect(list).toMatchObject({ target: { dataDir: join(root, ".p3"), dir: "observer/definitions" }, definitions: [created], unreadable: [] });
-    expect(p3(root, ["observer", "list"]).out).toContain(`登録先: プロジェクト`);
+    expect(list).toEqual({ definitions: [created], unreadable: [] });
+    expect(p3(root, ["observer", "list"]).out).toContain(`${created.id}  v1  [性能]  一覧 API の応答時間`);
 
     // show --json を編集して --input で戻す（版は中の rev を使う）
     writeFileSync(join(root, "edit.json"), JSON.stringify({ ...created, title: "編集した" }));
@@ -181,7 +181,7 @@ describe("CLI: p3 observer list / show / add / update", () => {
     expect(add.code, add.err).toBe(0);
     expect(readdirSync(join(external, "observer", "definitions"))).toEqual([`${add.json().id}.json`]);
     expect(existsSync(join(root, ".p3"))).toBe(false);
-    expect(p3(root, ["observer", "list", "--json"]).json().target).toEqual({ project: "ext", dataDir: external, dir: "observer/definitions" });
+    expect(p3(root, ["observer", "list", "--json"]).json().definitions).toEqual([add.json()]);
     // 登録の外の場所（登録は1つだけ）: 読むのは警告つきで通し、書くのは止める
     const elsewhere = tempDir("p3-obs-else-");
     const read = p3(elsewhere, ["observer", "list", "--json"]);
@@ -231,7 +231,7 @@ describe("API と CLI の往復", () => {
     expect(p3(root, ["observer", "show", id, "--json"]).json()).toEqual(created.body);
     expect(p3(root, ["observer", "update", id, "--rev", "1", "--title", "CLI で直した"]).code).toBe(0);
     const got = await s.call("GET", `/observer/definitions/${id}`);
-    expect(got.body).toMatchObject({ target: { project: "app", dataDir }, definition: { rev: 2, title: "CLI で直した", measures: SAMPLE.measures } });
+    expect(got.body).toMatchObject({ definition: { rev: 2, title: "CLI で直した", measures: SAMPLE.measures } });
     const stale = await s.call("PUT", `/observer/definitions/${id}`, { rev: 1, definition: SAMPLE });
     expect([stale.status, stale.body.code, stale.body.current?.rev]).toEqual([409, "conflict", 2]);
     expect((await s.call("GET", "/observer/definitions/obs-261120-zzzzz")).status).toBe(404);
@@ -258,7 +258,7 @@ describe("API と CLI の往復", () => {
       expect((await s.call("POST", "/projects/alpha/observer/definitions", SAMPLE, { "x-p3-project-generation": "old" })).status).toBe(409);
       const created = await s.call("POST", "/projects/alpha/observer/definitions", SAMPLE, { "x-p3-project-generation": gen("alpha") });
       expect(created.status).toBe(201);
-      expect((await s.call("GET", "/projects/alpha/observer/definitions")).body).toMatchObject({ target: { project: "alpha" }, definitions: [expect.objectContaining({ id: created.body.id })] });
+      expect((await s.call("GET", "/projects/alpha/observer/definitions")).body).toMatchObject({ definitions: [expect.objectContaining({ id: created.body.id })] });
       expect((await s.call("GET", "/projects/beta/observer/definitions")).body.definitions).toEqual([]);
       expect(existsSync(join(b.root, ".p3", "observer"))).toBe(false);
       expect((await s.call("GET", "/observer/status")).body.state).toBe("ready");

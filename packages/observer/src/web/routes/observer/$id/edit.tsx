@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { fetchDefinition, updateDefinition } from "../../../lib/api.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
 import { DefinitionForm } from "../../../components/DefinitionForm.tsx";
-import { linkCls, TargetLine } from "../../../components/Target.tsx";
+import { linkCls } from "../../../components/styles.ts";
 
 /** /observer/<ID>/edit: 観測の定義を直す（開いたときの版を添えて保存する。ほかで更新されていれば断られ、入力は残る） */
 export const Route = createFileRoute("/observer/$id/edit")({ component: EditDefinition });
@@ -25,7 +25,6 @@ function EditDefinition() {
       )}
       {load.kind === "ok" && (
         <>
-          <TargetLine target={load.value.target} />
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {id}・開いたときの版 {load.value.definition.rev}
           </p>

@@ -14,15 +14,8 @@ export interface ObserverStatus {
   products?: string[];
 }
 
-/** 画面のページ（入口のルート一覧に付く）。tasks のページ（/・/requests/...・/projects/<名前>/...）と重ならない */
-export const OBSERVER_PAGE = "/observer";
 /** API の接頭辞（入口の serve が /api の下に付ける） */
 export const OBSERVER_API = "/api/observer";
-
-export const isObserverPath = (pathname: string): boolean => pathname === OBSERVER_PAGE || pathname.startsWith(`${OBSERVER_PAGE}/`);
-
-/** プロジェクトの URL の基点（/ か /projects/<名前>）の下の、観測の画面の URL */
-export const observerPage = (base: string) => `${base.replace(/\/$/, "")}${OBSERVER_PAGE}`;
 
 /** 観測の定義の登録先（入口が解決したプロジェクト。dataDir はそのデータのフォルダ） */
 export interface DefinitionTarget {
