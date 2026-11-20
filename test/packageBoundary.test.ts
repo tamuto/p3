@@ -76,7 +76,7 @@ describe("パッケージの境界", () => {
   it("入口 → アプリ → 機能 → shared の一方向だけ。逆向き・機能の間・相対パスでの迂回は無い", () => {
     const { uses, violations } = scan();
     expect(violations).toEqual([]);
-    expect(uses).toEqual(["app→observer", "app→tasks", "observer→shared", "p3→app", "p3→observer", "p3→shared", "p3→tasks", "tasks→shared"]);
+    expect(uses).toEqual(["app→observer", "app→shared", "app→tasks", "observer→shared", "p3→app", "p3→observer", "p3→shared", "p3→tasks", "tasks→shared"]);
     // 機能どうしは読まない（つなぐのはアプリ）
     expect(uses.filter((u) => u === "tasks→observer" || u === "observer→tasks")).toEqual([]);
   });

@@ -20,7 +20,7 @@ import {
   syncNote,
   type NoteDraft,
 } from "./lib/releaseNoteDraft.ts";
-import { Button, buttonCls, cx, inputCls } from "../../../web/components/ui.tsx";
+import { Alert, Button, buttonCls, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { MaterialView, Warnings } from "./MaterialView.tsx";
 import { CompleteRequests } from "./CompleteRequests.tsx";
 import { useUnsaved } from "../../../web/lib/unsaved.ts";
@@ -224,17 +224,13 @@ function GenerationView({
               生成しています…（編集欄の入力はそのままです）
             </p>
           )}
-          {gen.status === "failed" && (
-            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              生成できませんでした（{FAILURE_LABEL[gen.failure ?? "error"]}）: {gen.error}
-            </p>
-          )}
+          {gen.status === "failed" && <Alert box>生成できませんでした（{FAILURE_LABEL[gen.failure ?? "error"]}）: {gen.error}</Alert>}
           {gen.status === "failed" && (
             <p className="flex flex-wrap items-center gap-x-2 text-base text-slate-600 dark:text-slate-400">
               {MANUAL_NOTE}
-              <button type="button" className="underline hover:text-indigo-600" onClick={() => document.getElementById(BODY_ID)?.focus()}>
+              <Button variant="link" onClick={() => document.getElementById(BODY_ID)?.focus()}>
                 本文を手で書く
-              </button>
+              </Button>
             </p>
           )}
           {gen.status === "cancelled" && <p className="text-base text-slate-500">取り消しました。</p>}
@@ -350,7 +346,7 @@ function NoteEditor({
               <Button onClick={onDiscard}>最新の本文を読み直す</Button>
             )}
             {ext.kind === "deleted" && <Button onClick={onSaveAsNew}>この入力で新しく保存する</Button>}
-            <Button variant="ghost" onClick={onReload}>
+            <Button variant="secondary" onClick={onReload}>
               もう一度読み込む
             </Button>
           </div>
@@ -391,7 +387,7 @@ function NoteEditor({
           編集を捨てる
         </Button>
         {!ext && dirty && (
-          <Button variant="ghost" onClick={() => void copy()}>
+          <Button variant="secondary" onClick={() => void copy()}>
             入力をコピー
           </Button>
         )}

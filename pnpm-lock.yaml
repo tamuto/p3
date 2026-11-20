@@ -250,6 +250,9 @@ importers:
       '@infodb/p3-observer':
         specifier: workspace:*
         version: link:../observer
+      '@infodb/p3-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@infodb/p3-tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -317,7 +320,11 @@ importers:
         specifier: workspace:*
         version: link:../tasks
 
-  packages/shared: {}
+  packages/shared:
+    devDependencies:
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
 
   packages/tasks:
     dependencies:

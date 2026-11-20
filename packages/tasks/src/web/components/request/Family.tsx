@@ -5,7 +5,7 @@ import { type AppCtx } from "../../lib/appCtx.ts";
 import { parentChoices } from "../../lib/progressTree.ts";
 import { type RequestData } from "../../lib/requestData.tsx";
 import { RequestStatusBadge } from "../RequestStatus.tsx";
-import { Button, buttonCls, Field, inputCls, Section } from "../ui.tsx";
+import { Alert, Button, buttonCls, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望の親子（docs/architecture.md の「大きい要望の分割」）: 親の指定・付け替え・外す、子の一覧と移動、自分の値と配下の集計、
@@ -86,11 +86,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
             </div>
           )}
         </div>
-        {error && (
-          <p role="alert" className="break-words text-rose-600">
-            {error}
-          </p>
-        )}
+        {error && <Alert>{error}</Alert>}
         {note && (
           <p role="status" className="break-words text-base text-amber-700 dark:text-amber-400">
             {note}
@@ -233,7 +229,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
             <span className="text-base whitespace-nowrap text-slate-600 dark:text-slate-400">
               自分のタスク {c.tasks.done}/{c.tasks.total}
             </span>
-            <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("ghost", "text-base underline")}>
+            <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("link", "text-base underline")}>
               ボード
             </Link>
             {shown.length > 1 && (
@@ -272,11 +268,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           <span className="text-base text-slate-500">保存していない並べ替えがあります</span>
         </div>
       )}
-      {error && (
-        <p role="alert" className="break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       <p role="status" className="sr-only">
         {moved}
       </p>

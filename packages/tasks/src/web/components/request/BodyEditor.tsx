@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { type Request } from "../../../shared/types.ts";
-import { Badge, Button, inputCls } from "../ui.tsx";
+import { Badge, Button, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { api, ApiError, failureOf } from "../../lib/api.ts";
 import { discardDraft, draftOf, editDraft, isDirty, sameBody, type Draft } from "../../lib/draft.ts";
 import { bodySaveErrorText, excerpt } from "../../lib/requestEdit.ts";

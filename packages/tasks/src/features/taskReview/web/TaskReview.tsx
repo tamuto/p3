@@ -6,7 +6,7 @@ import { useAppData } from "../../../web/lib/appData.tsx";
 import { fmtTime } from "../../../web/lib/format.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
 import { useServerEvents } from "../../../web/lib/live.ts";
-import { Badge, Button, Field, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, Field, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 import { ImprovementButton } from "../../quality/web/ImprovementDialog.tsx";
 
 /**
@@ -238,7 +238,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
               <input className={`${inputCls} font-mono`} value={viewpointFile} disabled={busy} onChange={(e) => touch(setViewpointFile)(e.target.value)} />
             </Field>
           )}
-          <Button type="button" disabled={busy} onClick={() => void check()}>
+          <Button disabled={busy} onClick={() => void check()}>
             材料を確かめる
           </Button>
           {checked && <PreviewView p={checked} />}
@@ -249,7 +249,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
             </label>
           )}
           {unsaved && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存してから材料を確かめて始めてください（保存した内容でレビューします）</p>}
-          <Button type="button" variant="primary" disabled={busy || !checked || unsaved || (checked.engineRequired && !consent)} onClick={() => void start()}>
+          <Button variant="primary" disabled={busy || !checked || unsaved || (checked.engineRequired && !consent)} onClick={() => void start()}>
             新しい Codex のスレッドでレビューを始める
           </Button>
         </section>
@@ -332,11 +332,7 @@ function QualityView({ input, result, run }: { input: TaskReviewDetailView["inpu
               タスクに取り込んだ品質基準と最新の差: {q.diff.filter((d) => d.kind !== "edited").map((d) => `${d.kind}:${d.quality}`).join(", ")}（基準の改定による不足とコードの逸脱は理由で分けています）
             </p>
           )}
-          {(result.quality ?? []).some((r) => r.verdict === "violated") && (
-            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              品質の指摘: {(result.quality ?? []).filter((r) => r.verdict === "violated").map((r) => r.standard).join(", ")} に違反があります（作業した側の証拠とは別の判定です）
-            </p>
-          )}
+          {(result.quality ?? []).some((r) => r.verdict === "violated") && <Alert box>品質の指摘: {(result.quality ?? []).filter((r) => r.verdict === "violated").map((r) => r.standard).join(", ")} に違反があります（作業した側の証拠とは別の判定です）</Alert>}
           <ul className="space-y-2">
             {(result.quality ?? []).map((r) => (
               <li key={r.standard} aria-label={`品質 ${r.standard}`} className="min-w-0 space-y-1 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
@@ -401,11 +397,11 @@ function RunView({
             </p>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => onCancel()}>
+            <Button onClick={() => onCancel()}>
               取り消す
             </Button>
             {unknownOwner && (
-              <Button type="button" variant="ghost" onClick={() => onCancel(true)}>
+              <Button variant="secondary" onClick={() => onCancel(true)}>
                 止まっていると確かめたので中断する
               </Button>
             )}
@@ -418,7 +414,7 @@ function RunView({
         <div role="status" className="space-y-2 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <p>材料が変わりました（本文・基準・証拠・比較対象・観点のどれか）。この結果は実行したときの材料に対するものです。</p>
           {onRerun && (
-            <Button type="button" className="text-base" onClick={onRerun}>
+            <Button className="text-base" onClick={onRerun}>
               今の材料でレビューし直す（確かめる）
             </Button>
           )}

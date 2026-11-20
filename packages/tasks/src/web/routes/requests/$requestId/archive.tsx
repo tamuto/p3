@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { TASK_STATUS_LABEL, type ArchivedTaskList } from "../../../../shared/types.ts";
-import { Empty } from "../../../components/ui.tsx";
+import { Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { api } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
@@ -50,9 +50,9 @@ function ArchivePage() {
       {error && (
         <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           アーカイブの一覧を読み込めませんでした{list ? "（表示は前の内容のまま）" : ""}: {error}{" "}
-          <button type="button" className="underline" onClick={() => void load()}>
+          <Button variant="link" onClick={() => void load()}>
             もう一度読み込む
-          </button>
+          </Button>
         </p>
       )}
       {!list ? (

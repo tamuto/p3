@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReleaseMaterial, ReleaseWarning } from "../../../shared/types.ts";
 import { RequestStatusBadge } from "../../../web/components/RequestStatus.tsx";
-import { Badge, cx, Empty } from "../../../web/components/ui.tsx";
+import { Badge, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * マイルストーンに属する要望（収録 / 対象外と理由・変更の記録の数・警告）。収録する要望は開くとタスクの変更の記録（要約の出典）を見られる。

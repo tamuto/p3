@@ -1,5 +1,5 @@
 import type { RequestStatus } from "../../shared/types.ts";
-import { cx } from "./ui.tsx";
+import { cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 要望のステータス。並べたときに位置がそろうよう、すべて3文字 */
 const STATUS: Record<RequestStatus, { label: string; tone: string; hint: string }> = {

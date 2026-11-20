@@ -4,7 +4,7 @@ import { DIRECT_TASK_NOTE } from "../../../shared/directTask.ts";
 import { defaultRepo, NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
-import { Button, Field, inputCls } from "../ui.tsx";
+import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { CriteriaRowsEditor, rowsInvalid, type CriterionRow } from "../../../features/requirements/web/Acceptance.tsx";
 import { standardsFor } from "../../../features/quality/shared/quality.ts";
 
@@ -155,14 +155,10 @@ export function NewTaskForm({
             </p>
           )}
           {request.status === "resolved" && <p className="text-base text-slate-500">対応済の要望に未着手のタスクを足すと、要望は進行中に戻ります。</p>}
-          {error && (
-            <p role="alert" className="text-rose-600">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 p-3 sm:p-4 dark:border-slate-800">
-          <Button type="button" onClick={() => dialog.current?.close()} disabled={busy}>
+          <Button onClick={() => dialog.current?.close()} disabled={busy}>
             取消
           </Button>
           <Button type="submit" variant="primary" disabled={busy}>

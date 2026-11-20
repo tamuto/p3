@@ -261,6 +261,21 @@ URL と検索の値の宣言だけを置き、中身を機能の `web/` に書�
 `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される（型検査のためにコミットしておく）。画面のビルド（Vite の root）はアプリの
 `packages/app/src/web` で、出力は入口の `packages/p3/dist/web`。Tailwind は機能の `src` のクラスも拾う（`index.css` の `@source`）。
 
+### 画面の共通部品
+
+tasks・observer・アプリの画面は、`packages/shared/src/web/ui.tsx` の部品（`Button`・`buttonCls`・`Field`・`inputCls`・`Section`・`Alert`・`Loading`・
+`Empty`・`Badge`・`linkCls` など）で描く。機能ごとに色やボタンのスタイルを書かない（足りなければここに足す）。表の列・入力値・検証・遷移は機能側に置く。
+
+| ボタン（`variant`） | 使うところ |
+| --- | --- |
+| `primary`（濃い塗り） | その画面の主操作（保存・登録・頼む） |
+| `secondary`（薄い塗り。既定） | 補助の操作（足す・外す・開く・もう一度） |
+| `cancel`（灰の塗り） | 取消・閉じる・入力を捨てる・元に戻す・中止 |
+| `danger`（赤の塗り） | 消す。消す対象をラベルに書き、確認・警告は今のまま出す |
+| `link`（下線の文字） | 移動や、文中の控えめな操作。ボタンの形で見せる移動のリンクは `buttonCls(...)` |
+
+枠だけのボタンは作らない。`Button` は type を省くと送信しない（フォームを送るのは `type="submit"` を明示したものだけ）。
+
 規則を足すときに直す場所は [docs/architecture.md](architecture.md) の「規則の置き場所」。
 
 ## 画面の文字と余白

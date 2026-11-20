@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { addTag, cleanTag } from "../../shared/tags.ts";
-import { Button, cx, inputCls } from "./ui.tsx";
+import { Button, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * タグ（外部 ID・分類）の入力。値ごとに足す・外す（カンマで分けない。shared/tags.ts）。
@@ -75,7 +75,7 @@ export function TagInput({
             }
           }}
         />
-        <Button type="button" disabled={disabled || cleanTag(text) === null} onClick={add}>
+        <Button disabled={disabled || cleanTag(text) === null} onClick={add}>
           追加
         </Button>
       </div>

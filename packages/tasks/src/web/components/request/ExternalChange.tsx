@@ -1,4 +1,4 @@
-import { Button } from "../ui.tsx";
+import { Button } from "@infodb/p3-shared/web/ui.tsx";
 import { isDirty, type Draft } from "../../lib/draft.ts";
 
 /** 編集中に他で変わったことの知らせ（要望のタイトル・タグ・本文で共通） */

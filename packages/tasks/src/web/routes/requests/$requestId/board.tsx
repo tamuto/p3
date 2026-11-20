@@ -5,7 +5,7 @@ import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
 import { NewTaskForm } from "../../../components/request/NewTaskForm.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
 import { useAppData } from "../../../lib/appData.tsx";
-import { Badge, Button, cx, Empty, Id } from "../../../components/ui.tsx";
+import { Badge, Button, cx, Empty, Id } from "@infodb/p3-shared/web/ui.tsx";
 import { api, failureOf } from "../../../lib/api.ts";
 import { markText, warningText } from "../../../lib/supersede.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";

@@ -1,8 +1,8 @@
+import { Alert, Empty, Loading, buttonCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, type ObservationDefinition, type Procedure } from "../../../../shared/definition.ts";
 import { fetchDefinition } from "../../../lib/api.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
-import { linkCls, primaryCls } from "../../../components/styles.ts";
 
 /** /observer/<ID>: 観測の定義の詳細（項目・測定項目・確認の手順と、手順が測る項目） */
 export const Route = createFileRoute("/observer/$id/")({ component: DefinitionDetail });
@@ -15,12 +15,8 @@ function DefinitionDetail() {
       <Link to="/observer" className={linkCls}>
         ← 観測の一覧
       </Link>
-      {load.kind === "loading" && <p className="text-slate-500">読み込み中…</p>}
-      {load.kind === "error" && (
-        <p role="alert" className="text-rose-600">
-          観測の定義を読めませんでした: {load.message}
-        </p>
-      )}
+      {load.kind === "loading" && <Loading />}
+      {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && <Detail d={load.value.definition} />}
     </div>
   );
@@ -37,7 +33,7 @@ function Detail({ d }: { d: ObservationDefinition }) {
             {d.id}・版 {d.rev}・カテゴリ {d.category}
           </p>
         </div>
-        <Link to="/observer/$id/edit" params={{ id: d.id }} className={primaryCls}>
+        <Link to="/observer/$id/edit" params={{ id: d.id }} className={buttonCls("primary")}>
           編集
         </Link>
       </div>
@@ -52,7 +48,7 @@ function Detail({ d }: { d: ObservationDefinition }) {
           測定項目
         </h2>
         {d.measures.length === 0 ? (
-          <p className="text-slate-500">ありません。</p>
+          <Empty>ありません。</Empty>
         ) : (
           <ul className="space-y-1">
             {d.measures.map((m) => (
@@ -69,7 +65,7 @@ function Detail({ d }: { d: ObservationDefinition }) {
         <h2 id="p-heading" className="font-semibold">
           確認の手順
         </h2>
-        {d.procedures.length === 0 && <p className="text-slate-500">ありません。</p>}
+        {d.procedures.length === 0 && <Empty>ありません。</Empty>}
         {d.procedures.map((p, i) => (
           <article key={i} aria-label={`手順 ${i + 1}: ${p.title}`} className="space-y-1 rounded border border-slate-200 p-3 dark:border-slate-800">
             <h3 className="font-medium">

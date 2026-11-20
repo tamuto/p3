@@ -5,7 +5,7 @@ import type { Milestone, MilestoneGoal } from "../../../shared/types.ts";
 import { api, saveErrorText } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
-import { Button, cx, inputCls } from "../ui.tsx";
+import { Button, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 編集中の1行。orig は取り込んだときの ID（足した行には無い）。使用中・ノートありの判定は orig で見る */
 interface Row {
@@ -179,7 +179,7 @@ export function MilestoneEditor({
                 リリース済み
               </label>
               <span className="w-16 shrink-0 text-right text-base text-slate-500 dark:text-slate-400">要望 {count}</span>
-              <Button variant="ghost" disabled={!!lock} title={lock ?? undefined} onClick={() => remove(key)}>
+              <Button variant="danger" disabled={!!lock} title={lock ?? undefined} onClick={() => remove(key)}>
                 削除
               </Button>
               {lock && <p className="w-full text-base text-slate-500 dark:text-slate-400">{lock}</p>}
@@ -217,7 +217,7 @@ export function MilestoneEditor({
         <Button variant="primary" disabled={!dirty || busy} onClick={() => void save()}>
           保存
         </Button>
-        <Button variant="ghost" disabled={!dirty || busy} onClick={() => (reset(), setMsg(null))}>
+        <Button variant="cancel" disabled={!dirty || busy} onClick={() => (reset(), setMsg(null))}>
           元に戻す
         </Button>
         {msg && (
@@ -230,7 +230,7 @@ export function MilestoneEditor({
       {changedElsewhere && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           編集中にマイルストーンが他で変わりました。このまま保存すると断られます（入力は残ります）。必要な入力を控えてから、最新を読み直してください。
-          <Button variant="ghost" onClick={() => (reset(), setMsg(null))}>
+          <Button variant="cancel" onClick={() => (reset(), setMsg(null))}>
             入力を捨てて最新を読み直す
           </Button>
         </div>
@@ -288,7 +288,7 @@ function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used
                 maxLength={MILESTONE_GOAL_LIMITS.goalText}
                 onChange={(e) => setGoals(goals.map((x) => (x.id === g.id ? { ...x, text: e.target.value } : x)))}
               />
-              <Button variant="ghost" aria-label={`予定機能 ${g.id} を削除`} onClick={() => setGoals(goals.filter((x) => x.id !== g.id))}>
+              <Button variant="danger" aria-label={`予定機能 ${g.id} を削除`} onClick={() => setGoals(goals.filter((x) => x.id !== g.id))}>
                 削除
               </Button>
             </div>

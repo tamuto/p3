@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { copyNotice, copyText, type ClipboardLike, type CopyState } from "../lib/copy.ts";
-import { buttonCls, cx } from "./ui.tsx";
+import { buttonCls, cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望 ID の表示とコピー（要望の枠の見出しのタイトルの上。どのタブでも同じ1組）。

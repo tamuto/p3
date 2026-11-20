@@ -3,7 +3,7 @@ import { PROJECT_CHANGED_EVENT } from "@infodb/p3-tasks/web/lib/api.ts";
 import { CHOOSER_URL, currentScope, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { hasUnsaved, savesInFlight, savesSettled } from "@infodb/p3-tasks/web/lib/unsaved.ts";
 import { fetchProjects, type ProjectListing } from "./ProjectChooser.tsx";
-import { Button, buttonCls } from "@infodb/p3-tasks/web/components/ui.tsx";
+import { Button, buttonCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 一覧へ（プロジェクトを選ぶ画面。登録が1つでも一覧を出す） */
 const CHOOSER = CHOOSER_URL;
@@ -135,7 +135,7 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
           <span className="min-w-0 break-words">
             プロジェクト「{current}」の登録が変わりました（外した・付け直した・データのフォルダを変えた）。この画面からは保存しません（入力は送っていません）。一覧から選び直してください。
           </span>
-          <a href={CHOOSER} className={buttonCls("ghost", "underline")}>
+          <a href={CHOOSER} className={buttonCls("link", "underline")}>
             プロジェクトの一覧へ
           </a>
         </div>

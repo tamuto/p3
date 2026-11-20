@@ -1,7 +1,7 @@
 import type { RefScope, RepoRef } from "../../shared/repos.ts";
 import { evidenceWhere, historyLabel, SCOPE_STATUS_LABEL } from "../../shared/scopeView.ts";
 import type { Evidence } from "../../shared/types.ts";
-import { Badge, cx, Section } from "./ui.tsx";
+import { Badge, cx, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * Preflight の「調べた範囲」（参照先ごとに読んだか。P3 が始めるときに決めた記録）と、

@@ -5,6 +5,7 @@ import { latestOnly, STALE } from "./latest.ts";
 import { CHOOSER_URL, currentScope } from "./scope.ts";
 import { useServerEvents } from "./live.ts";
 import { createRefresher, onReturn, refetchOnEvent, type RefreshState } from "./refresh.ts";
+import { Button, Alert } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 画面全体で共有するデータ（設定と、要望の一覧・進捗）。ファイルが正なので、変更通知（SSE）で読み直す。
@@ -68,12 +69,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   if (!info)
     return loadError ? (
       <div className="space-y-2 p-8">
-        <p role="alert" className="text-rose-600">
-          読み込めませんでした: {loadError}
-        </p>
-        <button type="button" className="underline" onClick={reload}>
+        <Alert>読み込めませんでした: {loadError}</Alert>
+        <Button variant="link" onClick={reload}>
           もう一度読み込む
-        </button>
+        </Button>
         {currentScope().mode === "all-projects" && (
           <a href={CHOOSER_URL} className="ml-4 underline">
             プロジェクトの一覧へ

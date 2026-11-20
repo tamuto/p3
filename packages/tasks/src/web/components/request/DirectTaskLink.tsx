@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { buttonCls } from "../ui.tsx";
+import { buttonCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * Preflight を使えない・失敗したときの、Preflight を通さずにタスクを作る道（タスクボードの「＋ タスクを追加」を開く）。

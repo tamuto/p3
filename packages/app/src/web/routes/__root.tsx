@@ -1,6 +1,6 @@
 import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
-import { buttonCls, cx, Empty } from "@infodb/p3-tasks/web/components/ui.tsx";
+import { buttonCls, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "@infodb/p3-tasks/web/lib/appCtx.ts";
 import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
 
@@ -98,7 +98,7 @@ function Layout() {
       {ctx.refreshing.error && (
         <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
           <span className="min-w-0 break-words">再読み込みできませんでした（表示は前の内容のまま）: {ctx.refreshing.error}</span>
-          <button type="button" className={buttonCls("ghost", "underline")} onClick={() => void ctx.refresh()}>
+          <button type="button" className={buttonCls("link", "underline")} onClick={() => void ctx.refresh()}>
             もう一度
           </button>
         </div>
@@ -107,7 +107,7 @@ function Layout() {
       {!ctx.info.project.description && !pathname.startsWith("/settings") && (
         <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           プロジェクトの説明がまだありません。Preflight の前提になるので設定してください。
-          <Link to="/settings" search={{ tab: "project" }} className={buttonCls("ghost", "underline")}>
+          <Link to="/settings" search={{ tab: "project" }} className={buttonCls("link", "underline")}>
             設定を開く
           </Link>
         </div>

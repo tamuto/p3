@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@infodb/p3-observer": "workspace:*",
+    "@infodb/p3-shared": "workspace:*",
     "@infodb/p3-tasks": "workspace:*",
     "@hono/node-server": "~2.1.3",
     "hono": "^4.13.13"

@@ -6,7 +6,7 @@ import { MilestoneReviewPanel } from "../../features/milestoneReview/web/Milesto
 import { useServerEvents } from "../lib/live.ts";
 import { ReleaseNotePanel } from "../../features/releaseNotes/web/ReleaseNotePanel.tsx";
 import { TabPanel, Tabs } from "../components/Tabs.tsx";
-import { cx, Empty } from "../components/ui.tsx";
+import { Button, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { api } from "../lib/api.ts";
 import { useAppData } from "../lib/appData.tsx";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -130,9 +130,9 @@ function ReleaseNotesPage() {
         {error && (
           <p role="alert" className="text-rose-600">
             一覧を読み込めませんでした: {error}{" "}
-            <button type="button" className="underline" onClick={() => void load()}>
+            <Button variant="link" onClick={() => void load()}>
               もう一度
-            </button>
+            </Button>
           </p>
         )}
         {!list ? (

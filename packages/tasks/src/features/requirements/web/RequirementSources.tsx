@@ -11,7 +11,7 @@ import {
 } from "../shared/requirementSource.ts";
 import { failureOf, saveErrorText } from "../../../web/lib/api.ts";
 import { useUnsaved } from "../../../web/lib/unsaved.ts";
-import { Badge, Button, cx, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, cx, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要求の出典と確認（shared/requirementSource.ts）の表示と編集。要望・タスクの基準・タスク案の基準で同じ部品を使う。
@@ -229,16 +229,12 @@ export function SourceList({
         </div>
       </fieldset>
       {dirty && <p className="text-base text-amber-700 dark:text-amber-400">未保存の変更があります</p>}
-      {error && (
-        <p role="alert" className="text-base break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy || disabled} onClick={() => void save()}>
           {busy ? "保存中…" : "保存"}
         </Button>
-        <Button variant="ghost" disabled={busy} onClick={cancel}>
+        <Button variant="cancel" disabled={busy} onClick={cancel}>
           取消
         </Button>
       </div>
@@ -252,13 +248,13 @@ export function SourceList({
             <SourceItem key={s.id} s={s}>
               {onSave && !(form && form.mode !== "add" && form.id === s.id) && (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Button variant="ghost" className="text-base" disabled={busy || disabled || !!form} onClick={() => open({ mode: "edit", id: s.id }, fieldsOf(s))}>
+                  <Button variant="secondary" className="text-base" disabled={busy || disabled || !!form} onClick={() => open({ mode: "edit", id: s.id }, fieldsOf(s))}>
                     編集
                   </Button>
-                  <Button variant="ghost" className="text-base" disabled={busy || disabled || !!form || s.state === "unlinked"} onClick={() => open({ mode: "confirm", id: s.id }, EMPTY)}>
+                  <Button variant="secondary" className="text-base" disabled={busy || disabled || !!form || s.state === "unlinked"} onClick={() => open({ mode: "confirm", id: s.id }, EMPTY)}>
                     {s.state === "confirmed" ? "確認を記録し直す" : "確認を記録"}
                   </Button>
-                  <Button variant="ghost" className="text-base" disabled={busy || disabled || !!form} onClick={() => void remove(s.id)}>
+                  <Button variant="danger" className="text-base" disabled={busy || disabled || !!form} onClick={() => void remove(s.id)}>
                     削除
                   </Button>
                 </div>
@@ -276,11 +272,7 @@ export function SourceList({
           ＋ 出典と根拠を追加
         </Button>
       )}
-      {!form && error && (
-        <p role="alert" className="text-base break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {!form && error && <Alert>{error}</Alert>}
     </div>
   );
 }

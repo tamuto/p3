@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { RequestCompletionPlan, RequestCompletionResult } from "../../../shared/types.ts";
 import { api, ApiError } from "../../../web/lib/api.ts";
-import { Button, cx } from "../../../web/components/ui.tsx";
+import { Alert, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 
 const REQUEST_ID = /^\d{6}-[a-z0-9]{5}$/;
 
@@ -124,9 +124,7 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
 function OutcomeView({ outcome }: { outcome: Outcome }) {
   if (outcome.kind === "rejected" || outcome.kind === "error") {
     return (
-      <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base break-words text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-        {outcome.text}
-      </p>
+      <Alert box>{outcome.text}</Alert>
     );
   }
   const r = outcome.result;

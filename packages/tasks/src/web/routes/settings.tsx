@@ -6,7 +6,7 @@ import { ReposPanel } from "../../features/settings/web/ReposPanel.tsx";
 import { QualityPanel } from "../../features/quality/web/QualityPanel.tsx";
 import { TabPanel, Tabs } from "../components/Tabs.tsx";
 import { ThemePanel } from "../../features/settings/web/ThemePanel.tsx";
-import { Button, cx, Field, inputCls, Section } from "../components/ui.tsx";
+import { Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { api, saveErrorText } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { useUnsaved } from "../lib/unsaved.ts";
@@ -148,7 +148,7 @@ function SettingsPage() {
             <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
               保存
             </Button>
-            <Button variant="ghost" disabled={!dirty} onClick={() => (setDraft(basicOf(ctx.info.project)), setDirty(false), setMsg(null))}>
+            <Button variant="cancel" disabled={!dirty} onClick={() => (setDraft(basicOf(ctx.info.project)), setDirty(false), setMsg(null))}>
               元に戻す
             </Button>
             {msg && <span className={cx(msg.ok ? "text-emerald-600" : "text-rose-600")}>{msg.text}</span>}

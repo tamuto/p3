@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { TaskQualityDiffItem } from "../shared/quality.ts";
 import type { Task } from "../../../shared/types.ts";
 import { api, failureOf } from "../../../web/lib/api.ts";
-import { Button } from "../../../web/components/ui.tsx";
+import { Button } from "@infodb/p3-shared/web/ui.tsx";
 
 const LABEL: Record<TaskQualityDiffItem["kind"], string> = { add: "足す", change: "品質基準が変わった", remove: "消す", exempt: "除外になった", edited: "タスクで文を直した" };
 

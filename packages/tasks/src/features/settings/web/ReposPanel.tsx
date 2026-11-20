@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodeMapEntry } from "../../../shared/repos.ts";
 import { api, type RepoInfo } from "../../../web/lib/api.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
-import { Badge, Button, cx, Field, inputCls, Section } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 const STATUS: Record<RepoInfo["status"], { label: string; tone: "emerald" | "amber" | "rose" }> = {
   ok: { label: "読める", tone: "emerald" },
@@ -63,11 +63,7 @@ export function ReposPanel({ tick, onChanged, onDirtyChange }: { tick: number; o
         Preflight が読むリポジトリ・フォルダ。数と名前は自由で、git でなくてもよい。「作業先にできる」ものはタスクの作業先になる。
         名前・役割・主なフォルダはチームで共有し（project.yaml）、このマシンのパスは個人設定に置く（共有しない）。
       </p>
-      {error && (
-        <p role="alert" className="text-base break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       {data && !data.local && <p className="text-base text-slate-500">このマシンのパスは、P3 を動かしているマシンの画面でだけ見られます。</p>}
       {data && data.local && !data.registered && (
         <p className="text-base text-amber-700 dark:text-amber-300">このプロジェクトは個人設定に登録されていないので、このマシンのパスは登録できません（p3 project add）。</p>
@@ -121,12 +117,12 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
               <Button variant="danger" onClick={() => void act(() => api.removeRepo(repo.name))}>
                 消す
               </Button>
-              <Button variant="ghost" onClick={() => setConfirm(false)}>
+              <Button variant="cancel" onClick={() => setConfirm(false)}>
                 やめる
               </Button>
             </>
           ) : (
-            <Button variant="ghost" onClick={() => setConfirm(true)}>
+            <Button variant="danger" onClick={() => setConfirm(true)}>
               消す…
             </Button>
           )}
@@ -162,12 +158,12 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
             <input className={cx(inputCls, "font-mono max-sm:col-span-2")} aria-label="フォルダ" placeholder="src/server" value={m.path} onChange={(e) => setMap(i, { path: e.target.value })} />
             <input className={cx(inputCls, "max-sm:col-span-2")} aria-label="役割" placeholder="API とデータ" value={m.role} onChange={(e) => setMap(i, { role: e.target.value })} />
             <input className={cx(inputCls, "font-mono")} aria-label="入口" placeholder="src/server/app.ts" value={m.entry ?? ""} onChange={(e) => setMap(i, { entry: e.target.value || undefined })} />
-            <Button variant="ghost" aria-label={`主なフォルダ ${m.path || "の行"} を外す`} onClick={() => setDraft({ ...draft, map: draft.map.filter((_, j) => j !== i) })}>
+            <Button variant="secondary" aria-label={`主なフォルダ ${m.path || "の行"} を外す`} onClick={() => setDraft({ ...draft, map: draft.map.filter((_, j) => j !== i) })}>
               ×
             </Button>
           </div>
         ))}
-        <Button variant="ghost" onClick={() => setDraft({ ...draft, map: [...draft.map, { path: "", role: "" }] })}>
+        <Button variant="secondary" onClick={() => setDraft({ ...draft, map: [...draft.map, { path: "", role: "" }] })}>
           ＋ フォルダを足す
         </Button>
       </div>
@@ -175,7 +171,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
         <Button variant="primary" disabled={!dirty} onClick={() => void act(() => api.updateRepo(repo.name, draft))}>
           保存
         </Button>
-        <Button variant="ghost" disabled={!dirty} onClick={() => setDraft(saved)}>
+        <Button variant="cancel" disabled={!dirty} onClick={() => setDraft(saved)}>
           元に戻す
         </Button>
         {dirty && <span className="text-base text-slate-500">未保存の変更があります</span>}
@@ -191,7 +187,7 @@ function RepoCard({ repo, local, act, onDirty }: { repo: RepoInfo; local: boolea
             登録
           </Button>
           {repo.local && (
-            <Button variant="ghost" className="mt-6" onClick={() => void act(() => api.setRepoPath(repo.name, null))}>
+            <Button variant="secondary" className="mt-6" onClick={() => void act(() => api.setRepoPath(repo.name, null))}>
               外す
             </Button>
           )}

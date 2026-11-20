@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import {
   MEASURE_TYPE_LABEL,
   MEASURE_TYPES,
@@ -83,24 +84,6 @@ function toInput(d: Draft): Record<string, unknown> {
   };
 }
 
-const inputCls =
-  "w-full rounded border border-slate-300 bg-white px-2 py-1 text-base dark:border-slate-700 dark:bg-slate-950 aria-[invalid=true]:border-rose-500";
-const btnCls = "rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800";
-
-function Field({ label, error, children, hint }: { label: string; error?: string; children: ReactNode; hint?: string }) {
-  return (
-    <div className="space-y-1">
-      {/* 項目の名前だけを入力欄の名前にする（補足と誤りは欄の下に出す） */}
-      <label className="block space-y-1">
-        <span className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</span>
-        {children}
-      </label>
-      {hint && <span className="block text-sm text-slate-500 dark:text-slate-400">{hint}</span>}
-      {error && <span className="block text-sm text-rose-600">{error}</span>}
-    </div>
-  );
-}
-
 export function DefinitionForm({
   initial,
   submitLabel,
@@ -151,7 +134,7 @@ export function DefinitionForm({
       }}
     >
       {(problems.length > 0 || error) && (
-        <div role="alert" className="space-y-1 rounded border border-rose-300 bg-rose-50 px-4 py-3 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+        <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
           {error && <p>保存できませんでした: {error.message}</p>}
           {error?.conflict && <p>入力は残しています。ページを読み直すと今の定義（版 {error.conflict.rev}）を開けます。</p>}
           {problems.length > 0 && (
@@ -183,11 +166,11 @@ export function DefinitionForm({
           <h2 id="measures-heading" className="font-semibold">
             測定項目（何を測定・記録するか）
           </h2>
-          <button type="button" className={btnCls} onClick={() => set({ measures: [...draft.measures, emptyMeasure()] })}>
+          <Button onClick={() => set({ measures: [...draft.measures, emptyMeasure()] })}>
             ＋ 測定項目を足す
-          </button>
+          </Button>
         </div>
-        {err("measures") && <p className="text-sm text-rose-600">{err("measures")}</p>}
+        {err("measures") && <Alert>{err("measures")}</Alert>}
         {draft.measures.length === 0 && <p className="text-slate-500">まだありません。</p>}
         {draft.measures.map((m, i) => (
           <fieldset key={i} aria-label={`測定項目 ${i + 1}`} className="grid gap-3 rounded border border-slate-200 p-3 sm:grid-cols-[1fr_9rem_8rem_auto] dark:border-slate-800">
@@ -207,9 +190,9 @@ export function DefinitionForm({
               <input className={inputCls} value={m.unit} disabled={m.type !== "number"} aria-invalid={!!err(`measures[${i}].unit`)} onChange={(e) => setMeasure(i, { unit: e.target.value })} />
             </Field>
             <div className="flex items-end">
-              <button type="button" className={btnCls} onClick={() => set({ measures: draft.measures.filter((_, j) => j !== i) })}>
+              <Button onClick={() => set({ measures: draft.measures.filter((_, j) => j !== i) })}>
                 外す
-              </button>
+              </Button>
             </div>
             <div className="sm:col-span-4">
               <Field label="説明" error={err(`measures[${i}].description`)}>
@@ -227,12 +210,12 @@ export function DefinitionForm({
           <h2 id="procedures-heading" className="font-semibold">
             確認の手順（繰り返し確かめる方法）
           </h2>
-          <button type="button" className={btnCls} onClick={() => set({ procedures: [...draft.procedures, emptyProcedure()] })}>
+          <Button onClick={() => set({ procedures: [...draft.procedures, emptyProcedure()] })}>
             ＋ 手順を足す
-          </button>
+          </Button>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">繰り返し確かめるので、できるだけコマンドかテストにする。画面の操作はスクリプト、汎用の確認は AI への指示で書く。</p>
-        {err("procedures") && <p className="text-sm text-rose-600">{err("procedures")}</p>}
+        {err("procedures") && <Alert>{err("procedures")}</Alert>}
         {draft.procedures.length === 0 && <p className="text-slate-500">まだありません。</p>}
         {draft.procedures.map((p, i) => {
           const at = `procedures[${i}]`;
@@ -252,9 +235,9 @@ export function DefinitionForm({
                   <input className={inputCls} value={p.title} aria-invalid={!!err(`${at}.title`)} onChange={(e) => setProcedure(i, { title: e.target.value })} />
                 </Field>
                 <div className="flex items-end">
-                  <button type="button" className={btnCls} onClick={() => set({ procedures: draft.procedures.filter((_, j) => j !== i) })}>
+                  <Button onClick={() => set({ procedures: draft.procedures.filter((_, j) => j !== i) })}>
                     外す
-                  </button>
+                  </Button>
                 </div>
               </div>
               {p.kind === "command" && (
@@ -322,9 +305,9 @@ export function DefinitionForm({
       </section>
 
       <div className="flex gap-3">
-        <button type="submit" disabled={saving} className="rounded bg-sky-600 px-4 py-1.5 font-medium text-white hover:bg-sky-700 disabled:opacity-60">
+        <Button type="submit" variant="primary" disabled={saving}>
           {saving ? "保存中…" : submitLabel}
-        </button>
+        </Button>
       </div>
     </form>
   );

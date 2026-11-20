@@ -1,7 +1,7 @@
+import { Alert, Empty, Loading, buttonCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { fetchDefinitions, type DefinitionListing } from "../../lib/api.ts";
 import { useLoad } from "../../lib/useLoad.ts";
-import { linkCls, primaryCls } from "../../components/styles.ts";
 
 /** /observer: このプロジェクトの観測の定義の一覧（登録・詳細への導線）。observer の API だけを読む */
 export const Route = createFileRoute("/observer/")({ component: DefinitionList });
@@ -12,25 +12,19 @@ function DefinitionList() {
     <div className="mx-auto max-w-4xl space-y-4 px-5 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">観測</h1>
-        <Link to="/observer/new" className={primaryCls}>
+        <Link to="/observer/new" className={buttonCls("primary")}>
           ＋ 観測を登録
         </Link>
       </div>
-      {load.kind === "loading" && <p className="text-slate-500">読み込み中…</p>}
-      {load.kind === "error" && (
-        <p role="alert" className="text-rose-600">
-          観測の定義を読めませんでした: {load.message}
-        </p>
-      )}
+      {load.kind === "loading" && <Loading />}
+      {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (
         <>
           {load.value.unreadable.map((u) => (
-            <p key={u.file} role="alert" className="text-amber-700 dark:text-amber-400">
-              ⚠ 読めないファイル {u.file}: {u.reason}
-            </p>
+            <Alert key={u.file} warn>⚠ 読めないファイル {u.file}: {u.reason}</Alert>
           ))}
           {load.value.definitions.length === 0 ? (
-            <p className="text-slate-500">まだ観測の定義がありません。</p>
+            <Empty>まだ観測の定義がありません。</Empty>
           ) : (
             <table className="w-full text-left">
               <thead className="text-sm text-slate-500 dark:text-slate-400">

@@ -16,7 +16,7 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Badge, Button, Empty, Field, Id, inputCls, Section } from "./ui.tsx";
+import { Badge, Button, Empty, Field, Id, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -197,14 +197,14 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </span>
           <div className="ml-auto flex gap-2">
             {dirty && (
-              <Button variant="ghost" onClick={() => (setDraft((d) => d && discardDraft(d)), setMsg(null), void load())}>
+              <Button variant="cancel" onClick={() => (setDraft((d) => d && discardDraft(d)), setMsg(null), void load())}>
                 破棄
               </Button>
             )}
             <Button variant="primary" disabled={!dirty || gone} onClick={() => void save()}>
               保存
             </Button>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="cancel" onClick={onClose}>
               ✕
             </Button>
           </div>
@@ -229,9 +229,9 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 {m.from === rid ? (
                   "要望の再評価"
                 ) : (
-                  <button className="font-mono underline" onClick={() => open(m.from)}>
+                  <Button variant="link" className="font-mono" onClick={() => open(m.from)}>
                     {markFrom(m, rid)}
-                  </button>
+                  </Button>
                 )}
                 {m.note ? `（${m.note}）` : ""}
               </span>
@@ -296,7 +296,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 <span className="min-w-0 flex-1">
                   {task.checkedAt ? `人が確認済み（最終確認・${fmtTime(task.checkedAt)}）` : "人の最終確認：未。成果物と受け入れ基準の証拠・根拠を確認したら済みにしてください"}
                 </span>
-                <Button variant={task.checkedAt ? "ghost" : "primary"} disabled={dirty || accDirty || blockDirty || srcDirty} onClick={() => void toggleChecked()}>
+                <Button variant={task.checkedAt ? "secondary" : "primary"} disabled={dirty || accDirty || blockDirty || srcDirty} onClick={() => void toggleChecked()}>
                   {task.checkedAt ? "済みを外す" : "済みにする"}
                 </Button>
               </div>

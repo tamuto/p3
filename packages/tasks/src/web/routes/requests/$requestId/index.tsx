@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
-import { Badge, Button, cx } from "../../../components/ui.tsx";
+import { Badge, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
 import { notesPanelState, PLAIN_RUN_BLOCKED } from "../../../lib/notes.ts";
@@ -296,12 +296,12 @@ function RequestPanel({
           </span>
         )}
         {selectedRunning && run && (
-          <Button variant="ghost" onClick={() => cancelRun()}>
+          <Button variant="cancel" onClick={() => cancelRun()}>
             {run.cancelRequested ? "もう一度中止を頼む" : "中止"}
           </Button>
         )}
         {selectedRunning && run?.liveness?.state === "unknown" && (
-          <Button variant="ghost" onClick={() => cancelRun(true)}>
+          <Button variant="secondary" onClick={() => cancelRun(true)}>
             止まっていることを確かめて中断にする
           </Button>
         )}
@@ -334,7 +334,7 @@ function RequestPanel({
         {pulseError && (
           <p role="status" className="flex w-full flex-wrap items-center gap-2 text-base text-amber-700 dark:text-amber-400">
             最新の Preflight を確かめられませんでした（{pulseError}）。表示と入力はそのままです
-            <Button variant="ghost" className="text-base" onClick={() => poller.current?.now()}>
+            <Button variant="secondary" className="text-base" onClick={() => poller.current?.now()}>
               もう一度確かめる
             </Button>
           </p>

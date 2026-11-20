@@ -1,7 +1,7 @@
 import type { AppCtx } from "../../../web/lib/appCtx.ts";
 import type { RequestData } from "../../../web/lib/requestData.tsx";
 import { CompletionRecords, ReviewBadge, ReviewPanel, reviewCountText } from "./CompletionReview.tsx";
-import { Button, Id } from "../../../web/components/ui.tsx";
+import { Button, Id } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望の概要の見直しが必要（候補）: 要望自身（対応済・完了済）の理由と、自分のタスク・配下の候補の件数とタスクへの操作。

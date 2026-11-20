@@ -3,6 +3,7 @@ import { api, ApiError, type RequestDetail } from "./api.ts";
 import { useAppData } from "./appData.tsx";
 import { latestOnly, STALE } from "./latest.ts";
 import { applyLoad, initialLoad, type LoadState } from "./requestLoad.ts";
+import { Button } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 開いている要望のデータ（要望・タスク・Preflight の履歴・関係）。全体の変更通知で読み直す */
 export interface RequestData extends RequestDetail {
@@ -45,9 +46,9 @@ export function RequestDataProvider({ requestId, children, fallback }: { request
     return error ? (
       <div className="space-y-2 p-8">
         <p className="text-rose-600">読み込めませんでした: {error}</p>
-        <button className="underline" onClick={() => void reload()}>
+        <Button variant="link" onClick={() => void reload()}>
           もう一度読み込む
-        </button>
+        </Button>
       </div>
     ) : (
       <div className="p-8 text-slate-500">Loading…</div>

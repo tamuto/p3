@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ChatGptState } from "../lib/api.ts";
 import { CHATGPT_UI, chatgptView, firstNoticeSeen, markFirstNoticeSeen } from "../lib/chatgpt.ts";
-import { Badge, Button, inputCls, Section } from "./ui.tsx";
+import { Badge, Button, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * このマシン・この人の ChatGPT プランの接続（プロジェクトの設定とは別。個人設定の chatgpt.json）。

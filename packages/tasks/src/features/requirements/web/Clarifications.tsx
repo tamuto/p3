@@ -4,7 +4,7 @@ import type { Request } from "../../../shared/types.ts";
 import { api, type RunInfo } from "../../../web/lib/api.ts";
 import { useUnsaved } from "../../../web/lib/unsaved.ts";
 import { sourceSaveError } from "./RequirementSources.tsx";
-import { Badge, Button, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * Preflight の確認事項（clarify の構造化した確認事項）のカードと回答欄。確認先・質問・対象・必要な根拠・判断への影響・元の run と ID・
@@ -238,16 +238,12 @@ function ClarificationCard({
             </fieldset>
           )}
           {dirty && <p className="text-base text-amber-700 dark:text-amber-400">未保存の回答があります</p>}
-          {error && (
-            <p role="alert" className="text-base break-words text-rose-600">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" disabled={busy || !f.answer.trim()} onClick={() => void save()}>
               {busy ? "保存中…" : "回答を要望に保存"}
             </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
+            <Button variant="cancel" disabled={busy} onClick={() => setOpen(false)}>
               取消
             </Button>
           </div>

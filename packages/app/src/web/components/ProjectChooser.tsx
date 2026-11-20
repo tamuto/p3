@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
-import { Badge, Button, Empty } from "@infodb/p3-tasks/web/components/ui.tsx";
+import { Badge, Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
 
 /** GET /api/projects の応答（プロジェクトを跨ぐ serve） */
 export interface ProjectListing {

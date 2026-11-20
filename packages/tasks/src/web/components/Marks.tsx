@@ -1,4 +1,4 @@
-import { cx } from "./ui.tsx";
+import { cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * スケジュールの印。完了 ○ / 済み ✓（人が確認した）/ 作業中 ◐ / 未着手 □ / 期限 ⚑

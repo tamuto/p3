@@ -4,7 +4,7 @@ import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type CompletionRecord, typ
 import { REVIEW_CODE_LABEL, REVIEW_STATE_HINT, REVIEW_STATE_LABEL, type ReviewDiagnosis, type ReviewState } from "../shared/reviewCandidate.ts";
 import type { RequestReviewCounts } from "../../../shared/types.ts";
 import { fmtTime } from "../../../web/lib/format.ts";
-import { Badge, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Badge, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 完了時の条件（完了の記録）と、見直しが必要（候補）の表示。判定はしない（API の共通の診断 shared/reviewCandidate.ts をそのまま見せる）。

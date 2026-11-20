@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Request } from "../../shared/types.ts";
 import { tagCandidates, toggleTag } from "../lib/requestFilter.ts";
-import { buttonCls, cx, inputCls } from "./ui.tsx";
+import { Button, buttonCls, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 一度に並べる候補の上限（多いときは検索で絞ってもらう） */
 const MAX_SHOWN = 200;
@@ -102,9 +102,9 @@ export function TagFilter({
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-base text-slate-500">
                 <span>選択中 {selected.length} 件（どれかが付いている要望）</span>
-                <button type="button" className="underline hover:text-slate-800 dark:hover:text-slate-200" onClick={() => onChange([])}>
+                <Button variant="link" onClick={() => onChange([])}>
                   すべて解除
-                </button>
+                </Button>
               </div>
               <ul className="flex max-h-24 flex-wrap gap-1 overflow-y-auto" aria-label="選択中のタグ">
                 {selected.map((t) => (
