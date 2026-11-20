@@ -202,6 +202,16 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       none(await tabTo(page, page.getByRole("button", { name: "元に戻す", exact: true }), "元に戻す"), at("設定"));
       await page.keyboard.press("Enter");
     }, page);
+    await s.step(at("観測の一覧から作成の操作とナビゲーションへ"), async () => {
+      await page.goto("/observer");
+      await until.visible(page.getByRole("link", { name: /観測（経費精算/ }));
+      const banner = page.getByRole("banner");
+      none(await tabTo(page, banner.getByRole("link", { name: "観測", exact: true }), "ナビゲーションの観測"), at("観測の一覧"));
+      none(await tabTo(page, banner.getByRole("link", { name: /新しい要望/ }), "新しい要望"), at("観測の一覧"));
+      none(await tabTo(page, banner.getByRole("link", { name: /新しい観測/ }), "新しい観測"), at("観測の一覧"));
+      const [req, obs] = [await banner.getByRole("link", { name: /新しい要望/ }).innerText(), await banner.getByRole("link", { name: /新しい観測/ }).innerText()];
+      expect(req, at("作成の操作の文字")).not.toBe(obs);
+    }, page);
     await s.step(at("観測の登録の保存"), async () => {
       await page.goto("/observer/new");
       await page.getByLabel("タイトル").fill(LONG_TITLE);
