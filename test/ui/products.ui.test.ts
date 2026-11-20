@@ -1,5 +1,5 @@
-// serve の製品の選び方の画面: 既定の両方（通常の serve とプロジェクトを跨ぐ serve）と、--products で指定した tasks だけ・observer だけ。
-// ナビゲーションの導線、observer のページの直リンクと再読み込み、選んでいない製品のページ、observer の画面が tasks の API を要求しないこと。
+// serve の製品の画面: serve は常に tasks と observer の両方を起動する（通常の serve とプロジェクトを跨ぐ serve）。
+// ナビゲーションの導線、observer のページの直リンクと再読み込み、observer の画面が tasks の API を要求しないこと。
 import { afterEach, describe, expect, inject, it } from "vitest";
 import type { Page } from "playwright-core";
 import { openScenario, until, type Scenario } from "./scenario.ts";
@@ -19,52 +19,14 @@ const isTasksApi = (p: string) => !["/api/mode", "/api/user-theme.js"].includes(
 
 const observerNav = (page: Page) => page.getByRole("navigation").getByRole("link", { name: "観測基盤" });
 
-describe.skipIf(!inject("chromium").available)("serve の製品の選び方", () => {
+describe.skipIf(!inject("chromium").available)("serve の製品（常に両方）", () => {
   let s: Scenario | undefined;
   afterEach(async () => {
     await s?.close();
     s = undefined;
   });
 
-  it("--products tasks: observer の導線が無く、/observer を直接開いても無効と出て observer の API を読まない", async () => {
-    s = await openScenario("tasks だけ", { serveArgs: ["--products", "tasks"] });
-    const { page, step } = s;
-    await step("進捗が開き、ナビゲーションに観測基盤が無い", async () => {
-      await page.goto("/");
-      await until.visible(page.getByRole("link", { name: "進捗" }));
-      expect(await observerNav(page).count()).toBe(0);
-    });
-    await step("/observer を直接開くと無効と出る", async () => {
-      const requests = apiRequests(page);
-      await page.goto("/observer");
-      await until.visible(page.getByRole("heading", { name: /観測基盤（observer）はこの起動では使えません/ }));
-      expect(requests().filter((p) => p.startsWith("/api/observer"))).toEqual([]);
-    });
-  });
-
-  it("observer だけ: どの URL からも起動確認のページに移り、共通の版を出し、tasks の API を要求しない", async () => {
-    s = await openScenario("observer だけ", { serveArgs: ["--products", "observer"] });
-    const { page, step } = s;
-    const requests = apiRequests(page);
-    await step("/ を開くと /observer に移り、起動状態と共通の版が出る", async () => {
-      await page.goto("/");
-      await until.url(page, /\/observer$/);
-      await until.visible(page.getByRole("heading", { name: "観測基盤", exact: true }));
-      await until.visible(page.getByText("起動中"));
-      await until.visible(page.getByText(await s!.env.p3(["observer", "status", "--json"]).then((o) => JSON.parse(o).version as string), { exact: true }));
-      await until.visible(page.getByText("p3-observer", { exact: true }));
-    });
-    await step("tasks の導線は無い", async () => {
-      expect(await page.getByRole("link", { name: "進捗" }).count()).toBe(0);
-      expect(await page.getByRole("link", { name: /新しい要望/ }).count()).toBe(0);
-    });
-    await step("tasks のプロジェクト情報・設定・イベントを要求していない", async () => {
-      expect(requests().filter(isTasksApi)).toEqual([]);
-      expect(requests()).toContain("/api/observer/status");
-    });
-  });
-
-  it("既定の両方（通常の serve）: ナビゲーションで行き来でき、/observer を直リンクで開いて再読み込みしても起動確認のページが出る", async () => {
+  it("両方（通常の serve）: ナビゲーションで行き来でき、/observer を直リンクで開いて再読み込みしても起動確認のページが出る", async () => {
     s = await openScenario("両方");
     const { page, step } = s;
     await step("tasks の進捗から観測基盤へ移る", async () => {
@@ -94,7 +56,7 @@ describe.skipIf(!inject("chromium").available)("serve の製品の選び方", ()
     });
   });
 
-  it("既定の両方（プロジェクトを跨ぐ serve）: プロジェクトの画面から観測基盤へ移り、戻る導線で今までのプロジェクトの選択が使える", async () => {
+  it("両方（プロジェクトを跨ぐ serve）: プロジェクトの画面から観測基盤へ移り、戻る導線で今までのプロジェクトの選択が使える", async () => {
     s = await openScenario("両方・プロジェクトを跨ぐ", { serveArgs: ["--all-projects"] });
     const { page, step } = s;
     await step("プロジェクトを開き（登録が1つなら一覧を飛ばす）、観測基盤へ移る", async () => {

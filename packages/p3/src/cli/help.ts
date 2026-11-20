@@ -72,10 +72,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                同じ指標・範囲・期間・単位の再送は何もしない。値を変える訂正は --rev 版（無い・違えば競合で終了コード 3）
   metrics records / rm <M1>     人の記録の全部 / 消す（--rev 版）
   whoami                       操作するプロジェクト・変更者・今の要望
-  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）
+  serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）。
+                               常にタスク管理（tasks）と観測基盤（observer。/observer）の両方を起動し、画面のナビゲーションで行き来する
                                --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）
-                               --products tasks|observer|tasks,observer  起動する製品（省くと両方。画面のナビゲーションで行き来する）。
-                                 指定した製品だけを起動する。observer だけならプロジェクトを決めず /observer を開く。--all-projects と一緒なら tasks を含める
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）

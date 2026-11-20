@@ -215,9 +215,9 @@ packages/
     bin/p3.mjs       CLI の起動口（チェックアウトでは tsx でソースを、配布物ではビルドした lib/ を動かす）
     src/cli/         main.ts（引数の解釈・プロジェクトの決定・serve・help・guide・init・join・agents）・project.ts（init / join / agents）・
                      guide.ts と guide.md（AI 向けの作業の手順の原本。p3 guide が返す）・agentsStatus.ts・help.ts
-    src/server/      server.ts（待ち受けと画面の配信。--products で選んだ製品の API を付ける）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
+    src/server/      server.ts（待ち受けと画面の配信。全部の製品の API を付ける）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
     src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）
-    src/shared/      products.ts（組み込んだ製品と --products の解釈。CLI・serve・画面の共通）
+    src/shared/      products.ts（組み込んだ製品と、廃止した --products の案内）
     src/web/         画面の外枠（main.tsx・Boot・App・router・shell.ts（この画面の製品）・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
                      routeTree.gen.ts はルート一覧（自動生成。tasks と observer のページも入る）
   tasks/             @infodb/p3-tasks（今の p3 の機能。公開しない）。共通の土台（層ごと）と機能のまとまり（features/）に分ける
@@ -328,8 +328,7 @@ P3_CODEX_PATH_MAP=/workspaces=/home/me/workspaces node scripts/verify-docker.mjs
 スモークで確かめること: 起動の約束（ENTRYPOINT・既定の CMD・入れた道具）・2つのプロジェクトの一覧・登録世代つきの作成と手元の
 ファイル・同じ ID の分離・添付・ソケットが無いときのエンジンの状態・Mock の Preflight の同時実行と片方の取消・再起動のあとに残る
 こと・データのフォルダの欠落と復旧・`docker stop`（SIGTERM）で実行中の Preflight を取り消して止まること・コマンドの明示で通常の
-serve になること・製品の選び方（既定は両方で observer の API も動く、`--products tasks` は observer の API が 404、`--products observer` はプロジェクトを開かずに
-observer の API だけ）。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
+serve になること・どの起動でも製品は両方（observer の API も動く）で、以前の `--products` は使い方の誤り（終了コード 1）になること。本物の Codex（ソケット・pathMap・ChatGPT の接続）での Preflight・画面資料・要約の生成は、このスクリプトでは
 確かめない（接続できる環境で手で確かめ、結果を PR に残す。Mock の成功で代わりにしない）。
 
 マウントするパスの自動の決め方（`packages/tasks/src/core/preflight/hostPaths.ts`）は `node scripts/verify-host-paths.mjs` で本物の Docker で

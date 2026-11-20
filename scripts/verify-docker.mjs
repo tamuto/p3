@@ -9,14 +9,14 @@
 //      同じ ID の分離・添付・Docker のソケットが無いときのエンジンの状態（Preflight を使えない理由）・Mock の Preflight を
 //      2つ同時に動かして片方を取り消す・データのフォルダの欠落と復旧・再起動のあとも残る・SIGTERM（docker stop）で止まる
 //   4. コマンドを明示すると通常の serve（1つのプロジェクト）になる
-//   5. 製品の選び方: 既定は両方（tasks と observer）。--products で指定した製品だけ（tasks だけ・observer だけ）
+//   5. 製品: どの起動でも tasks と observer の両方。以前の --products（製品の選択）は使い方の誤りになる
 //
 // コンテナは root で動かし（イメージの既定）、--work をコンテナの中の同じパスにマウントする。
 // DevContainer の中では、--work に Docker のホストから見えるフォルダを渡し、環境変数 P3_CODEX_PATH_MAP（このマシンのパス=ホストのパス）
 // でマウントの元を決める。公開したポートが Docker のホストにしか開かない（DevContainer など）ときは、--network-of で
 // このマシンのコンテナのネットワークに入れる（auto はこのコンテナを探す。ポートは公開せず P3_PORT で待ち受ける）。本物の Codex（ソケット・pathMap・ChatGPT の接続）はここでは確かめない（docs/development.md）。
 // 依存を使わない（Node だけで動く）。CI には入れない。
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -167,7 +167,7 @@ try {
     run(`${tag}-all`);
     const mode = await waitReady();
     check(mode.mode === "all-projects", `モードが違います: ${JSON.stringify(mode)}`);
-    check(mode.products?.join() === "tasks,observer", `既定の製品が両方ではありません: ${JSON.stringify(mode)}`);
+    check(mode.products?.join() === "tasks,observer", `製品が両方ではありません: ${JSON.stringify(mode)}`);
     check((await api("GET", "/observer/status")).body?.state === "ready", "既定の起動で observer の API が動きません");
     const l = (await api("GET", "/projects")).body;
     check(l.projects.map((p) => p.name).join(",") === "alpha,beta", `一覧が違います: ${JSON.stringify(l)}`);
@@ -268,26 +268,22 @@ try {
     return `${took}ms・終了コード 0・止めた run は ${run.status}${run.error ? `（${run.error}）` : ""}`;
   });
 
-  await step("コマンドを明示すると、通常の serve（1つのプロジェクト）になる。--products tasks なら observer の API は 404", async () => {
+  await step("コマンドを明示すると、通常の serve（1つのプロジェクト）になる。observer の API も動く", async () => {
     port = await freePort();
-    run(`${tag}-single`, [], ["serve", "--dir", dataOf("alpha"), "--products", "tasks", "--host", "0.0.0.0"]);
+    run(`${tag}-single`, [], ["serve", "--dir", dataOf("alpha"), "--host", "0.0.0.0"]);
     const mode = await waitReady();
-    check(mode.mode === "single" && mode.products?.join() === "tasks", `モードが違います: ${JSON.stringify(mode)}`);
+    check(mode.mode === "single" && mode.products?.join() === "tasks,observer", `モードが違います: ${JSON.stringify(mode)}`);
     check((await api("GET", "/requests")).status === 200, "通常の API が使えません");
-    check((await api("GET", "/observer/status")).status === 404, "--products tasks で observer の API が動いています");
-    return JSON.stringify(mode);
-  });
-
-  await step("--products observer: プロジェクトを開かずに observer の API が動き、tasks の API は 404", async () => {
-    port = await freePort();
-    run(`${tag}-observer`, [], ["serve", "--products", "observer", "--host", "0.0.0.0"]);
-    const mode = await waitReady();
-    check(JSON.stringify(mode) === JSON.stringify({ mode: "none", products: ["observer"] }), `モードが違います: ${JSON.stringify(mode)}`);
     const s = await api("GET", "/observer/status");
     check(s.status === 200 && s.body.state === "ready" && /\d+\.\d+\.\d+/.test(s.body.version), `observer の起動状態が違います: ${JSON.stringify(s)}`);
-    const r = await api("GET", "/requests");
-    check(r.status === 404 && r.body?.code === "product_disabled", `tasks の API が 404 になっていません: ${JSON.stringify(r)}`);
     return `${JSON.stringify(mode)}・${s.body.version}`;
+  });
+
+  await step("以前の --products は使い方の誤り（終了コード 1）で、外せば両方を起動すると案内する", () => {
+    const r = spawnSync("docker", ["run", "--rm", "-v", `${hostPath(work)}:${work}`, "-e", `XDG_CONFIG_HOME=${config}`, image, "serve", "--products", "observer"], { encoding: "utf8" });
+    check(r.status === 1, `終了コードが 1 ではありません: ${r.status}\n${r.stderr}`);
+    check(r.stderr.includes("--products は使えなくなりました") && r.stderr.includes("常に tasks と observer の両方を起動します"), `案内が出ていません: ${r.stderr}`);
+    return "終了コード 1";
   });
 } catch {
   // 失敗は step が記録した

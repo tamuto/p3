@@ -84,11 +84,9 @@ function Layout() {
               {n.label}
             </Link>
           ))}
-          {currentShell().products.includes("observer") && (
-            <a href={OBSERVER_PAGE} title={OBSERVER_HINT} className={cx(navCls, navIdle)}>
-              観測基盤
-            </a>
-          )}
+          <a href={OBSERVER_PAGE} title={OBSERVER_HINT} className={cx(navCls, navIdle)}>
+            観測基盤
+          </a>
         </nav>
         <RefreshButton running={ctx.refreshing.running} onClick={() => void ctx.refresh()} />
         {/* 狭い画面では「＋」だけにして、ナビゲーションの幅を空ける */}
@@ -133,14 +131,13 @@ function Layout() {
 const OBSERVER_HINT = "p3-observer の起動状態（準備中）";
 
 /**
- * tasks のデータを読まない画面（observer のページ）の外枠。tasks を選んだ serve なら tasks へ戻る導線を出す:
+ * tasks のデータを読まない画面（observer のページ）の外枠。tasks へ戻る導線を出す:
  * 通常の serve は tasks の各ページ、プロジェクトを跨ぐ serve はプロジェクトの選択（/。今までの一覧・登録が1つなら開く）
  */
 function ProductLayout() {
   const shell = currentShell();
-  const tasksNav = !shell.products.includes("tasks")
-    ? []
-    : shell.mode === "all-projects"
+  const tasksNav =
+    shell.mode === "all-projects"
       ? [{ to: "/", label: "タスク管理", hint: "プロジェクトを選んでタスク管理の画面へ" }]
       : NAV.map((n) => ({ to: n.to as string, label: n.label as string, hint: n.hint as string }));
   return (
@@ -155,7 +152,6 @@ function ProductLayout() {
               {n.label}
             </a>
           ))}
-          {/* observer だけの serve でも、今いる製品をナビゲーションに出す */}
           <a href={OBSERVER_PAGE} title={OBSERVER_HINT} aria-current="page" className={cx(navCls, navActive)}>
             観測基盤
           </a>

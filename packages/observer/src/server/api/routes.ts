@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { observerStatus } from "../../core/status.ts";
 
 /**
- * observer の API。入口の serve が observer を選んだときだけ /api/observer の下に付ける（選んでいなければ付けず、入口の 404 の JSON になる）。
+ * observer の API。入口の serve が常に /api/observer の下に付ける。
  *   GET /status   起動状態（ObserverStatus）
  */
 export function observerRoutes(opts: { products?: readonly string[] } = {}) {

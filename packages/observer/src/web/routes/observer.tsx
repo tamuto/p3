@@ -50,7 +50,7 @@ function ObserverPage() {
             <dd>{STATE_LABEL[load.status.state]}</dd>
             <dt className="text-slate-600 dark:text-slate-400">共通バージョン</dt>
             <dd>{load.status.version}</dd>
-            <dt className="text-slate-600 dark:text-slate-400">有効な製品</dt>
+            <dt className="text-slate-600 dark:text-slate-400">製品</dt>
             <dd>{(load.status.products ?? ["observer"]).map((p) => `p3-${p}`).join("、")}</dd>
           </dl>
         )}
