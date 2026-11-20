@@ -8,6 +8,7 @@ import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/features
 import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
 import type { Product } from "../../shared/products.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
+import type { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 
 /** 変える操作に添える登録世代のヘッダー（GET でも添えれば、違うときは断る） */
 export const GENERATION_HEADER = "x-p3-project-generation";
@@ -26,7 +27,7 @@ const STATUS: Record<RegistryError["code"], 404 | 409 | 503> = { unknown: 404, c
  *
  * プロジェクトを書かないデータの API（/api/requests など）は 404（code: project_required）で断る。
  */
-export function projectsRoutes(registry: ProjectRegistry, opts: { products?: readonly Product[] } = {}) {
+export function projectsRoutes(registry: ProjectRegistry, opts: { products?: readonly Product[]; suggestions?: (ctx: P3Context) => SuggestionService } = {}) {
   // /api/mode で返すこの serve の製品（observer の API は startServer が付ける。この部品だけを使うときは tasks だけ）
   const products = opts.products ?? ["tasks"];
   const app = new Hono();
@@ -36,7 +37,7 @@ export function projectsRoutes(registry: ProjectRegistry, opts: { products?: rea
     let r = routes.get(ctx);
     if (!r) {
       r = new Hono();
-      if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir } }));
+      if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir }, suggestions: opts.suggestions?.(ctx) }));
       r.route("/", apiRoutes(ctx, { notify: (kind) => registry.notify(kind) }));
       // 無い API は 404 の JSON（画面の index.html に流さない）
       r.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

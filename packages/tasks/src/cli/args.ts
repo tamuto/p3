@@ -129,12 +129,12 @@ export function parse(argv: string[]) {
 }
 
 /** --repo を繰り返して複数の参照先を渡せるコマンド（品質基準の対象。ほかは作業先などの1つだけを取る） */
-const MULTI_REPO_COMMANDS = new Set(["quality"]);
+const MULTI_REPO_COMMANDS = new Set(["quality", "observer"]);
 
 /** --repo を繰り返せないコマンドで繰り返したら断る（最後の1つだけで黙って成功させない） */
 export function checkRepeatedRepo(cmd: string, o: { repos?: string[] }) {
   if ((o.repos?.length ?? 0) > 1 && !MULTI_REPO_COMMANDS.has(cmd)) {
-    throw new UsageError(`p3 ${cmd} の --repo は1つだけ指定できます（指定: ${o.repos!.join(", ")}）。--repo を繰り返して複数の参照先を指定できるのは p3 quality add / set だけです`);
+    throw new UsageError(`p3 ${cmd} の --repo は1つだけ指定できます（指定: ${o.repos!.join(", ")}）。--repo を繰り返して複数の参照先を指定できるのは p3 quality add / set と p3 observer suggest だけです`);
   }
 }
 

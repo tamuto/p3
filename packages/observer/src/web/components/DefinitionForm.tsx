@@ -9,9 +9,11 @@ import {
   type DefinitionProblem,
   type MeasureType,
   type ObservationDefinition,
+  type Procedure,
   type ProcedureKind,
 } from "../../shared/definition.ts";
 import { ObserverApiError } from "../lib/api.ts";
+import { SuggestPanel } from "./SuggestPanel.tsx";
 
 /**
  * 観測の定義の入力欄（登録と編集で共通）。保存の前に共通の検証（shared/definition.ts）で項目ごとの誤りを出し、
@@ -47,6 +49,13 @@ interface Draft {
 const emptyMeasure = (): MeasureDraft => ({ name: "", type: "number", unit: "", description: "" });
 const emptyProcedure = (kind: ProcedureKind = "command"): ProcedureDraft => ({ kind, title: "", measures: [], command: "", args: "", repo: "", cwd: "", path: "", invoke: "", body: "" });
 
+function procedureDraft(p: Procedure): ProcedureDraft {
+  const base = { ...emptyProcedure(p.kind), title: p.title, measures: [...p.measures] };
+  if (p.kind === "command") return { ...base, command: p.command, args: p.args.join("\n"), repo: p.repo ?? "", cwd: p.cwd ?? "" };
+  if (p.kind === "ai-instruction") return { ...base, body: p.body };
+  return { ...base, repo: p.repo, path: p.path, invoke: p.invoke ?? "" };
+}
+
 function toDraft(d?: DefinitionInput): Draft {
   if (!d) return { title: "", category: "", description: "", measures: [], procedures: [] };
   return {
@@ -54,12 +63,7 @@ function toDraft(d?: DefinitionInput): Draft {
     category: d.category,
     description: d.description,
     measures: d.measures.map((m) => ({ name: m.name, type: m.type, unit: m.unit ?? "", description: m.description ?? "" })),
-    procedures: d.procedures.map((p) => {
-      const base = { ...emptyProcedure(p.kind), title: p.title, measures: [...p.measures] };
-      if (p.kind === "command") return { ...base, command: p.command, args: p.args.join("\n"), repo: p.repo ?? "", cwd: p.cwd ?? "" };
-      if (p.kind === "ai-instruction") return { ...base, body: p.body };
-      return { ...base, repo: p.repo, path: p.path, invoke: p.invoke ?? "" };
-    }),
+    procedures: d.procedures.map(procedureDraft),
   };
 }
 
@@ -215,6 +219,8 @@ export function DefinitionForm({
           </fieldset>
         ))}
       </section>
+
+      <SuggestPanel material={() => toInput(draft)} onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))} />
 
       <section aria-labelledby="procedures-heading" className="space-y-3">
         <div className="flex items-center justify-between">

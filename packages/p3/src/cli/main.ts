@@ -19,6 +19,9 @@ import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
 import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
+import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
+import { openProject } from "@infodb/p3-tasks/core/context.ts";
+import { observerAssistant } from "../core/observerAssistant.ts";
 import { PRODUCTS_OPTION_REMOVED } from "../shared/products.ts";
 
 /**
@@ -224,6 +227,11 @@ async function main(argv: string[]): Promise<number> {
       category: o.category,
       body: o.body,
       rev: o.rev,
+      repo: o.repos,
+      note: o.note,
+      // 手順の提案だけ tasks のプロジェクトを開く（Codex の接続と参照先のこのマシンのパスを使う。tasks のデータは変えない）
+      suggestions: async () =>
+        new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() }))),
     });
     return observerOutput(out, r);
   }

@@ -216,7 +216,7 @@ packages/
     src/cli/         main.ts（引数の解釈・プロジェクトの決定・serve・help・guide・init・join・agents）・project.ts（init / join / agents）・
                      guide.ts と guide.md（AI 向けの作業の手順の原本。p3 guide が返す）・agentsStatus.ts・help.ts
     src/server/      server.ts（待ち受けと画面の配信。全部の製品の API を付ける）・api/projectsRoutes.ts（プロジェクトを跨ぐ serve）
-    src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）
+    src/core/        projectRegistry.ts（プロジェクトを跨ぐ serve の登録の一覧）・observerAssistant.ts（observer の手順の提案に Codex の接続を渡すアダプター）
     src/shared/      products.ts（組み込んだ製品と、廃止した --products の案内）
     src/web/         画面の外枠（main.tsx・Boot・App・router・shell.ts（この画面の製品）・routes/__root.tsx・プロジェクトの選択）と index.html・index.css。
                      routeTree.gen.ts はルート一覧（自動生成。tasks と observer のページも入る）
@@ -234,7 +234,8 @@ packages/
                      quality・retro・requirements（要求の根拠・回答・受け入れ基準）・settings・taskReview・milestoneReview・releaseNotes。
                      読んでよいものは docs/refactoring.md「モジュール構成」（test/featureBoundary.test.ts）
   observer/          @infodb/p3-observer（観測基盤。試作で、起動の確認と観測の定義の登録。公開しない）: shared/status.ts（起動状態の型・ページと API の場所）・
-                     shared/definition.ts（観測の定義の型と検証。CLI・API・画面で共通）・core/status.ts・core/definitionStore.ts（定義の保存）・
+                     shared/definition.ts（観測の定義の型と検証。CLI・API・画面で共通）・shared/suggestion.ts と core/suggest.ts（手順の提案）・
+                     core/status.ts・core/definitionStore.ts（定義の保存）・
                      cli/observerCli.ts（p3 observer）・server/api/routes.ts（/api/observer）・web/（/observer の一覧・登録・詳細・編集と、入口が決める対象 lib/scope.ts）
   kit/               @infodb/p3-kit（入口と製品が使う最小限の共通処理。公開しない）: fsutil.ts・frontmatter.ts・usage.ts・appInfo.ts
 skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）

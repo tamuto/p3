@@ -962,6 +962,17 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 - 画面: 入口の Boot が対象を決め（`web/lib/scope.ts` に API の基点・登録世代のヘッダー・プロジェクトを渡す）、observer の画面はそれだけを使う。
   プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
 
+**手順の提案**
+
+- 入力中（未保存）の定義・選んだ参照先・補足を材料に、AI に操作面と確認の手順を頼む。提案は入力用のデータで保存しない。依頼文・応答の読み方
+  （JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・Mock の提案・実行（このプロセスの中だけの実行。取り消し・
+  時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ
+- AI を呼ぶのは入口が渡すアダプター（`p3/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
+  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、選んだ参照先だけを読むだけでマウントする。observer は tasks を読まない
+- 失敗は種類（接続を使えない・使用量の上限・参照先を読めない・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
+  プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
+  画面はページ（プロジェクト）ごとに作り直すので、切り替える前の応答を別のプロジェクトの入力に取り込まない
+
 **起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は常に全部を起動する）
 
 | | CLI | serve |

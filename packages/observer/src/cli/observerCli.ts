@@ -4,6 +4,8 @@ import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
 import { DEFINITIONS_DIR, MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
+import type { SuggestionService } from "../core/suggest.ts";
+import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
 
 export const OBSERVER_USAGE = [
   "p3 observer status [--json]",
@@ -11,10 +13,11 @@ export const OBSERVER_USAGE = [
   "p3 observer show <ID> [--json]",
   "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
   "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
+  "p3 observer suggest [--input <定義の JSON|->] [--title ..] [--category ..] [--body ..] [--repo <参照先>]... [--note <補足>]",
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
 export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update"] as const;
 
@@ -31,6 +34,11 @@ export interface ObserverCliOptions {
   category?: string;
   body?: string;
   rev?: string;
+  /** suggest: 読ませる参照先の名前と補足 */
+  repo?: string[];
+  note?: string;
+  /** suggest: 入口が組み立てた提案の実行（Codex の接続を共有するアダプター入り） */
+  suggestions?: () => Promise<SuggestionService>;
   /** 標準入力（--input - のとき。テストで差し替える） */
   stdin?: () => Promise<string>;
 }
@@ -56,6 +64,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   if (!observerNeedsProject(args)) {
     throw new UsageError(sub === undefined ? `サブコマンドを指定してください:\n  ${OBSERVER_USAGE}` : `observer のサブコマンドではありません: ${sub}\n  ${OBSERVER_USAGE}`);
   }
+  if (sub !== "suggest" && (opts.repo?.length || opts.note !== undefined)) throw new UsageError("--repo・--note は p3 observer suggest でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const store = new DefinitionStore(opts.target.dataDir);
   const actor = opts.actor ?? "human:cli";
@@ -91,6 +100,18 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
       const d = await store.create(fromFlags(input.input), actor);
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）  登録先: ${where}` };
+    }
+    if (sub === "suggest") {
+      if (rest.length) throw new UsageError(`suggest は位置引数を取りません: ${rest.join(" ")}（材料は --input か --title・--category・--body）`);
+      const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
+      const v = validateSuggestionRequest({ definition: fromFlags(input.input), repos: opts.repo ?? [], ...(opts.note !== undefined ? { note: opts.note } : {}) });
+      if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
+      if (!opts.suggestions) throw new Error("observer: 提案の実行が渡されていません");
+      const job = await (await opts.suggestions()).run(v.value);
+      if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}`.trim() };
+      // 取り込んだ形（今の手順に提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
+      const definition = { ...v.value.definition, procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
+      return { data: { ...job, definition }, text: suggestionText(job) };
     }
     // update
     const [id, ...extra] = rest;
@@ -151,6 +172,16 @@ function procedureLine(p: Procedure): string {
   if (p.kind === "command") return `${p.command}${p.args.length ? ` ${p.args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}` : ""}${p.repo ? `  （作業場所 ${p.repo}:${p.cwd ?? "."}）` : ""}`;
   if (p.kind === "ai-instruction") return p.body.split("\n")[0];
   return `${p.repo}:${p.path}${p.invoke ? `  （${p.invoke}）` : ""}`;
+}
+
+function suggestionText(job: SuggestionJob): string {
+  const r = job.result!;
+  const lines = [`操作面: ${SURFACE_LABEL[r.surface]}（${job.engine}）`, `根拠: ${r.rationale}`];
+  r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}. ${PROCEDURE_KIND_LABEL[p.procedure.kind]}: ${p.procedure.title}`, `    ${procedureLine(p.procedure)}`, `    根拠: ${p.evidence}`));
+  for (const m of r.missing) lines.push(`足りない材料: ${MISSING_LABEL[m.field]} — ${m.reason}`);
+  for (const w of r.warnings) lines.push(`⚠ ${w}`);
+  lines.push("", "保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます");
+  return lines.join("\n");
 }
 
 function describe(d: ObservationDefinition): string {

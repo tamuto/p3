@@ -11,6 +11,8 @@ import { openProject, type P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { machineSettingsSource, type MachineSettings, type SettingsSource } from "@infodb/p3-tasks/core/machineSettings.ts";
 import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
+import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
+import { observerAssistant } from "../core/observerAssistant.ts";
 import { PRODUCTS, type Product } from "../shared/products.ts";
 
 /** p3 本体（配布するパッケージ）のルート。画面のビルド（dist/web）を探す（src/server・lib/server のどちらからも2つ上） */
@@ -61,6 +63,9 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   const products = PRODUCTS;
   let ctx: P3Context | undefined;
   let registry: ProjectRegistry | undefined;
+  // observer の手順の提案（止めるときに実行中を取り消して待つ）
+  const suggestionServices = new Set<SuggestionService>();
+  const track = (s: SuggestionService) => (suggestionServices.add(s), s);
   // observer の API は tasks の API（/api の下の 404 の JSON）より先に付ける
   if (opts.allProjects) {
     const settings = !opts.settings ? machineSettingsSource() : "get" in opts.settings ? opts.settings : { path: "", get: async () => opts.settings as MachineSettings };
@@ -68,11 +73,11 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     await registry.refresh();
     // 起動状態だけ。観測の定義はプロジェクトごと（/api/projects/<名前>/observer。projectsRoutes が付ける）
     app.route("/api/observer", observerRoutes({ products }));
-    app.route("/api", projectsRoutes(registry, { products }));
+    app.route("/api", projectsRoutes(registry, { products, suggestions: (c) => track(new SuggestionService(observerAssistant(c))) }));
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
-    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir } }));
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
+    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir }, suggestions: track(new SuggestionService(observerAssistant(ctx))) }));
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));
@@ -111,6 +116,7 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
       const closed = new Promise<void>((r) => server.close(() => r()));
       (server as { closeAllConnections?: () => void }).closeAllConnections?.();
       let pending = 0;
+      await Promise.race([Promise.all([...suggestionServices].map((s) => s.settle())), new Promise<void>((r) => setTimeout(r, timeoutMs).unref())]);
       if (registry) pending = (await registry.close({ timeoutMs })).pending;
       else if (ctx) {
         const c = ctx;
