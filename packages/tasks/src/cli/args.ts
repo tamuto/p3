@@ -40,6 +40,7 @@ const OPTIONS = {
   // p3 observer add / update（観測の定義の JSON と分類）
   input: { type: "string" },
   category: { type: "string" },
+  expected: { type: "string" },
   done: { type: "boolean" },
   off: { type: "boolean" },
   body: { type: "string" },

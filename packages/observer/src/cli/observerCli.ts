@@ -2,27 +2,32 @@ import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
-import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
+import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type FileState, type ObservationDefinition, type Procedure } from "../shared/definition.ts";
+import { fileChecker } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
+import { WorkStore } from "../core/workStore.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
 
 export const OBSERVER_USAGE = [
   "p3 observer status [--json]",
   "p3 observer list [--json]",
   "p3 observer show <ID> [--json]",
-  "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
+  "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>] [--expected <期待する結果>]",
   "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
-  "p3 observer suggest [--input <定義の JSON|->] [--title ..] [--category ..] [--body ..] [--note <補足>]",
+  "p3 observer suggest <ID> [--note <補足>]（保存した観測に提案を頼み、依頼と結果を観測に残す）",
+  "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
+  "p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>（置き換え候補のスクリプトに切り替える）",
+  "p3 observer suggest --input <定義の JSON|-> [--title ..] [--body ..] [--note ..]（ID の無い互換の経路。保存しない）",
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest", "suggestions", "switch"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
-export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update"] as const;
+export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "switch"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
-export const observerWrites = (args: string[]) => (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
+export const observerWrites = (args: string[]) => (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1);
 
 export interface ObserverCliOptions {
   /** 入口が解決したプロジェクト（status 以外で要る） */
@@ -34,6 +39,10 @@ export interface ObserverCliOptions {
   category?: string;
   body?: string;
   rev?: string;
+  /** add / update / suggest: 期待する結果 */
+  expected?: string;
+  /** switch: 確かめた呼び出し方 */
+  command?: string;
   /** --repo（observer では使わない。黙って無視しないために受け取って断る） */
   repo?: string[];
   /** suggest: 補足 */
@@ -68,7 +77,8 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   if (opts.repo?.length) throw new UsageError("p3 observer は --repo を使いません（手順の提案では、読める参照先を全部 AI に渡します）");
   if (sub !== "suggest" && opts.note !== undefined) throw new UsageError("--note は p3 observer suggest でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
-  const store = new DefinitionStore(opts.target.dataDir);
+  const files = opts.target.repoPath && fileChecker(opts.target.repoPath);
+  const store = new DefinitionStore(opts.target.dataDir, files);
   const actor = opts.actor ?? "human:cli";
   const fail = (e: unknown): ObserverResult => {
     if (!(e instanceof DefinitionError)) throw e;
@@ -87,13 +97,14 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const [id, ...extra] = rest;
       if (!id || extra.length) throw new UsageError(`観測の定義の ID を1つ指定してください: p3 observer show <ID>`);
       const d = await store.get(id);
-      return { data: d, text: describe(d) };
+      return { data: d, text: describe(d, files) };
     }
     const fromFlags = (base: Record<string, unknown>) => ({
       ...base,
       ...(opts.title !== undefined ? { title: opts.title } : {}),
       ...(opts.category !== undefined ? { category: opts.category } : {}),
       ...(opts.body !== undefined ? { description: opts.body } : {}),
+      ...(opts.expected !== undefined ? { expected: opts.expected } : {}),
     });
     if (sub === "add") {
       if (rest.length) throw new UsageError(`add は位置引数を取りません: ${rest.join(" ")}（中身は --input か --title・--category・--body）`);
@@ -102,17 +113,49 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const d = await store.create(fromFlags(input.input), actor);
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
+    if (sub === "switch") {
+      const [id, pid, ...extra] = rest;
+      if (!id || !pid || extra.length) throw new UsageError("p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>");
+      if (opts.rev === undefined) throw new UsageError("切り替えには今の定義の版を --rev で添えてください");
+      const d = await store.switchProcedure(id, parseRev(opts.rev), pid, { invoke: opts.command, evidence: opts.body }, actor);
+      return { data: d, text: `切り替えました: ${d.id} の ${pid}（v${d.rev}）\n${procedureLines(d.procedures.find((p) => p.id === pid)!, files).join("\n")}` };
+    }
+    if (sub === "suggestions") {
+      const [id, sid, ...extra] = rest;
+      if (!id || extra.length) throw new UsageError("p3 observer suggestions <ID> [<提案 ID>]");
+      const work = new WorkStore(opts.target.dataDir);
+      const def = await store.get(id);
+      if (sid) {
+        const j = await work.getSuggestion(def.id, sid);
+        if (!j) return { code: 2, error: `提案がありません: ${sid}` };
+        return { data: j, text: j.result ? suggestionText(j, files) : `${j.id}  ${j.status}${j.error ? `  ${j.error}` : ""}` };
+      }
+      const list = await work.listSuggestions(def.id);
+      return { data: { suggestions: list }, text: [`提案 ${list.length} 件（${def.id}・今の版 v${def.rev}）`, ...list.map((j) => `${j.id}  ${j.status}  v${j.basedOnRev}  ${j.startedAt}${j.error ? `  ${j.error}` : ""}`)].join("\n") };
+    }
+    if (sub === "suggest" && rest.length) {
+      // 保存した観測に頼む: 依頼（今の定義・版・補足）を観測に残してから始め、結果も残す
+      const [id, ...extra] = rest;
+      if (extra.length || opts.input !== undefined) throw new UsageError("p3 observer suggest <ID> [--note <補足>]（材料は保存した観測。--input は ID の無い互換の経路）");
+      const def = await store.get(id);
+      const { format: _f, id: _i, rev: _r, createdAt: _ca, createdBy: _cb, updatedAt: _ua, updatedBy: _ub, ...content } = def;
+      const v = validateSuggestionRequest({ definition: content, ...(opts.note !== undefined ? { note: opts.note } : {}) });
+      if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
+      if (!opts.suggestions) throw new Error("observer: 提案の実行が渡されていません");
+      const job = await (await opts.suggestions()).run(v.value, { definition: def.id, basedOnRev: def.rev });
+      if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}（p3 observer suggestions ${def.id} ${job.id} で読める）`.trim() };
+      return { data: job, text: `${suggestionText(job, files)}\n提案 ${job.id} を ${def.id} に残しました` };
+    }
     if (sub === "suggest") {
-      if (rest.length) throw new UsageError(`suggest は位置引数を取りません: ${rest.join(" ")}（材料は --input か --title・--category・--body）`);
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
       const v = validateSuggestionRequest({ definition: fromFlags(input.input), ...(opts.note !== undefined ? { note: opts.note } : {}) });
       if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
       if (!opts.suggestions) throw new Error("observer: 提案の実行が渡されていません");
       const job = await (await opts.suggestions()).run(v.value);
       if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}`.trim() };
-      // 取り込んだ形（今の手順に提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
-      const definition = { ...v.value.definition, procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
-      return { data: { ...job, definition }, text: suggestionText(job) };
+      // 取り込んだ形（今の測定項目と手順に、候補と提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
+      const definition = { ...v.value.definition, measures: [...v.value.definition.measures, ...job.result.measures], procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
+      return { data: { ...job, definition }, text: `${suggestionText(job, files)}\n\n保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます` };
     }
     // update
     const [id, ...extra] = rest;
@@ -169,30 +212,44 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function procedureLine(p: Procedure): string {
-  if (p.kind === "command") return `${p.command}${p.args.length ? ` ${p.args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}` : ""}${p.repo ? `  （作業場所 ${p.repo}:${p.cwd ?? "."}）` : ""}`;
-  if (p.kind === "ai-instruction") return p.body.split("\n")[0];
-  return `${p.repo}:${p.path}${p.invoke ? `  （${p.invoke}）` : ""}`;
+type Files = ((repo: string, path: string) => FileState) | undefined;
+const fileNote = (files: Files, repo: string, path: string) => `［${FILE_STATE_LABEL[files?.(repo, path) ?? "unverified"]}］`;
+
+/** 手順を読める文にする（今の実行方法・置き換え候補・切り替えの履歴。ファイルは有無を添える） */
+function procedureLines(p: Procedure, files: Files, indent = "  "): string[] {
+  const r = p.run;
+  const out = [`${indent}${p.id ? `${p.id} ` : ""}${p.title}（${RUN_KIND_LABEL[r.kind]}）${p.measures.length ? `  測る: ${p.measures.join("・")}` : ""}`];
+  const i2 = `${indent}  `;
+  if (r.kind === "ai-instruction") {
+    if (r.premise) out.push(`${i2}前提: ${r.premise}`);
+    out.push(`${i2}対象: ${r.target}`, ...r.steps.map((x, j) => `${i2}${j + 1}. ${x}`), `${i2}判定: ${r.judge}`, `${i2}記録: ${r.record}`);
+  } else if (r.kind === "command") out.push(`${i2}${[r.command, ...r.args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))].join(" ")}${r.repo ? `  （作業場所 ${r.repo}:${r.cwd ?? "."}）` : ""}`);
+  else out.push(`${i2}${r.repo}:${r.path} ${fileNote(files, r.repo, r.path)}${r.invoke ? `  呼び出し方: ${r.invoke}` : ""}`);
+  const rep = p.replacement;
+  if (rep) {
+    out.push(`${i2}置き換え候補: ${RUN_KIND_LABEL[rep.kind]} ${rep.repo}:${rep.path} ${fileNote(files, rep.repo, rep.path)}`);
+    out.push(`${i2}  再現する操作: ${rep.operation}`, `${i2}  出力の形: ${rep.output}`, `${i2}  比べる条件: ${rep.compare}`, `${i2}  切り替えの条件: ${rep.switchWhen}`);
+    if (rep.invoke) out.push(`${i2}  呼び出し方の案: ${rep.invoke}`);
+  }
+  for (const h of p.history ?? []) out.push(`${i2}切り替え ${h.at} ${h.by}: ${RUN_KIND_LABEL[h.from.kind]} → 呼び出し方 ${h.invoke}（根拠: ${h.evidence}）`);
+  return out;
 }
 
-function suggestionText(job: SuggestionJob): string {
+function suggestionText(job: SuggestionJob, files?: Files): string {
   const r = job.result!;
   const lines = [`操作面: ${SURFACE_LABEL[r.surface]}（${job.engine}）`, `根拠: ${r.rationale}`];
-  r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}. ${PROCEDURE_KIND_LABEL[p.procedure.kind]}: ${p.procedure.title}`, `    ${procedureLine(p.procedure)}`, `    根拠: ${p.evidence}`));
+  for (const m of r.measures ?? []) lines.push(`測定項目の候補: ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
+  r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}.`, ...procedureLines(p.procedure, files, "  "), `    根拠: ${p.evidence}`));
   for (const m of r.missing) lines.push(`足りない材料: ${MISSING_LABEL[m.field]} — ${m.reason}`);
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
-  lines.push("", "保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます");
   return lines.join("\n");
 }
 
-function describe(d: ObservationDefinition): string {
-  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, "", `測定項目 ${d.measures.length} 件`];
+function describe(d: ObservationDefinition, files: Files): string {
+  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), "", `測定項目 ${d.measures.length} 件`];
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
-  for (const p of d.procedures) {
-    lines.push(`  ${PROCEDURE_KIND_LABEL[p.kind]}: ${p.title}`, `    ${procedureLine(p)}`);
-    if (p.measures.length) lines.push(`    測る: ${p.measures.join("・")}`);
-  }
+  for (const p of d.procedures) lines.push(...procedureLines(p, files));
   lines.push("", `作成 ${d.createdAt} ${d.createdBy} / 更新 ${d.updatedAt} ${d.updatedBy}`);
   return lines.join("\n");
 }

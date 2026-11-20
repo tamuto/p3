@@ -83,8 +83,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   observer add                 観測の定義を作る: --input <JSON のファイル|->（項目は docs/how-to-use.md「観測の定義を登録する」）か
                                  --title --category --body（観測内容）
   observer update <ID> --rev <今の版>   直す（--input か --title など。--input を省くと今の定義に重ねる。版が違えば終了コード 3）
-  observer suggest             入力中の定義から AI に確認の手順を提案してもらう（保存しない）: --input か --title・--category・--body、
-                                 --note <補足>。参照先は Preflight と同じく読めるものを全部渡す。--json の definition を編集して add --input に渡す
+  observer suggest <ID>        保存した観測に AI の確認の手順の提案を頼む（--note <補足>）。依頼と結果は観測に残る（定義は変えない）
+  observer suggestions <ID> [<提案 ID>]   提案の履歴・1件（中断は interrupted）
+  observer suggest --input …   ID の無い互換の経路（未保存の入力に頼んで出すだけ。保存しない）
+  observer switch <ID> <P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>
+                               手順を置き換え候補のスクリプトに切り替える（ファイルが参照先の中に有ることが要る。前の実行方法は履歴に残る）
                                --json で product・version・state・dataDir（今は何も保存しないので null）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す

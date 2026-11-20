@@ -1,4 +1,4 @@
-import type { DefinitionInput, DefinitionProblem, ObservationDefinition } from "../../shared/definition.ts";
+import type { DefinitionInput, DefinitionProblem, FileState, ObservationDefinition } from "../../shared/definition.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
 import { observerScope } from "./scope.ts";
@@ -41,8 +41,23 @@ export const updateDefinition = (id: string, rev: number, input: unknown) =>
 
 export type { DefinitionInput };
 
+export interface DraftRecord {
+  version: number;
+  basedOnRev: number;
+  input: unknown;
+  savedAt: string;
+}
+const def = (id: string) => `${project().apiBase}/definitions/${encodeURIComponent(id)}`;
+export const fetchDraft = (id: string) => call<{ draft: DraftRecord | null }>(`${def(id)}/draft`, { headers: project().headers });
+export const saveDraft = (id: string, version: number | null, basedOnRev: number, input: unknown) =>
+  call<DraftRecord>(`${def(id)}/draft`, { method: "PUT", headers: project().headers, body: JSON.stringify({ version, basedOnRev, input }) });
+export const fetchFiles = (keys: string[]) =>
+  call<{ files: Record<string, { state: FileState; checkedAt: string }> }>(`${project().apiBase}/files?${keys.map((k) => `ref=${encodeURIComponent(k)}`).join("&")}`, { headers: project().headers });
+export const switchProcedure = (id: string, pid: string, rev: number, invoke: string, evidence: string) =>
+  call<ObservationDefinition>(`${def(id)}/procedures/${pid}/switch`, { method: "POST", headers: project().headers, body: JSON.stringify({ rev, invoke, evidence }) });
 export const fetchSuggestionContext = () => call<SuggestionContext>(`${project().apiBase}/suggestions/context`, { headers: project().headers });
-export const startSuggestion = (body: { definition: unknown; note?: string }) =>
-  call<SuggestionJob>(`${project().apiBase}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
-export const fetchSuggestion = (id: string) => call<SuggestionJob>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}`, { headers: project().headers });
-export const cancelSuggestion = (id: string) => call<{ cancelled: boolean }>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: project().headers });
+export const listSuggestions = (id: string) => call<{ suggestions: SuggestionJob[] }>(`${def(id)}/suggestions`, { headers: project().headers });
+export const startSuggestion = (id: string, body: { definition: unknown; note?: string; basedOnRev: number }) =>
+  call<SuggestionJob>(`${def(id)}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
+export const fetchSuggestion = (id: string, sid: string) => call<SuggestionJob>(`${def(id)}/suggestions/${sid}`, { headers: project().headers });
+export const cancelSuggestion = (id: string, sid: string) => call<{ cancelled: boolean }>(`${def(id)}/suggestions/${sid}/cancel`, { method: "POST", headers: project().headers });

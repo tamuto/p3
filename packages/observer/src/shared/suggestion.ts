@@ -1,4 +1,4 @@
-import { validateDefinitionInput, type DefinitionProblem, type Measure, type Procedure } from "./definition.ts";
+import { migrateProcedures, validateDefinitionInput, type DefinitionProblem, type Measure, type Procedure } from "./definition.ts";
 
 /**
  * 観測の定義の入力から、AI に確認の手順を提案してもらう（docs/architecture.md「p3-observer」の手順の提案）。
@@ -26,7 +26,7 @@ export const MISSING_LABEL: Record<MissingField, string> = {
 /** 提案の依頼（未保存の定義の入力・任意の補足）。参照先は Preflight と同じく、読めるものを全部渡す（選ばない） */
 export interface SuggestionRequest {
   /** 定義の入力（未保存。手順は空でもよい） */
-  definition: { title: string; category: string; description: string; measures: Measure[]; procedures: Procedure[] };
+  definition: { title: string; category: string; description: string; expected?: string; measures: Measure[]; procedures: Procedure[] };
   /** 補足（足りない材料への答えなど） */
   note?: string;
 }
@@ -39,22 +39,33 @@ export interface SuggestedProcedure {
 
 export interface Suggestion {
   surface: Surface;
+  /** 測定項目の候補（定義に無いものだけ。取り込むと手順から参照できる） */
+  measures: Measure[];
   /** 操作面と手順をそう判断した根拠 */
   rationale: string;
   procedures: SuggestedProcedure[];
   /** 判断に足りない材料（無ければ空） */
   missing: { field: MissingField; reason: string }[];
-  /** 応答を読むときに落としたもの（定義に無い測定項目の参照など） */
+  /** 応答を読むときに理由を付けて外したもの（名前の衝突・定義にも候補にも無い測定項目の参照など） */
   warnings: string[];
 }
 
-export type SuggestionStatus = "running" | "completed" | "failed" | "cancelled";
+/** interrupted: 実行していたプロセスが終わっている（強制終了など）。同じ入力で頼み直せる */
+export type SuggestionStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 /** 失敗の種類: unavailable 接続が使えない / usage_limit 使用量の上限 / invalid_output 応答の形の不備 / timeout 時間切れ / error そのほか */
 export type SuggestionFailure = "unavailable" | "usage_limit" | "invalid_output" | "timeout" | "error";
 
-/** 提案の実行（このプロセスの中だけ。保存しない） */
+/** 提案の実行。観測の ID に結び付けたものは observer/work/<ID>/suggestions/ に保存する（ID の無い互換の経路はこのプロセスの中だけ） */
 export interface SuggestionJob {
   id: string;
+  /** 観測の ID と、頼んだときの定義の版・依頼（保存したものだけ） */
+  definition?: string;
+  basedOnRev?: number;
+  request?: SuggestionRequest;
+  /** 頼むときに渡した文脈（品質基準の版と、読ませた参照先のパス） */
+  context?: { qualityVersion?: string; repos: string[] };
+  /** 実行しているプロセス（同じマシンでプロセスが終わっていれば interrupted と読む） */
+  owner?: { host: string; pid: number };
   status: SuggestionStatus;
   engine: string;
   startedAt: string;
@@ -67,7 +78,12 @@ export interface SuggestionJob {
 /** 提案の材料の状態: 頼む先が使えるか・プロジェクトの参照先（読めるものは全部 AI に渡す） */
 export interface SuggestionContext {
   engine: { name: string; ok: boolean; detail: string };
-  repos: { name: string; available: boolean; reason?: string }[];
+  /** path は AI のコンテナの中で読めるパス（読むだけのマウント。読めない参照先は渡さない） */
+  repos: { name: string; available: boolean; reason?: string; path?: string }[];
+  /** Preflight と同じ組み立てのプロジェクトの文脈（プロジェクトの説明・参照先と役割・最初に読むもの・主なフォルダ・品質基準・調べ方） */
+  project?: string;
+  /** 文脈に入れた品質基準の版 */
+  qualityVersion?: string;
 }
 
 /** 入口のアダプター（Codex の接続など）が投げる失敗。kind で画面と CLI に理由の種類を出す */
@@ -90,7 +106,7 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
   const d = isRecord(input.definition) ? input.definition : {};
   // 必須の項目が空でも材料にはなるので、空のものは仮の値で検証し、測定項目・手順の形だけを確かめる
   const filled = (v: unknown) => (typeof v === "string" && v.trim() ? v : "（未入力）");
-  const v = validateDefinitionInput({ title: filled(d.title), category: filled(d.category), description: filled(d.description), measures: d.measures ?? [], procedures: d.procedures ?? [] });
+  const v = validateDefinitionInput({ title: filled(d.title), category: filled(d.category), description: filled(d.description), expected: d.expected, measures: d.measures ?? [], procedures: d.procedures ?? [] });
   if (!v.ok) problems.push(...v.problems.map((p) => ({ ...p, path: `definition.${p.path}` })));
   const text = (x: unknown) => (typeof x === "string" ? x.trim() : "");
   if (!text(d.title) && !text(d.description)) problems.push({ path: "definition.description", message: "提案の材料に、タイトルか観測内容を入力してください" });
@@ -101,7 +117,7 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
   return {
     ok: true,
     value: {
-      definition: { title: text(d.title), category: text(d.category), description: text(d.description), measures: v.value.measures, procedures: v.value.procedures },
+      definition: { title: text(d.title), category: text(d.category), description: text(d.description), ...(v.value.expected ? { expected: v.value.expected } : {}), measures: v.value.measures, procedures: v.value.procedures },
       ...(note ? { note } : {}),
     },
   };
@@ -111,17 +127,18 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
 export class InvalidSuggestion extends Error {}
 
 /**
- * AI の応答（最後の文）から提案を読む。JSON（コードブロックの中でもよい）で、手順は定義と同じ検証を通す。
- * 定義に無い測定項目の参照は落として warnings に書く。形が違えば InvalidSuggestion
+ * AI の応答（最後の文）から提案を読む。JSON（コードブロックの中でもよい）で、測定項目の候補と手順は定義と同じ検証を通す。
+ * 定義に既にある名前の候補は外し、定義にも候補にも無い測定項目の参照は外して、どちらも理由を warnings に書く。形が違えば InvalidSuggestion
  */
 export function parseSuggestion(message: string, measures: Measure[]): Suggestion {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(message)?.[1];
-  const start = (fenced ?? message).indexOf("{");
-  const end = (fenced ?? message).lastIndexOf("}");
+  const src = fenced ?? message;
+  const start = src.indexOf("{");
+  const end = src.lastIndexOf("}");
   if (start < 0 || end < start) throw new InvalidSuggestion("応答に JSON がありません");
   let data: unknown;
   try {
-    data = JSON.parse((fenced ?? message).slice(start, end + 1));
+    data = JSON.parse(src.slice(start, end + 1));
   } catch (e) {
     throw new InvalidSuggestion(`応答の JSON を読めません（${(e as Error).message}）`);
   }
@@ -129,26 +146,48 @@ export function parseSuggestion(message: string, measures: Measure[]): Suggestio
   const surface = (SURFACES as readonly unknown[]).includes(data.surface) ? (data.surface as Surface) : undefined;
   if (!surface) throw new InvalidSuggestion(`surface が ${SURFACES.join(" / ")} のどれでもありません`);
   if (typeof data.rationale !== "string" || !data.rationale.trim()) throw new InvalidSuggestion("判断の根拠（rationale）がありません");
-  if (!Array.isArray(data.procedures)) throw new InvalidSuggestion("procedures が配列ではありません");
-  if (!Array.isArray(data.missing)) throw new InvalidSuggestion("missing が配列ではありません");
-  const names = new Set(measures.map((m) => m.name));
+  for (const k of ["procedures", "missing"]) if (!Array.isArray(data[k])) throw new InvalidSuggestion(`${k} が配列ではありません`);
+  if (data.measures !== undefined && !Array.isArray(data.measures)) throw new InvalidSuggestion("measures が配列ではありません");
   const warnings: string[] = [];
-  const procedures: SuggestedProcedure[] = data.procedures.map((raw, i) => {
+  const have = new Set(measures.map((m) => m.name));
+  const candidates: Measure[] = [];
+  for (const [i, raw] of ((data.measures as unknown[] | undefined) ?? []).entries()) {
+    const v = validateDefinitionInput({ title: "提案", description: "提案", measures: [raw] });
+    if (!v.ok) throw new InvalidSuggestion(`measures[${i}] が測定項目の形に合いません（${v.problems.map((p) => `${p.path.replace(/^measures\[0\]\.?/, "")}: ${p.message}`).join("・")}）`);
+    const m = v.value.measures[0];
+    if (have.has(m.name)) warnings.push(`測定項目の候補 ${m.name} は定義に同じ名前があるので外しました`);
+    else if (candidates.some((c) => c.name === m.name)) warnings.push(`測定項目の候補 ${m.name} が重なっているので1つにしました`);
+    else candidates.push(m);
+  }
+  const all = [...measures, ...candidates];
+  const names = new Set(all.map((m) => m.name));
+  const procedures: SuggestedProcedure[] = (data.procedures as unknown[]).map((raw, i) => {
     if (!isRecord(raw)) throw new InvalidSuggestion(`procedures[${i}] がオブジェクトではありません`);
-    const { evidence, ...rest } = raw;
+    const { evidence, id: _id, ...rest } = raw;
     if (typeof evidence !== "string" || !evidence.trim()) throw new InvalidSuggestion(`procedures[${i}] の根拠（evidence）がありません`);
     const refs = Array.isArray(rest.measures) ? rest.measures : [];
     const kept = refs.filter((r) => typeof r === "string" && names.has(r));
-    for (const r of refs) if (!kept.includes(r)) warnings.push(`手順 ${i + 1} の測定項目 ${String(r)} は定義に無いので外しました`);
-    const v = validateDefinitionInput({ title: "提案", category: "提案", description: "提案", measures, procedures: [{ ...rest, measures: kept }] });
+    for (const r of refs) if (!kept.includes(r)) warnings.push(`手順 ${i + 1} の測定項目 ${String(r)} は定義にも候補にも無いので外しました`);
+    const v = validateDefinitionInput({ title: "提案", description: "提案", measures: all, procedures: [{ ...rest, measures: kept }] });
     if (!v.ok) throw new InvalidSuggestion(`procedures[${i}] が手順の形に合いません（${v.problems.map((p) => `${p.path.replace(/^procedures\[0\]\.?/, "")}: ${p.message}`).join("・")}）`);
     return { procedure: v.value.procedures[0], evidence: evidence.trim() };
   });
-  const missing = data.missing.map((raw, i) => {
+  const missing = (data.missing as unknown[]).map((raw, i) => {
     if (!isRecord(raw) || typeof raw.reason !== "string" || !raw.reason.trim()) throw new InvalidSuggestion(`missing[${i}] に理由（reason）がありません`);
     const field = (MISSING_FIELDS as readonly unknown[]).includes(raw.field) ? (raw.field as MissingField) : "other";
     return { field, reason: raw.reason.trim() };
   });
-  if (!procedures.length && !missing.length) throw new InvalidSuggestion("手順の提案も、足りない材料もありません");
-  return { surface, rationale: data.rationale.trim(), procedures, missing, warnings };
+  if (!procedures.length && !missing.length && !candidates.length) throw new InvalidSuggestion("手順の提案も、測定項目の候補も、足りない材料もありません");
+  return { surface, rationale: data.rationale.trim(), measures: candidates, procedures, missing, warnings };
+}
+
+/** 形の版 1 のときに保存した提案（手順に kind を直に持つ）を今の形で読む */
+export function migrateSuggestion<T extends { result?: Suggestion; request?: SuggestionRequest }>(j: T): T {
+  const result = j.result && {
+    ...j.result,
+    measures: j.result.measures ?? [],
+    procedures: j.result.procedures.map((p) => ({ ...p, procedure: { ...(migrateProcedures([p.procedure]) as Procedure[])[0], id: "" } })),
+  };
+  const request = j.request && { ...j.request, definition: { ...j.request.definition, procedures: migrateProcedures(j.request.definition.procedures) as Procedure[] } };
+  return { ...j, ...(result ? { result } : {}), ...(request ? { request } : {}) };
 }

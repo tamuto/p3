@@ -22,4 +22,6 @@ export interface DefinitionTarget {
   /** 個人設定に登録したプロジェクトの名前（分からなければ省く） */
   project?: string;
   dataDir: string;
+  /** 参照先の名前 → このマシンのパス（ファイルの有無を照らすため。読めない参照先は undefined） */
+  repoPath?: (repo: string) => string | undefined;
 }

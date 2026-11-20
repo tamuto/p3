@@ -11,7 +11,9 @@ import { machineSettingsSource, type MachineSettings, type SettingsSource } from
 import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
-import { observerAssistant } from "../core/observerAssistant.ts";
+import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
+import { fileChecker } from "@infodb/p3-observer/core/files.ts";
+import { observerAssistant, readablePath } from "../core/observerAssistant.ts";
 import { PRODUCTS, type Product } from "../core/products.ts";
 
 
@@ -70,11 +72,11 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     await registry.refresh();
     // 起動状態だけ。観測の定義はプロジェクトごと（/api/projects/<名前>/observer。projectsRoutes が付ける）
     app.route("/api/observer", observerRoutes({ products }));
-    app.route("/api", projectsRoutes(registry, { products, suggestions: (c) => track(new SuggestionService(observerAssistant(c))) }));
+    app.route("/api", projectsRoutes(registry, { products, suggestions: (c) => track(new SuggestionService(observerAssistant(c), { store: new WorkStore(c.ws.dataDir), files: fileChecker(readablePath(c)) })) }));
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
-    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir }, suggestions: track(new SuggestionService(observerAssistant(ctx))) }));
+    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir, repoPath: readablePath(ctx) }, suggestions: track(new SuggestionService(observerAssistant(ctx), { store: new WorkStore(opts.dataDir), files: fileChecker(readablePath(ctx)) })) }));
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));

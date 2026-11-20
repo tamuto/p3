@@ -946,22 +946,38 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 - 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
   （shared の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
   決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
-- 形: `{ format: 1, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。項目と種別ごとの
-  手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
+- 形: `{ format: 2, id, rev, title, category, description, expected?, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。手順は
+  `{ id: P1…, title, measures, run: 今の実行方法, replacement?: 置き換え候補, history?: 切り替えの履歴 }`。形の版 1（手順に kind を直に持つ）は読むときに今の形に移し
+  （`migrateProcedures`。提案の記録も同じ）、更新のときに 2 で書く。手順の識別子は保存の層が付け、履歴は保存の層だけが書く（入力の履歴は使わない）
+- 確認の手順の段取り: スクリプト等が無いあいだは AI への指示（前提・対象・順に行う操作・判定・測定値の記録方法）で確かめ、毎回同じ動作で結果を機械的に処理できる
+  ようになったら、置き換え候補（用意するファイル・再現する操作・出力の形・比べる条件・切り替えの条件）のスクリプトを別の作業で用意し、`switchProcedure` で切り替える。
+  切り替えには、参照先の中にファイルが有ること・今の版・確かめた呼び出し方と結果の根拠が要り、今の実行方法と呼び出し方が同じ更新で変わる
+- ファイルの有無（`core/files.ts`）: AI の出力とは別に、入口・アプリが渡す参照先のこのマシンのパスの中で照らす（参照先の外・シンボリックリンクの先が外なら新規予定、
+  参照先を読めなければ未確認）。新規予定のファイルは今の実行方法に使えない（保存で断る）。`GET /files` で画面に、`show` で CLI に出す
+- 項目と手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
 - 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（shared の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
   置き換える（shared の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
   更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
 - 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
+- 観測の作業の記録（`core/workStore.ts`）: 確定した定義とは別に `observer/work/<ID>/` に置く。`draft.json` は編集途中の入力（検証の前の不完全な入力も
+  そのまま。`version` を添えて保存し、違えば断る。`basedOnRev` でもとにした定義の版を持つ）、`suggestions/<SID>.json` は提案の依頼（頼んだときの入力・
+  定義の版・補足）と結果。観測はタイトルと観測内容だけで先に作って ID を付け（カテゴリは後でよい）、入力と提案はその ID に結び付けて残す
+- 提案は依頼を保存してから始め、結果を保存してから完了として見せる。記録に実行しているプロセス（ホストと pid）を持ち、同じマシンでそのプロセスが
+  終わっていれば中断（`interrupted`）と読む。終わりの書き込みはロックの中で今の状態を読み、既に終わっている（取り消し・中断）記録は上書きしない
 - 画面: 入口の Boot が tasks と同じ対象で observer の API の基点と登録世代のヘッダーを決め（`web/lib/scope.ts`）、observer の画面はそれだけを使う。
   プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
 
 **手順の提案**
 
-- 入力中（未保存）の定義・補足と、プロジェクトの参照先を材料に、AI に操作面と確認の手順を頼む。提案は入力用のデータで保存しない。依頼文・応答の読み方
-  （JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・Mock の提案・実行（このプロセスの中だけの実行。取り消し・
-  時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ
+- 保存した観測（ID）に、頼むときの入力・補足と、プロジェクトの参照先を材料に、AI に操作面と確認の手順を頼む。依頼と結果は観測の作業の記録に残し、
+  定義には利用者が取り込んで保存したときだけ入る。依頼文・応答の読み方（JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・
+  Mock の提案・実行（取り消し・時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ。ID の無い互換の経路
+  （`p3 observer suggest --input`・`POST /suggestions`）はこのプロセスの中だけで保存しない
 - AI を呼ぶのはアプリが渡すアダプター（`app/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
-  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。observer は tasks を読まない
+  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。
+  依頼文の頭には、Preflight と同じ組み立て（tasks の `core/preflight/instructions.ts` の `referenceContext`。参照先の一覧・最初に読むもの・主なフォルダ・
+  品質基準・git の調べ方の部品を Preflight と共有する）のプロジェクトの文脈を付ける。タスク化の規則・出力の形・データのフォルダは入れない。
+  使った品質基準の版と読ませた参照先のパスは提案の記録（`context`）に残す。observer は tasks を読まない
 - 失敗は種類（接続を使えない・使用量の上限・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
   プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
   画面はページ（プロジェクト）ごとに作り直すので、切り替える前の応答を別のプロジェクトの入力に取り込まない

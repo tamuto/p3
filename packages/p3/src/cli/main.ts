@@ -21,6 +21,8 @@ import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/pr
 import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
+import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
+import { fileChecker } from "@infodb/p3-observer/core/files.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
 import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
 import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
@@ -223,19 +225,24 @@ async function main(argv: string[]): Promise<number> {
   // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
   if (cmd === "observer") {
     const r = await observerCommand(args, {
-      target: { project: target.name, dataDir: target.dataDir },
+      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
       input: o.input,
       title: o.title,
       category: o.category,
       body: o.body,
+      expected: o.expected,
       rev: o.rev,
+      command: o.command,
       repo: o.repos,
       note: o.note,
       // 手順の提案だけ tasks のプロジェクトを開く（Codex の接続と参照先のこのマシンのパスを使う。tasks のデータは変えない）
       suggestions: async () =>
-        new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() }))),
+        new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })), {
+          store: new WorkStore(target.dataDir),
+          files: fileChecker((name) => target.repos[name]),
+        }),
     });
     return observerOutput(out, r);
   }

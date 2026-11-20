@@ -4,23 +4,21 @@
  * 観測の実行・結果の保存・要望やタスクとの関連付けはまだ無い（別の要望）。
  */
 
-/** 保存の形の版（定義のファイルの format）。知らない版のファイルは読むだけで上書きしない */
-export const DEFINITION_FORMAT = 1;
+/** 保存の形の版（定義のファイルの format）。1 は読むときに今の形に移し、更新のときに 2 で書く。知らない版のファイルは読むだけで上書きしない */
+export const DEFINITION_FORMAT = 2;
 
 /** 測定項目の型 */
 export const MEASURE_TYPES = ["number", "boolean", "string"] as const;
 export type MeasureType = (typeof MEASURE_TYPES)[number];
 export const MEASURE_TYPE_LABEL: Record<MeasureType, string> = { number: "数値", boolean: "真偽値", string: "文字列" };
 
-/** 確かめる手順の種別 */
-export const PROCEDURE_KINDS = ["command", "test", "ui-script", "ai-instruction"] as const;
-export type ProcedureKind = (typeof PROCEDURE_KINDS)[number];
-export const PROCEDURE_KIND_LABEL: Record<ProcedureKind, string> = {
-  command: "コマンド",
-  test: "ユニットテスト",
-  "ui-script": "画面操作スクリプト",
-  "ai-instruction": "AI への指示",
-};
+/** 実行方法の種別。スクリプト等が無いあいだは AI への指示で確かめ、毎回同じ動作で結果を機械的に処理できるようになったらファイル（スクリプト）に置き換える */
+export const RUN_KINDS = ["ai-instruction", "command", "test", "ui-script", "script"] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
+/** ファイルで確かめる種別（置き換え候補になる） */
+export const FILE_KINDS = ["test", "ui-script", "script"] as const;
+export type FileKind = (typeof FILE_KINDS)[number];
+export const RUN_KIND_LABEL: Record<RunKind, string> = { "ai-instruction": "AI への指示", command: "コマンド", test: "ユニットテスト", "ui-script": "画面操作スクリプト", script: "スクリプト" };
 
 /** 何を測定・記録するか */
 export interface Measure {
@@ -32,36 +30,74 @@ export interface Measure {
   description?: string;
 }
 
-interface ProcedureBase {
-  /** 手順の短い名前 */
-  title: string;
-  /** この手順で得る測定項目（Measure の name） */
-  measures: string[];
+/** AI への指示: AI か人がそのまま実行できる具体的なやること */
+export interface AiRun {
+  kind: "ai-instruction";
+  /** 前提（起動しておくもの・用意するデータなど） */
+  premise?: string;
+  /** 対象（画面・コマンド・ファイル） */
+  target: string;
+  /** 順に行う操作（1つが1手） */
+  steps: string[];
+  /** 判定（何をもって期待どおりとするか） */
+  judge: string;
+  /** 測定値の記録方法（どの測定項目に何を書くか） */
+  record: string;
 }
 /** コマンド: 実行名・引数・作業場所（参照先の名前と、その中の相対パス） */
-export interface CommandProcedure extends ProcedureBase {
+export interface CommandRun {
   kind: "command";
   command: string;
   args: string[];
-  /** 作業場所の参照先（プロジェクトに登録した参照先の名前。省くと作業場所を決めない） */
   repo?: string;
-  /** 参照先の中の相対パス（省くと参照先のルート） */
   cwd?: string;
 }
-/** ユニットテスト・画面操作スクリプト: 参照先の名前・その中の相対パス・必要なら呼び出し方 */
-export interface FileProcedure extends ProcedureBase {
-  kind: "test" | "ui-script";
+/** ファイル（テスト・画面操作スクリプト・スクリプト）: 参照先の名前・その中の相対パス・呼び出し方 */
+export interface FileRun {
+  kind: FileKind;
   repo: string;
   path: string;
-  /** 呼び出し方（例: pnpm vitest run <path>）。省くと決めない */
   invoke?: string;
 }
-/** AI への指示: 本文 */
-export interface AiInstructionProcedure extends ProcedureBase {
-  kind: "ai-instruction";
-  body: string;
+export type Run = AiRun | CommandRun | FileRun;
+
+/** 置き換え候補: 用意するスクリプト（既にあるものの再利用ならそのファイル）と、切り替えの条件 */
+export interface Replacement {
+  kind: FileKind;
+  repo: string;
+  path: string;
+  /** そのファイルで再現する操作 */
+  operation: string;
+  /** 測定値の出力形式（機械的に処理できる形） */
+  output: string;
+  /** 同じ入力で結果を比べる条件 */
+  compare: string;
+  /** 切り替えの条件 */
+  switchWhen: string;
+  /** 呼び出し方の案 */
+  invoke?: string;
 }
-export type Procedure = CommandProcedure | FileProcedure | AiInstructionProcedure;
+
+/** 切り替えの履歴（置き換える前の実行方法と、確かめた呼び出し方・結果の根拠） */
+export interface Switch {
+  at: string;
+  by: string;
+  from: Run;
+  invoke: string;
+  evidence: string;
+}
+
+/** 確認の手順。run が今の実行方法 */
+export interface Procedure {
+  /** 手順の識別子（P1, P2 ...。定義の中で一意。保存の層が付ける） */
+  id: string;
+  title: string;
+  /** この手順で得る測定項目（Measure の name） */
+  measures: string[];
+  run: Run;
+  replacement?: Replacement;
+  history?: Switch[];
+}
 
 /** 登録・更新で受け取る中身（ID・版・記録は保存の層が付ける） */
 export interface DefinitionInput {
@@ -69,6 +105,8 @@ export interface DefinitionInput {
   category: string;
   /** 観測内容（何を観測するか） */
   description: string;
+  /** 期待する結果（どうなっていれば期待どおりか。任意） */
+  expected?: string;
   measures: Measure[];
   procedures: Procedure[];
 }
@@ -85,7 +123,7 @@ export interface ObservationDefinition extends DefinitionInput {
   updatedBy: string;
 }
 
-/** 入力の誤り。path は項目の場所（title・measures[0].unit・procedures[1].repo など） */
+/** 入力の誤り。path は項目の場所（title・measures[0].unit・procedures[1].run.path など） */
 export interface DefinitionProblem {
   path: string;
   message: string;
@@ -102,7 +140,6 @@ const LIMIT = { title: 200, category: 100, description: 10_000, unit: 30, text: 
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isMeasureType = (v: unknown): v is MeasureType => (MEASURE_TYPES as readonly unknown[]).includes(v);
-const isProcedureKind = (v: unknown): v is ProcedureKind => (PROCEDURE_KINDS as readonly unknown[]).includes(v);
 
 /** 相対パス（絶対パス・.. で外へ出るもの・空は不可） */
 function badRelative(p: string): string | undefined {
@@ -137,12 +174,14 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
     return s;
   };
 
-  const known = new Set(["title", "category", "description", "measures", "procedures"]);
+  const known = new Set(["title", "category", "description", "expected", "measures", "procedures"]);
   for (const k of Object.keys(input)) if (!known.has(k)) add(k, `知らない項目です（${[...known].join("・")}）`);
 
   const title = text("title", input.title, LIMIT.title, true) ?? "";
-  const category = text("category", input.category, LIMIT.category, true) ?? "";
+  // カテゴリは後から決めてよい（タイトルと観測内容だけで先に保存して ID を付ける）
+  const category = text("category", input.category, LIMIT.category, false) ?? "";
   const description = text("description", input.description, LIMIT.description, true) ?? "";
+  const expected = text("expected", input.expected, LIMIT.description, false);
 
   const measures: Measure[] = [];
   const rawMeasures = input.measures ?? [];
@@ -173,66 +212,82 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
 
   const procedures: Procedure[] = [];
   const rawProcedures = input.procedures ?? [];
+  const isKind = <K extends string>(list: readonly K[], v: unknown): v is K => (list as readonly unknown[]).includes(v);
+  const relPath = (at: string, v: unknown, required: boolean) => {
+    const p = text(at, v, LIMIT.text, required);
+    const bad = p && badRelative(p);
+    if (bad) add(at, bad);
+    return p;
+  };
+  const only = (at: string, o: Record<string, unknown>, keys: string[]) => {
+    for (const k of Object.keys(o)) if (!keys.includes(k)) add(`${at}.${k}`, `使わない項目です（${keys.join("・")}）`);
+  };
+  const runOf = (at: string, r: unknown): Run | undefined => {
+    if (!isRecord(r)) return void add(at, "実行方法をオブジェクトで渡してください");
+    if (!isKind(RUN_KINDS, r.kind)) return void add(`${at}.kind`, `種別は ${RUN_KINDS.join(" / ")} のどれかです`);
+    if (r.kind === "ai-instruction") {
+      only(at, r, ["kind", "premise", "target", "steps", "judge", "record"]);
+      const steps: string[] = [];
+      if (!Array.isArray(r.steps) || !r.steps.length) add(`${at}.steps`, "順に行う操作を1つ以上書いてください");
+      else r.steps.forEach((x, j) => (typeof x === "string" && x.trim() ? steps.push(x.trim()) : add(`${at}.steps[${j}]`, "操作を文字列で書いてください")));
+      const premise = text(`${at}.premise`, r.premise, LIMIT.text, false);
+      return { kind: "ai-instruction", ...(premise ? { premise } : {}), target: text(`${at}.target`, r.target, LIMIT.text, true) ?? "", steps, judge: text(`${at}.judge`, r.judge, LIMIT.text, true) ?? "", record: text(`${at}.record`, r.record, LIMIT.text, true) ?? "" };
+    }
+    if (r.kind === "command") {
+      only(at, r, ["kind", "command", "args", "repo", "cwd"]);
+      const args: string[] = [];
+      if (r.args !== undefined && !Array.isArray(r.args)) add(`${at}.args`, "引数は文字列の配列で渡してください");
+      else ((r.args as unknown[] | undefined) ?? []).forEach((x, j) => (typeof x === "string" ? args.push(x) : add(`${at}.args[${j}]`, "引数は文字列で渡してください")));
+      if (args.length > LIMIT.args) add(`${at}.args`, `引数は ${LIMIT.args} 個までです`);
+      const repo = text(`${at}.repo`, r.repo, 100, false);
+      const cwd = relPath(`${at}.cwd`, r.cwd, false);
+      if (cwd && !repo) add(`${at}.repo`, "作業場所（cwd）を書くときは、その参照先を指定してください");
+      return { kind: "command", command: text(`${at}.command`, r.command, LIMIT.text, true) ?? "", args, ...(repo ? { repo } : {}), ...(cwd ? { cwd } : {}) };
+    }
+    only(at, r, ["kind", "repo", "path", "invoke"]);
+    const invoke = text(`${at}.invoke`, r.invoke, LIMIT.text, false);
+    return { kind: r.kind, repo: text(`${at}.repo`, r.repo, 100, true) ?? "", path: relPath(`${at}.path`, r.path, true) ?? "", ...(invoke ? { invoke } : {}) };
+  };
+  const replacementOf = (at: string, r: unknown): Replacement | undefined => {
+    if (r === undefined || r === null) return undefined;
+    if (!isRecord(r)) return void add(at, "置き換え候補をオブジェクトで渡してください");
+    only(at, r, ["kind", "repo", "path", "operation", "output", "compare", "switchWhen", "invoke"]);
+    if (!isKind(FILE_KINDS, r.kind)) add(`${at}.kind`, `種別は ${FILE_KINDS.join(" / ")} のどれかです`);
+    const t = (k: string, req = true) => text(`${at}.${k}`, r[k], LIMIT.text, req);
+    const invoke = t("invoke", false);
+    return { kind: r.kind as FileKind, repo: t("repo") ?? "", path: relPath(`${at}.path`, r.path, true) ?? "", operation: t("operation") ?? "", output: t("output") ?? "", compare: t("compare") ?? "", switchWhen: t("switchWhen") ?? "", ...(invoke ? { invoke } : {}) };
+  };
   if (!Array.isArray(rawProcedures)) add("procedures", "確認の手順は配列で渡してください");
   else {
     if (rawProcedures.length > LIMIT.items) add("procedures", `確認の手順は ${LIMIT.items} 件までです`);
+    const ids = new Set<string>();
     rawProcedures.forEach((p, i) => {
       const at = `procedures[${i}]`;
       if (!isRecord(p)) return add(at, "確認の手順はオブジェクトで渡してください");
-      if (!isProcedureKind(p.kind)) return add(`${at}.kind`, `種別は ${PROCEDURE_KINDS.join(" / ")} のどれかです`);
-      const fields: Record<ProcedureKind, string[]> = {
-        command: ["command", "args", "repo", "cwd"],
-        test: ["repo", "path", "invoke"],
-        "ui-script": ["repo", "path", "invoke"],
-        "ai-instruction": ["body"],
-      };
-      const allowed = ["kind", "title", "measures", ...fields[p.kind]];
-      for (const k of Object.keys(p)) if (!allowed.includes(k)) add(`${at}.${k}`, `${PROCEDURE_KIND_LABEL[p.kind]}には使わない項目です（${allowed.join("・")}）`);
-      const title = text(`${at}.title`, p.title, LIMIT.title, true) ?? "";
+      only(at, p, ["id", "title", "measures", "run", "replacement", "history"]);
+      let id = "";
+      if (p.id !== undefined && p.id !== "") {
+        if (typeof p.id !== "string" || !/^P\d{1,3}$/.test(p.id)) add(`${at}.id`, "手順の識別子は P1・P2 … の形です");
+        else if (ids.has(p.id)) add(`${at}.id`, `同じ識別子の手順があります: ${p.id}`);
+        else id = p.id;
+        ids.add(String(p.id));
+      }
       const refs: string[] = [];
-      const rawRefs = p.measures ?? [];
-      if (!Array.isArray(rawRefs)) add(`${at}.measures`, "測定項目の名前の配列で渡してください");
+      if (!Array.isArray(p.measures ?? [])) add(`${at}.measures`, "測定項目の名前の配列で渡してください");
       else
-        rawRefs.forEach((r, j) => {
+        ((p.measures as unknown[] | undefined) ?? []).forEach((r, j) => {
           if (typeof r !== "string" || !measureNames.has(r)) add(`${at}.measures[${j}]`, `定義に無い測定項目です: ${String(r)}`);
           else if (!refs.includes(r)) refs.push(r);
         });
-      const base = { title, measures: refs };
-      if (p.kind === "command") {
-        const command = text(`${at}.command`, p.command, LIMIT.text, true) ?? "";
-        const args: string[] = [];
-        const rawArgs = p.args ?? [];
-        if (!Array.isArray(rawArgs)) add(`${at}.args`, "引数は文字列の配列で渡してください");
-        else {
-          if (rawArgs.length > LIMIT.args) add(`${at}.args`, `引数は ${LIMIT.args} 個までです`);
-          rawArgs.forEach((a, j) => (typeof a === "string" ? args.push(a) : add(`${at}.args[${j}]`, "引数は文字列で渡してください")));
-        }
-        const repo = text(`${at}.repo`, p.repo, 100, false);
-        const cwd = text(`${at}.cwd`, p.cwd, LIMIT.text, false);
-        if (cwd !== undefined) {
-          const bad = badRelative(cwd);
-          if (bad) add(`${at}.cwd`, bad);
-          if (repo === undefined) add(`${at}.repo`, "作業場所（cwd）を書くときは、その参照先を指定してください");
-        }
-        procedures.push({ kind: "command", ...base, command, args, ...(repo !== undefined ? { repo } : {}), ...(cwd !== undefined ? { cwd } : {}) });
-      } else if (p.kind === "test" || p.kind === "ui-script") {
-        const repo = text(`${at}.repo`, p.repo, 100, true) ?? "";
-        const path = text(`${at}.path`, p.path, LIMIT.text, true) ?? "";
-        if (path) {
-          const bad = badRelative(path);
-          if (bad) add(`${at}.path`, bad);
-        }
-        const invoke = text(`${at}.invoke`, p.invoke, LIMIT.text, false);
-        procedures.push({ kind: p.kind, ...base, repo, path, ...(invoke !== undefined ? { invoke } : {}) });
-      } else {
-        const body = text(`${at}.body`, p.body, LIMIT.body, true) ?? "";
-        procedures.push({ kind: "ai-instruction", ...base, body });
-      }
+      const run = runOf(`${at}.run`, p.run);
+      const replacement = replacementOf(`${at}.replacement`, p.replacement);
+      const history = Array.isArray(p.history) ? (p.history as Switch[]) : undefined;
+      if (run) procedures.push({ id, title: text(`${at}.title`, p.title, LIMIT.title, true) ?? "", measures: refs, run, ...(replacement ? { replacement } : {}), ...(history?.length ? { history } : {}) });
     });
   }
 
   if (problems.length) return { ok: false, problems };
-  return { ok: true, value: { title, category, description, measures, procedures } };
+  return { ok: true, value: { title, category, description, ...(expected ? { expected } : {}), measures, procedures } };
 }
 
 /** 誤りを人が読む文にする（CLI のエラー・画面の項目に付かない誤り） */
@@ -240,3 +295,33 @@ export const problemText = (problems: DefinitionProblem[]) => problems.map((p) =
 
 /** 保存の場所の説明（データのフォルダからの相対） */
 export const DEFINITIONS_DIR = "observer/definitions";
+
+/**
+ * 形の版 1 の手順（kind と種別ごとの項目を手順に直に持つ）を今の形にする。AI への指示の本文は「順に行う操作」に入れ、足りない項目は
+ * 未記入と書く（直すまで確定の保存で誤りになるので、移行した手順は見直してから保存する）。今の形の手順はそのまま
+ */
+export function migrateProcedures(list: unknown): unknown {
+  if (!Array.isArray(list)) return list;
+  return list.map((p, i) => {
+    if (!isRecord(p) || "run" in p || typeof p.kind !== "string") return p;
+    const { kind, title, measures, body, ...rest } = p;
+    const run = kind === "ai-instruction" ? { kind, target: "（未記入）", steps: [body], judge: "（未記入）", record: "（未記入）" } : { kind, ...rest };
+    return { id: `P${i + 1}`, title, measures, run };
+  });
+}
+
+/** 手順の識別子を付ける（無いものに、今ある中で一番大きい番号の次から） */
+export function assignProcedureIds(list: Procedure[]): Procedure[] {
+  let n = Math.max(0, ...list.map((p) => Number(p.id.slice(1)) || 0));
+  return list.map((p) => (p.id ? p : { ...p, id: `P${++n}` }));
+}
+
+/** ファイルの有無（参照先の中で照らした結果）。exists 既にある / planned 新規予定（参照先は読めるがファイルが無い）/ unverified 確かめられない */
+export type FileState = "exists" | "planned" | "unverified";
+export const FILE_STATE_LABEL: Record<FileState, string> = { exists: "既にある", planned: "新規予定（まだ無い）", unverified: "未確認（参照先を読めない）" };
+export const fileKey = (repo: string, path: string) => `${repo}:${path}`;
+
+/** 定義の中で、ファイルを指す箇所（今の実行方法と置き換え候補） */
+export function filesOf(procedures: { run: Run; replacement?: Replacement }[]): { repo: string; path: string }[] {
+  return procedures.flatMap((p) => [...(p.run.kind !== "ai-instruction" && p.run.kind !== "command" ? [p.run] : []), ...(p.replacement ? [p.replacement] : [])]).map(({ repo, path }) => ({ repo, path }));
+}

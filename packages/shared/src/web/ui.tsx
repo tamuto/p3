@@ -100,7 +100,7 @@ export function Field({ label, children, hint, error }: { label: string; childre
         {children}
       </label>
       {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
-      {error && <span className="text-sm text-rose-600">{error}</span>}
+      {error && <span className="text-rose-600">{error}</span>}
     </div>
   );
 }
