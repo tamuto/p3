@@ -13,7 +13,7 @@ export const OBSERVER_USAGE = [
   "p3 observer show <ID> [--json]",
   "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
   "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
-  "p3 observer suggest [--input <定義の JSON|->] [--title ..] [--category ..] [--body ..] [--repo <参照先>]... [--note <補足>]",
+  "p3 observer suggest [--input <定義の JSON|->] [--title ..] [--category ..] [--body ..] [--note <補足>]",
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
@@ -34,8 +34,9 @@ export interface ObserverCliOptions {
   category?: string;
   body?: string;
   rev?: string;
-  /** suggest: 読ませる参照先の名前と補足 */
+  /** --repo（observer では使わない。黙って無視しないために受け取って断る） */
   repo?: string[];
+  /** suggest: 補足 */
   note?: string;
   /** suggest: 入口が組み立てた提案の実行（Codex の接続を共有するアダプター入り） */
   suggestions?: () => Promise<SuggestionService>;
@@ -64,7 +65,8 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   if (!observerNeedsProject(args)) {
     throw new UsageError(sub === undefined ? `サブコマンドを指定してください:\n  ${OBSERVER_USAGE}` : `observer のサブコマンドではありません: ${sub}\n  ${OBSERVER_USAGE}`);
   }
-  if (sub !== "suggest" && (opts.repo?.length || opts.note !== undefined)) throw new UsageError("--repo・--note は p3 observer suggest でだけ使えます");
+  if (opts.repo?.length) throw new UsageError("p3 observer は --repo を使いません（手順の提案では、読める参照先を全部 AI に渡します）");
+  if (sub !== "suggest" && opts.note !== undefined) throw new UsageError("--note は p3 observer suggest でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const store = new DefinitionStore(opts.target.dataDir);
   const actor = opts.actor ?? "human:cli";
@@ -103,7 +105,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
     if (sub === "suggest") {
       if (rest.length) throw new UsageError(`suggest は位置引数を取りません: ${rest.join(" ")}（材料は --input か --title・--category・--body）`);
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
-      const v = validateSuggestionRequest({ definition: fromFlags(input.input), repos: opts.repo ?? [], ...(opts.note !== undefined ? { note: opts.note } : {}) });
+      const v = validateSuggestionRequest({ definition: fromFlags(input.input), ...(opts.note !== undefined ? { note: opts.note } : {}) });
       if (!v.ok) return { code: 1, error: `提案の依頼に誤りがあります:\n${problemText(v.problems)}` };
       if (!opts.suggestions) throw new Error("observer: 提案の実行が渡されていません");
       const job = await (await opts.suggestions()).run(v.value);

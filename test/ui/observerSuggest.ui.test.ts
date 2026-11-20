@@ -1,4 +1,4 @@
-// 観測の手順の提案の画面（頼む先は Mock）: 入力中の定義から提案を頼み、操作面・手順・根拠を確かめて編集欄に取り込み、直して保存する。
+// 観測の手順の提案の画面（頼む先は Mock。参照先は Preflight と同じく読めるものを全部渡す）: 入力中の定義から提案を頼み、操作面・手順・根拠を確かめて編集欄に取り込み、直して保存する。
 // 画面を示す材料では画面操作スクリプト、手がかりが無ければ足りない材料と理由。材料の不足は理由を出して入力を残す。
 import { afterEach, describe, expect, inject, it } from "vitest";
 import { openScenario, until, type Scenario } from "./scenario.ts";
@@ -14,10 +14,10 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
     s = await openScenario("観測の手順の提案");
     const { page, step, env } = s;
     const panel = page.getByRole("region", { name: "AI に手順を提案してもらう" });
-    await step("登録の画面に提案の欄があり、頼む先と参照先が出る", async () => {
+    await step("登録の画面に提案の欄があり、頼む先が出る。参照先は選ばせない", async () => {
       await page.goto("/observer/new");
       await until.text(panel.getByTestId("suggest-engine"), /頼む先: mock/);
-      await until.visible(panel.getByRole("group", { name: "読ませる参照先" }).getByRole("checkbox", { name: "repo" }));
+      expect(await panel.getByRole("checkbox").count()).toBe(0);
     });
     await step("材料が無いと理由を出し、入力は残す", async () => {
       await page.getByLabel("カテゴリ").fill("性能");
@@ -30,7 +30,6 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       await page.getByLabel("観測内容").fill("p3 ls コマンドが速く返るか");
       await page.getByRole("button", { name: "＋ 測定項目を足す" }).click();
       await page.getByRole("group", { name: "測定項目 1" }).getByLabel("名前").fill("elapsed");
-      await panel.getByRole("group", { name: "読ませる参照先" }).getByRole("checkbox", { name: "repo" }).check();
       await panel.getByLabel("補足（任意）").fill("pnpm の script を使う");
       await panel.getByRole("button", { name: "提案を頼む" }).click();
       const result = panel.getByTestId("suggestion");

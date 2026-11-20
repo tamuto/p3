@@ -42,7 +42,7 @@ export const updateDefinition = (id: string, rev: number, input: unknown) =>
 export type { DefinitionInput };
 
 export const fetchSuggestionContext = () => call<SuggestionContext>(`${project().apiBase}/suggestions/context`, { headers: project().headers });
-export const startSuggestion = (body: { definition: unknown; repos: string[]; note?: string }) =>
+export const startSuggestion = (body: { definition: unknown; note?: string }) =>
   call<SuggestionJob>(`${project().apiBase}/suggestions`, { method: "POST", headers: project().headers, body: JSON.stringify(body) });
 export const fetchSuggestion = (id: string) => call<SuggestionJob>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}`, { headers: project().headers });
 export const cancelSuggestion = (id: string) => call<{ cancelled: boolean }>(`${project().apiBase}/suggestions/${encodeURIComponent(id)}/cancel`, { method: "POST", headers: project().headers });

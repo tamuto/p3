@@ -14,8 +14,8 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /definitions/:id        1つの定義 { definition }
  *   POST /definitions            作成（本文は DefinitionInput）。201 で作った定義
  *   PUT  /definitions/:id        更新（本文は { rev: 今の版, definition: DefinitionInput }）。版が違えば 409（current に今の定義）
- *   GET  /suggestions/context    手順の提案の頼む先の状態と、読ませられる参照先（SuggestionContext）
- *   POST /suggestions            手順の提案を始める（本文 { definition: 未保存の入力, repos: 参照先の名前, note: 補足 }）。202 で実行（SuggestionJob）。保存しない
+ *   GET  /suggestions/context    手順の提案の頼む先の状態と、プロジェクトの参照先（SuggestionContext）
+ *   POST /suggestions            手順の提案を始める（本文 { definition: 未保存の入力, note: 補足 }。読める参照先は全部渡す）。202 で実行（SuggestionJob）。保存しない
  *   GET  /suggestions/:id        提案の実行（running / completed（result）/ failed（failure・error）/ cancelled）
  *   POST /suggestions/:id/cancel 取り消す
  * 入力の誤りは 400 の { error, code: "invalid", problems: [{ path, message }] }（CLI・画面と同じ検証）。

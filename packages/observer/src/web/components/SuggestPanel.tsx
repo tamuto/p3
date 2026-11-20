@@ -6,7 +6,6 @@ import { cancelSuggestion, fetchSuggestion, fetchSuggestionContext, ObserverApiE
 const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
   unavailable: "AI の接続を使えません",
   usage_limit: "使用量の上限です",
-  repo: "参照先を読めません",
   invalid_output: "応答の形が違います",
   timeout: "時間切れです",
   error: "失敗しました",
@@ -15,14 +14,13 @@ const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
 const btnCls = "rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800";
 
 /**
- * 「AI に手順を提案してもらう」。入力中の定義（未保存）・選んだ参照先・補足を材料に頼み、操作面・手順と根拠・足りない材料を出す。
+ * 「AI に手順を提案してもらう」。入力中の定義（未保存）・補足と、読める参照先（Preflight と同じく全部）を材料に頼み、操作面・手順と根拠・足りない材料を出す。
  * 提案の手順は「編集欄に取り込む」で手順の欄に足すだけ（保存は利用者の明示の操作）。失敗・取り消しでも入力中の定義は変えない。
  * このページ（プロジェクト）で始めた提案だけを扱い、ページを離れたら結果を捨てる
  */
 export function SuggestPanel({ material, onAdopt }: { material: () => unknown; onAdopt: (p: Procedure) => void }) {
   const [ctx, setCtx] = useState<SuggestionContext>();
   const [ctxError, setCtxError] = useState<string>();
-  const [repos, setRepos] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [job, setJob] = useState<SuggestionJob>();
   const [error, setError] = useState<string>();
@@ -56,7 +54,7 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
     setError(undefined);
     setAdopted([]);
     try {
-      const j = await startSuggestion({ definition: material(), repos, ...(note.trim() ? { note } : {}) });
+      const j = await startSuggestion({ definition: material(), ...(note.trim() ? { note } : {}) });
       if (alive.current) setJob(j);
     } catch (e) {
       const problems = e instanceof ObserverApiError ? e.problems.map((p) => `${p.path}: ${p.message}`) : [];
@@ -71,7 +69,7 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
         AI に手順を提案してもらう
       </h2>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        入力中のタイトル・観測内容・測定項目と、選んだ参照先（読むだけ）を材料に、観測の操作面と確認の手順を提案します。保存はしません。
+        入力中のタイトル・観測内容・測定項目と、プロジェクトの参照先（読むだけ）を材料に、観測の操作面と確認の手順を提案します。保存はしません。
       </p>
       {ctxError && (
         <p role="alert" className="text-rose-600">
@@ -79,28 +77,9 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
         </p>
       )}
       {ctx && (
-        <>
-          <p className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
-            頼む先: {ctx.engine.name}（{ctx.engine.detail}）
-          </p>
-          <div role="group" aria-label="読ませる参照先" className="space-y-1">
-            <span className="text-base font-medium text-slate-700 dark:text-slate-300">読ませる参照先</span>
-            {ctx.repos.length === 0 && <p className="text-sm text-slate-500">プロジェクトに参照先がありません。</p>}
-            <div className="flex flex-wrap gap-3">
-              {ctx.repos.map((r) => (
-                <label key={r.name} className="flex items-center gap-1" title={r.available ? undefined : r.reason}>
-                  <input
-                    type="checkbox"
-                    checked={repos.includes(r.name)}
-                    onChange={(e) => setRepos(e.target.checked ? [...repos, r.name] : repos.filter((x) => x !== r.name))}
-                  />
-                  {r.name}
-                  {!r.available && <span className="text-sm text-amber-700">（読めません）</span>}
-                </label>
-              ))}
-            </div>
-          </div>
-        </>
+        <p className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
+          頼む先: {ctx.engine.name}（{ctx.engine.detail}）
+        </p>
       )}
       <label className="block space-y-1">
         <span className="text-base font-medium text-slate-700 dark:text-slate-300">補足（任意）</span>

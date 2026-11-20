@@ -21,7 +21,7 @@ export interface SuggestAdapter {
   /** 頼む先の状態と、読ませられる参照先 */
   context(): Promise<SuggestionContext>;
   /**
-   * 1回の頼みごと。repos はプロジェクトに登録した参照先の名前（読むだけで渡す）。request は Mock が使う元の依頼。
+   * 1回の頼みごと。repos は読める参照先の名前（全部。読むだけで渡す）。request は Mock が使う元の依頼。
    * 失敗は SuggestionError（種類つき）か、そのほかのエラー
    */
   ask(input: { instructions: string; prompt: string; repos: string[]; request: SuggestionRequest }, log: (text: string) => void, signal: AbortSignal): Promise<{ message: string; engine: string }>;
@@ -52,7 +52,7 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
 }`;
 
 /** 依頼文（定義の入力・参照先・補足） */
-export function suggestPrompt(req: SuggestionRequest): string {
+export function suggestPrompt(req: SuggestionRequest, repos: string[]): string {
   const d = req.definition;
   const lines = [
     "## 観測の定義（未保存の入力）",
@@ -68,7 +68,7 @@ export function suggestPrompt(req: SuggestionRequest): string {
     ...(d.procedures.length ? d.procedures.map((p) => `- ${p.kind}: ${p.title}`) : ["（無い）"]),
     "",
     "## 読める参照先",
-    ...(req.repos.length ? req.repos.map((r) => `- /workspace/${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
+    ...(repos.length ? repos.map((r) => `- /workspace/${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
   ];
   if (req.note) lines.push("", "## 利用者の補足", req.note);
   lines.push("", `手順の kind は ${PROCEDURE_KINDS.join(" / ")} のどれか。最後の応答は指示どおりの JSON だけにしてください。`);
@@ -79,11 +79,11 @@ export function suggestPrompt(req: SuggestionRequest): string {
  * Mock の提案（個人設定の preflight.engine が mock のとき。AI を呼ばない）。材料の言葉で操作面を決める:
  * コマンド・CLI の言葉があればコマンド、画面の言葉があれば画面操作スクリプト、どちらも無ければ足りない材料を返す
  */
-export function mockSuggestion(req: SuggestionRequest): Suggestion {
+export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggestion {
   const d = req.definition;
   const text = `${d.title}\n${d.description}\n${req.note ?? ""}`;
   const measures = d.measures.map((m) => m.name);
-  const repo = req.repos[0];
+  const repo = repos[0];
   if (/(CLI|コマンド|command|\bp3 |pnpm|npm|curl)/i.test(text)) {
     return {
       surface: "cli",
@@ -98,7 +98,7 @@ export function mockSuggestion(req: SuggestionRequest): Suggestion {
       surface: "ui",
       rationale: "Mock: 材料に画面の言葉があるので、画面操作スクリプトで確かめる手順にしました",
       procedures: [{ procedure: { kind: "ui-script", title: `${d.title || "観測"}を画面で確かめる`, repo: repo ?? "app", path: "scripts/observe.ui.mjs", measures }, evidence: "Mock: 材料の言葉から決めました（参照先は読んでいません）" }],
-      missing: repo ? [] : [{ field: "repo", reason: "画面操作スクリプトを置く参照先が分かりません。読ませる参照先を選んでください" }],
+      missing: repo ? [] : [{ field: "repo", reason: "画面操作スクリプトを置く参照先が分かりません（読める参照先がありません。このマシンのパスを登録してください）" }],
       warnings: [],
     };
   }
@@ -134,7 +134,7 @@ export class SuggestionService {
     return this.adapter.context();
   }
 
-  /** 始める（すぐ返る）。参照先の名前は先に確かめ、読めなければ repo の失敗にする */
+  /** 始める（すぐ返る）。参照先は Preflight と同じく、読めるものを全部渡す（読めないものは外す） */
   start(req: SuggestionRequest): SuggestionJob {
     const job: SuggestionJob = { id: `sg-${randomBytes(6).toString("hex")}`, status: "running", engine: "", startedAt: nowIso() };
     const abort = new AbortController();
@@ -197,12 +197,8 @@ export class SuggestionService {
       const ctx = await this.adapter.context();
       job.engine = ctx.engine.name;
       if (!ctx.engine.ok) throw new SuggestionError("unavailable", ctx.engine.detail);
-      for (const name of req.repos) {
-        const r = ctx.repos.find((x) => x.name === name);
-        if (!r) throw new SuggestionError("repo", `参照先 ${name} はプロジェクトに登録されていません`);
-        if (!r.available) throw new SuggestionError("repo", `参照先 ${name} を読めません: ${r.reason ?? "このマシンのパスがありません"}`);
-      }
-      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req), repos: req.repos, request: req }, () => {}, signal);
+      const repos = ctx.repos.filter((r) => r.available).map((r) => r.name);
+      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, repos), repos, request: req }, () => {}, signal);
       if (signal.aborted) throw signal.reason;
       job.engine = r.engine;
       job.result = parseSuggestion(r.message, req.definition.measures);

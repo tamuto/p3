@@ -1352,7 +1352,7 @@ p3 observer update obs-261120-k7m3x --rev 2 --category 速度  # --input を省�
 AI に渡す材料は次のものだけ:
 
 - 入力中のタイトル・カテゴリ・観測内容・測定項目（手順の `measures` は定義にある測定項目だけを使う）と、今ある手順の種別と名前
-- 選んだ参照先（プロジェクトに登録したもの。読むだけでマウントする。選ばなければ渡さない）
+- プロジェクトの参照先（Preflight と同じく、このマシンで読めるものを全部。読むだけでマウントする。選ぶ操作は無い）
 - 補足（足りない材料への答えなど。任意）
 
 頼む先は Preflight と同じ（個人設定の `preflight.engine`。既定は Codex で、同じ ChatGPT の接続・Docker のイメージを使う）。`mock` のときは AI を
@@ -1360,21 +1360,21 @@ AI に渡す材料は次のものだけ:
 判断に足りない材料（操作面・対象の画面やコマンド・入口の手がかり・参照先・測定項目）があれば、推測で手順を作らずに足りない材料と理由を返す。
 補足に書いて頼み直す。
 
-画面では、登録・編集の画面の「AI に手順を提案してもらう」で、読ませる参照先と補足を選んで「提案を頼む」。操作面・判断の根拠・手順ごとの根拠・
-足りない材料が出る。手順の「編集欄に取り込む」で手順の欄に足し、直してから保存する。接続を使えない・参照先を読めない・応答の形が違う・時間切れ・
+画面では、登録・編集の画面の「AI に手順を提案してもらう」で、必要なら補足を書いて「提案を頼む」。操作面・判断の根拠・手順ごとの根拠・
+足りない材料が出る。手順の「編集欄に取り込む」で手順の欄に足し、直してから保存する。接続を使えない・応答の形が違う・時間切れ・
 取り消しのときは理由を出し、入力中の定義はそのまま残る。
 
 CLI では `p3 observer suggest` が終わるまで待ち、提案を出す（材料は `--input`、または `--title`・`--category`・`--body`）:
 
 ```bash
-p3 observer suggest --input obs.json --repo app --note "pnpm の script で測りたい"
+p3 observer suggest --input obs.json --note "pnpm の script で測りたい"
 # 操作面: CLI・コマンド（codex） / 根拠: ... / 手順 1. コマンド: ... / 根拠: package.json の scripts.bench
-p3 observer suggest --input obs.json --repo app --json > suggested.json
+p3 observer suggest --input obs.json --json > suggested.json
 # suggested.json の definition（今の手順に提案を足したもの）を編集して保存する
 jq .definition suggested.json > edited.json && p3 observer add --input edited.json
 ```
 
-提案できなかったとき（接続を使えない・参照先の誤り・応答の形の違いなど）は、理由の種類と文を出して終了コード 1。
+提案できなかったとき（接続を使えない・応答の形の違いなど）は、理由の種類と文を出して終了コード 1。
 
 画面（`p3 serve`・`p3 serve --all-projects`）は、常に両方の製品を起動する（製品ごとに切り替える指定は無い）。ナビゲーションの「観測」で
 observer（`/observer`。プロジェクトを跨ぐ serve では `/projects/<名前>/observer`）へ移る。ヘッダー（プロジェクト名・プロジェクトの切り替え）は tasks の画面と同じ。

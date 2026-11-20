@@ -6,7 +6,7 @@ import { SuggestionError } from "@infodb/p3-observer/shared/suggestion.ts";
 /**
  * observer の手順の提案に渡すアダプター（入口が組み立てる。observer は tasks を読まない）。
  * 頼む先は Preflight と同じ（個人設定の preflight.engine）: codex は Preflight と同じ Codex の接続（認証・イメージ・パスの対応）で、
- * 選んだ参照先だけを読むだけでマウントする。mock は AI を呼ばずに observer の Mock の提案を返す。
+ * 読める参照先を全部、読むだけでマウントする。mock は AI を呼ばずに observer の Mock の提案を返す。
  */
 export function observerAssistant(ctx: P3Context): SuggestAdapter {
   const engineName = async () => (ctx.assistant ? await ctx.assistant.engine().catch(() => "codex" as const) : undefined);
@@ -22,7 +22,7 @@ export function observerAssistant(ctx: P3Context): SuggestAdapter {
     async ask(input, log, signal) {
       const name = await engineName();
       if (!ctx.assistant || !name) throw new SuggestionError("unavailable", "AI に頼む接続がありません");
-      if (name === "mock") return { message: suggestionMessage(mockSuggestion(input.request)), engine: "mock" };
+      if (name === "mock") return { message: suggestionMessage(mockSuggestion(input.request, input.repos)), engine: "mock" };
       const refs = ctx.ws.refs().filter((r) => input.repos.includes(r.name));
       try {
         const r = await ctx.assistant.codex.ask({ instructions: input.instructions, prompt: input.prompt, label: "観測の手順の提案", refs }, (e) => log(e.text), signal);

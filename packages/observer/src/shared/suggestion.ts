@@ -23,12 +23,10 @@ export const MISSING_LABEL: Record<MissingField, string> = {
   other: "そのほか",
 };
 
-/** 提案の依頼（未保存の定義の入力・読ませる参照先・任意の補足） */
+/** 提案の依頼（未保存の定義の入力・任意の補足）。参照先は Preflight と同じく、読めるものを全部渡す（選ばない） */
 export interface SuggestionRequest {
   /** 定義の入力（未保存。手順は空でもよい） */
   definition: { title: string; category: string; description: string; measures: Measure[]; procedures: Procedure[] };
-  /** 読むだけで渡す参照先の名前（プロジェクトに登録したもの） */
-  repos: string[];
   /** 補足（足りない材料への答えなど） */
   note?: string;
 }
@@ -51,8 +49,8 @@ export interface Suggestion {
 }
 
 export type SuggestionStatus = "running" | "completed" | "failed" | "cancelled";
-/** 失敗の種類: unavailable 接続が使えない / usage_limit 使用量の上限 / repo 参照先を読めない / invalid_output 応答の形の不備 / timeout 時間切れ / error そのほか */
-export type SuggestionFailure = "unavailable" | "usage_limit" | "repo" | "invalid_output" | "timeout" | "error";
+/** 失敗の種類: unavailable 接続が使えない / usage_limit 使用量の上限 / invalid_output 応答の形の不備 / timeout 時間切れ / error そのほか */
+export type SuggestionFailure = "unavailable" | "usage_limit" | "invalid_output" | "timeout" | "error";
 
 /** 提案の実行（このプロセスの中だけ。保存しない） */
 export interface SuggestionJob {
@@ -66,7 +64,7 @@ export interface SuggestionJob {
   error?: string;
 }
 
-/** 提案の材料の状態（画面が依頼の前に読む）: 頼む先が使えるか・読ませられる参照先 */
+/** 提案の材料の状態: 頼む先が使えるか・プロジェクトの参照先（読めるものは全部 AI に渡す） */
 export interface SuggestionContext {
   engine: { name: string; ok: boolean; detail: string };
   repos: { name: string; available: boolean; reason?: string }[];
@@ -86,9 +84,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 
 /** 依頼の入力を確かめる（定義の入力は手順の提案の材料なので、タイトルか観測内容のどちらかがあればよい） */
 export function validateSuggestionRequest(input: unknown): { ok: true; value: SuggestionRequest } | { ok: false; problems: DefinitionProblem[] } {
-  if (!isRecord(input)) return { ok: false, problems: [{ path: "", message: "依頼は JSON のオブジェクトで渡してください（definition・repos・note）" }] };
+  if (!isRecord(input)) return { ok: false, problems: [{ path: "", message: "依頼は JSON のオブジェクトで渡してください（definition・note）" }] };
   const problems: DefinitionProblem[] = [];
-  for (const k of Object.keys(input)) if (!["definition", "repos", "note"].includes(k)) problems.push({ path: k, message: "知らない項目です（definition・repos・note）" });
+  for (const k of Object.keys(input)) if (!["definition", "note"].includes(k)) problems.push({ path: k, message: "知らない項目です（definition・note）" });
   const d = isRecord(input.definition) ? input.definition : {};
   // 必須の項目が空でも材料にはなるので、空のものは仮の値で検証し、測定項目・手順の形だけを確かめる
   const filled = (v: unknown) => (typeof v === "string" && v.trim() ? v : "（未入力）");
@@ -96,13 +94,6 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
   if (!v.ok) problems.push(...v.problems.map((p) => ({ ...p, path: `definition.${p.path}` })));
   const text = (x: unknown) => (typeof x === "string" ? x.trim() : "");
   if (!text(d.title) && !text(d.description)) problems.push({ path: "definition.description", message: "提案の材料に、タイトルか観測内容を入力してください" });
-  const repos: string[] = [];
-  if (input.repos !== undefined && !Array.isArray(input.repos)) problems.push({ path: "repos", message: "参照先の名前の配列で渡してください" });
-  else
-    for (const [i, r] of ((input.repos as unknown[] | undefined) ?? []).entries()) {
-      if (typeof r !== "string" || !r.trim()) problems.push({ path: `repos[${i}]`, message: "参照先の名前を文字列で渡してください" });
-      else if (!repos.includes(r.trim())) repos.push(r.trim());
-    }
   if (input.note !== undefined && typeof input.note !== "string") problems.push({ path: "note", message: "補足は文字列で渡してください" });
   if (typeof input.note === "string" && input.note.length > 5000) problems.push({ path: "note", message: "補足は 5000 文字以内にしてください" });
   if (problems.length || !v.ok) return { ok: false, problems };
@@ -111,7 +102,6 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
     ok: true,
     value: {
       definition: { title: text(d.title), category: text(d.category), description: text(d.description), measures: v.value.measures, procedures: v.value.procedures },
-      repos,
       ...(note ? { note } : {}),
     },
   };

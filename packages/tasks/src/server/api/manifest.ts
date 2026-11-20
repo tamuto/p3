@@ -23,7 +23,7 @@ export const AI_MANIFEST = {
     { method: "POST", path: "/api/observer/definitions", desc: "観測の定義を作る（本文 {title, category, description, measures, procedures}。項目は docs/how-to-use.md「観測の定義を登録する」）。誤りは 400 {code: invalid, problems: [{path, message}]}" },
     { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
     { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },
-    { method: "POST", path: "/api/observer/suggestions", desc: "入力中の定義から確認の手順の提案を始める（本文 {definition, repos: 読ませる参照先, note}）。202 で実行 {id, status}。保存しない" },
+    { method: "POST", path: "/api/observer/suggestions", desc: "入力中の定義から確認の手順の提案を始める（本文 {definition, note}。参照先は読めるものを全部渡す）。202 で実行 {id, status}。保存しない" },
     { method: "GET", path: "/api/observer/suggestions/:id", desc: "提案の実行 {status: running|completed|failed|cancelled, result: {surface, rationale, procedures: [{procedure, evidence}], missing, warnings}, failure, error}" },
     { method: "POST", path: "/api/observer/suggestions/:id/cancel", desc: "提案を取り消す" },
     {

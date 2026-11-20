@@ -84,7 +84,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                  --title --category --body（観測内容）
   observer update <ID> --rev <今の版>   直す（--input か --title など。--input を省くと今の定義に重ねる。版が違えば終了コード 3）
   observer suggest             入力中の定義から AI に確認の手順を提案してもらう（保存しない）: --input か --title・--category・--body、
-                                 --repo <参照先>（繰り返せる。読むだけで渡す）、--note <補足>。--json の definition を編集して add --input に渡す
+                                 --note <補足>。参照先は Preflight と同じく読めるものを全部渡す。--json の definition を編集して add --input に渡す
                                --json で product・version・state・dataDir（今は何も保存しないので null）
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す

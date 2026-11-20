@@ -21,7 +21,6 @@ const MEASURES = [
 ];
 const request = (over: Partial<SuggestionRequest["definition"]> = {}, rest: Partial<SuggestionRequest> = {}): SuggestionRequest => ({
   definition: { title: "一覧の応答時間", category: "性能", description: "p3 ls コマンドが速く返るか", measures: MEASURES, procedures: [], ...over },
-  repos: [],
   ...rest,
 });
 
@@ -40,7 +39,7 @@ function fake(reply: (input: Parameters<SuggestAdapter["ask"]>[0], signal: Abort
 
 describe("依頼と応答の読み方", () => {
   it("依頼文に未保存の定義・測定項目・参照先・補足が入る", () => {
-    const p = suggestPrompt(request({}, { repos: ["app"], note: "pnpm の script を使う" }));
+    const p = suggestPrompt(request({}, { note: "pnpm の script を使う" }), ["app"]);
     expect(p).toContain("タイトル: 一覧の応答時間");
     expect(p).toContain("p3 ls コマンドが速く返るか");
     expect(p).toContain("- elapsed: 数値（ms）");
@@ -50,9 +49,9 @@ describe("依頼と応答の読み方", () => {
 
   it("依頼の入力: タイトルか観測内容が要る。測定項目・手順の形は定義と同じ検証", () => {
     expect(validateSuggestionRequest({ definition: { title: "", description: "" } })).toMatchObject({ ok: false, problems: [{ path: "definition.description" }] });
-    const bad = validateSuggestionRequest({ definition: { title: "t", measures: [{ name: "x", type: "date" }] }, repos: [1], extra: true });
-    expect(bad.ok ? [] : bad.problems.map((p) => p.path)).toEqual(expect.arrayContaining(["extra", "definition.measures[0].type", "repos[0]"]));
-    expect(validateSuggestionRequest({ definition: { title: "t" }, repos: ["app", "app"] })).toMatchObject({ ok: true, value: { repos: ["app"], definition: { category: "", measures: [] } } });
+    const bad = validateSuggestionRequest({ definition: { title: "t", measures: [{ name: "x", type: "date" }] }, repos: ["app"] });
+    expect(bad.ok ? [] : bad.problems.map((p) => p.path)).toEqual(expect.arrayContaining(["repos", "definition.measures[0].type"]));
+    expect(validateSuggestionRequest({ definition: { title: "t" } })).toMatchObject({ ok: true, value: { definition: { category: "", measures: [] } } });
   });
 
   it("コードブロックの JSON を読み、手順は定義の検証を通す。定義に無い測定項目は外して知らせる", () => {
@@ -84,10 +83,10 @@ describe("依頼と応答の読み方", () => {
 
 describe("提案の実行（代替の接続）", () => {
   it("CLI を示す材料ではコマンド、画面を示す材料では画面操作スクリプトを提案する（Mock）。手がかりが無ければ足りない材料と理由を返す", async () => {
-    const svc = new SuggestionService(fake((input) => suggestionMessage(mockSuggestion(input.request))).adapter);
+    const svc = new SuggestionService(fake((input) => suggestionMessage(mockSuggestion(input.request, input.repos))).adapter);
     const cli = await svc.run(request());
     expect(cli).toMatchObject({ status: "completed", result: { surface: "cli", procedures: [{ procedure: { kind: "command", measures: ["elapsed", "ok"] } }], missing: [] } });
-    const ui = await svc.run(request({ description: "要望の画面でボタンを押すと一覧が出るか" }, { repos: ["app"] }));
+    const ui = await svc.run(request({ description: "要望の画面でボタンを押すと一覧が出るか" }));
     expect(ui).toMatchObject({ status: "completed", result: { surface: "ui", procedures: [{ procedure: { kind: "ui-script", repo: "app" } }] } });
     const none = await svc.run(request({ title: "観測", description: "速さを見る" }));
     expect(none.result?.surface).toBe("unknown");
@@ -96,14 +95,15 @@ describe("提案の実行（代替の接続）", () => {
     expect(none.result?.missing.every((m) => m.reason.length > 0)).toBe(true);
   });
 
-  it("選んだ参照先だけを渡す。登録に無い・読めない参照先は頼まずに repo の失敗", async () => {
-    const f = fake(() => suggestionMessage(mockSuggestion(request())), { repos: [{ name: "app", available: true }, { name: "docs", available: false, reason: "このマシンのパスが登録されていません" }] });
+  it("参照先は選ばせず、Preflight と同じく読めるものを全部渡す（読めないものは外す）", async () => {
+    const f = fake(() => suggestionMessage(mockSuggestion(request(), ["app"])), {
+      repos: [{ name: "app", available: true }, { name: "docs", available: false, reason: "このマシンのパスが登録されていません" }, { name: "web", available: true }],
+    });
     const svc = new SuggestionService(f.adapter);
-    expect((await svc.run(request({}, { repos: ["app"] }))).status).toBe("completed");
-    expect(f.asked.map((a) => a.repos)).toEqual([["app"]]);
-    expect(await svc.run(request({}, { repos: ["docs"] }))).toMatchObject({ status: "failed", failure: "repo", error: expect.stringContaining("このマシンのパスが登録されていません") });
-    expect(await svc.run(request({}, { repos: ["other"] }))).toMatchObject({ status: "failed", failure: "repo", error: expect.stringContaining("登録されていません") });
-    expect(f.asked).toHaveLength(1);
+    expect((await svc.run(request())).status).toBe("completed");
+    expect(f.asked.map((a) => a.repos)).toEqual([["app", "web"]]);
+    expect(f.asked[0].prompt).toContain("/workspace/web");
+    expect(f.asked[0].prompt).not.toContain("/workspace/docs");
   });
 
   it("不正な応答・接続を使えない・接続の失敗・時間切れ・取り消しは理由を返す", async () => {
@@ -165,13 +165,12 @@ describe("API と CLI（Mock の頼む先）", () => {
     const ctx = await call("GET", "/observer/suggestions/context");
     expect(ctx.body).toMatchObject({ engine: { name: "mock", ok: true }, repos: [{ name: "app", available: true }] });
     expect((await call("POST", "/observer/suggestions", { definition: { title: "" } })).body).toMatchObject({ code: "invalid", problems: [{ path: "definition.description" }] });
-    const started = await call("POST", "/observer/suggestions", { definition: request().definition, repos: ["app"], note: "補足" });
+    const started = await call("POST", "/observer/suggestions", { definition: request().definition, note: "補足" });
     expect(started.status).toBe(202);
     const done = await waitDone(call, `/observer/suggestions/${started.body.id}`);
-    expect(done).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli" } });
+    expect(done).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli", procedures: [{ procedure: { repo: "app" } }] } });
     expect((await call("GET", "/observer/definitions")).body.definitions).toEqual([]);
     expect((await call("GET", "/observer/suggestions/sg-000000000000")).status).toBe(404);
-    expect((await call("POST", "/observer/suggestions", { definition: request().definition, repos: ["nope"] })).status).toBe(202);
   });
 
   it("プロジェクトを跨ぐ serve: 提案の実行はプロジェクトごとで、別のプロジェクトからは読めない。始めるには登録世代が要る", async () => {
@@ -199,14 +198,14 @@ describe("API と CLI（Mock の頼む先）", () => {
     const { root } = await initialized();
     const before = snapshot(join(root, ".p3"));
     writeFileSync(join(root, "draft.json"), JSON.stringify({ ...request().definition }));
-    const r = p3(root, ["observer", "suggest", "--input", "draft.json", "--repo", "app", "--note", "pnpm を使う", "--json"], { P3_PREFLIGHT_ENGINE: "mock" });
+    const r = p3(root, ["observer", "suggest", "--input", "draft.json", "--note", "pnpm を使う", "--json"], { P3_PREFLIGHT_ENGINE: "mock" });
     expect(r.code, r.err).toBe(0);
     const out = r.json();
     expect(out).toMatchObject({ status: "completed", engine: "mock", result: { surface: "cli" }, definition: { title: "一覧の応答時間", procedures: [{ kind: "command", repo: "app" }] } });
     expect(snapshot(join(root, ".p3"))).toEqual(before);
     const text = p3(root, ["observer", "suggest", "--title", "画面", "--body", "画面のボタンを押す"], { P3_PREFLIGHT_ENGINE: "mock" });
     expect(text.out).toContain("操作面: 画面");
-    expect(text.out).toContain("足りない材料: 参照先");
+    expect(text.out).toContain("画面操作スクリプト: 画面を画面で確かめる");
     expect(text.out).toContain("保存はしていません");
     // 編集して保存（誤りは定義の検証で断る）
     writeFileSync(join(root, "bad.json"), JSON.stringify({ ...out.definition, procedures: [{ ...out.definition.procedures[0], cwd: "../x" }] }));
@@ -215,9 +214,9 @@ describe("API と CLI（Mock の頼む先）", () => {
     const saved = p3(root, ["observer", "add", "--input", "edited.json", "--json"]);
     expect(saved.code, saved.err).toBe(0);
     expect(saved.json().procedures[0]).toMatchObject({ kind: "command", title: "直した" });
-    // 参照先の誤り・材料の不足は理由を出して 1
-    const repo = p3(root, ["observer", "suggest", "--input", "draft.json", "--repo", "nope"], { P3_PREFLIGHT_ENGINE: "mock" });
-    expect([repo.code, repo.err]).toEqual([1, expect.stringContaining("提案できませんでした（repo）")]);
+    // --repo は使わない（黙って無視しない）。材料の不足は理由を出して 1
+    const repo = p3(root, ["observer", "suggest", "--input", "draft.json", "--repo", "app"], { P3_PREFLIGHT_ENGINE: "mock" });
+    expect([repo.code, repo.err]).toEqual([1, expect.stringContaining("--repo を使いません")]);
     expect(p3(root, ["observer", "suggest", "--category", "c"]).err).toContain("definition.description");
     expect(p3(root, ["observer", "list", "--repo", "app"]).code).toBe(1);
   });
