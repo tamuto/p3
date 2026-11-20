@@ -31,7 +31,7 @@ export type { EvidenceRef, RetrospectiveView } from "../shared/retrospective.ts"
 import type { P3Context } from "../../../core/context.ts";
 import { getArchivedTask, listArchivedTasks } from "../../../core/store/archivedTasks.ts";
 import { NotFoundError } from "../../../core/store/collection.ts";
-import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 import { readJsonRecord, writeJsonRecord } from "../../../core/store/jsonRecord.ts";
 
 /**

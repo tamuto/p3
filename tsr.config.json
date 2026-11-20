@@ -1,7 +1,7 @@
 {
   "target": "react",
-  "routesDirectory": "./packages/p3/src/web/routes",
-  "generatedRouteTree": "./packages/p3/src/web/routeTree.gen.ts",
+  "routesDirectory": "./packages/app/src/web/routes",
+  "generatedRouteTree": "./packages/app/src/web/routeTree.gen.ts",
   "autoCodeSplitting": true,
   "virtualRouteConfig": {
     "type": "root",

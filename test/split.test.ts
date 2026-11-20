@@ -7,7 +7,7 @@ import { StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
 import { hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
 import { ChildDraftsChangedError } from "../packages/tasks/src/core/preflight/service.ts";
 import { createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
-import { stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newTask } from "./helpers.ts";
 

@@ -10,14 +10,14 @@ export interface ObserverStatus {
   state: "ready";
   /** 起動状態はプロジェクトを決めないので null（観測の定義の保存先は定義の一覧の target） */
   dataDir: null;
-  /** この serve の製品（API のときだけ。入口が取り付けた製品を渡す。CLI には無い） */
+  /** この serve の製品（API のときだけ。アプリが取り付けた製品を渡す。CLI には無い） */
   products?: string[];
 }
 
-/** API の接頭辞（入口の serve が /api の下に付ける） */
+/** API の接頭辞（アプリの serve が /api の下に付ける） */
 export const OBSERVER_API = "/api/observer";
 
-/** 観測の定義の登録先（入口が解決したプロジェクト。dataDir はそのデータのフォルダ） */
+/** 観測の定義の登録先（入口・アプリが解決したプロジェクト。dataDir はそのデータのフォルダ） */
 export interface DefinitionTarget {
   /** 個人設定に登録したプロジェクトの名前（分からなければ省く） */
   project?: string;

@@ -11,7 +11,7 @@ import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
 import { listScreenPng } from "../packages/tasks/src/core/preflight/wireframe.ts";
 import { readFileSync } from "node:fs";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { Workspace } from "../packages/tasks/src/core/store/workspace.ts";
 import { localToday } from "../packages/tasks/src/shared/dates.ts";
 import type { Request } from "../packages/tasks/src/shared/types.ts";

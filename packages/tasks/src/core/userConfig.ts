@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import YAML from "yaml";
 import { isTheme, type Theme } from "../shared/types.ts";
-import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 
 /**
  * 個人設定（このマシン・この人だけのもの。共有しない）。

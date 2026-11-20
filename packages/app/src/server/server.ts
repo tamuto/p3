@@ -3,7 +3,6 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { apiRoutes } from "@infodb/p3-tasks/server/api/routes.ts";
 import { projectsRoutes } from "./api/projectsRoutes.ts";
 import { chatgptAccount } from "@infodb/p3-tasks/core/chatgpt.ts";
@@ -13,10 +12,8 @@ import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { observerAssistant } from "../core/observerAssistant.ts";
-import { PRODUCTS, type Product } from "../shared/products.ts";
+import { PRODUCTS, type Product } from "../core/products.ts";
 
-/** p3 本体（配布するパッケージ）のルート。画面のビルド（dist/web）を探す（src/server・lib/server のどちらからも2つ上） */
-const P3_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 export interface ServeOptions {
   /** 1つのプロジェクトのデータのフォルダ（allProjects のときは使わない） */
@@ -29,8 +26,8 @@ export interface ServeOptions {
   allProjects?: boolean;
   port: number;
   host: string;
-  /** ビルド済みの画面 (dist/web) も配信する */
-  static: boolean;
+  /** ビルド済みの画面のフォルダ（入口のパッケージの dist/web。入口の CLI が渡す）。省くと API だけ */
+  webDir?: string;
   /** マシンごとの設定（省くと環境変数と個人設定から、Preflight を始めるたびに読む） */
   settings?: MachineSettings | SettingsSource;
 }
@@ -83,9 +80,9 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));
     app.route("/api", singleProjectApp(ctx, products));
   }
-  if (opts.static) {
+  if (opts.webDir) {
     // serveStatic の root はカレントからの相対で解釈される
-    const root = relative(process.cwd(), `${P3_ROOT}dist/web`) || ".";
+    const root = relative(process.cwd(), opts.webDir) || ".";
     app.use("/*", serveStatic({ root }));
     app.get("*", serveStatic({ path: `${root}/index.html` }));
   }
@@ -104,9 +101,9 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
       console.log(`  engines  ${ctx.preflight.availableEngines().join(", ")} (default: ${ctx.preflight.defaultEngine})`);
     }
     console.log(`  products ${products.join(", ")}`);
-    console.log(`  listen   http://${opts.host}:${opts.port}${opts.static ? "" : "  (api only)"}`);
-    if (opts.static && !existsSync(`${P3_ROOT}dist/web/index.html`)) {
-      console.log(`  ⚠ 画面がビルドされていません。${P3_ROOT} で \`pnpm build\` を実行してください`);
+    console.log(`  listen   http://${opts.host}:${opts.port}${opts.webDir ? "" : "  (api only)"}`);
+    if (opts.webDir && !existsSync(`${opts.webDir}/index.html`)) {
+      console.log(`  ⚠ 画面がビルドされていません（${opts.webDir}）。リポジトリのルートで \`pnpm build\` を実行してください`);
     }
   });
 

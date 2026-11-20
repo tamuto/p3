@@ -6,7 +6,7 @@ import { chatgptRoutes } from "@infodb/p3-tasks/server/api/chatgptRoutes.ts";
 import { apiRoutes, eventStream } from "@infodb/p3-tasks/server/api/routes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "@infodb/p3-tasks/features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
-import type { Product } from "../../shared/products.ts";
+import type { Product } from "../../core/products.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import type { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 

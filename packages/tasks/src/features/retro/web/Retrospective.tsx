@@ -22,7 +22,7 @@ import { api, errorCode } from "../../../web/lib/api.ts";
 import { fmtTime } from "../../../web/lib/format.ts";
 import type { RequestData } from "../../../web/lib/requestData.tsx";
 import { useUnsaved } from "../../../web/lib/unsaved.ts";
-import { Badge, Button, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望の概要の「リスクの振り返り」。Preflight で心配したリスクが実装の後に起きたかを、人が確かめて残す（規則は shared/retrospective.ts）。
@@ -78,7 +78,7 @@ export function RetrospectivePanel({ ctx, data }: { ctx: AppCtx; data: RequestDa
       {error && (
         <p role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
           {error}
-          <Button variant="ghost" onClick={() => void load()}>
+          <Button variant="secondary" onClick={() => void load()}>
             再読み込み
           </Button>
         </p>
@@ -199,11 +199,7 @@ function CandidatePicker({ rid, data, view, correcting, onSaved, onReload }: { r
       {correcting && (
         <TextField label="訂正の理由" value={reason} onChange={setReason} rows={2} disabled={busy} />
       )}
-      {error && (
-        <p role="alert" className="text-base break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       <Button variant="primary" disabled={busy || !run || (correcting && !reason.trim())} onClick={() => void save()}>
         {busy ? "保存中…" : correcting ? "この評価に訂正する" : "この評価を振り返る"}
       </Button>
@@ -366,7 +362,7 @@ function JudgeForm({ rid, data, view, risk, onSaved, onReload, onCancel }: { rid
             <li key={i} className="flex min-w-0 flex-wrap items-center gap-2 text-base">
               <span>{RETRO_EVIDENCE_LABEL[e.kind]}</span>
               <span className="min-w-0 font-mono text-sm break-all">{refText(e)}</span>
-              <Button variant="ghost" disabled={busy} onClick={() => setEvidence(evidence.filter((_, j) => j !== i))} aria-label={`根拠 ${i + 1} を外す`}>
+              <Button variant="secondary" disabled={busy} onClick={() => setEvidence(evidence.filter((_, j) => j !== i))} aria-label={`根拠 ${i + 1} を外す`}>
                 外す
               </Button>
             </li>
@@ -375,16 +371,12 @@ function JudgeForm({ rid, data, view, risk, onSaved, onReload, onCancel }: { rid
       )}
       <EvidenceAdder rid={rid} data={data} disabled={busy} onAdd={(e) => setEvidence([...evidence, e])} />
       {missing && <p className="text-base text-amber-700 dark:text-amber-400">{missing}</p>}
-      {error && (
-        <p role="alert" className="text-base break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy || !!missing} onClick={() => void save()}>
           {busy ? "保存中…" : "確認結果を保存する"}
         </Button>
-        <Button variant="ghost" disabled={busy} onClick={onCancel}>
+        <Button variant="cancel" disabled={busy} onClick={onCancel}>
           取消
         </Button>
       </div>

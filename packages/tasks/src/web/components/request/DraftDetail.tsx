@@ -4,7 +4,7 @@ import { relationRole, type ProjectConfig, type ProposedTask } from "../../../sh
 import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { CriteriaRowsEditor, rowsEqual, rowsInvalid, rowsOf, type CriterionRow } from "../../../features/requirements/web/Acceptance.tsx";
 import { Markdown } from "../Markdown.tsx";
-import { Badge, Button } from "../ui.tsx";
+import { Badge, Button } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 案の受け入れ基準の編集中の状態（一覧が持つ。詳細を閉じても入力は残る） */
 export interface CriteriaEdit {
@@ -127,10 +127,10 @@ export function DraftDetail({
                       <p>編集中に受け入れ基準が他で変わりました。入力はそのままです（このままでは保存しません）。</p>
                       <p className="break-words">最新の基準: {edit.conflict.map((c) => `${c.id} ${c.text}`).join(" / ") || "なし"}</p>
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" className="text-base" onClick={onEdit.rebase}>
+                        <Button className="text-base" onClick={onEdit.rebase}>
                           最新に合わせて入力を残す
                         </Button>
-                        <Button type="button" variant="ghost" className="text-base" onClick={onEdit.cancel}>
+                        <Button variant="cancel" className="text-base" onClick={onEdit.cancel}>
                           入力を捨てる
                         </Button>
                       </div>
@@ -144,10 +144,10 @@ export function DraftDetail({
                   )}
                   {edit.error && <p className="text-base break-words text-rose-600">{edit.error}</p>}
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="primary" disabled={edit.saving || !!edit.conflict || rowsInvalid(edit.rows) || !criteriaEditDirty(edit)} onClick={onEdit.save}>
+                    <Button variant="primary" disabled={edit.saving || !!edit.conflict || rowsInvalid(edit.rows) || !criteriaEditDirty(edit)} onClick={onEdit.save}>
                       {edit.saving ? "保存中…" : "基準を保存"}
                     </Button>
-                    <Button type="button" disabled={edit.saving} onClick={onEdit.cancel}>
+                    <Button disabled={edit.saving} onClick={onEdit.cancel}>
                       取消
                     </Button>
                   </div>
@@ -167,7 +167,7 @@ export function DraftDetail({
                     <p className="text-base text-slate-500">受け入れ基準なし</p>
                   )}
                   {!done && onEdit && (
-                    <Button type="button" className="text-base" onClick={onEdit.start}>
+                    <Button className="text-base" onClick={onEdit.start}>
                       {draft.acceptanceCriteria?.length ? "基準を編集" : "基準を足す"}
                     </Button>
                   )}

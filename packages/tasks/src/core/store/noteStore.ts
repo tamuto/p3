@@ -2,8 +2,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { PreflightNote } from "../../shared/types.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
-import { createExclusive, nowIso } from "@infodb/p3-kit/fsutil.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
+import { createExclusive, nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 
 export const NOTE_ID = /^N-\d{8}-\d{6}-[0-9a-f]{4}$/;
 

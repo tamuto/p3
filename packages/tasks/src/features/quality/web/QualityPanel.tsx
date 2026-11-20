@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { QUALITY_LIMITS, type QualityCheck, type QualityStandard, type QualityTemplate } from "../shared/quality.ts";
 import { api, ApiError, saveErrorText, type QualityViewData } from "../../../web/lib/api.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
-import { Badge, Button, cx, Field, inputCls, Section } from "../../../web/components/ui.tsx";
+import { Badge, Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { ImprovementButton } from "./ImprovementDialog.tsx";
 
 /**

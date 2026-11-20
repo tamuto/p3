@@ -21,11 +21,11 @@ describe("依存の指定", () => {
       const j = JSON.parse(read(m));
       const all = Object.entries({ ...j.dependencies, ...j.devDependencies }) as [string, string][];
       expect(all.filter(([, v]) => /^(link|file|portal):/.test(v)), m).toEqual([]);
-      expect(all.filter(([k, v]) => v.startsWith("workspace:") && !/^@infodb\/p3-(tasks|observer|kit)$/.test(k)), m).toEqual([]);
+      expect(all.filter(([k, v]) => v.startsWith("workspace:") && !/^@infodb\/p3-(app|tasks|observer|shared)$/.test(k)), m).toEqual([]);
     }
-    // lockfile のリンクは workspace の自分たちのパッケージ（入口 → 製品・kit、製品 → kit）だけ（手元の llmcs などを指さない）
+    // lockfile のリンクは workspace の自分たちのパッケージ（入口 → アプリ・機能・shared、アプリ → 機能・shared、機能 → shared）だけ（手元の llmcs などを指さない）
     const lockLinks = [...read("pnpm-lock.yaml").matchAll(/\b(?:link|file):(\.\.?\/[^\s'"]*)/g)].map((m) => m[1]);
-    expect(lockLinks.filter((l) => !/^\.\.\/(kit|tasks|observer)$/.test(l))).toEqual([]);
+    expect(lockLinks.filter((l) => !/^\.\.\/(app|tasks|observer|shared)$/.test(l))).toEqual([]);
   });
 
   it("公開から日の浅い版を待たずに入れる例外は、自分たちが公開した @infodb の部品の版を固定したものだけ", () => {
@@ -39,7 +39,7 @@ describe("npm で配る中身（manifest）", () => {
   const pkg = JSON.parse(read("packages/p3/package.json"));
   const root = JSON.parse(read("package.json"));
 
-  it("公開できる manifest（スコープ付きの公開・Node の版・bin）。ルートと kit・tasks は公開しない", () => {
+  it("公開できる manifest（スコープ付きの公開・Node の版・bin）。ルートと同梱するパッケージは公開しない", () => {
     expect(pkg.private).toBeUndefined();
     expect(pkg.name).toBe("@infodb/p3");
     expect(pkg.publishConfig).toEqual({ access: "public" });
@@ -51,16 +51,16 @@ describe("npm で配る中身（manifest）", () => {
     expect(pkg.scripts).toBeUndefined();
     expect(root.scripts.build).toBe("vite build && node scripts/build-cli.mjs --require-web");
     for (const m of ["package.json", ...BUNDLED]) expect(JSON.parse(read(m)).private, m).toBe(true);
-    // 同じ版で出す（kit・製品は同梱するので、版は入口とそろえる。製品ごとに版やタグを分けない）。observer も含めて全部の manifest
-    expect(PACKAGE_DIRS).toEqual(["kit", "observer", "p3", "tasks"]);
+    // 同じ版で出す（アプリ・機能・shared は同梱するので、版は入口とそろえる。製品ごとに版やタグを分けない）。observer も含めて全部の manifest
+    expect(PACKAGE_DIRS).toEqual(["app", "observer", "p3", "shared", "tasks"]);
     for (const m of MANIFESTS) expect(JSON.parse(read(m)).version, m).toBe(pkg.version);
   });
 
-  it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用。kit・tasks は同梱するので書かない）", () => {
+  it("実行に要るものだけを実行時の依存にする（画面はビルドして配るので React などは開発用。同梱するパッケージは書かない）", () => {
     expect(Object.keys(pkg.dependencies).sort()).toEqual(["@hono/node-server", "@infodb/chatgpt-plan", "@infodb/codex-workspace", "hono", "yaml", "zod"]);
-    // 同梱する kit・tasks の実行時の依存は、入口の依存に同じ範囲で入っている
+    // 同梱するパッケージの実行時の依存は、入口の依存に同じ範囲で入っている
     for (const m of BUNDLED) {
-      for (const [k, v] of Object.entries(JSON.parse(read(m)).dependencies as Record<string, string>)) {
+      for (const [k, v] of Object.entries((JSON.parse(read(m)).dependencies ?? {}) as Record<string, string>)) {
         if (k.startsWith("@infodb/p3-")) continue;
         expect(pkg.dependencies[k], `${m} の ${k}`).toBe(v);
       }

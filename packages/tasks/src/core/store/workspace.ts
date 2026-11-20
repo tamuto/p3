@@ -7,7 +7,7 @@ import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/mileston
 import { QualityInputError, qualityPlain, type QualityConfig } from "../../features/quality/shared/quality.ts";
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
-import { newRequestId, withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { newRequestId, withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 import { normalizeProject, normalizeRequest, normalizeTaskIn, REQUEST_KEY_ORDER, REQUEST_DERIVED, requestKeepRaw, TASK_DERIVED, TASK_KEY_ORDER, taskKeepRaw } from "./normalize.ts";
 import { AttachmentStore } from "./attachments.ts";
 import { DataWatcher, type DataWatcherOptions } from "./dataWatcher.ts";

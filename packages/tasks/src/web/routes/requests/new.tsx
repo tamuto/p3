@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { NewAttachments } from "../../components/Attachments.tsx";
 import { TagInput } from "../../components/TagInput.tsx";
-import { Button, Field, inputCls } from "../../components/ui.tsx";
+import { Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";

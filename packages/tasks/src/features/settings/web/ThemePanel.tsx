@@ -3,7 +3,7 @@ import { THEMES, type Theme } from "../../../shared/types.ts";
 import { api } from "../../../web/lib/api.ts";
 import { createThemeSaver, type ThemeSaveState } from "./lib/themeSave.ts";
 import { themeController } from "../../../web/lib/useTheme.ts";
-import { Button, cx, Section } from "../../../web/components/ui.tsx";
+import { Button, cx, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 const LABELS: Record<Theme, string> = { system: "OS に合わせる（既定）", light: "ライト", dark: "ダーク" };
 
@@ -64,7 +64,7 @@ export function ThemePanel({ tick }: { tick: number }) {
             <span className="flex flex-wrap items-center gap-2 text-rose-600 dark:text-rose-400">
               テーマを保存できませんでした: {state.error}
               {state.failed && (
-                <Button variant="ghost" onClick={() => void saver.retry()}>
+                <Button variant="secondary" onClick={() => void saver.retry()}>
                   もう一度保存する
                 </Button>
               )}

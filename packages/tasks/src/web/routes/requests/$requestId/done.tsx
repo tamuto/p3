@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { DoneMark } from "../../../components/Marks.tsx";
 import { Outputs } from "../../../components/Outputs.tsx";
-import { Button, Empty, Id } from "../../../components/ui.tsx";
+import { Button, Empty, Id } from "@infodb/p3-shared/web/ui.tsx";
 import { runAction } from "../../../lib/action.ts";
 import { api } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
@@ -78,7 +78,7 @@ function DonePage() {
               <td className="py-1">{t.outputs.length || t.repoOutputs?.length ? <Outputs outputs={t.outputs} repoOutputs={t.repoOutputs} /> : <span className="text-base text-slate-500 dark:text-slate-400">—</span>}</td>
               <td className="py-2 text-right">
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   title="タスクボードの完了欄に戻す"
                   onClick={() => {
                     setError(null);

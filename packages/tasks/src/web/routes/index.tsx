@@ -7,7 +7,7 @@ import { BlockedMark, DoingMark, DoneMark, Flag, TodoMark } from "../components/
 import { TagFilter } from "../components/TagFilter.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
 import { TaskDrawer } from "../components/TaskDrawer.tsx";
-import { buttonCls, cx, Empty } from "../components/ui.tsx";
+import { buttonCls, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { CLOSED_STATUSES, filterRequests, parseShow, parseTagsSearch, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
@@ -265,7 +265,7 @@ function ProgressPage() {
         <div className="p-10">
           <Empty>
             見直しが必要（候補）の要望はありません（完了済みも含めて探しました）。
-            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className={buttonCls("ghost", "ml-2 underline")}>
+            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className={buttonCls("link", "ml-2 underline")}>
               絞り込みを解除
             </button>
           </Empty>
@@ -274,7 +274,7 @@ function ProgressPage() {
         <div className="p-10">
           <Empty>
             停止中のタスクはありません。
-            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, blocked: undefined }), replace: true })} className={buttonCls("ghost", "ml-2 underline")}>
+            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, blocked: undefined }), replace: true })} className={buttonCls("link", "ml-2 underline")}>
               絞り込みを解除
             </button>
           </Empty>
@@ -283,7 +283,7 @@ function ProgressPage() {
         <div className="p-10">
           <Empty>
             {show === "open" ? "未完了の要望はありません。" : "該当する要望はありません。"}
-            <Link to="/requests/new" className={buttonCls("ghost", "ml-2 underline")}>
+            <Link to="/requests/new" className={buttonCls("link", "ml-2 underline")}>
               新しい要望を作る
             </Link>
           </Empty>

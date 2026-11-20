@@ -3,7 +3,7 @@ import type { SourceOp } from "../../../features/requirements/shared/requirement
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { relationRole, type ProposedTask, type Request, type SupersedeCandidate } from "../../../shared/types.ts";
-import { Badge, Button, buttonCls, cx, inputCls, Empty, Id, Section } from "../ui.tsx";
+import { Badge, Button, buttonCls, cx, inputCls, Empty, Id, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { api, ApiError, type RunInfo } from "../../lib/api.ts";
 import { archiveSelection } from "../../lib/supersede.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
@@ -350,7 +350,7 @@ export function Drafts({
           <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
             ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
             {run.materialization?.archived.length ? `（置き換えられた ${run.materialization.archived.join(", ")} をアーカイブ）` : ""}
-            <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("ghost", "underline")}>
+            <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("link", "underline")}>
               タスクボードで見る
             </Link>
           </p>
@@ -450,7 +450,7 @@ function TitleField({
           <Button className="text-base" onClick={onSave}>
             もう一度保存
           </Button>
-          <Button variant="ghost" className="text-base" onClick={onDiscard}>
+          <Button variant="cancel" className="text-base" onClick={onDiscard}>
             入力を捨てる
           </Button>
         </p>

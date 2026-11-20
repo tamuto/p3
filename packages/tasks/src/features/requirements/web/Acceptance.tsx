@@ -25,7 +25,7 @@ import type { Task } from "../../../shared/types.ts";
 import { api, failureOf } from "../../../web/lib/api.ts";
 import { fmtTime } from "../../../web/lib/format.ts";
 import { Markdown } from "../../../web/components/Markdown.tsx";
-import { Badge, Button, cx, Field, inputCls, type Tone } from "../../../web/components/ui.tsx";
+import { Badge, Button, cx, Field, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 受け入れ基準と証拠の部品（shared/acceptance.ts の規則を使う）。
@@ -87,10 +87,10 @@ export function CriteriaRowsEditor({ rows, onChange, disabled, idPrefix = "crite
               onChange={(e) => onChange(rows.map((x) => (x.key === r.key ? { ...x, text: e.target.value } : x)))}
             />
             <div className="flex flex-wrap gap-2">
-              <Button type="button" className="text-base" disabled={disabled || i === 0} aria-label={`${name(r, i)} を上へ`} onClick={() => move(i, -1)}>
+              <Button className="text-base" disabled={disabled || i === 0} aria-label={`${name(r, i)} を上へ`} onClick={() => move(i, -1)}>
                 上へ
               </Button>
-              <Button type="button" className="text-base" disabled={disabled || i === rows.length - 1} aria-label={`${name(r, i)} を下へ`} onClick={() => move(i, 1)}>
+              <Button className="text-base" disabled={disabled || i === rows.length - 1} aria-label={`${name(r, i)} を下へ`} onClick={() => move(i, 1)}>
                 下へ
               </Button>
               <Button
@@ -405,7 +405,7 @@ export function AcceptancePanel({
         <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
           <span className="min-w-0 break-words">{error}</span>
           {conflict && (
-            <Button type="button" className="text-base" onClick={rebase}>
+            <Button className="text-base" onClick={rebase}>
               最新に合わせる
             </Button>
           )}
@@ -416,10 +416,10 @@ export function AcceptancePanel({
 
   const actions = (label: string) => (
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="primary" disabled={busy || !dirty || conflict || invalid} onClick={() => void save()}>
+      <Button variant="primary" disabled={busy || !dirty || conflict || invalid} onClick={() => void save()}>
         {busy ? "保存中…" : label}
       </Button>
-      <Button type="button" disabled={busy} onClick={cancel}>
+      <Button disabled={busy} onClick={cancel}>
         取消
       </Button>
     </div>
@@ -498,7 +498,7 @@ export function AcceptancePanel({
           {acc.items.map((i) => (
             <CriterionItem key={i.id} {...i} staleFrom={i.state === "stale" ? i.evidence?.criterionText : undefined}>
               {evidenceEditor(i.id) ?? (
-                <Button type="button" className="text-base" disabled={locked || !!editing} aria-label={`${i.id} の証拠を${i.evidence ? "編集" : "登録"}`} onClick={() => editEvidence(i.id, i.evidence)}>
+                <Button className="text-base" disabled={locked || !!editing} aria-label={`${i.id} の証拠を${i.evidence ? "編集" : "登録"}`} onClick={() => editEvidence(i.id, i.evidence)}>
                   {i.evidence ? "証拠を編集" : "証拠を登録"}
                 </Button>
               )}
@@ -506,7 +506,7 @@ export function AcceptancePanel({
           ))}
           {acc.orphans.map((e) => (
             <CriterionItem key={`orphan-${e.criterionId}`} id={e.criterionId} text={`（基準は消されています）${e.criterionText}`} state={e.result} evidence={e}>
-              <Button type="button" className="text-base" disabled={locked || !!editing} aria-label={`${e.criterionId} の証拠を消す`} onClick={() => void send([{ op: "unrecord", id: e.criterionId }], task.rev)}>
+              <Button className="text-base" disabled={locked || !!editing} aria-label={`${e.criterionId} の証拠を消す`} onClick={() => void send([{ op: "unrecord", id: e.criterionId }], task.rev)}>
                 証拠を消す
               </Button>
             </CriterionItem>
@@ -514,7 +514,7 @@ export function AcceptancePanel({
         </ul>
       )}
       {!editing && error && <p className="text-base text-rose-600">{error}</p>}
-      <Button type="button" className="text-base" disabled={locked || !!editing} onClick={() => start({ kind: "criteria", baseRev: task.rev, base: task.acceptanceCriteria ?? [], rows: rowsOf(task.acceptanceCriteria) })}>
+      <Button className="text-base" disabled={locked || !!editing} onClick={() => start({ kind: "criteria", baseRev: task.rev, base: task.acceptanceCriteria ?? [], rows: rowsOf(task.acceptanceCriteria) })}>
         {task.acceptanceCriteria?.length ? "基準を編集" : "基準を足す"}
       </Button>
     </div>

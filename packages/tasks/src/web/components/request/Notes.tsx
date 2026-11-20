@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { type PreflightRun, type Request } from "../../../shared/types.ts";
-import { Badge, Button, inputCls, Section } from "../ui.tsx";
+import { Badge, Button, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { api, type NotesInfo } from "../../lib/api.ts";
 import { nextRunLabel, notesPanelState, submitNote } from "../../lib/notes.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";

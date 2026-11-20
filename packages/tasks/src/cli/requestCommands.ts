@@ -23,7 +23,7 @@ function reviewCountLines(review: ReturnType<typeof requestReview>): string[] {
   if (!tasks && !below) return [];
   return ["", `見直しが必要（候補）: タスク ${tasks} 件${below ? `・配下 ${below} 件（子の要望とそのタスク）` : ""}（p3 revisit で理由）`];
 }
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { tagsFrom } from "../shared/tags.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { parse, splitPair, list, date, readBody, readAttachFiles } from "./args.ts";

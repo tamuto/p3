@@ -7,7 +7,7 @@ import { AcceptanceInputError, readDraftCriteria, tidyDraftCriteria } from "../p
 import { DRAFT_SPEC } from "../packages/tasks/src/core/preflight/engine.ts";
 import { DraftConflictError } from "../packages/tasks/src/core/preflight/service.ts";
 import { renderCarryover, selectCarryover } from "../packages/tasks/src/core/preflight/carryover.ts";
-import { stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 

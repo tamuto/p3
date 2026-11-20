@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { METRIC_STATE_LABEL, METRIC_UNIT_LABEL, type MetricResult, type MetricsReport } from "../shared/metrics.ts";
-import { Badge, buttonCls, cx, Empty, inputCls, Section, type Tone } from "../../../web/components/ui.tsx";
+import { Button, Badge, buttonCls, cx, Empty, inputCls, Section, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 import { api } from "../../../web/lib/api.ts";
 import { useAppData } from "../../../web/lib/appData.tsx";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
@@ -83,9 +83,9 @@ export function MetricsPage() {
         <div role="alert" className="space-y-1 rounded-md bg-rose-50 p-3 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
           <p className="break-words">指標を読み込めませんでした: {error}</p>
           <p className="flex flex-wrap gap-3">
-            <button type="button" className="underline" onClick={() => void load()}>
+            <Button variant="link" onClick={() => void load()}>
               もう一度
-            </button>
+            </Button>
             {m && (
               <Link to="/metrics" search={{}} className="underline">
                 プロジェクト全体を開く

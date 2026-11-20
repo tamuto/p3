@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import YAML from "yaml";
 import type { RepoRef } from "../../shared/repos.ts";
 import type { ProjectConfig } from "../../shared/types.ts";
-import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 
 /** 設定の保存（画面・p3 config）で書き換える項目。repos は p3 repo だけが項目ごとに書く（writeRepoEntry） */
 const ORDER: (keyof ProjectConfig)[] = ["name", "description", "milestones", "branchPattern", "preflight"];

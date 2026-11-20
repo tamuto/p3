@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { REQUEST_STATUSES, type RequestStatus, type Request } from "../../../shared/types.ts";
 import { REQUEST_STATUS_LABEL } from "../RequestStatus.tsx";
-import { Button, buttonCls, Field, inputCls } from "../ui.tsx";
+import { Button, buttonCls, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { api, failureOf } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { type RequestData } from "../../lib/requestData.tsx";
@@ -103,7 +103,7 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
           </select>
         </Field>
         {ctx.info.project.milestones.length === 0 && (
-          <Link to="/release-notes" search={{ tab: "milestones" }} className={buttonCls("ghost", "mt-7 text-base underline")}>
+          <Link to="/release-notes" search={{ tab: "milestones" }} className={buttonCls("link", "mt-7 text-base underline")}>
             マイルストーンを作る
           </Link>
         )}

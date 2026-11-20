@@ -7,7 +7,7 @@ import type { FindingKind, ImprovementDiagnosis, ImprovementFinding, Improvement
 export type { FindingKind, ImprovementDiagnosis, ImprovementFinding, ImprovementSource };
 import type { P3Context } from "../../../core/context.ts";
 import { createRequest } from "../../../core/requestOps.ts";
-import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 import { readJsonRecord, writeJsonRecord } from "../../../core/store/jsonRecord.ts";
 
 /**

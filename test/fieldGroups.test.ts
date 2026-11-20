@@ -5,7 +5,7 @@ import { createTask, updateRequest, updateTask } from "../packages/tasks/src/cor
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
 import { keepRawOf, managedKeysOf, problemKeysOf, REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS } from "../packages/tasks/src/core/store/fieldGroups.ts";
 import { REQUEST_DERIVED, REQUEST_KEY_ORDER, TASK_DERIVED, TASK_KEY_ORDER } from "../packages/tasks/src/core/store/normalize.ts";
-import { parseFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import type { Task } from "../packages/tasks/src/shared/types.ts";
 import { makeProject, newRequest, openTestProject } from "./helpers.ts";
 

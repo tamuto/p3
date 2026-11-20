@@ -10,7 +10,7 @@ import { RenderError } from "../packages/tasks/src/core/preflight/render.ts";
 import { LocalResultError, LocalRunError, PreflightBusyError, PreflightService } from "../packages/tasks/src/core/preflight/service.ts";
 import type { Renderer } from "../packages/tasks/src/core/preflight/uiRender.ts";
 import { wireframePng } from "../packages/tasks/src/core/preflight/wireframe.ts";
-import { stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
 import { PREFLIGHT_CANCELLED } from "../packages/tasks/src/shared/directTask.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";

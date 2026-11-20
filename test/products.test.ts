@@ -3,8 +3,8 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
-import { startServer, type RunningServer } from "../packages/p3/src/server/server.ts";
-import { PRODUCTS } from "../packages/p3/src/shared/products.ts";
+import { startServer, type RunningServer } from "../packages/app/src/server/server.ts";
+import { PRODUCTS } from "../packages/app/src/core/products.ts";
 import { tempDir, writeTestProject } from "./helpers.ts";
 import { p3 } from "./cliHelpers.ts";
 
@@ -28,9 +28,9 @@ const freePort = () =>
     });
   });
 
-async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host" | "static">) {
+async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host">) {
   const port = await freePort();
-  servers.push(await startServer({ ...opts, port, host: "127.0.0.1", static: false }));
+  servers.push(await startServer({ ...opts, port, host: "127.0.0.1" }));
   const base = `http://127.0.0.1:${port}/api`;
   const get = async (path: string) => {
     const res = await fetch(`${base}${path}`);
@@ -99,10 +99,10 @@ describe("serve は常に tasks と observer の両方", () => {
 
   it("部品だけを使うとき（observer を付けない）は、/api/mode の products も tasks だけ（取り付けたルートと一致する）", async () => {
     const { Hono } = await import("hono");
-    const { singleProjectApp } = await import("../packages/p3/src/server/server.ts");
-    const { projectsRoutes } = await import("../packages/p3/src/server/api/projectsRoutes.ts");
+    const { singleProjectApp } = await import("../packages/app/src/server/server.ts");
+    const { projectsRoutes } = await import("../packages/app/src/server/api/projectsRoutes.ts");
     const { openProject } = await import("../packages/tasks/src/core/context.ts");
-    const { ProjectRegistry } = await import("../packages/p3/src/core/projectRegistry.ts");
+    const { ProjectRegistry } = await import("../packages/app/src/core/projectRegistry.ts");
     const { chatgptAccount } = await import("../packages/tasks/src/core/chatgpt.ts");
     const { dataDir } = await project();
     const ctx = await openProject(dataDir, {});

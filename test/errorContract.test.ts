@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportError } from "../packages/tasks/src/cli/tasksCli.ts";
-import { UsageError } from "../packages/kit/src/usage.ts";
+import { UsageError } from "../packages/shared/src/node/usage.ts";
 import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
 import { UserConfigError } from "../packages/tasks/src/core/userConfig.ts";
 import { SettingsError } from "../packages/tasks/src/core/machineSettings.ts";

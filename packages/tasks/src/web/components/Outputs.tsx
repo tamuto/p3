@@ -1,6 +1,6 @@
 import type { RepoOutput } from "../../shared/types.ts";
 import { outputHref, outputLabel } from "../lib/outputs.ts";
-import { cx } from "./ui.tsx";
+import { cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * タスクの成果物。項目全体が http(s) の URL ならリンク（別のタブで開く）、それ以外（文章・パス）はそのまま文字で出す（lib/outputs.ts）。

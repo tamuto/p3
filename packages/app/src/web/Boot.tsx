@@ -3,6 +3,7 @@ import { App } from "./App.tsx";
 import { ProjectChooser, type ProjectListing } from "./components/ProjectChooser.tsx";
 import { fixScope, listRequested, projectFromPath, projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { fixObserverScope } from "@infodb/p3-observer/web/lib/scope.ts";
+import { Button, Alert } from "@infodb/p3-shared/web/ui.tsx";
 
 type BootState =
   | { kind: "loading" }
@@ -69,12 +70,10 @@ export function Boot() {
   if (state.kind === "error")
     return (
       <div className="space-y-2 p-8">
-        <p role="alert" className="text-rose-600">
-          画面を開けませんでした: {state.message}
-        </p>
-        <button type="button" className="underline" onClick={start}>
+        <Alert>画面を開けませんでした: {state.message}</Alert>
+        <Button variant="link" onClick={start}>
           もう一度読み込む
-        </button>
+        </Button>
       </div>
     );
   return <div className="p-8 text-slate-500">Loading…</div>;

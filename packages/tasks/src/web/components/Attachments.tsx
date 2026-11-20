@@ -15,7 +15,7 @@ import {
   type checkPending,
   type PendingAttach,
 } from "../lib/uiMaterials.ts";
-import { Badge, Button, buttonCls, FilePicker, inputCls, Section } from "./ui.tsx";
+import { Alert, Badge, Button, buttonCls, FilePicker, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望の添付（次の Preflight に渡すもの）。画像・xlsx を足し・外し・原本を取る。
@@ -96,10 +96,10 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
                   {[a.description, a.source && `出典: ${a.source}`, formatBytes(a.bytes), a.createdBy].filter(Boolean).join(" · ")}
                 </span>
                 <span className="ml-auto flex gap-2">
-                  <a href={attachmentUrl(requestId, a.id)} className={buttonCls("ghost")} {...(a.format === "xlsx" ? { download: a.name } : { target: "_blank", rel: "noreferrer" })}>
+                  <a href={attachmentUrl(requestId, a.id)} className={buttonCls("secondary")} {...(a.format === "xlsx" ? { download: a.name } : { target: "_blank", rel: "noreferrer" })}>
                     原本
                   </a>
-                  <Button variant="ghost" disabled={removing === a.id} onClick={() => void remove(a)}>
+                  <Button variant="secondary" disabled={removing === a.id} onClick={() => void remove(a)}>
                     外す
                   </Button>
                 </span>
@@ -119,7 +119,7 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
                     <Button disabled={retrying === p.key} onClick={() => void retry(p)}>
                       {retrying === p.key ? "添付中…" : "付け直す"}
                     </Button>
-                    <Button variant="ghost" onClick={() => keepUnsent(unsent.filter((x) => x.key !== p.key))}>
+                    <Button variant="cancel" onClick={() => keepUnsent(unsent.filter((x) => x.key !== p.key))}>
                       やめる
                     </Button>
                   </span>
@@ -157,11 +157,7 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
             {form.busy ? "添付中…" : "添付する"}
           </Button>
         </div>
-        {form.error && (
-          <p role="alert" className="text-base text-rose-600">
-            添付できませんでした: {form.error}（入力は残しています。直してもう一度押してください）
-          </p>
-        )}
+        {form.error && <Alert>添付できませんでした: {form.error}（入力は残しています。直してもう一度押してください）</Alert>}
         {loadError && <p className="text-base text-rose-600">{loadError}</p>}
       </div>
     </Section>
@@ -194,7 +190,7 @@ export function NewAttachments({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 break-all font-medium">{p.file.name}</span>
                 <span className="text-base text-slate-500">{formatBytes(p.file.size)}</span>
-                <Button variant="ghost" className="ml-auto" onClick={() => onChange(items.filter((x) => x.key !== p.key))}>
+                <Button variant="secondary" className="ml-auto" onClick={() => onChange(items.filter((x) => x.key !== p.key))}>
                   外す
                 </Button>
               </div>

@@ -1,7 +1,7 @@
+import { linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { createDefinition } from "../../lib/api.ts";
 import { DefinitionForm } from "../../components/DefinitionForm.tsx";
-import { linkCls } from "../../components/styles.ts";
 
 /** /observer/new: 観測の定義を登録する（保存すると詳細へ移る） */
 export const Route = createFileRoute("/observer/new")({ component: NewDefinition });

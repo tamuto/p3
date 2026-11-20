@@ -1,7 +1,7 @@
 import { metricScopeOf, metricsReport } from "../core/index.ts";
 import { readManual, recordManual, removeManual } from "../core/manual.ts";
 import { MetricsError, METRIC_STATE_LABEL, METRIC_UNIT_LABEL, type ManualRecord, type ManualRow, type MetricResult, type MetricsReport } from "../shared/metrics.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import type { CommandEnv } from "../../../cli/args.ts";
 
 /**

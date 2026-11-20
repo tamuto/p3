@@ -1,5 +1,5 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
-import { cx } from "./ui.tsx";
+import { cx } from "@infodb/p3-shared/web/ui.tsx";
 
 export interface TabDef<T extends string> {
   id: T;

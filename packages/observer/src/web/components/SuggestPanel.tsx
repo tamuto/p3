@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PROCEDURE_KIND_LABEL, type Procedure } from "../../shared/definition.ts";
 import { MISSING_LABEL, SURFACE_LABEL, type SuggestionContext, type SuggestionJob } from "../../shared/suggestion.ts";
+import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { cancelSuggestion, fetchSuggestion, fetchSuggestionContext, ObserverApiError, startSuggestion } from "../lib/api.ts";
 
 const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
@@ -10,8 +11,6 @@ const FAILURE_LABEL: Record<NonNullable<SuggestionJob["failure"]>, string> = {
   timeout: "時間切れです",
   error: "失敗しました",
 };
-
-const btnCls = "rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800";
 
 /**
  * 「AI に手順を提案してもらう」。入力中の定義（未保存）・補足と、読める参照先（Preflight と同じく全部）を材料に頼み、操作面・手順と根拠・足りない材料を出す。
@@ -64,47 +63,34 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
 
   const running = job?.status === "running";
   return (
-    <section aria-labelledby="suggest-heading" className="space-y-3 rounded border border-sky-200 bg-sky-50/50 p-4 dark:border-sky-900 dark:bg-sky-950/30">
+    <section aria-labelledby="suggest-heading" className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
       <h2 id="suggest-heading" className="font-semibold">
         AI に手順を提案してもらう
       </h2>
       <p className="text-sm text-slate-600 dark:text-slate-400">
         入力中のタイトル・観測内容・測定項目と、プロジェクトの参照先（読むだけ）を材料に、観測の操作面と確認の手順を提案します。保存はしません。
       </p>
-      {ctxError && (
-        <p role="alert" className="text-rose-600">
-          提案の材料を読めません: {ctxError}
-        </p>
-      )}
+      {ctxError && <Alert>提案の材料を読めません: {ctxError}</Alert>}
       {ctx && (
         <p className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
           頼む先: {ctx.engine.name}（{ctx.engine.detail}）
         </p>
       )}
-      <label className="block space-y-1">
-        <span className="text-base font-medium text-slate-700 dark:text-slate-300">補足（任意）</span>
-        <textarea className="w-full rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-950" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
+      <Field label="補足（任意）">
+        <textarea className={inputCls} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
       <div className="flex gap-3">
-        <button type="button" className={btnCls} disabled={running} onClick={() => void ask()}>
+        <Button variant="primary" disabled={running} onClick={() => void ask()}>
           {running ? "提案を待っています…" : job ? "もう一度頼む" : "提案を頼む"}
-        </button>
+        </Button>
         {running && (
-          <button type="button" className={btnCls} onClick={() => void cancelSuggestion(job.id).catch((e: Error) => setError(e.message))}>
+          <Button variant="cancel" onClick={() => void cancelSuggestion(job.id).catch((e: Error) => setError(e.message))}>
             取り消す
-          </button>
+          </Button>
         )}
       </div>
-      {error && (
-        <p role="alert" className="whitespace-pre-wrap text-rose-600">
-          提案を頼めませんでした: {error}
-        </p>
-      )}
-      {job?.status === "failed" && (
-        <p role="alert" className="text-rose-600">
-          {FAILURE_LABEL[job.failure ?? "error"]}: {job.error}（入力中の定義はそのままです）
-        </p>
-      )}
+      {error && <Alert>提案を頼めませんでした: {error}</Alert>}
+      {job?.status === "failed" && <Alert>{`${FAILURE_LABEL[job.failure ?? "error"]}: ${job.error}（入力中の定義はそのままです）`}</Alert>}
       {job?.status === "cancelled" && <p className="text-slate-600">取り消しました（入力中の定義はそのままです）。</p>}
       {job?.status === "completed" && job.result && (
         <div className="space-y-3" data-testid="suggestion">
@@ -121,9 +107,7 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
               </h3>
               <p className="font-mono text-sm break-all">{summary(p.procedure)}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400">根拠: {p.evidence}</p>
-              <button
-                type="button"
-                className={btnCls}
+              <Button
                 disabled={adopted.includes(i)}
                 onClick={() => {
                   onAdopt(p.procedure);
@@ -131,7 +115,7 @@ export function SuggestPanel({ material, onAdopt }: { material: () => unknown; o
                 }}
               >
                 {adopted.includes(i) ? "取り込みました" : "編集欄に取り込む"}
-              </button>
+              </Button>
             </article>
           ))}
           {job.result.missing.length > 0 && (

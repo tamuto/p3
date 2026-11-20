@@ -1,6 +1,6 @@
 import type { RunPulse } from "../../../shared/types.ts";
 import { runStateLabel } from "../../lib/preflightWatch.ts";
-import { Badge, Button } from "../ui.tsx";
+import { Badge, Button } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 最新の Preflight が表示中の run と違うときの知らせ（実行ボタン・履歴の選択の直下）。表示・入力・タスク案の詳細は変えず、

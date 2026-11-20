@@ -3,7 +3,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/
 import { join } from "node:path";
 import { ATTACHMENT_FILE_LIMITS, type Attachment, type AttachmentFormat, type FixedAttachment } from "../../shared/types.ts";
 import { imageInfo, UI_LIMITS } from "../preflight/uiMaterials.ts";
-import { nowIso } from "@infodb/p3-kit/fsutil.ts";
+import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 import { writeJsonRecord } from "./jsonRecord.ts";
 
 export const ATTACHMENT_ID = /^A-\d{8}-\d{6}-[0-9a-f]{4}$/;

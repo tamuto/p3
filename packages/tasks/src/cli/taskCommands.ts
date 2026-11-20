@@ -14,7 +14,7 @@ import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras }
 import { formatReview } from "../features/records/cli/revisitCommands.ts";
 import { taskReview } from "../features/records/core/reviewCandidates.ts";
 import { reviewSummary } from "../features/records/shared/reviewCandidate.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
 import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";

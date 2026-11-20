@@ -876,59 +876,52 @@ CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・
 
 ## パッケージの構成
 
-p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer など）を選んで組み合わせる形にするため、リポジトリを pnpm workspace にし、
-コードを入口・製品・kit のパッケージに分ける（要望 261119-9d1zk。どの機能をどこに置くかの根拠は [機能の棚卸し](feature-inventory.md) の判断表）。
+リポジトリは pnpm workspace で、入口・アプリ・機能・shared のパッケージに分ける（要望 261119-9d1zk・261120-r7mps。機能の置き場所の根拠は
+[機能の棚卸し](feature-inventory.md)）。tasks と observer は責務で分けた機能で、常に一緒に動く（製品ごとの ON/OFF は無い）。
 
 | パッケージ | 中身 | 読み込んでよいもの |
 | --- | --- | --- |
-| 入口 `@infodb/p3`（`packages/p3`） | 配布（`bin/p3.mjs`・npm の `@infodb/p3`・Docker）・CLI の振り分け・help・guide とスキル（置く・診断）・init / join / project・serve の組み立て・画面の外枠（`__root`・プロジェクトの選択） | 製品（tasks・observer）・kit |
-| `@infodb/p3-tasks`（`packages/tasks`） | 今の p3 の機能（要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・画面のページ・API） | kit |
-| `@infodb/p3-observer`（`packages/observer`） | 観測基盤（準備中。今は起動の確認だけ。下の「p3-observer」） | kit |
-| `@infodb/p3-kit`（`packages/kit`） | 入口と製品が使う最小限の共通処理 | なし |
+| 入口 `@infodb/p3`（`packages/p3`） | 配布の窓口（`bin/p3.mjs`・npm・Docker）・CLI の起動と振り分け・help・guide とスキル（置く・診断）・init / join / project | アプリ・機能・shared |
+| `@infodb/p3-app`（`packages/app`） | serve の組み立て・画面の外枠（`__root`・プロジェクトの選択と切り替え）・プロジェクトの登録の一覧・機能をつなぐアダプター（observer の提案に Codex の接続を渡す）・製品の一覧 | 機能・shared |
+| `@infodb/p3-tasks`（`packages/tasks`） | 要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・ページ・API | shared |
+| `@infodb/p3-observer`（`packages/observer`） | 観測の定義・手順の提案（下の「p3-observer」） | shared |
+| `@infodb/p3-shared`（`packages/shared`） | 横断する処理。`src/node` は Node だけ（置き換え書き込み・ロック・採番・使い方の誤り・git の小物・動いている版）、`src/web` は画面 | なし |
 
-- 入口は、知っている製品（tasks・observer）をはっきり呼んで組み込む。製品を探して読み込む仕組み（プラグインの基盤）は作らない
-- tasks は入口を読み込まない。入口のもの（置いた AI 向けの入口の診断など）が要るときは、入口から値や関数で渡す（`cli/tasksCli.ts` の `TasksRun`）
-- 製品どうし（tasks ⇔ observer）は直接読み込まない。連携が要るなら kit の小さな約束事を通す。observer のデータは自分のサブフォルダ
-  （`.p3/observer/` の想定）だけを持つ（tasks のデータに触れない）
-- 今の `shared` は「画面と Node の両方から読める」という層の規則で、tasks 固有の型が多い。まるごと kit にはしない
+- 機能どうし（tasks ⇔ observer）は読み込まない。つなぐのはアプリ（アダプターを値で渡す）。機能は入口・アプリを読まない
+- 機能の中の `shared` 層はその機能の型と検証。複数の機能が使う処理だけを `packages/shared` に置き、使い手のいない処理は置かない
 - パッケージの間はパッケージ名（`@infodb/p3-tasks/core/context.ts` のように、そのパッケージの `src` からのパス）で読み、相対パスで別の
-  パッケージのファイルを指さない。読むパッケージは manifest に workspace の参照で書く。境界は `test/packageBoundary.test.ts` が確かめる
-  （入口 → 製品 → kit の一方向・製品の間の読み込み・相対パスでの迂回・manifest の宣言・kit の処理に使い手がいること・workspace のパッケージの一覧）。
-  層の向き（shared ← core ← server / cli、web → shared）は入口と製品の `src` の中で同じに分け、パッケージ名で読んだ先も
-  `test/layers.test.ts` が照らす
-- 配るのは入口の `@infodb/p3` の1つで、kit・製品は公開せずにビルドして同梱する（`lib/tasks/`・`lib/observer/`・`lib/kit/`。パッケージ名の import は同梱した先への
-  相対パスに書き換える。`scripts/build-cli.mjs`）。利用者から見える名前・コマンド・データの場所・CLI・API・画面は変えない。Docker も同じ中身を使う
-  （[開発ガイド](development.md#npm-で配る中身)）
-- 画面は入口でビルドする。ルート一覧は入口の `__root.tsx` の下に製品（tasks・observer）のページのフォルダをそのまま付け（`tsr.config.json` の
-  `virtualRouteConfig`）、入口が知っている製品のページだけが入る
+  パッケージのファイルを指さない。読むパッケージは manifest に workspace の参照で書く。境界は `test/packageBoundary.test.ts`、層の向き
+  （shared ← core ← server / cli、web → shared・`packages/shared/src/web`、core / server / cli → `packages/shared/src/node`）は `test/layers.test.ts` が照らす
+- 配るのは入口の `@infodb/p3` の1つで、ほかは公開せずにビルドして同梱する（`lib/app/`・`lib/tasks/`・`lib/observer/`・`lib/shared/`。パッケージ名の import は
+  同梱した先への相対パスに書き換える。`scripts/build-cli.mjs`）。Docker も同じ中身を使う（[開発ガイド](development.md#npm-で配る中身)）
+- 画面はアプリでビルドし、配布する入口の `packages/p3/dist/web` に出す（入口の CLI が serve に場所を渡す）。ルート一覧はアプリの `__root.tsx` の下に
+  機能のページのフォルダをそのまま付ける（`tsr.config.json` の `virtualRouteConfig`）
 - tasks の中は、層ごとの共通の土台と機能のまとまり（`features/<機能>/{shared,core,cli,server,web}`）に分ける。機能の中身はその機能・組み立ての場所・
-  入口の層と画面の組み合わせだけが読み、機能の core どうしと循環は禁止（`test/featureBoundary.test.ts`）。配置・規則・まとめた仕組みと残した理由・前後の
-  計測は [docs/refactoring.md](refactoring.md)
-- 版とタグは製品で分けない。全部の manifest（ルート・入口・製品・kit）を同じ版にし（`test/package.test.ts`）、Git のタグ `v<版>`・npm・Docker の
-  タグも1つの版で出す（[公開の手順: 版と Git タグの対応](publishing.md#版と-git-タグの対応)）
-- 製品ごとの設計: tasks の設計と規則はこの文書の残りの節（作業の単位・Preflight・受け入れ基準など）。kit は下の「kit の中身と使い手」。
-  observer は下の「p3-observer」
+  入口の層と画面の組み合わせだけが読み、機能の core どうしと循環は禁止（`test/featureBoundary.test.ts`。[docs/refactoring.md](refactoring.md)）
+- 版とタグは分けない。全部の manifest を同じ版にし（`test/package.test.ts`）、Git のタグ `v<版>`・npm・Docker のタグも1つの版で出す
+  （[公開の手順: 版と Git タグの対応](publishing.md#版と-git-タグの対応)）
+- 機能ごとの設計: tasks はこの文書の残りの節、observer は下の「p3-observer」
 
 **機能（棚卸しの ID）ごとの置き場所**（パスは各パッケージの `src` からの相対。入口なら `packages/p3/src/`、tasks なら `packages/tasks/src/`）
 
 | 棚卸し | 置き場所 | 分け方・今の置き方 |
 | --- | --- | --- |
-| F01 起動・振り分け・help・静的配信 | 入口 | `bin/p3.mjs`・`cli/main.ts`・`cli/help.ts`・`server/server.ts`。tasks のコマンドは `cli/tasksCli.ts` の `runTasksCommand`、終了コードは `reportError` を呼ぶ |
+| F01 起動・振り分け・help・静的配信 | 入口・アプリ | 入口の `bin/p3.mjs`・`cli/main.ts`・`cli/help.ts`、アプリの `server/server.ts`。tasks のコマンドは `cli/tasksCli.ts` の `runTasksCommand`、終了コードは `reportError` を呼ぶ |
 | F02 配布物の確認 | 入口 | `scripts/verify-*.mjs`・`scripts/check-browser.ts`・`docs/publishing.md` |
 | F03 AI 向けの入口・guide・診断 | 入口 | `cli/project.ts`（置く）・`cli/guide.ts`・`cli/agentsStatus.ts`・`skills/`。手順の本文 `cli/guide.md` は tasks の運用の手順だが、`p3 guide` が同梱の原本を返すので当面は入口と一緒に置く |
 | F04 登録・参加・プロジェクトの決定・読む／書くの判定 | 分ける | 入口: `cli/project.ts`（init・join・project）。tasks: `features/settings/cli/projectSettings.ts`（`config`・`repo`・変更者・今いる参照先・今の要望）・`cli/readOnly.ts`（コマンドごとの読む／書く。入口が呼ぶ）・`core/store/locate.ts`（決め方とデータの検査。入口が呼ぶ） |
-| F05 個人設定・マシンごとの設定・変更者 | tasks（kit の候補） | `core/userConfig.ts`・`core/machineSettings*.ts`・`features/settings/cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の製品が個人設定を使うときに、入出力だけを kit に分ける |
-| F06 置き換え書き込み・ロック・frontmatter | kit | `fsutil.ts`・`frontmatter.ts`（`packages/kit/src/`）。今は tasks（要望・タスク・run・指標・設定の保存）が使い、将来の製品の保存も使う見込み。採番・正規化・アーカイブは tasks |
-| F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | 入口: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品 `web/components/ui.tsx` とテーマ（`ThemePanel`・`features/settings/core/userTheme.ts`・`features/settings/server/userThemeRoutes.ts`）は、設定画面（tasks のページ）が使うので当面は tasks に置き、入口が読み込む。2 つ目の製品が使うときに kit に移す |
-| F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知は入口の `projectsRoutes.ts`。監視の仕組みを製品で共有するのは 2 つ目の製品が出てから |
-| F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。入口の `projectsRoutes.ts` も同じ説明を返す |
+| F05 個人設定・マシンごとの設定・変更者 | tasks | `core/userConfig.ts`・`core/machineSettings*.ts`・`features/settings/cli/userConfig.ts`。Codex の設定・テーマ・パスの対応と同じファイルで扱っているので、今の既定値・出どころ・保存を変えないために当面は tasks。2 つ目の機能が個人設定を使うときに、入出力だけを shared に分ける |
+| F06 置き換え書き込み・ロック・frontmatter | shared・tasks | `fsutil.ts`（`packages/shared/src/node/`。tasks・observer の保存が使う）・`frontmatter.ts`（tasks の `core/store/`）。採番・正規化・アーカイブは tasks |
+| F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | アプリ: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品は `packages/shared/src/web/ui.tsx`（tasks・observer・アプリが使う）。テーマ（`ThemePanel`・`features/settings/core/userTheme.ts`・`features/settings/server/userThemeRoutes.ts`）は設定画面（tasks のページ）が使うので tasks に置き、アプリが読み込む |
+| F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知はアプリの `projectsRoutes.ts` |
+| F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。アプリの `projectsRoutes.ts` も同じ説明を返す |
 | F10〜F25・F27 | tasks | 判断表の根拠のパスのまま |
 | F26 AI 接続・実行環境 | tasks（暫定） | `cli/{codex,chatgpt}.ts`・`core/chatgpt.ts`・`core/preflight/{codexEngine,docker,hostPaths}.ts`。入口は `codex`・`chatgpt`・`render` のコマンドをプロジェクトを決める前に tasks の関数で動かす |
 | F28 独立した観測 | observer | `packages/observer`。今は起動の確認だけ（下の「p3-observer」）。観測の入力・保存の契約・利用者が具体化したら、その実装をここに置く |
 
-**kit の中身と使い手**（`packages/kit/src/`）: `usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口と tasks が使う）、
-`appInfo.ts`（動いている p3 の版。入口が起動のときに渡し、tasks が Codex に名乗る版として読む）、`fsutil.ts`・`frontmatter.ts`（置き換え書き込み・
-ロック・frontmatter。tasks が使う。将来の製品の保存も使う見込み）。使い手のいない処理を先回りして kit に置かない。
+**shared の中身と使い手**（`packages/shared/src/node/`）: `usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口・tasks・observer が使う）、
+`appInfo.ts`（動いている p3 の版。入口が起動のときに渡し、tasks・observer が読む）、`fsutil.ts`（置き換え書き込み・ロック・採番。tasks・observer の保存が使う）。
+frontmatter は tasks だけが使うので tasks（`core/store/frontmatter.ts`）に置く。
 
 ### p3-observer
 
@@ -941,22 +934,22 @@ p3 をいくつかの製品（今の機能の p3-tasks、将来の p3-observer �
 | --- | --- | --- |
 | コード | `packages/observer/src` の層（`shared` 起動状態と観測の定義の型・検証、`core` 起動状態と定義の保存、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` の一覧・登録・詳細・編集） | 入口の振り分け・プロジェクトの解決・serve の組み立て・画面の外枠と対象の決定（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
 | データ | 入口が解決したプロジェクトのデータのフォルダの `observer/` だけ（下の「観測の定義の保存」） | tasks の要望・タスク・run・設定・個人設定の登録。プロジェクトの解決は入口が tasks の方法で行い、observer はデータのフォルダを値で受け取る |
-| 版 | 入口が渡す共通の版（kit の `appInfo.ts`）を名乗る | 自分の版・タグ |
+| 版 | 入口が渡す共通の版（shared の `appInfo.ts`）を名乗る | 自分の版・タグ |
 
-**観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。kit の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
+**観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。`packages/shared` の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
 API（`server/api`）・ページ（`web`）は、どれも `packages/observer/src` の同じ層に足す。tasks の記録（証拠・レビュー・指標）を読む連携が要るときは、
-製品の間で直接読み込まず、kit の小さな約束事を決めてから足す（今は連携しない）。保存の形を変えるときは、形の版（`format`）を上げ、
+機能の間で直接読み込まず、アプリがつなぐ（今は連携しない）。保存の形を変えるときは、形の版（`format`）を上げ、
 移行を先に決める。
 
 **観測の定義の保存**
 
 - 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
-  （kit の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
+  （shared の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
   決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
 - 形: `{ format: 1, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。項目と種別ごとの
   手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
-- 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（kit の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
-  置き換える（kit の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
+- 作成は同じ名前のファイルが無いときだけ作る（O_EXCL）。更新は `observer/.lock`（shared の `withFileLock`）の中で今の版を読み、添えた版と同じときだけ
+  置き換える（shared の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
   更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
 - 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
 - 画面: 入口の Boot が tasks と同じ対象で observer の API の基点と登録世代のヘッダーを決め（`web/lib/scope.ts`）、observer の画面はそれだけを使う。
@@ -967,7 +960,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 - 入力中（未保存）の定義・補足と、プロジェクトの参照先を材料に、AI に操作面と確認の手順を頼む。提案は入力用のデータで保存しない。依頼文・応答の読み方
   （JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・Mock の提案・実行（このプロセスの中だけの実行。取り消し・
   時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ
-- AI を呼ぶのは入口が渡すアダプター（`p3/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
+- AI を呼ぶのはアプリが渡すアダプター（`app/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
   （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。observer は tasks を読まない
 - 失敗は種類（接続を使えない・使用量の上限・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
   プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
@@ -989,7 +982,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 
 **serve と画面の製品**
 
-- 入口の `shared/products.ts` が組み込んだ製品（`PRODUCTS`）を持つ。serve（`server/server.ts`）は全部の製品の API を付け、`/api/mode` の
+- アプリの `core/products.ts` が組み込んだ製品（`PRODUCTS`）を持つ。serve（`server/server.ts`）は全部の製品の API を付け、`/api/mode` の
   `products` で取り付けた製品を返す（部品の `singleProjectApp`・`projectsRoutes` だけを使うときは observer を付けないので `tasks` だけを返す。
   返す一覧と実際のルートを一致させる）
 - API: `/api/observer`（observer の `server/api/routes.ts`）は tasks の API（`/api` の下の 404 の JSON）より先に付ける。無い API は画面の HTML を

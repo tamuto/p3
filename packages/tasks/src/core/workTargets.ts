@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { slugify } from "@infodb/p3-kit/fsutil.ts";
+import { slugify } from "@infodb/p3-shared/node/fsutil.ts";
 import type { Workspace } from "./store/workspace.ts";
 import type { RepoOutput, Task, Workstream } from "../shared/types.ts";
 import { repoTargetProblem, requestWorkstreams } from "../shared/workTarget.ts";

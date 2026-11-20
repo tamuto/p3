@@ -1,0 +1,14 @@
+{
+  "name": "@infodb/p3-shared",
+  "version": "0.14.0",
+  "private": true,
+  "description": "p3 の入口・アプリ・機能（tasks・observer）が共通に使う処理（src/node は Node だけ、src/web は画面。配布は @infodb/p3 に同梱）",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "devDependencies": {
+    "react": "^19.3.0"
+  }
+}

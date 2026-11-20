@@ -8,7 +8,7 @@ import { validateSuggestionRequest } from "../../shared/suggestion.ts";
 const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid: 400, not_found: 404, conflict: 409, unreadable: 422 };
 
 /**
- * observer の API。入口の serve が /api/observer（プロジェクトを跨ぐ serve の観測の定義は /api/projects/<名前>/observer）の下に付ける。
+ * observer の API。アプリの serve が /api/observer（プロジェクトを跨ぐ serve の観測の定義は /api/projects/<名前>/observer）の下に付ける。
  *   GET  /status                 起動状態（ObserverStatus）。プロジェクトを決めなくても使える
  *   GET  /definitions            観測の定義の一覧 { definitions, unreadable }
  *   GET  /definitions/:id        1つの定義 { definition }
@@ -19,7 +19,7 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /suggestions/:id        提案の実行（running / completed（result）/ failed（failure・error）/ cancelled）
  *   POST /suggestions/:id/cancel 取り消す
  * 入力の誤りは 400 の { error, code: "invalid", problems: [{ path, message }] }（CLI・画面と同じ検証）。
- * target を渡さないとき（プロジェクトを決めていない）は /status だけを付ける。プロジェクトを跨ぐ serve の登録世代は入口が確かめる
+ * target を渡さないとき（プロジェクトを決めていない）は /status だけを付ける。プロジェクトを跨ぐ serve の登録世代はアプリが確かめる
  */
 export function observerRoutes(opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService } = {}) {
   const app = new Hono();

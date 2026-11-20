@@ -4,8 +4,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { PreflightAssessment, ProposedChild, ProposedTask } from "../../shared/types.ts";
 import { SPLIT_HINT_TASKS } from "../../shared/hierarchy.ts";
-import { stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
-import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { stringifyFrontmatter } from "../store/frontmatter.ts";
+import { writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { writeJsonRecord } from "../store/jsonRecord.ts";
 import type { EngineOutcome, PreflightEngine, PreflightJob } from "./engine.ts";
 

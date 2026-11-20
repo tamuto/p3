@@ -6,7 +6,7 @@ import { api, ApiError, failureOf, type RunInfo } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { adoptBlocker, adoptionSummary, editConflict, editDirty, editOf, type ChildEdit } from "../../lib/childDrafts.ts";
 import { Markdown } from "../Markdown.tsx";
-import { Badge, Button, buttonCls, cx, inputCls, Section } from "../ui.tsx";
+import { Alert, Badge, Button, buttonCls, cx, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 分割の run の子の要望の案のレビューと採用（docs/architecture.md の「Preflight の分割の案」）。
@@ -273,7 +273,7 @@ export function ChildDrafts({
             {(result?.created ?? created).map((c) => (
               <li key={c.key} className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className="font-mono text-sm text-slate-500">{c.key}</span>
-                <Link to="/requests/$requestId" params={{ requestId: c.id }} className={buttonCls("ghost", "min-w-0 break-all underline")}>
+                <Link to="/requests/$requestId" params={{ requestId: c.id }} className={buttonCls("link", "min-w-0 break-all underline")}>
                   {c.id}
                 </Link>
                 <span className="min-w-0 break-words">{title(c.key)}</span>
@@ -335,11 +335,7 @@ export function ChildDrafts({
           )}
         </div>
       )}
-      {error && (
-        <p role="alert" className="break-words text-rose-600">
-          {error}
-        </p>
-      )}
+      {error && <Alert>{error}</Alert>}
     </Section>
   );
 }

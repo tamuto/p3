@@ -14,7 +14,7 @@ import { useAppData } from "../../../web/lib/appData.tsx";
 import { fmtTime } from "../../../web/lib/format.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
 import { useServerEvents } from "../../../web/lib/live.ts";
-import { Badge, Button, cx } from "../../../web/components/ui.tsx";
+import { Alert, Badge, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 import { ImprovementButton } from "../../quality/web/ImprovementDialog.tsx";
 import { QUALITY_VERDICT_LABELS } from "../../taskReview/shared/taskReview.ts";
 
@@ -97,9 +97,7 @@ export function MilestoneReviewPanel({
   if (!items)
     return loadError ? (
       <div className="space-y-2">
-        <p role="alert" className="text-rose-600">
-          読み込めませんでした: {loadError}
-        </p>
+        <Alert>読み込めませんでした: {loadError}</Alert>
         <Button onClick={() => void load()}>もう一度読み込む</Button>
       </div>
     ) : (
@@ -278,18 +276,16 @@ export function MilestoneReviewPanel({
           {shownItem && <span data-aux className="ml-2 text-sm font-normal text-slate-500">{fmtTime(shownItem.run.startedAt)}</span>}
         </h3>
         {run && (
-          <button type="button" className="text-base underline" onClick={() => onSelectRun(undefined)}>
+          <Button variant="link" onClick={() => onSelectRun(undefined)}>
             最後の成功結果に戻る
-          </button>
+          </Button>
         )}
         {!shownId ? (
           <p className="text-slate-500">まだ成功した記録はありません。</p>
         ) : !shown ? (
           <p className="text-slate-500">Loading…</p>
         ) : "error" in shown ? (
-          <p role="alert" className="text-rose-600">
-            記録を読めません: {shown.error}
-          </p>
+          <Alert>記録を読めません: {shown.error}</Alert>
         ) : (
           <ReviewResultView detail={shown} changed={changed} canRerun={!running && !noUnits && !!preview} onRerun={() => void start()} busy={busy} />
         )}
@@ -374,11 +370,7 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
             評価した版 <span className="font-mono">{q.version}</span>
             {latest && latest !== q.version ? <span className="text-amber-700 dark:text-amber-300">（今の品質基準は版 {latest} に変わっています）</span> : null}
           </p>
-          {(result?.quality ?? []).some((r) => r.verdict === "violated") && (
-            <p role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-              品質の指摘: {(result?.quality ?? []).filter((r) => r.verdict === "violated").map((r) => `${r.standard}${r.regression ? "（品質の低下）" : ""}`).join(", ")}
-            </p>
-          )}
+          {(result?.quality ?? []).some((r) => r.verdict === "violated") && <Alert box>品質の指摘: {(result?.quality ?? []).filter((r) => r.verdict === "violated").map((r) => `${r.standard}${r.regression ? "（品質の低下）" : ""}`).join(", ")}</Alert>}
           <ul className="space-y-2 text-base">
             {(result?.quality ?? []).map((r) => (
               <li key={r.standard} aria-label={`品質 ${r.standard}`} className="space-y-1 rounded-md border border-slate-200 p-2 dark:border-slate-800">

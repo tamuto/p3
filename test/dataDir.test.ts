@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tempDir } from "./helpers.ts";
 import { checkDataDir, DataDirError } from "../packages/tasks/src/core/store/locate.ts";
-import { startServer } from "../packages/p3/src/server/server.ts";
+import { startServer } from "../packages/app/src/server/server.ts";
 
 /** 空いているポート（一度待ち受けて閉じる） */
 async function freePort(): Promise<number> {
@@ -53,7 +53,7 @@ describe("データのフォルダと project.yaml を確かめる（プロジ�
   it("startServer を直接呼んでも、監視も待ち受けも始めずに失敗する", async () => {
     const port = await freePort();
     const dataDir = join(tempDir("p3-data-"), "moved");
-    await expect(startServer({ dataDir, projectName: "app", port, host: "127.0.0.1", static: false })).rejects.toThrow(DataDirError);
+    await expect(startServer({ dataDir, projectName: "app", port, host: "127.0.0.1" })).rejects.toThrow(DataDirError);
     expect(await canListen(port)).toBe(true);
   });
 });

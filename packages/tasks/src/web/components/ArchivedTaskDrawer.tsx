@@ -11,7 +11,7 @@ import { TaskReviewPanel } from "../../features/taskReview/web/TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Badge, Button, Empty, Id, Section } from "./ui.tsx";
+import { Badge, Button, Empty, Id, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 読めなかった理由。表示は最後に読めた内容のまま（無言で閉じたり空にしたりしない） */
 type Problem = { kind: "missing" | "unreadable" | "failed"; message: string };
@@ -89,7 +89,7 @@ export function ArchivedTaskDrawer({ ctx, rid, id: rawId, onClose }: { ctx: AppC
           <Badge tone="violet">アーカイブ</Badge>
           <Badge>閲覧専用</Badge>
           <div className="ml-auto">
-            <Button ref={closeRef} variant="ghost" aria-label="閉じる" onClick={onClose}>
+            <Button ref={closeRef} variant="cancel" aria-label="閉じる" onClick={onClose}>
               ✕
             </Button>
           </div>
@@ -100,9 +100,9 @@ export function ArchivedTaskDrawer({ ctx, rid, id: rawId, onClose }: { ctx: AppC
               {problem.message}
               {task ? "（表示は最後に読めた内容です）" : ""}
             </span>
-            <button type="button" className="underline" onClick={() => void load()}>
+            <Button variant="link" onClick={() => void load()}>
               もう一度読み込む
-            </button>
+            </Button>
           </div>
         )}
         <div className="flex-1 space-y-6 overflow-y-auto p-5">

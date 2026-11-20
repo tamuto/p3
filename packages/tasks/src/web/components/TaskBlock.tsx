@@ -3,7 +3,7 @@ import { BLOCK_LIMITS, blockWarnings, type BlockHistoryEntry, type BlockOp } fro
 import type { Task } from "../../shared/types.ts";
 import { api, failureOf } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
-import { Button, Field, inputCls } from "./ui.tsx";
+import { Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * タスク詳細の上部の「止まっている理由」（shared/taskBlock.ts の規則）。作業中なら付ける・直す・解除でき、作業中でなければ付けられない
@@ -116,7 +116,7 @@ export function TaskBlockPanel({
       {!readOnly && !form && (
         <div className="flex flex-wrap items-center gap-2">
           {task.status === "doing" && !b && (
-            <Button type="button" className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "set", baseRev: task.rev, reason: "", decision: "", baseReason: "", baseDecision: "" }, e.currentTarget)}>
+            <Button className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "set", baseRev: task.rev, reason: "", decision: "", baseReason: "", baseDecision: "" }, e.currentTarget)}>
               停止理由を付ける
             </Button>
           )}
@@ -131,7 +131,7 @@ export function TaskBlockPanel({
             </Button>
           )}
           {b && (
-            <Button type="button" className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "clear", baseRev: task.rev, resolution: "" }, e.currentTarget)}>
+            <Button className="text-base" disabled={disabled || !!task.blockProblems?.length} onClick={(e) => open({ kind: "clear", baseRev: task.rev, resolution: "" }, e.currentTarget)}>
               停止を解除
             </Button>
           )}
@@ -162,17 +162,17 @@ export function TaskBlockPanel({
             <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
               <span className="min-w-0 break-words">{error}</span>
               {conflict && (
-                <Button type="button" className="text-base" onClick={() => (setForm({ ...form, baseRev: task.rev }), setConflict(false), setError(null))}>
+                <Button className="text-base" onClick={() => (setForm({ ...form, baseRev: task.rev }), setConflict(false), setError(null))}>
                   最新に合わせる
                 </Button>
               )}
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="primary" disabled={busy || invalid || conflict || (form.kind === "set" && !dirty)} onClick={() => void save()}>
+            <Button variant="primary" disabled={busy || invalid || conflict || (form.kind === "set" && !dirty)} onClick={() => void save()}>
               {busy ? "保存中…" : form.kind === "set" ? "停止理由を保存" : "記録して停止を解除"}
             </Button>
-            <Button type="button" disabled={busy} onClick={close}>
+            <Button disabled={busy} onClick={close}>
               取消
             </Button>
           </div>

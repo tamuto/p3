@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { type PreflightLogEntry, type Request } from "../../../shared/types.ts";
-import { Badge, cx, Meter, scoreTone, Section, type Tone } from "../ui.tsx";
+import { Button, Badge, cx, Meter, scoreTone, Section, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 import { type RunInfo } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { preflightSteps } from "../../lib/preflightSteps.ts";
@@ -109,9 +109,9 @@ export function RunView({
         {run.previous ? (
           <>
             前回{" "}
-            <button className="font-mono underline" onClick={() => onOpenRun(run.previous!)}>
+            <Button variant="link" className="font-mono" onClick={() => onOpenRun(run.previous!)}>
               {run.previous}
-            </button>{" "}
+            </Button>{" "}
             の結果を引き継いだ再評価
           </>
         ) : (

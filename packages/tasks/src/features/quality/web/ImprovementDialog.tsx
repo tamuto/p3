@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import type { ImprovementSource } from "../shared/qualityImprovement.ts";
 import { api, ApiError } from "../../../web/lib/api.ts";
-import { Button, cx, Field, inputCls } from "../../../web/components/ui.tsx";
+import { Button, cx, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 type Preview = Awaited<ReturnType<typeof api.improvementPreview>>;
 

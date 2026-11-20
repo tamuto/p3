@@ -5,7 +5,7 @@ import { originText, resolveHostPaths, type HostPathResolution } from "../../../
 import { describeSettings, parseSettingChange, SETTING_KEY_LIST, SettingsInputError, writeMachineSettings, type SettingChange } from "../core/machineSettingsEdit.ts";
 import { loadUserConfig, UserConfigError, userConfigPath } from "../../../core/userConfig.ts";
 import { readTheme, ThemeInputError, writeTheme } from "../core/userTheme.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 
 const USAGE = [
   "p3 user-config                                   個人設定の値と出どころ（環境変数 / 個人設定 / 既定）",

@@ -10,7 +10,7 @@ import {
   sortMaterials,
   uiStatusView,
 } from "../lib/uiMaterials.ts";
-import { Badge, Button, buttonCls, Empty, Section } from "./ui.tsx";
+import { Badge, Button, buttonCls, Empty, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 画面資料（その run の ui/）。提案・現状（添付）・仕様書から を分けて見せ、対象のタスク案へ移れる。
@@ -77,7 +77,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
                   {m.kind === "proposal" && <p className="text-slate-500 dark:text-slate-400">提案のイメージです（今の画面ではありません）</p>}
                   <div className="mt-auto flex flex-wrap gap-2 pt-1">
                     <Button onClick={() => show(m)}>拡大</Button>
-                    <a href={materialUrl(requestId, run.id, m.id)} target="_blank" rel="noreferrer" className={buttonCls("ghost")}>
+                    <a href={materialUrl(requestId, run.id, m.id)} target="_blank" rel="noreferrer" className={buttonCls("secondary")}>
                       画像を開く
                     </a>
                   </div>
@@ -111,7 +111,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
             <div className="flex items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
               <Badge tone={KIND_TONE[open.kind]}>{kindLabel(open.kind)}</Badge>
               <span className="min-w-0 flex-1 truncate font-medium">{open.title}</span>
-              <a href={materialUrl(requestId, run.id, open.id)} target="_blank" rel="noreferrer" className={buttonCls("ghost")}>
+              <a href={materialUrl(requestId, run.id, open.id)} target="_blank" rel="noreferrer" className={buttonCls("secondary")}>
                 画像を開く
               </a>
               <Button autoFocus onClick={() => dialog.current?.close()}>

@@ -13,7 +13,7 @@ import {
   type RiskJudgment,
 } from "../shared/retrospective.ts";
 import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView, type EvidenceRef, type RetrospectiveView } from "../core/retrospective.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import type { CommandEnv } from "../../../cli/args.ts";
 
 /**

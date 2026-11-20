@@ -2,7 +2,7 @@ import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-rout
 import { RequestIdCopy } from "../../components/RequestIdCopy.tsx";
 import { ArchivedTaskDrawer } from "../../components/ArchivedTaskDrawer.tsx";
 import { TaskDrawer } from "../../components/TaskDrawer.tsx";
-import { Empty } from "../../components/ui.tsx";
+import { Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
@@ -88,9 +88,9 @@ function RequestFrame() {
         {data.loadError && !data.gone && (
           <p role="alert" className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
             最新の内容を読み込めませんでした（表示は前の内容のまま）: {data.loadError}{" "}
-            <button type="button" className="underline" onClick={() => data.reload()}>
+            <Button variant="link" onClick={() => data.reload()}>
               もう一度読み込む
-            </button>
+            </Button>
           </p>
         )}
         {/* 選択中のタブの下線を見出しの境界線に重ねる 1px は nav が持つ。リンクに持たせると nav からはみ出し、overflow-x-auto で

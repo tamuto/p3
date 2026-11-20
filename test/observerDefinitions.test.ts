@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { validateDefinitionInput, type DefinitionInput } from "../packages/observer/src/shared/definition.ts";
 import { DefinitionError, DefinitionStore } from "../packages/observer/src/core/definitionStore.ts";
-import { startServer, type RunningServer } from "../packages/p3/src/server/server.ts";
+import { startServer, type RunningServer } from "../packages/app/src/server/server.ts";
 import { resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
 import { tempDir } from "./helpers.ts";
 import { CONFIG_HOME, initialized, p3, repo, snapshot } from "./cliHelpers.ts";
@@ -206,9 +206,9 @@ const freePort = () =>
       srv.close(() => (a && typeof a === "object" ? resolve(a.port) : reject(new Error("ポートを選べません"))));
     });
   });
-async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host" | "static">) {
+async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host">) {
   const port = await freePort();
-  const server = await startServer({ ...opts, port, host: "127.0.0.1", static: false });
+  const server = await startServer({ ...opts, port, host: "127.0.0.1" });
   servers.push(server);
   const base = `http://127.0.0.1:${port}/api`;
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {

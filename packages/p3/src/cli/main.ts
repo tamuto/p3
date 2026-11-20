@@ -1,16 +1,17 @@
+import { fileURLToPath } from "node:url";
 import { renderCommand } from "@infodb/p3-tasks/cli/render.ts";
 import { machineSettingsSource, resolveMachineSettings } from "@infodb/p3-tasks/core/machineSettings.ts";
-import { startServer, type RunningServer } from "../server/server.ts";
+import { startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
 import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject } from "@infodb/p3-tasks/core/store/locate.ts";
 import { loadUserConfig } from "@infodb/p3-tasks/core/userConfig.ts";
 import { codexCommand } from "@infodb/p3-tasks/cli/codex.ts";
 import { userConfigCommand } from "@infodb/p3-tasks/features/settings/cli/userConfig.ts";
 import { chatgptCommand } from "@infodb/p3-tasks/cli/chatgpt.ts";
 import { init, isAgentChoice, joinProject, placeAgents, projectCommand } from "./project.ts";
-import { repoRoot, UsageError } from "@infodb/p3-kit/usage.ts";
+import { repoRoot, UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { HELP } from "./help.ts";
 import { cliVersion, guide } from "./guide.ts";
-import { setAppVersion } from "@infodb/p3-kit/appInfo.ts";
+import { setAppVersion } from "@infodb/p3-shared/node/appInfo.ts";
 import { reportError, runTasksCommand } from "@infodb/p3-tasks/cli/tasksCli.ts";
 import { agentsText, diagnoseAgents } from "./agentsStatus.ts";
 import { readsOnly } from "@infodb/p3-tasks/cli/readOnly.ts";
@@ -21,8 +22,8 @@ import { observerCommand, observerNeedsProject, observerWrites, type ObserverRes
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
-import { observerAssistant } from "../core/observerAssistant.ts";
-import { PRODUCTS_OPTION_REMOVED } from "../shared/products.ts";
+import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
+import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
 
 /**
  * p3 CLI。人も AI エージェントも使う。
@@ -38,6 +39,9 @@ import { PRODUCTS_OPTION_REMOVED } from "../shared/products.ts";
  * 製品ごとの呼び方: 名前空間の無いコマンド（p3 ls・p3 request ... など）は今までどおり tasks。observer は p3 observer <サブコマンド> で、
  * tasks のプロジェクトの解決・個人設定を経ずに動かす（docs/architecture.md「p3-observer」）
  */
+
+/** 画面のビルド（この入口のパッケージの dist/web。src/cli・lib/cli のどちらからも2つ上） */
+const WEB_DIR = fileURLToPath(new URL("../../dist/web", import.meta.url));
 
 /**
  * SIGTERM（docker stop）・SIGINT（Ctrl-C）で止める。新しい要求を断り、実行中の Preflight・生成を取り消して終わるまで待ってから終わる。
@@ -107,7 +111,7 @@ async function main(argv: string[]): Promise<number> {
     });
     const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
-    return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }));
+    return serveUntilSignal(await startServer({ allProjects: true, port: settings.serve.port, host: settings.serve.host, webDir: WEB_DIR, settings: source }));
   }
 
   // AI 向けの作業の手順。この CLI に同梱した原本を返すだけで、プロジェクトは決めない（未登録・壊れた定義でも読める）
@@ -240,7 +244,7 @@ async function main(argv: string[]): Promise<number> {
     // 待ち受け（host / port）は起動のときに決める。Codex と Preflight の設定は Preflight を始めるたびに個人設定から読み直す
     const source = machineSettingsSource({ cli: { port: o.port, host: o.host } });
     return serveUntilSignal(
-      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, static: true, settings: source }),
+      await startServer({ dataDir: target.dataDir, repos: target.repos, projectName: target.name, port: settings.serve.port, host: settings.serve.host, webDir: WEB_DIR, settings: source }),
     );
   }
 
