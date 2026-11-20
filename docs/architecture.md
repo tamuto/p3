@@ -967,7 +967,10 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
   Mock の提案・実行（取り消し・時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ。ID の無い互換の経路
   （`p3 observer suggest --input`・`POST /suggestions`）はこのプロセスの中だけで保存しない
 - AI を呼ぶのはアプリが渡すアダプター（`app/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
-  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。observer は tasks を読まない
+  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。
+  依頼文の頭には、Preflight と同じ組み立て（tasks の `core/preflight/instructions.ts` の `referenceContext`。参照先の一覧・最初に読むもの・主なフォルダ・
+  品質基準・git の調べ方の部品を Preflight と共有する）のプロジェクトの文脈を付ける。タスク化の規則・出力の形・データのフォルダは入れない。
+  使った品質基準の版と読ませた参照先のパスは提案の記録（`context`）に残す。observer は tasks を読まない
 - 失敗は種類（接続を使えない・使用量の上限・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
   プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
   画面はページ（プロジェクト）ごとに作り直すので、切り替える前の応答を別のプロジェクトの入力に取り込まない

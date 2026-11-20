@@ -60,6 +60,8 @@ export interface SuggestionJob {
   definition?: string;
   basedOnRev?: number;
   request?: SuggestionRequest;
+  /** 頼むときに渡した文脈（品質基準の版と、読ませた参照先のパス） */
+  context?: { qualityVersion?: string; repos: string[] };
   /** 実行しているプロセス（同じマシンでプロセスが終わっていれば interrupted と読む） */
   owner?: { host: string; pid: number };
   status: SuggestionStatus;
@@ -74,7 +76,12 @@ export interface SuggestionJob {
 /** 提案の材料の状態: 頼む先が使えるか・プロジェクトの参照先（読めるものは全部 AI に渡す） */
 export interface SuggestionContext {
   engine: { name: string; ok: boolean; detail: string };
-  repos: { name: string; available: boolean; reason?: string }[];
+  /** path は AI のコンテナの中で読めるパス（読むだけのマウント。読めない参照先は渡さない） */
+  repos: { name: string; available: boolean; reason?: string; path?: string }[];
+  /** Preflight と同じ組み立てのプロジェクトの文脈（プロジェクトの説明・参照先と役割・最初に読むもの・主なフォルダ・品質基準・調べ方） */
+  project?: string;
+  /** 文脈に入れた品質基準の版 */
+  qualityVersion?: string;
 }
 
 /** 入口のアダプター（Codex の接続など）が投げる失敗。kind で画面と CLI に理由の種類を出す */

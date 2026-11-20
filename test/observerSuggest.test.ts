@@ -28,7 +28,7 @@ const request = (over: Partial<SuggestionRequest["definition"]> = {}, rest: Part
 function fake(reply: (input: Parameters<SuggestAdapter["ask"]>[0], signal: AbortSignal) => Promise<string> | string, opts: { ok?: boolean; repos?: { name: string; available: boolean; reason?: string }[] } = {}) {
   const asked: Parameters<SuggestAdapter["ask"]>[0][] = [];
   const adapter: SuggestAdapter = {
-    context: async () => ({ engine: { name: "fake", ok: opts.ok ?? true, detail: opts.ok === false ? "ChatGPT にサインインしてください" : "代替" }, repos: opts.repos ?? [{ name: "app", available: true }] }),
+    context: async () => ({ engine: { name: "fake", ok: opts.ok ?? true, detail: opts.ok === false ? "ChatGPT にサインインしてください" : "代替" }, repos: (opts.repos ?? [{ name: "app", available: true }]).map((r) => ({ ...r, ...(r.available ? { path: `/workspace/${r.name}` } : {}) })), project: "## プロジェクト\napp: 代替", qualityVersion: "q1" }),
     ask: async (input, _log, signal) => {
       asked.push(input);
       return { message: await reply(input, signal), engine: "fake" };
@@ -39,11 +39,12 @@ function fake(reply: (input: Parameters<SuggestAdapter["ask"]>[0], signal: Abort
 
 describe("依頼と応答の読み方", () => {
   it("依頼文に未保存の定義・測定項目・参照先・補足が入る", () => {
-    const p = suggestPrompt(request({}, { note: "pnpm の script を使う" }), ["app"]);
+    const p = suggestPrompt(request({}, { note: "pnpm の script を使う" }), ["/workspace/app"], "## プロジェクト\napp: 在庫管理");
     expect(p).toContain("タイトル: 一覧の応答時間");
     expect(p).toContain("p3 ls コマンドが速く返るか");
     expect(p).toContain("- elapsed: 数値（ms）");
-    expect(p).toContain("/workspace/app");
+    expect(p).toContain("- /workspace/app");
+    expect(p.startsWith("## プロジェクト\napp: 在庫管理")).toBe(true);
     expect(p).toContain("pnpm の script を使う");
   });
 
@@ -102,6 +103,7 @@ describe("提案の実行（代替の接続）", () => {
     const svc = new SuggestionService(f.adapter);
     expect((await svc.run(request())).status).toBe("completed");
     expect(f.asked.map((a) => a.repos)).toEqual([["app", "web"]]);
+    expect(f.asked[0].prompt).toContain("app: 代替");
     expect(f.asked[0].prompt).toContain("/workspace/web");
     expect(f.asked[0].prompt).not.toContain("/workspace/docs");
   });

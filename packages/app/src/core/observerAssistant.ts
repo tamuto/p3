@@ -1,5 +1,7 @@
 import type { P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { classifyAiFailure } from "@infodb/p3-tasks/core/reviewRuns.ts";
+import { askRefPath, referenceContext } from "@infodb/p3-tasks/core/preflight/instructions.ts";
+import { qualitySnapshot } from "@infodb/p3-tasks/features/quality/shared/quality.ts";
 import { mockSuggestion, suggestionMessage, type SuggestAdapter } from "@infodb/p3-observer/core/suggest.ts";
 import { SuggestionError } from "@infodb/p3-observer/shared/suggestion.ts";
 
@@ -13,11 +15,17 @@ export function observerAssistant(ctx: P3Context): SuggestAdapter {
   return {
     async context() {
       const name = await engineName();
-      const repos = ctx.ws.refs().map((r) => ({ name: r.name, available: r.status === "ok" && !!r.local, ...(r.reason ? { reason: r.reason } : {}) }));
-      if (!ctx.assistant || !name) return { engine: { name: "none", ok: false, detail: "AI に頼む接続がありません" }, repos };
-      if (name === "mock") return { engine: { name, ok: true, detail: "Mock（AI を呼ばずに、材料の言葉から決めた提案を返す）" }, repos };
+      const refs = ctx.ws.refs();
+      const quality = qualitySnapshot(ctx.ws.project.quality, ctx.ws.project.qualityVersion);
+      const base = {
+        repos: refs.map((r) => ({ name: r.name, available: r.status === "ok" && !!r.local, ...(r.reason ? { reason: r.reason } : {}), ...(r.status === "ok" && r.local ? { path: askRefPath(r) } : {}) })),
+        project: referenceContext({ project: ctx.ws.project, refs, quality }),
+        qualityVersion: quality.version,
+      };
+      if (!ctx.assistant || !name) return { engine: { name: "none", ok: false, detail: "AI に頼む接続がありません" }, ...base };
+      if (name === "mock") return { engine: { name, ok: true, detail: "Mock（AI を呼ばずに、材料の言葉から決めた提案を返す）" }, ...base };
       const s = await ctx.assistant.codex.status();
-      return { engine: { name: s.name, ok: s.ok, detail: s.detail }, repos };
+      return { engine: { name: s.name, ok: s.ok, detail: s.detail }, ...base };
     },
     async ask(input, log, signal) {
       const name = await engineName();

@@ -53,9 +53,10 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
 }`;
 
 /** 依頼文（定義の入力・参照先・補足） */
-export function suggestPrompt(req: SuggestionRequest, repos: string[]): string {
+export function suggestPrompt(req: SuggestionRequest, repos: string[], project?: string): string {
   const d = req.definition;
   const lines = [
+    ...(project ? [project, ""] : []),
     "## 観測の定義（未保存の入力）",
     `- タイトル: ${d.title || "（未入力）"}`,
     `- カテゴリ: ${d.category || "（未入力）"}`,
@@ -69,7 +70,7 @@ export function suggestPrompt(req: SuggestionRequest, repos: string[]): string {
     ...(d.procedures.length ? d.procedures.map((p) => `- ${p.kind}: ${p.title}`) : ["（無い）"]),
     "",
     "## 読める参照先",
-    ...(repos.length ? repos.map((r) => `- /workspace/${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
+    ...(repos.length ? repos.map((r) => `- ${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
   ];
   if (req.note) lines.push("", "## 利用者の補足", req.note);
   lines.push("", `手順の kind は ${PROCEDURE_KINDS.join(" / ")} のどれか。最後の応答は指示どおりの JSON だけにしてください。`);
@@ -204,8 +205,10 @@ export class SuggestionService {
       const ctx = await this.adapter.context();
       job.engine = ctx.engine.name;
       if (!ctx.engine.ok) throw new SuggestionError("unavailable", ctx.engine.detail);
-      const repos = ctx.repos.filter((r) => r.available).map((r) => r.name);
-      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, repos), repos, request: req }, () => {}, signal);
+      const readable = ctx.repos.filter((r) => r.available);
+      const repos = readable.map((r) => r.name);
+      job.context = { ...(ctx.qualityVersion !== undefined ? { qualityVersion: ctx.qualityVersion } : {}), repos: readable.map((r) => r.path ?? r.name) };
+      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, readable.map((x) => x.path ?? x.name), ctx.project), repos, request: req }, () => {}, signal);
       if (signal.aborted) throw signal.reason;
       end = { engine: r.engine, result: parseSuggestion(r.message, req.definition.measures), status: "completed" };
     } catch (e) {
