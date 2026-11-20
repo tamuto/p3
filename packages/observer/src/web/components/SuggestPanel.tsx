@@ -92,12 +92,12 @@ export function SuggestPanel({
       <h2 id="suggest-heading" className="font-semibold">
         AI に手順を提案してもらう
       </h2>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
+      <p className="text-slate-600 dark:text-slate-400">
         入力中のタイトル・観測内容・測定項目と、プロジェクトの参照先（読むだけ）を材料に、観測の操作面と確認の手順を提案します。保存はしません。
       </p>
       {ctxError && <Alert>提案の材料を読めません: {ctxError}</Alert>}
       {ctx && (
-        <p className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
+        <p data-aux className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
           頼む先: {ctx.engine.name}（{ctx.engine.detail}）
         </p>
       )}

@@ -8,7 +8,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "" };
+const ids = { board: "", drafts: "", observation: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -21,6 +21,25 @@ async function prepare(env: UiEnv) {
   await env.p3(["accept", ids.board]);
   ids.drafts = (await j(["request", "new", `案を見る要望（${LONG_TITLE}）`, "--body", "-"], body)).id;
   await env.p3(["preflight", ids.drafts, "--engine", "mock"]);
+  // 観測: 長いパスと呼び出し方の手順と置き換え候補、完了した提案（Mock）
+  const long = "test/ui/expense/receipt/attachments/approval-history/monthly-closing-workflow.ui.test.ts";
+  const steps = Array.from({ length: 3 }, (_, i) => `手順 ${i + 1}: ${LONG_TITLE}`);
+  const obs = {
+    title: `観測（${LONG_TITLE}）`,
+    category: "使い勝手",
+    description: LONG_TITLE,
+    measures: [{ name: "closing_minutes", type: "number", unit: "分", description: LONG_TITLE }],
+    procedures: [
+      {
+        title: `月末の締めを確かめる（${LONG_TITLE}）`,
+        measures: ["closing_minutes"],
+        run: { kind: "ai-instruction", premise: LONG_TITLE, target: `http://localhost:4310/very/long/path/${"segment/".repeat(8)}`, steps, judge: LONG_TITLE, record: LONG_TITLE },
+        replacement: { kind: "ui-script", repo: "repo", path: long, operation: LONG_TITLE, output: LONG_TITLE, compare: LONG_TITLE, switchWhen: LONG_TITLE, invoke: `pnpm vitest run -c vitest.ui.config.ts ${long} --reporter=verbose --no-file-parallelism` },
+      },
+    ],
+  };
+  ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
+  await env.p3(["observer", "suggest", ids.observation, "--note", LONG_TITLE]);
 }
 
 const none = (problems: string[], where: string) => expect(problems, `${where}\n  ${problems.join("\n  ")}`).toEqual([]);
@@ -82,6 +101,36 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto("/release-notes?tab=milestones");
       await until.visible(page.getByRole("heading", { name: "リリースノート" }));
+    },
+  },
+  {
+    name: "観測の一覧",
+    open: async (page) => {
+      await page.goto("/observer");
+      await until.visible(page.getByRole("link", { name: /観測（経費精算/ }));
+    },
+  },
+  {
+    name: "観測の登録",
+    open: async (page) => {
+      await page.goto("/observer/new");
+      await until.visible(page.getByRole("heading", { name: "観測を登録" }));
+    },
+  },
+  {
+    name: "観測の詳細",
+    open: async (page) => {
+      await page.goto(`/observer/${ids.observation}`);
+      await until.visible(page.getByRole("region", { name: /の置き換え候補$/ }).getByText(/新規予定（まだ無い）/));
+    },
+  },
+  {
+    name: "観測の編集と提案の結果（完了）",
+    open: async (page) => {
+      await page.goto(`/observer/${ids.observation}/edit`);
+      // 提案の結果は完了の表示まで待ってから検査する
+      await until.visible(page.getByTestId("suggestion").getByText(/操作面:/));
+      await until.visible(page.getByTestId("suggestion").getByRole("article").first());
     },
   },
   {
@@ -152,6 +201,25 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       none(await tabTo(page, page.getByRole("button", { name: "保存", exact: true }), "保存"), at("設定"));
       none(await tabTo(page, page.getByRole("button", { name: "元に戻す", exact: true }), "元に戻す"), at("設定"));
       await page.keyboard.press("Enter");
+    }, page);
+    await s.step(at("観測の登録の保存"), async () => {
+      await page.goto("/observer/new");
+      await page.getByLabel("タイトル").fill(LONG_TITLE);
+      await page.getByLabel("タイトル").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "保存して続ける" }), "保存して続ける"), at("観測の登録"));
+    }, page);
+    await s.step(at("観測の編集の提案・取り込み・保存"), async () => {
+      await page.goto(`/observer/${ids.observation}/edit`);
+      await until.visible(page.getByTestId("suggestion").getByRole("article").first());
+      await page.getByLabel("補足（任意）").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "もう一度頼む" }), "提案を頼む"), at("観測の編集"));
+      none(await tabTo(page, page.getByTestId("suggestion").getByRole("button", { name: /編集欄に取り込む|測る項目を先に取り込んでください/ }).first(), "取り込む", 80), at("観測の編集"));
+      none(await tabTo(page, page.getByRole("button", { name: "保存する" }), "保存する", 200), at("観測の編集"));
+    }, page);
+    await s.step(at("観測の詳細の編集への移動"), async () => {
+      await page.goto(`/observer/${ids.observation}`);
+      await until.visible(page.getByRole("heading", { name: /観測（経費精算/ }));
+      none(await tabTo(page, page.getByRole("link", { name: "編集・AI に提案を頼む" }), "編集"), at("観測の詳細"));
     }, page);
     await s.step(at("タスクの詳細の保存と閉じる"), async () => {
       await screens[4].open(page);

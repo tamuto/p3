@@ -27,7 +27,7 @@ function DefinitionList() {
             <Empty>まだ観測の定義がありません。</Empty>
           ) : (
             <table className="w-full text-left">
-              <thead className="text-sm text-slate-500 dark:text-slate-400">
+              <thead className="text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="py-1 pr-3 font-normal">タイトル</th>
                   <th className="py-1 pr-3 font-normal">カテゴリ</th>
