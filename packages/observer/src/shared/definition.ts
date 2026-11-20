@@ -335,6 +335,13 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
   return { ok: true, value: { title, category, description, ...(expected ? { expected } : {}), ...(prerequisites.length ? { prerequisites } : {}), ...(preparations.length ? { preparations } : {}), measures, procedures } };
 }
 
+/** 前提をたどると self に戻るか（観測の ID → 今の前提の並び）。循環の確かめと、提案の前提の候補から外すものに使う */
+export function reachesSelf(definitions: { id: string; prerequisites?: string[] }[], self: string | undefined): (from: string) => boolean {
+  const edges = new Map(definitions.map((d) => [d.id, d.prerequisites ?? []]));
+  const reaches = (from: string, seen: Set<string>): boolean => from === self || (!seen.has(from) && (seen.add(from), (edges.get(from) ?? []).some((n) => reaches(n, seen))));
+  return (from) => self !== undefined && reaches(from, new Set());
+}
+
 /** 誤りを人が読む文にする（CLI のエラー・画面の項目に付かない誤り） */
 export const problemText = (problems: DefinitionProblem[]) => problems.map((p) => `${p.path || "（全体）"}: ${p.message}`).join("\n");
 

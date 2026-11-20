@@ -255,6 +255,7 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.getByLabel("補足（任意）").focus();
       none(await tabTo(page, page.getByRole("button", { name: "もう一度頼む" }), "提案を頼む"), at("観測の編集"));
       none(await tabTo(page, page.getByTestId("suggestion").getByRole("button", { name: /編集欄に取り込む|測る項目を先に取り込んでください/ }).first(), "取り込む", 80), at("観測の編集"));
+      none(await tabTo(page, page.getByTestId("suggestion").getByRole("link", { name: "準備の登録の画面で確かめる" }), "新しい準備の案", 80), at("観測の編集"));
       none(await tabTo(page, page.getByRole("button", { name: "保存する" }), "保存する", 200), at("観測の編集"));
     }, page);
     await s.step(at("観測の詳細の編集への移動"), async () => {

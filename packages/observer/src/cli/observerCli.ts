@@ -162,8 +162,10 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const job = await (await opts.suggestions()).run(v.value);
       if (job.status !== "completed" || !job.result) return { code: 1, error: `提案できませんでした（${job.failure ?? job.status}）: ${job.error ?? ""}`.trim() };
       // 取り込んだ形（今の測定項目と手順に、候補と提案を足したもの）。編集して p3 observer add --input / update --input に渡せる。保存はしない
-      const definition = { ...v.value.definition, measures: [...v.value.definition.measures, ...job.result.measures], procedures: [...v.value.definition.procedures, ...job.result.procedures.map((p) => p.procedure)] };
-      return { data: { ...job, definition }, text: `${suggestionText(job, files)}\n\n保存はしていません。--json の definition（今の手順に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます` };
+      const r = job.result;
+      const ids = (now: string[] | undefined, add: { id: string }[]) => [...new Set([...(now ?? []), ...add.map((x) => x.id)])];
+      const definition = { ...v.value.definition, prerequisites: ids(v.value.definition.prerequisites, r.prerequisites), preparations: ids(v.value.definition.preparations, r.preparations), measures: [...v.value.definition.measures, ...r.measures], procedures: [...v.value.definition.procedures, ...r.procedures.map((p) => p.procedure)] };
+      return { data: { ...job, definition }, text: `${suggestionText(job, files)}\n\n保存はしていません。--json の definition（今の手順・前提・使う準備に提案を足したもの）を編集して p3 observer add --input に渡すと登録できます（新しい準備の案は先に p3 observer prep add で登録する）` };
     }
     // update
     const [id, ...extra] = rest;
@@ -252,6 +254,10 @@ function suggestionText(job: SuggestionJob, files?: Files): string {
   const lines = [`操作面: ${SURFACE_LABEL[r.surface]}（${job.engine}）`, `根拠: ${r.rationale}`];
   for (const m of r.measures ?? []) lines.push(`測定項目の候補: ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   r.procedures.forEach((p, i) => lines.push(`手順 ${i + 1}.`, ...procedureLines(p.procedure, files, "  "), `    根拠: ${p.evidence}`));
+  const c = job.request?.candidates;
+  for (const p of r.prerequisites) lines.push(`前提の観測の候補: ${p.id} ${c?.observations.find((o) => o.id === p.id)?.title ?? ""} — ${p.reason}`);
+  for (const p of r.preparations) lines.push(`使う準備の候補（既にある）: ${p.id} ${c?.preparations.find((x) => x.id === p.id)?.name ?? ""} — ${p.reason}`);
+  for (const p of r.newPreparations) lines.push(`新しい準備の案: ${p.preparation.name}（${SLOTS.filter((s) => p.preparation[s]).map((s) => SLOT_LABEL[s]).join("・") || "中身なし"}）— ${p.reason}`);
   for (const m of r.missing) lines.push(`足りない材料: ${MISSING_LABEL[m.field]} — ${m.reason}`);
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
   return lines.join("\n");

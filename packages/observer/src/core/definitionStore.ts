@@ -10,6 +10,7 @@ import {
   DEFINITION_FORMAT,
   DEFINITIONS_DIR,
   isDefinitionId,
+  reachesSelf,
   validateDefinitionInput,
   type DefinitionProblem,
   type ObservationDefinition,
@@ -255,16 +256,15 @@ export class DefinitionStore {
   private async checkPrerequisites(self: string | undefined, refs: string[], problems: DefinitionProblem[]) {
     if (!refs.length) return;
     const { items } = await this.f.defs.list();
-    const edges = new Map(items.map((d) => [d.id, d.prerequisites ?? []]));
-    const reaches = (from: string, seen = new Set<string>()): boolean =>
-      from === self || (!seen.has(from) && (seen.add(from), (edges.get(from) ?? []).some((n) => reaches(n, seen))));
+    const known = new Set(items.map((d) => d.id));
+    const reaches = reachesSelf(items, self);
     for (const [j, r] of refs.entries()) {
       const at = `prerequisites[${j}]`;
       if (r === self) problems.push({ path: at, message: "自分自身は前提にできません" });
-      else if (!edges.has(r)) {
+      else if (!known.has(r)) {
         const got = await this.f.defs.read(r);
         problems.push({ path: at, message: !got.ok && got.missing ? `観測がありません: ${r}` : `観測を読めないので確かめられません: ${r}` });
-      } else if (self && reaches(r)) problems.push({ path: at, message: `前提が循環します（${r} の前提をたどるとこの観測に戻ります）` });
+      } else if (reaches(r)) problems.push({ path: at, message: `前提が循環します（${r} の前提をたどるとこの観測に戻ります）` });
     }
   }
 

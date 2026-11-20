@@ -99,4 +99,53 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       expect(d.procedures).toEqual([{ id: "P1", title: "ls の時間を測る", measures: ["elapsed"], run: { kind: "command", command: "pnpm", args: ["-s", "test"], repo: "repo" } }]);
     });
   });
+
+  it("前提と準備の候補を取り込み、新しい準備の案は登録の画面で確かめて保存してから観測に足す", async () => {
+    s = await openScenario("前提と準備の候補");
+    const { page, step, env } = s;
+    const panel = page.getByRole("region", { name: "AI に手順を提案してもらう" });
+    const signIn = JSON.parse(await env.p3(["observer", "add", "--title", "サインイン", "--body", "サインインできる", "--json"])).id as string;
+    let id = "";
+    await step("材料にサインインと画面がある観測に頼むと、前提の候補と新しい準備の案が出る", async () => {
+      await page.goto("/observer/new");
+      await page.getByLabel("タイトル").fill("業務画面");
+      await page.getByLabel("観測内容").fill("サインインしてから業務画面の一覧を確かめる");
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.url(page, /\/edit$/);
+      id = page.url().split("/").at(-2)!;
+      await panel.getByRole("button", { name: "提案を頼む" }).click();
+      const refs = panel.getByRole("region", { name: "前提と準備の候補" });
+      await until.visible(refs.getByText("前提の観測: サインイン"));
+      await until.visible(refs.getByText("新しい準備の案: 業務画面の前の状態"));
+    });
+    await step("「前提に取り込む」で前提の観測の欄に入る", async () => {
+      await panel.getByRole("button", { name: "前提に取り込む" }).click();
+      await until.visible(panel.getByRole("button", { name: "取り込みました" }));
+      expect(await page.getByRole("group", { name: "前提の観測（任意）" }).getByLabel("サインイン").isChecked()).toBe(true);
+      await until.visible(page.getByText(/入力は保存されています（/));
+    });
+    await step("新しい準備の案は、案を入れた登録の画面で直して保存すると、観測の編集に戻って使う準備に入る（前提の取り込みも残る）", async () => {
+      await panel.getByRole("link", { name: "準備の登録の画面で確かめる" }).click();
+      await until.url(page, /\/observer\/preparations\/new\?/);
+      await until.value(page.getByLabel("名前", { exact: true }), "業務画面の前の状態");
+      await until.visible(page.getByRole("group", { name: "前処理" }));
+      await page.getByLabel("名前", { exact: true }).fill("業務データが1件ある");
+      await page.getByRole("button", { name: "保存する" }).click();
+      await until.url(page, new RegExp(`/observer/${id}/edit\\?addPreparation=prep-`));
+      const prepared = page.getByRole("group", { name: "使う準備（任意）" }).getByLabel("業務データが1件ある");
+      await until.visible(prepared);
+      expect(await prepared.isChecked()).toBe(true);
+      expect(await page.getByRole("group", { name: "前提の観測（任意）" }).getByLabel("サインイン").isChecked()).toBe(true);
+    });
+    await step("保存すると前提と準備が定義に入る。準備は観測の保存と別に登録済みで、再利用できる", async () => {
+      await page.getByRole("button", { name: "保存する" }).click();
+      await until.url(page, new RegExp(`/observer/${id}$`));
+      const refs = page.getByRole("region", { name: "前提の観測と使う準備" });
+      await until.visible(refs.getByRole("link", { name: "サインイン" }));
+      await until.visible(refs.getByRole("link", { name: "業務データが1件ある" }));
+      const d = JSON.parse(await env.p3(["observer", "show", id, "--json"]));
+      expect(d.prerequisites).toEqual([signIn]);
+      expect(JSON.parse(await env.p3(["observer", "prep", "list", "--json"])).items.map((p: { id: string; name: string }) => [p.id, p.name])).toEqual([[d.preparations[0], "業務データが1件ある"]]);
+    });
+  });
 });

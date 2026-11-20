@@ -33,7 +33,7 @@ const alive = (o: SuggestionJob["owner"]) => {
 
 export class WorkStore {
   private readonly lock: string;
-  constructor(private readonly dataDir: string) {
+  constructor(readonly dataDir: string) {
     this.lock = join(dataDir, "observer", ".lock");
   }
   private dir = (id: string) => join(this.dataDir, "observer", "work", id);

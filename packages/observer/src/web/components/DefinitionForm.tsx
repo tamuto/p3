@@ -54,6 +54,7 @@ export function DefinitionForm({
   rev,
   saved,
   restore,
+  addPreparation,
 }: {
   initial?: DefinitionInput;
   submitLabel: string;
@@ -65,9 +66,14 @@ export function DefinitionForm({
   /** 保存した編集途中の入力（restore のときだけ入力欄に戻す。版は上書きの確かめに使う） */
   saved?: DraftRecord;
   restore?: boolean;
+  /** 準備の登録の画面で保存した新しい準備（使う準備に足し、編集途中の入力として残す） */
+  addPreparation?: string;
 }) {
   const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? draftOf(saved.input) : toDraft(initial)));
   const status = useDraftSave(id, rev, draft, saved);
+  useEffect(() => {
+    if (addPreparation) setDraft((d) => (d.preparations.includes(addPreparation) ? d : { ...d, preparations: [...d.preparations, addPreparation] }));
+  }, [addPreparation]);
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
   const [error, setError] = useState<{ message: string; conflict?: { rev: number } }>();
   const [saving, setSaving] = useState(false);
@@ -144,6 +150,8 @@ export function DefinitionForm({
         measures={draft.measures.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), type: m.type, ...(m.unit ? { unit: m.unit } : {}) }))}
         onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))}
         onAdoptMeasure={adoptMeasure}
+        refs={{ prerequisites: draft.prerequisites, preparations: draft.preparations }}
+        onAdoptRef={(key, ref) => setDraft((d) => (d[key].includes(ref) ? d : { ...d, [key]: [...d[key], ref] }))}
       />
       </div>
 

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 import type { WorkStore } from "./workStore.ts";
-import { FILE_KINDS, FILE_STATE_LABEL, MEASURE_TYPE_LABEL, MEASURE_TYPES, RUN_KIND_LABEL, type FileState, type Measure, type Run } from "../shared/definition.ts";
+import { DefinitionStore, PreparationStore } from "./definitionStore.ts";
+import { SLOT_LABEL, SLOTS } from "../shared/preparation.ts";
+import { FILE_KINDS, FILE_STATE_LABEL, MEASURE_TYPE_LABEL, MEASURE_TYPES, reachesSelf, RUN_KIND_LABEL, type FileState, type Measure, type Run } from "../shared/definition.ts";
 import {
   InvalidSuggestion,
   MISSING_FIELDS,
@@ -9,6 +11,7 @@ import {
   SuggestionError,
   SURFACES,
   type Suggestion,
+  type SuggestionCandidates,
   type SuggestionContext,
   type SuggestionJob,
   type SuggestionRequest,
@@ -49,6 +52,17 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
 - 今ある手順のうち、まだ無いファイルを今の実行方法にしているもの（［新規予定］）は、そのままでは実行できない。AI への指示に直し、そのファイルを置き換え候補にした手順を提案する
 - ファイルの作成・変更、アプリの起動、テストやスクリプトの実行はしない（提案だけ）
 
+前提の観測と準備（観測を順につないで状態を受け渡すと、順番や片方の失敗で結果が不安定になるので、判定の関係と状態の用意を分ける）:
+- 前提の観測（prerequisites）: 先に通っていてこそこの観測に意味があるもの（例: 業務画面の観測にとってのサインインの観測）。依頼の「選べる観測」の ID から選ぶ。
+  状態は受け渡さない（前提が失敗したら、この観測は未確認として扱われる）。選べる観測に無いものは書かない
+- 使う準備（preparations）: 観測の前後で状態を作る・戻すもの。依頼の「既にある準備」に合うものがあれば、その ID を選んで再利用を優先する
+- 合う準備が無ければ、新しい準備の案（newPreparations）を出す: 名前（name）・説明（description）・占有（exclusive: 同時に走らせないデータ・アカウントなど）と、
+  確かめ（check: 使える状態かの確認）・前処理（setup）・後処理（teardown）。中身は手順と同じ run（と replacement）で、まだスクリプトが無ければ AI への指示にする
+- 準備の原則: 始める前に既知の状態に戻す（後処理はできるときにやる片付けで、頼りにしない）・作るデータには実行ごとに一意な名前を付ける・
+  失敗したら片付ける前に証跡を取る・決まった秒数ではなく条件で待つ（表示・応答・ファイルの出現など）
+- 前後で必要になりやすい観点: データ・認証と権限・アプリの状態・時刻と地域・外部の依存・キャッシュと非同期処理・ファイル・ブラウザ・証跡。
+  観測内容に関係するものだけを準備や手順の前提に書く（関係しないものは書かない）
+
 - まだ無いファイルを今の実行方法（run）に書かない（置き換え候補に書く）。無いものを有るように書かない
 - 測定項目が足りなければ候補（measures）を出す（名前は英数字・_・-、型 ${MEASURE_TYPES.join(" / ")}、数値なら単位、説明）。定義に既にある名前は使わない
 - 最後の応答は次の形の JSON だけにする（説明の文を付けない）
@@ -66,10 +80,14 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
       "evidence": "根拠"
     }
   ],
+  "prerequisites": [{ "id": "選べる観測の ID", "reason": "前提にする理由" }],
+  "preparations": [{ "id": "既にある準備の ID", "reason": "使う理由" }],
+  "newPreparations": [{ "preparation": { "name": "...", "description": "...", "exclusive": ["..."], "setup": { "run": { "kind": "ai-instruction", "target": "...", "steps": ["..."], "judge": "...", "record": "..." } } }, "reason": "既にある準備では足りない理由" }],
   "missing": [{ "field": "${MISSING_FIELDS.join(" | ")}", "reason": "その材料が要る理由と、何を書けばよいか" }]
 }
 run は ai-instruction のほか、既にあるものなら { "kind": "command", "command": "...", "args": [], "repo": "...", "cwd": "..." } か
-{ "kind": "${FILE_KINDS.join(" | ")}", "repo": "...", "path": "...", "invoke": "..." }。replacement は無ければ省く。`;
+{ "kind": "${FILE_KINDS.join(" | ")}", "repo": "...", "path": "...", "invoke": "..." }。replacement は無ければ省く。
+prerequisites・preparations・newPreparations は要らなければ空の配列にする。`;
 
 const runLine = (r: Run) =>
   r.kind === "ai-instruction" ? `AI への指示（対象: ${r.target}）` : r.kind === "command" ? `コマンド ${[r.command, ...r.args].join(" ")}` : `${RUN_KIND_LABEL[r.kind]} ${r.repo}:${r.path}`;
@@ -98,12 +116,32 @@ export function suggestPrompt(req: SuggestionRequest, repos: string[], project?:
         })
       : ["（無い）"]),
     "",
+    ...refsPrompt(req),
     "## 読める参照先",
     ...(repos.length ? repos.map((r) => `- ${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
   ];
   if (req.note) lines.push("", "## 利用者の補足", req.note);
   lines.push("", "最後の応答は指示どおりの JSON だけにしてください。");
   return lines.join("\n");
+}
+
+/** 依頼文の前提と準備の部分（今選んでいるもの・選べる観測・既にある準備。判断に要る項目だけ） */
+function refsPrompt(req: SuggestionRequest): string[] {
+  const c = req.candidates;
+  const d = req.definition;
+  if (!c) return [];
+  const chosen = (ids: string[] | undefined, label: (id: string) => string) => (ids?.length ? ids.map((id) => `- ${label(id)}`) : ["（無い）"]);
+  return [
+    "## 今の前提の観測（重ねて提案しない）",
+    ...chosen(d.prerequisites, (id) => `${id} ${c.observations.find((o) => o.id === id)?.title ?? ""}`),
+    "## 今の使う準備（重ねて提案しない）",
+    ...chosen(d.preparations, (id) => `${id} ${c.preparations.find((p) => p.id === id || p.name === id)?.name ?? ""}`),
+    "## 選べる観測（前提の候補。ID・タイトル・観測内容の冒頭）",
+    ...(c.observations.length ? c.observations.map((o) => `- ${o.id} ${o.title} — ${o.description.split("\n")[0].slice(0, 200)}`) : ["（無い）"]),
+    "## 既にある準備（合うものがあれば再利用する。ID・名前・説明・中身・占有）",
+    ...(c.preparations.length ? c.preparations.map((p) => `- ${p.id} ${p.name}${p.description ? ` — ${p.description.split("\n")[0].slice(0, 200)}` : ""}（${p.slots.map((s) => SLOT_LABEL[s]).join("・") || "中身なし"}${p.exclusive.length ? `・占有 ${p.exclusive.join("・")}` : ""}）`) : ["（無い。要るなら newPreparations に案を出す）"]),
+    "",
+  ];
 }
 
 /**
@@ -114,11 +152,15 @@ export function suggestPrompt(req: SuggestionRequest, repos: string[], project?:
 export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggestion {
   const d = req.definition;
   const text = `${d.title}\n${d.description}\n${req.note ?? ""}`;
+  // 前提と準備: 材料に名前が出てくる観測・準備を候補にし、画面で合う準備が無ければ新しい準備の案を出す
+  const prerequisites = (req.candidates?.observations ?? []).filter((o) => text.includes(o.title) && !d.prerequisites?.includes(o.id)).map((o) => ({ id: o.id, reason: `Mock: 材料に「${o.title}」が出てくるので前提の候補にしました` }));
+  const preparations = (req.candidates?.preparations ?? []).filter((p) => text.includes(p.name) && !d.preparations?.includes(p.id)).map((p) => ({ id: p.id, reason: `Mock: 材料に「${p.name}」が出てくるので再利用の候補にしました` }));
+  const refs = { prerequisites, preparations, newPreparations: [] as Suggestion["newPreparations"] };
   const candidate: Measure[] = d.measures.length ? [] : [{ name: "ok", type: "boolean", description: "判定のとおりだったか" }];
   const measures = [...d.measures, ...candidate].map((m) => m.name);
   const repo = repos[0];
   const evidence = "Mock: 材料の言葉から決めました（参照先は読んでいません）";
-  const base = { measures: candidate, warnings: [] };
+  const base = { measures: candidate, warnings: [], ...refs };
   if (/(CLI|コマンド|command|\bp3 |pnpm|npm|curl)/i.test(text)) {
     return {
       ...base,
@@ -145,6 +187,7 @@ export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggest
           evidence,
         },
       ],
+      newPreparations: preparations.length || !req.candidates ? [] : [{ reason: "Mock: 既にある準備に合うものが無いので、画面を開ける状態を作る準備の案を出しました", preparation: { name: `${d.title || "観測"}の前の状態`, description: "観測の前に、画面を開ける既知の状態に戻す", exclusive: [], setup: { run: { kind: "ai-instruction", target: "ブラウザで開いた画面", steps: ["実行ごとに一意な名前で必要なデータを作る", "画面に表示されるまで待つ"], judge: "作ったデータが画面に出る", record: "記録しない" } } } }],
       missing: repo ? [] : [{ field: "repo", reason: "画面操作スクリプトを置く参照先が分かりません（読める参照先がありません。このマシンのパスを登録してください）" }],
     };
   }
@@ -153,6 +196,8 @@ export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggest
     surface: "unknown",
     rationale: "Mock: 材料から操作面（CLI・画面など）を判断できません",
     measures: [],
+    prerequisites: [],
+    preparations: [],
     procedures: [],
     missing: [
       { field: "surface", reason: "観測の対象が CLI・画面・API のどれか分かりません。観測内容か補足に書いてください" },
@@ -162,8 +207,21 @@ export function mockSuggestion(req: SuggestionRequest, repos: string[]): Suggest
 }
 
 /** 提案を AI の応答の形（procedures の各項目に evidence を並べる）にする（Mock の応答・テストの代替の接続が使う） */
-export function suggestionMessage(s: Pick<Suggestion, "surface" | "rationale" | "procedures" | "missing"> & { measures?: Measure[] }): string {
-  return JSON.stringify({ surface: s.surface, rationale: s.rationale, measures: s.measures ?? [], procedures: s.procedures.map(({ procedure: { id: _id, ...p }, evidence }) => ({ ...p, evidence })), missing: s.missing });
+export function suggestionMessage(s: Pick<Suggestion, "surface" | "rationale" | "procedures" | "missing"> & Partial<Pick<Suggestion, "measures" | "prerequisites" | "preparations" | "newPreparations">>): string {
+  const { surface, rationale, measures = [], prerequisites = [], preparations = [], newPreparations = [], missing } = s;
+  return JSON.stringify({ surface, rationale, measures, procedures: s.procedures.map(({ procedure: { id: _id, ...p }, evidence }) => ({ ...p, evidence })), prerequisites, preparations, newPreparations, missing });
+}
+
+/**
+ * 前提の観測と使う準備の候補（このプロジェクトのもの。判断に要る項目だけ）。観測は自分自身と、前提をたどると自分に戻るもの（選ぶと循環する）を除く
+ */
+export async function suggestionCandidates(dataDir: string, self?: string): Promise<SuggestionCandidates> {
+  const [{ definitions }, { items }] = await Promise.all([new DefinitionStore(dataDir).list(), new PreparationStore(dataDir).list()]);
+  const reaches = reachesSelf(definitions, self);
+  return {
+    observations: definitions.filter((d) => !reaches(d.id)).map(({ id, title, description }) => ({ id, title, description })),
+    preparations: items.map((p) => ({ id: p.id, name: p.name, ...(p.description ? { description: p.description } : {}), exclusive: p.exclusive, slots: SLOTS.filter((s) => p[s]) })),
+  };
 }
 
 /** 実行中の提案（このプロセスの中だけ。保存しない。終わったものは少しのあいだ残す） */
@@ -185,7 +243,9 @@ export class SuggestionService {
    * 始める（AI の応答を待たずに返る）。参照先は Preflight と同じく、読めるものを全部渡す（読めないものは外す）。
    * target（観測の ID と頼んだときの定義の版）を渡すと、依頼を保存してから始め、結果を保存してから完了にする
    */
-  async start(req: SuggestionRequest, target?: { definition: string; basedOnRev: number }): Promise<SuggestionJob> {
+  async start(input: SuggestionRequest, target?: { definition: string; basedOnRev: number }): Promise<SuggestionJob> {
+    // 前提と準備の候補は P3 が保存の層から作り、依頼と一緒に残す（ID の無い互換の経路も、保存の場所があれば付ける）
+    const req = this.opts.store ? { ...input, candidates: await suggestionCandidates(this.opts.store.dataDir, target?.definition) } : input;
     const job: SuggestionJob = { id: `sg-${randomBytes(6).toString("hex")}`, status: "running", engine: "", startedAt: nowIso(), ...(target ? { ...target, request: req } : {}) };
     if (target) await this.opts.store!.createSuggestion(job);
     const abort = new AbortController();
@@ -255,7 +315,7 @@ export class SuggestionService {
       job.context = { ...(ctx.qualityVersion !== undefined ? { qualityVersion: ctx.qualityVersion } : {}), repos: readable.map((r) => r.path ?? r.name) };
       const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, readable.map((x) => x.path ?? x.name), ctx.project, this.opts.files), repos, request: req }, () => {}, signal);
       if (signal.aborted) throw signal.reason;
-      end = { engine: r.engine, result: parseSuggestion(r.message, req.definition.measures), status: "completed" };
+      end = { engine: r.engine, result: parseSuggestion(r.message, req.definition.measures, req.candidates), status: "completed" };
     } catch (e) {
       if (abort.signal.aborted) end = { status: "cancelled", error: "取り消しました" };
       else if (timeout.aborted) end = { status: "failed", failure: "timeout", error: `時間切れです（${Math.round(timeoutMs / 1000)} 秒）` };
