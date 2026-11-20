@@ -9,7 +9,7 @@
     "./*": "./src/*"
   },
   "dependencies": {
-    "@infodb/p3-kit": "workspace:*",
+    "@infodb/p3-shared": "workspace:*",
     "hono": "^4.13.13"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { taskReview } from "../packages/tasks/src/features/records/core/reviewCandidates.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import type { SourceOp } from "../packages/tasks/src/features/requirements/shared/requirementSource.ts";
 import { makeRepo, newRequest, openTestProject } from "./helpers.ts";
 

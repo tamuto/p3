@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { reworkOf } from "../packages/tasks/src/features/records/shared/reworkHistory.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { ConflictError, NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
-import { withFileLock } from "../packages/kit/src/fsutil.ts";
+import { withFileLock } from "../packages/shared/src/node/fsutil.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 

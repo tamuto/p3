@@ -1,6 +1,6 @@
 /**
- * observer の画面の API の基点（ページを開いたときに入口の Boot.tsx が、tasks の画面と同じプロジェクトで一度だけ決める）。
- * observer は tasks の画面の部品を読まないので、入口が決めた値を受け取る。headers は変える操作に添えるもの（プロジェクトを跨ぐ serve の登録世代）
+ * observer の画面の API の基点（ページを開いたときにアプリの Boot.tsx が、tasks の画面と同じプロジェクトで一度だけ決める）。
+ * observer は tasks の画面の部品を読まないので、アプリが決めた値を受け取る。headers は変える操作に添えるもの（プロジェクトを跨ぐ serve の登録世代）
  */
 export interface ObserverScope {
   apiBase: string;

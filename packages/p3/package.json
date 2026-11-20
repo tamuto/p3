@@ -45,8 +45,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@infodb/p3-kit": "workspace:*",
+    "@infodb/p3-app": "workspace:*",
     "@infodb/p3-observer": "workspace:*",
+    "@infodb/p3-shared": "workspace:*",
     "@infodb/p3-tasks": "workspace:*"
   }
 }

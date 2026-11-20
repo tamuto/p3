@@ -12,7 +12,7 @@ import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_
 import { DATA_DIR_NAME } from "@infodb/p3-tasks/core/store/locate.ts";
 import { ENTRY_VERSION } from "./guide.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "@infodb/p3-tasks/core/userConfig.ts";
-import { repoRoot, resolvePath, UsageError } from "@infodb/p3-kit/usage.ts";
+import { repoRoot, resolvePath, UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { splitList } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 
 /** 入口: プロジェクトの初期設定（init）・参加（join）・登録（project）と AI 向けの入口（agents）。設定の変更と今の要望の判定は projectSettings.ts（tasks） */

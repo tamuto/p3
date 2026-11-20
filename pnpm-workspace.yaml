@@ -1,4 +1,4 @@
-# 開発用の pnpm workspace。配布するのは packages/p3（@infodb/p3。kit・tasks はビルドして同梱する。docs/architecture.md「パッケージの構成」）
+# 開発用の pnpm workspace。配布するのは packages/p3（@infodb/p3。app・tasks・observer・shared はビルドして同梱する。docs/architecture.md「パッケージの構成」）
 packages:
   - packages/*
 allowBuilds:

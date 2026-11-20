@@ -4,7 +4,7 @@ import type { ReleaseGeneration, ReleaseMaterial, ReleaseWarning, RequestComplet
 import { exportReleaseNote, releaseNoteDetail, releaseOverview, saveReleaseNote, startGeneration } from "../core/service.ts";
 import { readBody, type CommandEnv } from "../../../cli/args.ts";
 import { table } from "../../../cli/format.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { shellArg } from "../../../cli/output.ts";
 import { GenerationRejected } from "../core/generate.ts";
 import { completeMilestoneRequests, CompletionRejected } from "../core/completeRequests.ts";

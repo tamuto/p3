@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { parseFrontmatter, stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
-import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
+import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 
 export interface Entity {
   id: string;

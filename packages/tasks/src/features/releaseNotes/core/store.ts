@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import type { ReleaseNote, ReleaseSource } from "../../../shared/types.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
-import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../../../core/store/frontmatter.ts";
+import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 
 /**
  * <data>/release-notes/<マイルストーンID>.md   リリースノート（マイルストーンごとに1件）

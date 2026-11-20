@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, expect, vi } from "vitest";
 import { gitInit, tempDir } from "./helpers.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 
 /**
  * CLI を別のプロセスで動かすテスト（test/cli*.test.ts）の共通の準備。

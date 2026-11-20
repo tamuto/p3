@@ -4,28 +4,30 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * 層と依存の向き（docs/architecture.md「規則の置き場所」）。入口（packages/p3）と製品（packages/tasks・packages/observer）の src は同じ層に分ける。
- * パッケージの間の向き（入口 → tasks → kit）は test/packageBoundary.test.ts。ここではパッケージ名で読み込んだ先も層で照らす。
+ * 層と依存の向き（docs/architecture.md「規則の置き場所」）。入口（packages/p3）・アプリ（packages/app）・機能（packages/tasks・packages/observer）の src は
+ * 同じ層に分ける。パッケージの間の向きは test/packageBoundary.test.ts。ここではパッケージ名で読み込んだ先も層で照らす。
  *   shared: 型と判定。何も読み込まない（node: も外のパッケージも。画面からも読む）
- *   core:   中核（保存の層・規則・requestOps・Preflight など）。shared と kit だけ。HTTP（hono）は使わない
- *   server: HTTP の API と配信。core・shared・kit
- *   cli:    CLI。core・shared・kit（serve の起動の server/server.ts だけ server を読む）
- *   web:    画面。shared だけ（node: も使わない）
- *   kit:    入口と製品が使う最小限の共通処理（packages/kit/src。node: は使ってよい。画面からは読まない）
+ *   core:   中核（保存の層・規則・requestOps・Preflight など）。shared と node だけ。HTTP（hono）は使わない
+ *   server: HTTP の API と配信。core・shared・node
+ *   cli:    CLI。core・shared・node（serve の起動の app/server/server.ts だけ server を読む）
+ *   web:    画面。shared と ui だけ（node: も使わない）
+ *   node:   共通の Node の処理（packages/shared/src/node。node: は使ってよい。画面からは読まない）
+ *   ui:     共通の画面の処理（packages/shared/src/web。node は読まない）
  */
 const PACKAGES = fileURLToPath(new URL("../packages/", import.meta.url));
-const SRCS = { p3: join(PACKAGES, "p3/src"), tasks: join(PACKAGES, "tasks/src"), observer: join(PACKAGES, "observer/src"), kit: join(PACKAGES, "kit/src") };
-const NAMES: Record<string, keyof typeof SRCS> = { "@infodb/p3-tasks": "tasks", "@infodb/p3-observer": "observer", "@infodb/p3-kit": "kit" };
-type Layer = "shared" | "core" | "server" | "cli" | "web" | "kit";
+const SRCS = { p3: join(PACKAGES, "p3/src"), app: join(PACKAGES, "app/src"), tasks: join(PACKAGES, "tasks/src"), observer: join(PACKAGES, "observer/src"), common: join(PACKAGES, "shared/src") };
+const NAMES: Record<string, keyof typeof SRCS> = { "@infodb/p3-app": "app", "@infodb/p3-tasks": "tasks", "@infodb/p3-observer": "observer", "@infodb/p3-shared": "common" };
+type Layer = "shared" | "core" | "server" | "cli" | "web" | "node" | "ui";
 const LAYERS: Layer[] = ["shared", "core", "server", "cli", "web"];
 
 const ALLOWED: Record<Layer, Layer[]> = {
   shared: ["shared"],
-  core: ["core", "shared", "kit"],
-  server: ["server", "core", "shared", "kit"],
-  cli: ["cli", "core", "shared", "kit"],
-  web: ["web", "shared"],
-  kit: ["kit"],
+  core: ["core", "shared", "node"],
+  server: ["server", "core", "shared", "node"],
+  cli: ["cli", "core", "shared", "node"],
+  web: ["web", "shared", "ui"],
+  node: ["node"],
+  ui: ["ui"],
 };
 
 /** コンテナの中で動くファイル（P3 のプロセスでは読み込まない） */
@@ -56,7 +58,7 @@ function locate(abs: string): { pkg: keyof typeof SRCS; rel: string } | undefine
 /** 層（機能のフォルダ features/<機能>/ の中も同じ層に分ける） */
 const layerOf = (loc: { pkg: keyof typeof SRCS; rel: string } | undefined): Layer | undefined => {
   if (!loc) return undefined;
-  if (loc.pkg === "kit") return "kit";
+  if (loc.pkg === "common") return loc.rel.startsWith("node/") ? "node" : loc.rel.startsWith("web/") ? "ui" : undefined;
   const rel = loc.rel.replace(/^features\/[^/]+\//, "");
   return LAYERS.find((l) => rel.startsWith(`${l}/`));
 };
@@ -85,13 +87,13 @@ function violations(): string[] {
           if (!to || !tloc) continue;
           const targetRel = `${tloc.pkg}/${tloc.rel}`;
           // CLI が serve を起動するところだけ server を読む
-          if (from === "cli" && targetRel === "p3/server/server.ts") continue;
+          if (from === "cli" && targetRel === "app/server/server.ts") continue;
           if (!ALLOWED[from].includes(to)) out.push(`${rel} → ${targetRel}（${from} は ${to} を読み込まない）`);
           continue;
         }
         const pkg = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
         if (from === "shared") out.push(`${rel} → ${spec}（shared は外のものを読み込まない）`);
-        else if (from === "web" && spec.startsWith("node:")) out.push(`${rel} → ${spec}（画面は node: を使わない）`);
+        else if ((from === "web" || from === "ui") && spec.startsWith("node:")) out.push(`${rel} → ${spec}（画面は node: を使わない）`);
         else if (from === "core" && (pkg === "hono" || pkg === "@hono/node-server")) out.push(`${rel} → ${spec}（core は HTTP の層を使わない）`);
       }
     }
@@ -104,7 +106,7 @@ describe("層と依存の向き", () => {
   });
 
   it("server は HTTP の API と配信だけ（中核は core）", () => {
-    for (const src of [SRCS.p3, SRCS.tasks, SRCS.observer]) {
+    for (const src of [SRCS.app, SRCS.tasks, SRCS.observer]) {
       const server = files(join(src, "server")).map((f) => relative(join(src, "server"), f));
       expect(server.filter((f) => !f.startsWith("api/") && f !== "server.ts")).toEqual([]);
     }

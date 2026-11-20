@@ -1,5 +1,5 @@
 @import "tailwindcss";
-/* 製品（tasks・observer）のページと部品（web と機能ごとの web）のクラスも拾う（画面のビルドは入口のパッケージで行う） */
+/* 機能（tasks・observer）のページと部品（web と機能ごとの web）のクラスも拾う（画面のビルドはアプリのパッケージで行う） */
 @source "../../../tasks/src";
 @source "../../../observer/src";
 

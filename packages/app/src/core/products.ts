@@ -1,5 +1,5 @@
 /**
- * 入口が組み込んでいる製品（ビルドのときに決まる。探して読み込む仕組みは作らない）。
+ * アプリが組み込んでいる製品（ビルドのときに決まる。探して読み込む仕組みは作らない）。
  * serve は常に全部の製品（tasks・observer）を起動する（製品ごとの ON/OFF は無い）。/api/mode の products はこの一覧を返す
  */
 export const PRODUCTS = ["tasks", "observer"] as const;

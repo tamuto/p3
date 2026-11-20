@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { git, gitInit, tempDir } from "./helpers.ts";
 
 // 同梱のスキルの「タスクを進める」の手順（テストを通したら完了と記録を保存 → 最後なら対応済 → 要望のフォルダを実装と同じコミットに

@@ -2,7 +2,7 @@
 // 未処理の例外・拒否は握り潰さず、印を付けて 0 以外で終わる（親が終了コードと標準エラーで見る）
 import { createInterface } from "node:readline";
 import { resolveMachineSettings } from "../../packages/tasks/src/core/machineSettings.ts";
-import { startServer } from "../../packages/p3/src/server/server.ts";
+import { startServer } from "../../packages/app/src/server/server.ts";
 
 process.on("uncaughtException", (e) => {
   process.stderr.write(`uncaught: ${e?.stack ?? e}\n`);
@@ -14,7 +14,7 @@ process.on("unhandledRejection", (e) => {
 });
 
 const [dataDir, port] = process.argv.slice(2);
-const server = await startServer({ dataDir, port: Number(port), host: "127.0.0.1", static: false, settings: resolveMachineSettings({ settings: {} }, {}) });
+const server = await startServer({ dataDir, port: Number(port), host: "127.0.0.1", settings: resolveMachineSettings({ settings: {} }, {}) });
 process.stdout.write("ready\n");
 
 const rl = createInterface({ input: process.stdin });

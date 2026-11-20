@@ -5,7 +5,7 @@ import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import { HierarchyError, hierarchyOf, hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
 import { archiveRequest, createRequest, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, newTask, openTestProject } from "./helpers.ts";
 

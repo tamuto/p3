@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { UsageError, resolvePath } from "@infodb/p3-kit/usage.ts";
+import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore } from "../core/definitionStore.ts";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KIND_LABEL, problemText, type ObservationDefinition, type Procedure } from "../shared/definition.ts";

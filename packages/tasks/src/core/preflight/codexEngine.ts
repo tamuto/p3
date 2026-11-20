@@ -22,7 +22,7 @@ import { prepareLaunch } from "./launch.ts";
 import { hideConfigPath } from "../userConfig.ts";
 import { CONTAINER_DATA, containerEnv, developerInstructions, entryMissing, preflightPrompt } from "./instructions.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
-import { appVersion } from "@infodb/p3-kit/appInfo.ts";
+import { appVersion } from "@infodb/p3-shared/node/appInfo.ts";
 import { type EngineOutcome, type EngineStatus, type PreflightEngine, type PreflightJob } from "./engine.ts";
 
 const run = promisify(execFile);

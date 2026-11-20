@@ -3,7 +3,7 @@ import { checkLine, type QualityCheck, type QualityOp } from "../shared/quality.
 import { diagnoseQuality, improvementDraft, registerImprovement, type ImprovementSource } from "../core/qualityImprovement.ts";
 import { readBody, type CommandEnv } from "../../../cli/args.ts";
 import { table } from "../../../cli/format.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 
 /**
  * 品質基準（core/quality.ts。画面の設定の「品質基準」と同じ）。

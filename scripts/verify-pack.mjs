@@ -3,7 +3,7 @@
 //
 //   node scripts/verify-pack.mjs [--tgz <tarball>] [--docker [--render-dir <フォルダ>]] [--keep]
 //
-//   1. pnpm build（画面と CLI・serve。入口・製品（tasks・observer）・kit を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
+//   1. pnpm build（画面と CLI・serve。入口・アプリ・機能（tasks・observer）・shared を同梱した公開の中身を dist/package に組み立てる）と npm pack ./dist/package。
 //      --tgz を渡せばそれを使う
 //   2. 一時フォルダに、tarball を実行時の依存だけで入れる（npm install。レジストリから取る）。manifest と実行時の import に workspace の
 //      パッケージ・チェックアウトの参照が無く、開発用のもの・tsx・esbuild が入らないことを確かめる
@@ -78,7 +78,7 @@ try {
   });
 
   if (!tgz) {
-    await step("pnpm build と npm pack ./dist/package（入口・tasks・kit を同梱した公開の中身）", () => {
+    await step("pnpm build と npm pack ./dist/package（入口・アプリ・機能・shared を同梱した公開の中身）", () => {
       execFileSync("pnpm", ["build"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
       const out = execFileSync("npm", ["pack", "./dist/package", "--json", "--pack-destination", work], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
       const info = JSON.parse(out.slice(out.indexOf("[")))[0];
@@ -89,8 +89,8 @@ try {
 
   await step("tarball の中身", () => {
     const files = sh("tar", ["tzf", tgz]).trim().split("\n").map((f) => f.replace(/^package\//, ""));
-    // CLI・serve はビルド済みの JavaScript（入口は lib/、同梱した tasks・kit は lib/tasks・lib/kit）。TypeScript のソース（src/・packages/）は入れない
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/kit/fsutil.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js"]) {
+    // CLI・serve はビルド済みの JavaScript（入口は lib/cli、同梱したアプリ・機能・shared は lib/app・lib/tasks・lib/observer・lib/shared）。TypeScript のソース（src/・packages/）は入れない
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/tasks/cli/tasksCli.js", "lib/shared/node/fsutil.js", "lib/app/server/server.js", "dist/web/index.html", "skills/p3/SKILL.md", "LICENSE", "README.md", "docs/how-to-use.md", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/launcher.mjs", "lib/tasks/core/preflight/mock-ui.html", "lib/cli/guide.md", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js"]) {
       check(files.includes(f), `${f} が入っていません`);
     }
     const unwanted = files.filter((f) => /^(\.env|\.p3|\.claude\/|test\/|scripts\/|src\/|packages\/|node_modules\/|build-src\/)/.test(f) || f.endsWith(".ts"));
@@ -107,8 +107,8 @@ try {
     check(!existsSync(join(prefix, "node_modules", "react")), "画面の部品（react）まで入っています");
     // 実行時に TypeScript を変換しない（tsx と、それが使う esbuild のビルドのスクリプトを利用者に許可させない）
     for (const d of ["tsx", "esbuild"]) check(!existsSync(join(prefix, "node_modules", d)), `実行時に要らない ${d} まで入っています`);
-    // 同梱した kit・tasks を別のパッケージとして取りに行かない。manifest と実行時の import に workspace のパッケージ・手元のフォルダの参照が残らない
-    for (const d of ["p3-tasks", "p3-observer", "p3-kit"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
+    // 同梱したアプリ・機能・shared を別のパッケージとして取りに行かない。manifest と実行時の import に workspace のパッケージ・手元のフォルダの参照が残らない
+    for (const d of ["p3-app", "p3-tasks", "p3-observer", "p3-shared"]) check(!existsSync(join(prefix, "node_modules", "@infodb", d)), `公開しない @infodb/${d} が入っています`);
     const manifestText = readFileSync(join(prefix, "node_modules", "@infodb", "p3", "package.json"), "utf8");
     check(!/workspace:|link:|file:|@infodb\/p3-/.test(manifestText), "入れた @infodb/p3 の manifest に workspace のパッケージ・手元のフォルダの参照が残っています");
     check(installed.devDependencies === undefined && installed.scripts === undefined, "入れた @infodb/p3 の manifest に開発だけの項目（devDependencies・scripts）が残っています");

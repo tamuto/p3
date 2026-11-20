@@ -6,7 +6,7 @@ import { type P3Context } from "../core/context.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { table } from "./format.ts";
 import { evidenceLines, scopeLines } from "../shared/scopeView.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { StaleInputError, staleMessage } from "../core/preflight/input.ts";
 import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 import { readBody, type CommandEnv } from "./args.ts";

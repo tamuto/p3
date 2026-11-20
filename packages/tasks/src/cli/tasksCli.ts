@@ -13,7 +13,7 @@ import { VIA_LABEL } from "../core/store/locate.ts";
 import { table } from "./format.ts";
 import { cliExit } from "../core/errorOutcome.ts";
 import { config, currentRequest, locateHere, repoCommand, resolveActor, runnerText } from "../features/settings/cli/projectSettings.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
 import { runnerView } from "../shared/preflightRunner.ts";
 import type { CommandEnv } from "./args.ts";

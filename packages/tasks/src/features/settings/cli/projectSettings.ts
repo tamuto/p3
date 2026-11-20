@@ -9,7 +9,7 @@ import { requestWorkstreams } from "../../../shared/workTarget.ts";
 import type { ProjectPatch, Workspace } from "../../../core/store/workspace.ts";
 import { isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, runnerView, type RunnerView } from "../../../shared/preflightRunner.ts";
 import { sortMilestones } from "../../../shared/milestoneOrder.ts";
-import { git, resolvePath, UsageError } from "@infodb/p3-kit/usage.ts";
+import { git, resolvePath, UsageError } from "@infodb/p3-shared/node/usage.ts";
 
 /**
  * tasks のプロジェクトの設定と作業の文脈（CLI）: 変更者・今いる参照先・今の要望の判定、p3 config・p3 repo（project.yaml の共有の定義と

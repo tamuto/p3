@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { MetricsError, type ManualRecord } from "../shared/metrics.ts";
 import type { P3Context } from "../../../core/context.ts";
-import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 import { readJsonRecord, writeJsonRecord } from "../../../core/store/jsonRecord.ts";
 import { METRIC_DEFINITIONS, type ManualSpec } from "./definitions.ts";
 

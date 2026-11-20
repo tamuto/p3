@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 
 /**
  * JSON の記録のファイルの読み書き（tasks の中の共通。指標の人の記録・振り返り・品質の改善要望の登録・レビューの run・Preflight の run など）。

@@ -7,7 +7,7 @@ import type { Request } from "../packages/tasks/src/shared/types.ts";
 import { HierarchyError, hierarchyView } from "../packages/tasks/src/core/hierarchy.ts";
 import { createRequest, orderChildren, updateRequest } from "../packages/tasks/src/core/requestOps.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { progress } from "../packages/tasks/src/core/ops.ts";
 import { progressTree } from "../packages/tasks/src/web/lib/progressTree.ts";

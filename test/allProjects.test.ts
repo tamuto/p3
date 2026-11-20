@@ -9,11 +9,11 @@ import { fixedSettings, resolveMachineSettings } from "../packages/tasks/src/cor
 import type { EngineOutcome, PreflightEngine } from "../packages/tasks/src/core/preflight/engine.ts";
 import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { currentOwner } from "../packages/tasks/src/core/preflight/owner.ts";
-import { ProjectRegistry, RegistryError } from "../packages/p3/src/core/projectRegistry.ts";
+import { ProjectRegistry, RegistryError } from "../packages/app/src/core/projectRegistry.ts";
 import type { Summarizer } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { checkDataDir } from "../packages/tasks/src/core/store/locate.ts";
-import { GENERATION_HEADER, projectsRoutes } from "../packages/p3/src/server/api/projectsRoutes.ts";
-import { singleProjectApp, startServer } from "../packages/p3/src/server/server.ts";
+import { GENERATION_HEADER, projectsRoutes } from "../packages/app/src/server/api/projectsRoutes.ts";
+import { singleProjectApp, startServer } from "../packages/app/src/server/server.ts";
 import type { ServerEvent } from "../packages/tasks/src/shared/types.ts";
 import { makeRepo, newRequest, newTask, openTestProject, tempDir, writeTestProject } from "./helpers.ts";
 
@@ -392,7 +392,7 @@ describe("本物の待ち受け（--all-projects）", () => {
     await writeFile(join(root, "cfg", "infodb-p3", "config.yaml"), `projects:\n  alpha:\n    dir: ${dataDir}\n`);
     try {
       const port = 4300 + Math.floor(Math.random() * 500);
-      const server = await startServer({ allProjects: true, port, host: "127.0.0.1", static: false, settings: resolveMachineSettings({ settings: {} }, {}) });
+      const server = await startServer({ allProjects: true, port, host: "127.0.0.1", settings: resolveMachineSettings({ settings: {} }, {}) });
       const base = `http://127.0.0.1:${port}/api`;
       const top = await (await fetch(`${base}/chatgpt`)).json();
       expect(top).toMatchObject({ connected: false, engine: null });

@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createExclusive, newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { createExclusive, newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import {
   DEFINITION_FORMAT,
   DEFINITIONS_DIR,
@@ -11,7 +11,7 @@ import {
 } from "../shared/definition.ts";
 
 /**
- * 観測の定義の保存（docs/architecture.md「p3-observer」）。入口が解決したプロジェクトのデータのフォルダの下の observer/definitions/ に、
+ * 観測の定義の保存（docs/architecture.md「p3-observer」）。入口・アプリが解決したプロジェクトのデータのフォルダの下の observer/definitions/ に、
  * 定義ごとの JSON（<ID>.json）を置く。tasks の要望・タスク・設定には触れない。
  *
  *   作成: ID を採番し、同じ名前のファイルが無いときだけ作る（O_EXCL）

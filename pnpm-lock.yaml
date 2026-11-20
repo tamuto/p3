@@ -242,17 +242,36 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
 
-  packages/kit:
+  packages/app:
     dependencies:
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
+      '@hono/node-server':
+        specifier: ~2.1.3
+        version: 2.1.9(hono@4.13.19)
+      '@infodb/p3-observer':
+        specifier: workspace:*
+        version: link:../observer
+      '@infodb/p3-tasks':
+        specifier: workspace:*
+        version: link:../tasks
+      hono:
+        specifier: ^4.13.13
+        version: 4.13.19
+    devDependencies:
+      '@tanstack/react-router':
+        specifier: ^1.170.41
+        version: 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
 
   packages/observer:
     dependencies:
-      '@infodb/p3-kit':
+      '@infodb/p3-shared':
         specifier: workspace:*
-        version: link:../kit
+        version: link:../shared
       hono:
         specifier: ^4.13.13
         version: 4.13.19
@@ -285,15 +304,20 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
-      '@infodb/p3-kit':
+      '@infodb/p3-app':
         specifier: workspace:*
-        version: link:../kit
+        version: link:../app
       '@infodb/p3-observer':
         specifier: workspace:*
         version: link:../observer
+      '@infodb/p3-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@infodb/p3-tasks':
         specifier: workspace:*
         version: link:../tasks
+
+  packages/shared: {}
 
   packages/tasks:
     dependencies:
@@ -306,9 +330,9 @@ importers:
       '@infodb/codex-workspace':
         specifier: ^0.2.1
         version: 0.2.1
-      '@infodb/p3-kit':
+      '@infodb/p3-shared':
         specifier: workspace:*
-        version: link:../kit
+        version: link:../shared
       hono:
         specifier: ^4.13.13
         version: 4.13.19

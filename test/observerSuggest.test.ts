@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { mockSuggestion, suggestionMessage, suggestPrompt, SuggestionService, type SuggestAdapter } from "../packages/observer/src/core/suggest.ts";
 import { InvalidSuggestion, parseSuggestion, SuggestionError, validateSuggestionRequest, type SuggestionRequest } from "../packages/observer/src/shared/suggestion.ts";
-import { startServer, type RunningServer } from "../packages/p3/src/server/server.ts";
+import { startServer, type RunningServer } from "../packages/app/src/server/server.ts";
 import { resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
 import { tempDir } from "./helpers.ts";
 import { initialized, p3, snapshot } from "./cliHelpers.ts";
@@ -138,9 +138,9 @@ const freePort = () =>
       srv.close(() => (a && typeof a === "object" ? resolve(a.port) : reject(new Error("ポートを選べません"))));
     });
   });
-async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host" | "static">) {
+async function serve(opts: Omit<Parameters<typeof startServer>[0], "port" | "host">) {
   const port = await freePort();
-  servers.push(await startServer({ ...opts, port, host: "127.0.0.1", static: false }));
+  servers.push(await startServer({ ...opts, port, host: "127.0.0.1" }));
   const base = `http://127.0.0.1:${port}/api`;
   return async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
     const res = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });

@@ -18,8 +18,8 @@ const root = resolve(args.includes("--root") ? args[args.indexOf("--root") + 1] 
 /** 機能（上から順に当てる。パスの区切りを / にした相対パスで照らす） */
 export const FEATURES = [
   ["入口（起動・振り分け・AI 向けの入口）", /^packages\/p3\/(bin|src\/cli)\//],
-  ["入口（serve・画面の外枠）", /^packages\/p3\/src\/(server|core|web)\//],
-  ["kit", /^packages\/kit\//],
+  ["アプリ（serve・画面の外枠）", /^packages\/app\//],
+  ["shared", /^packages\/shared\//],
   ["開発の指標", /metric/i],
   ["振り返り", /retro/i],
   ["タスクの AI レビュー", /taskReview/i],
@@ -42,9 +42,9 @@ export const FEATURES = [
   ["画面の共通（部品・処理）", /\/web\//],
   ["型と判定の共通（shared）", /\/shared\//],
 ];
-/** 入口・kit はパッケージで、ほかは src の中のパス（/core/... の形。パッケージ名の tasks は照らさない）で決める */
+/** 入口・アプリ・shared はパッケージで、ほかは src の中のパス（/core/... の形。パッケージ名の tasks は照らさない）で決める */
 const featureOf = (rel) => {
-  const inner = rel.startsWith("packages/p3/") || rel.startsWith("packages/kit/") ? rel : `/${rel.replace(/^packages\/[^/]+\/src\//, "")}`;
+  const inner = /^packages\/(p3|app|shared)\//.test(rel) ? rel : `/${rel.replace(/^packages\/[^/]+\/src\//, "")}`;
   return FEATURES.find(([, re]) => re.test(inner))?.[0] ?? "未分類";
 };
 

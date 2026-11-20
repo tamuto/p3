@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { nowIso } from "@infodb/p3-kit/fsutil.ts";
+import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 import { MEASURE_TYPE_LABEL, PROCEDURE_KINDS } from "../shared/definition.ts";
 import {
   InvalidSuggestion,
@@ -14,7 +14,7 @@ import {
 } from "../shared/suggestion.ts";
 
 /**
- * 確認の手順の提案（docs/architecture.md「p3-observer」の手順の提案）。AI を呼ぶのは入口が渡すアダプター（Codex の接続を共有する。
+ * 確認の手順の提案（docs/architecture.md「p3-observer」の手順の提案）。AI を呼ぶのはアプリが渡すアダプター（Codex の接続を共有する。
  * observer は tasks を読まない）。observer は依頼文を作り、応答を定義の形に照らして確かめる。保存はしない。
  */
 export interface SuggestAdapter {

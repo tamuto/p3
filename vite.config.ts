@@ -5,15 +5,16 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { fileURLToPath } from "node:url";
 import tsr from "./tsr.config.json" with { type: "json" };
 
-// tsr.config.json のパスはリポジトリのルート基準（CLI と同じ）。Vite の root は入口の packages/p3/src/web なので絶対パスにして渡す。
-// ルート一覧は入口の __root.tsx の下に、製品（tasks）のページのフォルダをそのまま付ける（virtualRouteConfig）
+// tsr.config.json のパスはリポジトリのルート基準（CLI と同じ）。Vite の root はアプリの packages/app/src/web なので絶対パスにして渡す。
+// ルート一覧はアプリの __root.tsx の下に、機能（tasks・observer）のページのフォルダをそのまま付ける（virtualRouteConfig）。
+// ビルドは配布する入口のパッケージの dist/web に出す（入口の CLI が serve に渡す）
 const fromRoot = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 const apiPort = Number(process.env.P3_PORT ?? 4310);
 
 export default defineConfig({
-  root: "packages/p3/src/web",
-  // 入口の __root.tsx と tasks の packages/tasks/src/web/routes/ のファイルからルート一覧 (routeTree.gen.ts) を作る。react() より前に置く
+  root: "packages/app/src/web",
+  // アプリの __root.tsx と tasks・observer の packages/tasks/src/web/routes/ のファイルからルート一覧 (routeTree.gen.ts) を作る。react() より前に置く
   plugins: [
     tanstackRouter({
       ...tsr,
@@ -24,7 +25,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  build: { outDir: "../../dist/web", emptyOutDir: true },
+  build: { outDir: fromRoot("./packages/p3/dist/web"), emptyOutDir: true },
   server: {
     port: Number(process.env.P3_WEB_PORT ?? 5173),
     // API サーバと同じく、DevContainer の外から見られるよう既定で 0.0.0.0 で待ち受ける

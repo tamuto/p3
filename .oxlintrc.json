@@ -5,7 +5,7 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["packages/p3/src/web/routeTree.gen.ts"],
+  "ignorePatterns": ["packages/app/src/web/routeTree.gen.ts"],
   "rules": {
     // correctness 以外から足すもの
     "react/rules-of-hooks": "error",

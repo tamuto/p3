@@ -6,7 +6,7 @@ import type { PreflightEngine, PreflightJob } from "../packages/tasks/src/core/p
 import { compareInput, normalizeInput, StaleInputError } from "../packages/tasks/src/core/preflight/input.ts";
 import { MockEngine } from "../packages/tasks/src/core/preflight/mockEngine.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "../packages/kit/src/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "../packages/tasks/src/core/store/frontmatter.ts";
 import { makeRepo, newRequest, newTask, openTestProject } from "./helpers.ts";
 
 /** 始めたら release() まで待つ mock（評価中の編集を作る）。渡された要望を残す */

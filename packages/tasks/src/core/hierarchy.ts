@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Hierarchy, type HierarchyIssue } from "../shared/hierarchy.ts";
 import { REQUEST_ID } from "../shared/refs.ts";
 import type { Request } from "../shared/types.ts";
-import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 import type { Workspace } from "./store/workspace.ts";
 
 /**

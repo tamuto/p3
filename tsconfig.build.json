@@ -1,5 +1,5 @@
 {
-  // 配布物の CLI・serve を JavaScript にする（scripts/build-cli.mjs）。入口・製品（tasks・observer）・kit の Node で動く部分を .build/ に 1:1 で出し、
+  // 配布物の CLI・serve を JavaScript にする（scripts/build-cli.mjs）。入口・アプリ・機能（tasks・observer）・shared の Node で動く部分を .build/ に 1:1 で出し、
   // 相対の import の .ts を .js に書き換える。パッケージ名の import と置き場所は scripts/build-cli.mjs が直す。型検査は tsconfig.json
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -14,5 +14,5 @@
     "sourceMap": false,
     "declaration": false
   },
-  "include": ["packages/p3/src/cli", "packages/p3/src/core", "packages/p3/src/server", "packages/p3/src/shared", "packages/tasks/src/cli", "packages/tasks/src/core", "packages/tasks/src/server", "packages/tasks/src/shared", "packages/observer/src/cli", "packages/observer/src/core", "packages/observer/src/server", "packages/observer/src/shared", "packages/kit/src"]
+  "include": ["packages/p3/src/cli", "packages/app/src/core", "packages/app/src/server", "packages/tasks/src/cli", "packages/tasks/src/core", "packages/tasks/src/server", "packages/tasks/src/shared", "packages/observer/src/cli", "packages/observer/src/core", "packages/observer/src/server", "packages/observer/src/shared", "packages/shared/src/node"]
 }

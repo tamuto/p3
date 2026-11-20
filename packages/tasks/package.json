@@ -9,7 +9,7 @@
     "./*": "./src/*"
   },
   "dependencies": {
-    "@infodb/p3-kit": "workspace:*",
+    "@infodb/p3-shared": "workspace:*",
     "@hono/node-server": "~2.1.3",
     "@infodb/chatgpt-plan": "^0.1.1",
     "@infodb/codex-workspace": "^0.2.1",

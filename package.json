@@ -20,7 +20,7 @@
     "demo:reset": "tsx scripts/demo.ts --force",
     "routes": "tsr generate",
     "typecheck": "tsr generate && tsc --noEmit -p .",
-    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error packages/kit/src packages/tasks/src packages/observer/src packages/p3/src packages/p3/bin scripts test vite.config.ts vitest.config.ts vitest.ui.config.ts",
+    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error packages/shared/src packages/tasks/src packages/observer/src packages/app/src packages/p3/src packages/p3/bin scripts test vite.config.ts vitest.config.ts vitest.ui.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest run -c vitest.ui.config.ts",

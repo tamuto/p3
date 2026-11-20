@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
 import { readDraftCriteria, readSourceSeq } from "../../features/requirements/shared/acceptance.ts";
 import { readCriterionSources } from "../../features/requirements/shared/requirementSource.ts";
-import { parseFrontmatter, stringifyFrontmatter } from "@infodb/p3-kit/frontmatter.ts";
+import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 
 /** 案の受け入れ基準と要求の根拠（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
 function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems" | "acceptanceSources" | "acceptanceSourceSeq"> {
@@ -19,7 +19,7 @@ function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknow
     ...(all.length ? { acceptanceProblems: all } : {}),
   };
 }
-import { withFileLock, writeFileAtomic } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { writeJsonRecord } from "./jsonRecord.ts";
 
 /** 案のファイル1つを読む（f: ファイル名。key が無い古い案はファイル名から） */

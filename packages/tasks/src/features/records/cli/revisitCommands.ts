@@ -1,7 +1,7 @@
 import { REVIEW_CODE_LABEL, REVIEW_STATE_HINT, REVIEW_STATE_LABEL, type PremiseChange, type PremiseOp, type ReviewDiagnosis } from "../shared/reviewCandidate.ts";
 import { recordPremise } from "../../../core/requestOps.ts";
 import { reviewCandidates } from "../core/reviewCandidates.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import type { CommandEnv } from "../../../cli/args.ts";
 
 /**

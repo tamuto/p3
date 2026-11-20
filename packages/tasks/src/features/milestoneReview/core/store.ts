@@ -12,7 +12,7 @@ import {
   type ReviewVerdict,
 } from "../shared/milestoneReview.ts";
 import { dirs, finishRunFile, readJson, ReviewStoreError, runStamp, updateRunFile, writeJson, type RunEnd, type RunStore } from "../../../core/reviewRuns.ts";
-import { withFileLock } from "@infodb/p3-kit/fsutil.ts";
+import { withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
 
 export { ReviewStoreError };
 

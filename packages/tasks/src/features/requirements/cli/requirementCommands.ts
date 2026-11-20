@@ -18,7 +18,7 @@ import { resolveRequestId } from "../../../core/ops.ts";
 import { saveClarifyAnswer, updateRequirement, updateTask } from "../../../core/requestOps.ts";
 import { NotFoundError } from "../../../core/store/collection.ts";
 import { pickRun } from "../../../cli/preflightCommands.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import type { CommandEnv } from "../../../cli/args.ts";
 import { formatRequirement, sourceLines } from "../../../cli/showView.ts";
 

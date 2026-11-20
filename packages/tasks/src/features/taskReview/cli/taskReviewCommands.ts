@@ -5,7 +5,7 @@ import { normalizeTaskId } from "../../../shared/refs.ts";
 import { previewOf, QUALITY_VERDICT_LABELS, TASK_REVIEW_SCOPE, TASK_REVIEW_VERDICT_LABELS, TASK_REVIEW_VERDICTS, type TaskReviewVerdict } from "../shared/taskReview.ts";
 import type { CommandEnv } from "../../../cli/args.ts";
 import { table } from "../../../cli/format.ts";
-import { UsageError } from "@infodb/p3-kit/usage.ts";
+import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 
 /**
  * タスクの AI レビュー（core/taskReview。画面と同じサービス）。
