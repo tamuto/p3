@@ -34,8 +34,10 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
     await step("タイトルと観測内容だけで保存すると ID が付き、編集の画面へ移る", async () => {
       await page.getByLabel("タイトル").fill("一覧の応答時間");
       await page.getByLabel("観測内容").fill("要望の一覧が速く返るか");
+      await page.getByLabel("期待する結果（任意）").fill("200ms 以内に一覧が返る");
       await page.getByRole("button", { name: "保存して続ける" }).click();
       await until.url(page, /\/observer\/obs-\d{6}-[0-9a-z]{5}\/edit$/);
+      await until.value(page.getByLabel("期待する結果（任意）"), "200ms 以内に一覧が返る");
     });
     await step("編集の画面で測定項目・手順を入れる。入力は自動で保存され、読み直しても戻る", async () => {
       await page.getByLabel("カテゴリ").fill("性能");
@@ -104,6 +106,7 @@ describe.skipIf(!inject("chromium").available)("観測の定義の登録", () =>
         rev: 2,
         title: "一覧の応答時間",
         category: "性能",
+        expected: "200ms 以内に一覧が返る",
         createdBy: "human:web",
         measures: [
           { name: "elapsed", type: "number", unit: "ms" },

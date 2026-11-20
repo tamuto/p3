@@ -9,7 +9,7 @@ export const Route = createFileRoute("/observer/")({ component: DefinitionList }
 function DefinitionList() {
   const load = useLoad<DefinitionListing>(fetchDefinitions);
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-5 py-8">
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">観測</h1>
         <Link to="/observer/new" className={buttonCls("primary")}>

@@ -48,6 +48,7 @@ export interface Draft {
   title: string;
   category: string;
   description: string;
+  expected: string;
   measures: MeasureDraft[];
   procedures: ProcedureDraft[];
 }
@@ -68,18 +69,21 @@ export function procedureDraft(p: Procedure): ProcedureDraft {
 }
 
 export function toDraft(d?: DefinitionInput): Draft {
-  if (!d) return { v: 2, title: "", category: "", description: "", measures: [], procedures: [] };
+  if (!d) return { v: 2, title: "", category: "", description: "", expected: "", measures: [], procedures: [] };
   return {
     v: 2,
     title: d.title,
     category: d.category,
     description: d.description,
+    expected: d.expected ?? "",
     measures: d.measures.map((m) => ({ name: m.name, type: m.type, unit: m.unit ?? "", description: m.description ?? "" })),
     procedures: d.procedures.map(procedureDraft),
   };
 }
 
 export const isDraft = (v: unknown): v is Draft => typeof v === "object" && v !== null && (v as Draft).v === 2;
+/** 保存した下書き（期待する結果を足す前のものも読む） */
+export const draftOf = (v: Draft): Draft => ({ ...v, expected: v.expected ?? "" });
 
 const lines = (t: string) => t.split("\n").filter((x) => x.trim() !== "");
 
@@ -89,6 +93,7 @@ export function toInput(d: Draft): Record<string, unknown> {
     title: d.title,
     category: d.category,
     description: d.description,
+    expected: d.expected,
     measures: d.measures.map((m) => ({ name: m.name, type: m.type, ...(m.type === "number" ? { unit: m.unit } : {}), description: m.description })),
     procedures: d.procedures.map((p) => {
       const r = p.run;

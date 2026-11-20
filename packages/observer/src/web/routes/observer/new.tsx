@@ -8,7 +8,7 @@ export const Route = createFileRoute("/observer/new")({ component: NewDefinition
 
 function NewDefinition() {
   const navigate = useNavigate();
-  const [v, setV] = useState({ title: "", category: "", description: "" });
+  const [v, setV] = useState({ title: "", category: "", description: "", expected: "" });
   const [error, setError] = useState<{ message: string; fields: Record<string, string> }>();
   async function submit() {
     try {
@@ -29,7 +29,7 @@ function NewDefinition() {
   );
   return (
     <form
-      className="mx-auto max-w-4xl space-y-4 px-5 py-8"
+      className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -44,6 +44,7 @@ function NewDefinition() {
       {field("title", "タイトル")}
       {field("category", "カテゴリ（任意）", "例: 性能・可用性・品質・使い勝手")}
       {field("description", "観測内容", "何を観測するか（目的・対象・観測したい状態）", 4)}
+      {field("expected", "期待する結果（任意）", "どうなっていれば期待どおりか（判定のもとになる）", 3)}
       <Button type="submit" variant="primary">
         保存して続ける
       </Button>

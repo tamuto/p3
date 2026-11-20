@@ -23,6 +23,18 @@ describe.skipIf(!inject("chromium").available)("観測の手順の提案", () =>
       await until.text(panel.getByTestId("suggest-engine"), /頼む先: mock/);
       expect(await panel.getByRole("checkbox").count()).toBe(0);
     });
+    await step("広い画面は2ペイン（左に観測の項目・測定項目・確認の手順、右に AI）。狭い画面は 観測の項目 → AI → 測定項目 → 確認の手順 の順", async () => {
+      const box = async (p: typeof page, name: string) => (await p.getByRole("heading", { name, exact: true }).boundingBox())!;
+      const [items, ai, measures, procs] = await Promise.all(["観測の項目", "AI に手順を提案してもらう", "測定項目（何を測定・記録するか）", "確認の手順（繰り返し確かめる方法）"].map((n) => box(page, n)));
+      expect(ai.x).toBeGreaterThan(items.x + items.width);
+      expect(measures.x).toBeCloseTo(items.x, 0);
+      expect([items.y < measures.y, measures.y < procs.y]).toEqual([true, true]);
+      const narrow = await s!.open({ width: 375 });
+      await narrow.goto(page.url());
+      await until.visible(narrow.getByRole("heading", { name: "AI に手順を提案してもらう" }));
+      const ys = await Promise.all(["観測の項目", "AI に手順を提案してもらう", "測定項目（何を測定・記録するか）", "確認の手順（繰り返し確かめる方法）"].map(async (n) => (await box(narrow, n)).y));
+      expect([...ys].sort((a, b) => a - b)).toEqual(ys);
+    });
     await step("材料が無いと理由を出し、入力は残す", async () => {
       await page.getByLabel("タイトル").fill("");
       await page.getByLabel("観測内容").fill("");

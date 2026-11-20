@@ -18,7 +18,7 @@ function DefinitionDetail() {
   const [tick, setTick] = useState(0);
   const load = useLoad(() => fetchDefinition(id), `${id}:${tick}`);
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-5 py-8">
+    <div className="w-full space-y-6 px-4 py-6 sm:px-6 lg:p-8">
       <Link to="/observer" className={linkCls}>
         ← 観測の一覧
       </Link>
@@ -49,6 +49,12 @@ function Detail({ d, reload }: { d: ObservationDefinition; reload: () => void })
           観測内容
         </h2>
         <p className="whitespace-pre-wrap">{d.description}</p>
+      </section>
+      <section aria-labelledby="expected-heading" className="space-y-2">
+        <h2 id="expected-heading" className="text-xl font-semibold">
+          期待する結果
+        </h2>
+        {d.expected ? <p className="whitespace-pre-wrap">{d.expected}</p> : <Empty>まだ書かれていません（編集で書ける）。</Empty>}
       </section>
       <section aria-labelledby="m-heading" className="space-y-2">
         <h2 id="m-heading" className="text-xl font-semibold">

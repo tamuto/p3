@@ -171,9 +171,11 @@ describe("CLI: p3 observer list / show / add / update", () => {
 
   it("フラグだけで作れる。誤りは項目の場所を出して 1、無い ID は 2、古い版は 3（記録は変えない）", async () => {
     const { root } = await initialized();
-    const ok = p3(root, ["observer", "add", "--title", "起動", "--category", "可用性", "--body", "起動できるか", "--json"]);
+    const ok = p3(root, ["observer", "add", "--title", "起動", "--category", "可用性", "--body", "起動できるか", "--expected", "1秒以内に画面が出る", "--json"]);
     expect(ok.code, ok.err).toBe(0);
     const id = ok.json().id as string;
+    expect(ok.json().expected).toBe("1秒以内に画面が出る");
+    expect(p3(root, ["observer", "show", id]).out).toContain("期待する結果: 1秒以内に画面が出る");
     const bad = p3(root, ["observer", "add", "--title", "x", "--json"]);
     expect(bad.code).toBe(1);
     // カテゴリは後から決めてよい（タイトルと観測内容だけで作れる）
@@ -182,7 +184,8 @@ describe("CLI: p3 observer list / show / add / update", () => {
     writeFileSync(join(root, "bad.json"), JSON.stringify({ ...SAMPLE, measures: [{ name: "n", type: "string", unit: "ms" }], procedures: [] }));
     expect(p3(root, ["observer", "add", "--input", "bad.json"]).err).toContain("measures[0].unit: 単位は数値の測定項目だけに付けられます");
     expect(p3(root, ["observer", "show", "obs-261120-zzzzz"]).code).toBe(2);
-    expect(p3(root, ["observer", "update", id, "--rev", "1", "--title", "新"]).code).toBe(0);
+    expect(p3(root, ["observer", "update", id, "--rev", "1", "--title", "新", "--expected", ""]).code).toBe(0);
+    expect(p3(root, ["observer", "show", id, "--json"]).json().expected).toBeUndefined();
     const stale = p3(root, ["observer", "update", id, "--rev", "1", "--title", "古い画面から"]);
     expect(stale.code).toBe(3);
     expect(stale.err).toContain("今の版 2");

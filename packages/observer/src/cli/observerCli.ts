@@ -13,7 +13,7 @@ export const OBSERVER_USAGE = [
   "p3 observer status [--json]",
   "p3 observer list [--json]",
   "p3 observer show <ID> [--json]",
-  "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
+  "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>] [--expected <期待する結果>]",
   "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
   "p3 observer suggest <ID> [--note <補足>]（保存した観測に提案を頼み、依頼と結果を観測に残す）",
   "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
@@ -39,6 +39,8 @@ export interface ObserverCliOptions {
   category?: string;
   body?: string;
   rev?: string;
+  /** add / update / suggest: 期待する結果 */
+  expected?: string;
   /** switch: 確かめた呼び出し方 */
   command?: string;
   /** --repo（observer では使わない。黙って無視しないために受け取って断る） */
@@ -102,6 +104,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       ...(opts.title !== undefined ? { title: opts.title } : {}),
       ...(opts.category !== undefined ? { category: opts.category } : {}),
       ...(opts.body !== undefined ? { description: opts.body } : {}),
+      ...(opts.expected !== undefined ? { expected: opts.expected } : {}),
     });
     if (sub === "add") {
       if (rest.length) throw new UsageError(`add は位置引数を取りません: ${rest.join(" ")}（中身は --input か --title・--category・--body）`);
@@ -243,7 +246,7 @@ function suggestionText(job: SuggestionJob, files?: Files): string {
 }
 
 function describe(d: ObservationDefinition, files: Files): string {
-  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, "", `測定項目 ${d.measures.length} 件`];
+  const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), "", `測定項目 ${d.measures.length} 件`];
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
   for (const p of d.procedures) lines.push(...procedureLines(p, files));

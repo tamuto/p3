@@ -26,7 +26,7 @@ export const MISSING_LABEL: Record<MissingField, string> = {
 /** 提案の依頼（未保存の定義の入力・任意の補足）。参照先は Preflight と同じく、読めるものを全部渡す（選ばない） */
 export interface SuggestionRequest {
   /** 定義の入力（未保存。手順は空でもよい） */
-  definition: { title: string; category: string; description: string; measures: Measure[]; procedures: Procedure[] };
+  definition: { title: string; category: string; description: string; expected?: string; measures: Measure[]; procedures: Procedure[] };
   /** 補足（足りない材料への答えなど） */
   note?: string;
 }
@@ -106,7 +106,7 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
   const d = isRecord(input.definition) ? input.definition : {};
   // 必須の項目が空でも材料にはなるので、空のものは仮の値で検証し、測定項目・手順の形だけを確かめる
   const filled = (v: unknown) => (typeof v === "string" && v.trim() ? v : "（未入力）");
-  const v = validateDefinitionInput({ title: filled(d.title), category: filled(d.category), description: filled(d.description), measures: d.measures ?? [], procedures: d.procedures ?? [] });
+  const v = validateDefinitionInput({ title: filled(d.title), category: filled(d.category), description: filled(d.description), expected: d.expected, measures: d.measures ?? [], procedures: d.procedures ?? [] });
   if (!v.ok) problems.push(...v.problems.map((p) => ({ ...p, path: `definition.${p.path}` })));
   const text = (x: unknown) => (typeof x === "string" ? x.trim() : "");
   if (!text(d.title) && !text(d.description)) problems.push({ path: "definition.description", message: "提案の材料に、タイトルか観測内容を入力してください" });
@@ -117,7 +117,7 @@ export function validateSuggestionRequest(input: unknown): { ok: true; value: Su
   return {
     ok: true,
     value: {
-      definition: { title: text(d.title), category: text(d.category), description: text(d.description), measures: v.value.measures, procedures: v.value.procedures },
+      definition: { title: text(d.title), category: text(d.category), description: text(d.description), ...(v.value.expected ? { expected: v.value.expected } : {}), measures: v.value.measures, procedures: v.value.procedures },
       ...(note ? { note } : {}),
     },
   };

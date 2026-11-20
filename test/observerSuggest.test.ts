@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { mockSuggestion, suggestionMessage, suggestPrompt, SuggestionService, type SuggestAdapter } from "../packages/observer/src/core/suggest.ts";
+import { mockSuggestion, SUGGEST_INSTRUCTIONS, suggestionMessage, suggestPrompt, SuggestionService, type SuggestAdapter } from "../packages/observer/src/core/suggest.ts";
 import { InvalidSuggestion, parseSuggestion, SuggestionError, validateSuggestionRequest, type SuggestionRequest } from "../packages/observer/src/shared/suggestion.ts";
 import { startServer, type RunningServer } from "../packages/app/src/server/server.ts";
 import { resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
@@ -38,6 +38,16 @@ function fake(reply: (input: Parameters<SuggestAdapter["ask"]>[0], signal: Abort
 }
 
 describe("依頼と応答の読み方", () => {
+  it("依頼文に期待する結果と調べ方が入り、まだ無いファイルを今の実行方法にしている手順には［新規予定］を付ける", () => {
+    const req = request({ expected: "5つのタブで画面が出る", procedures: [{ id: "P1", title: "古い手順", measures: [], run: { kind: "ui-script", repo: "app", path: "test/ui/none.ui.test.ts" } }] });
+    const p = suggestPrompt(req, ["/workspace/app"], undefined, (_r, path) => (path.includes("none") ? "planned" : "exists"));
+    expect(p).toContain("- 期待する結果:\n  5つのタブで画面が出る");
+    expect(p).toContain("古い手順: 画面操作スクリプト app:test/ui/none.ui.test.ts［新規予定（まだ無い）］");
+    expect(SUGGEST_INSTRUCTIONS).toContain("利用者に聞く前に\n  参照先を自分で調べて見つける");
+    expect(SUGGEST_INSTRUCTIONS).toContain("どこを調べて何が分からなかったか");
+    expect(SUGGEST_INSTRUCTIONS).not.toContain("推測で手順を作らず");
+  });
+
   it("依頼文に未保存の定義・測定項目・参照先・補足が入る", () => {
     const p = suggestPrompt(request({}, { note: "pnpm の script を使う" }), ["/workspace/app"], "## プロジェクト\napp: 在庫管理");
     expect(p).toContain("タイトル: 一覧の応答時間");

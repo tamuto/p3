@@ -105,6 +105,8 @@ export interface DefinitionInput {
   category: string;
   /** 観測内容（何を観測するか） */
   description: string;
+  /** 期待する結果（どうなっていれば期待どおりか。任意） */
+  expected?: string;
   measures: Measure[];
   procedures: Procedure[];
 }
@@ -172,13 +174,14 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
     return s;
   };
 
-  const known = new Set(["title", "category", "description", "measures", "procedures"]);
+  const known = new Set(["title", "category", "description", "expected", "measures", "procedures"]);
   for (const k of Object.keys(input)) if (!known.has(k)) add(k, `知らない項目です（${[...known].join("・")}）`);
 
   const title = text("title", input.title, LIMIT.title, true) ?? "";
   // カテゴリは後から決めてよい（タイトルと観測内容だけで先に保存して ID を付ける）
   const category = text("category", input.category, LIMIT.category, false) ?? "";
   const description = text("description", input.description, LIMIT.description, true) ?? "";
+  const expected = text("expected", input.expected, LIMIT.description, false);
 
   const measures: Measure[] = [];
   const rawMeasures = input.measures ?? [];
@@ -284,7 +287,7 @@ export function validateDefinitionInput(input: unknown): ValidationResult {
   }
 
   if (problems.length) return { ok: false, problems };
-  return { ok: true, value: { title, category, description, measures, procedures } };
+  return { ok: true, value: { title, category, description, ...(expected ? { expected } : {}), measures, procedures } };
 }
 
 /** 誤りを人が読む文にする（CLI のエラー・画面の項目に付かない誤り） */

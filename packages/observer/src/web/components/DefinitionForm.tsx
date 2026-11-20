@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { filesOf, fileKey, MEASURE_TYPE_LABEL, MEASURE_TYPES, validateDefinitionInput, type DefinitionInput, type DefinitionProblem, type Measure, type MeasureType, type ObservationDefinition } from "../../shared/definition.ts";
-import { emptyMeasure, emptyProcedure, isDraft, procedureDraft, toDraft, toInput, type Draft, type MeasureDraft, type ProcedureDraft } from "../lib/formDraft.ts";
+import { draftOf, emptyMeasure, emptyProcedure, isDraft, procedureDraft, toDraft, toInput, type Draft, type MeasureDraft, type ProcedureDraft } from "../lib/formDraft.ts";
 import { useFileStates } from "../lib/files.ts";
 import { ProcedureEditor } from "./ProcedureEditor.tsx";
 import { ObserverApiError, saveDraft, type DraftRecord } from "../lib/api.ts";
@@ -64,7 +64,7 @@ export function DefinitionForm({
   saved?: DraftRecord;
   restore?: boolean;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? saved.input : toDraft(initial)));
+  const [draft, setDraft] = useState<Draft>(() => (restore && isDraft(saved?.input) ? draftOf(saved.input) : toDraft(initial)));
   const status = useDraftSave(id, rev, draft, saved);
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
   const [error, setError] = useState<{ message: string; conflict?: ObservationDefinition }>();
@@ -100,13 +100,18 @@ export function DefinitionForm({
   }
 
   return (
+    // 広い画面は2ペイン: 左に観測の項目・測定項目・確認の手順、右に AI の提案。狭い画面は 観測の項目 → AI の提案 → 測定項目 → 確認の手順 の順
     <form
-      className="space-y-6"
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,40%)]"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
+      <div className="space-y-3 lg:col-span-2">
+        <p role="status" className="text-slate-600 dark:text-slate-400">
+          {status.text}
+        </p>
       {(problems.length > 0 || error) && (
         <div role="alert" className="space-y-1 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
           {error && <p>保存できませんでした: {error.message}</p>}
@@ -122,8 +127,12 @@ export function DefinitionForm({
           )}
         </div>
       )}
+      </div>
 
-      <section className="space-y-3">
+      <section aria-labelledby="items-heading" className="space-y-3 lg:col-start-1 lg:row-start-2">
+        <h2 id="items-heading" className="text-xl font-semibold">
+          観測の項目
+        </h2>
         <Field label="タイトル" error={err("title")}>
           <input className={inputCls} value={draft.title} aria-invalid={!!err("title")} onChange={(e) => set({ title: e.target.value })} />
         </Field>
@@ -133,11 +142,25 @@ export function DefinitionForm({
         <Field label="観測内容" error={err("description")} hint="何を観測するか（目的・対象・観測したい状態）">
           <textarea className={inputCls} rows={4} value={draft.description} aria-invalid={!!err("description")} onChange={(e) => set({ description: e.target.value })} />
         </Field>
+        <Field label="期待する結果（任意）" error={err("expected")} hint="どうなっていれば期待どおりか（判定のもとになる）">
+          <textarea className={inputCls} rows={3} value={draft.expected} aria-invalid={!!err("expected")} onChange={(e) => set({ expected: e.target.value })} />
+        </Field>
       </section>
 
-      <section aria-labelledby="measures-heading" className="space-y-3">
+      <div className="lg:sticky lg:top-4 lg:col-start-2 lg:row-span-4 lg:row-start-2 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+      <SuggestPanel
+        id={id}
+        rev={rev}
+        material={() => toInput(draft)}
+        measures={draft.measures.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), type: m.type, ...(m.unit ? { unit: m.unit } : {}) }))}
+        onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))}
+        onAdoptMeasure={adoptMeasure}
+      />
+      </div>
+
+      <section aria-labelledby="measures-heading" className="space-y-3 lg:col-start-1 lg:row-start-3">
         <div className="flex items-center justify-between">
-          <h2 id="measures-heading" className="font-semibold">
+          <h2 id="measures-heading" className="text-xl font-semibold">
             測定項目（何を測定・記録するか）
           </h2>
           <Button onClick={() => set({ measures: [...draft.measures, emptyMeasure()] })}>
@@ -177,21 +200,9 @@ export function DefinitionForm({
         ))}
       </section>
 
-      <p role="status" className="text-slate-600 dark:text-slate-400">
-        {status.text}
-      </p>
-      <SuggestPanel
-        id={id}
-        rev={rev}
-        material={() => toInput(draft)}
-        measures={draft.measures.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), type: m.type, ...(m.unit ? { unit: m.unit } : {}) }))}
-        onAdopt={(p) => setDraft((d) => ({ ...d, procedures: [...d.procedures, procedureDraft(p)] }))}
-        onAdoptMeasure={adoptMeasure}
-      />
-
-      <section aria-labelledby="procedures-heading" className="space-y-3">
+      <section aria-labelledby="procedures-heading" className="space-y-3 lg:col-start-1 lg:row-start-4">
         <div className="flex items-center justify-between">
-          <h2 id="procedures-heading" className="font-semibold">
+          <h2 id="procedures-heading" className="text-xl font-semibold">
             確認の手順（繰り返し確かめる方法）
           </h2>
           <Button onClick={() => set({ procedures: [...draft.procedures, emptyProcedure()] })}>
@@ -218,7 +229,7 @@ export function DefinitionForm({
         ))}
       </section>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 lg:col-start-1 lg:row-start-5">
         <Button type="submit" variant="primary" disabled={saving}>
           {saving ? "保存中…" : submitLabel}
         </Button>

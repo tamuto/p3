@@ -171,8 +171,9 @@ export class DefinitionStore {
       if (current.rev !== expectedRev) {
         throw new DefinitionError("conflict", `観測の定義 ${id} は更新されています（今の版 ${current.rev}・添えた版 ${expectedRev}）。読み直してからやり直してください`, [], current);
       }
-      const { title, category, description, measures, procedures } = f(current);
-      const next: ObservationDefinition = { ...current, title, category, description, measures, procedures, format: DEFINITION_FORMAT, rev: current.rev + 1, updatedAt: nowIso(), updatedBy: actor };
+      const { title, category, description, expected, measures, procedures } = f(current);
+      const { expected: _old, ...rest } = current;
+      const next: ObservationDefinition = { ...rest, title, category, description, ...(expected ? { expected } : {}), measures, procedures, format: DEFINITION_FORMAT, rev: current.rev + 1, updatedAt: nowIso(), updatedBy: actor };
       await writeFileAtomic(this.file(id), serialize(next));
       return next;
     }, { busyMessage: "観測の定義のロックを待ちきれませんでした（別のプロセスが更新しています）" });

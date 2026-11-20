@@ -22,6 +22,7 @@ import { observerCommand, observerNeedsProject, observerWrites, type ObserverRes
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
+import { fileChecker } from "@infodb/p3-observer/core/files.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
 import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
 import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
@@ -231,6 +232,7 @@ async function main(argv: string[]): Promise<number> {
       title: o.title,
       category: o.category,
       body: o.body,
+      expected: o.expected,
       rev: o.rev,
       command: o.command,
       repo: o.repos,
@@ -239,6 +241,7 @@ async function main(argv: string[]): Promise<number> {
       suggestions: async () =>
         new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })), {
           store: new WorkStore(target.dataDir),
+          files: fileChecker((name) => target.repos[name]),
         }),
     });
     return observerOutput(out, r);

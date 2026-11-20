@@ -17,7 +17,7 @@ function EditDefinition() {
   const load = useLoad(async () => ({ ...(await fetchDefinition(id)), ...(await fetchDraft(id)) }), id);
   const [useOld, setUseOld] = useState(false);
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-5 py-8">
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
       <Link to="/observer/$id" params={{ id }} className={linkCls}>
         ← 詳細へ戻る
       </Link>

@@ -89,11 +89,11 @@ export function SuggestPanel({
   const running = job?.status === "running";
   return (
     <section aria-labelledby="suggest-heading" className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-      <h2 id="suggest-heading" className="font-semibold">
+      <h2 id="suggest-heading" className="text-xl font-semibold">
         AI に手順を提案してもらう
       </h2>
       <p className="text-slate-600 dark:text-slate-400">
-        入力中のタイトル・観測内容・測定項目と、プロジェクトの参照先（読むだけ）を材料に、観測の操作面と確認の手順を提案します。保存はしません。
+        入力中の観測の項目・測定項目・手順と、プロジェクトの参照先（読むだけ）を材料に、確認の手順と測定項目の候補を提案します。提案は観測に残り、定義には取り込んで保存したときだけ入ります。
       </p>
       {ctxError && <Alert>提案の材料を読めません: {ctxError}</Alert>}
       {ctx && (

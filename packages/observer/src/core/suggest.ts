@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { nowIso } from "@infodb/p3-shared/node/fsutil.ts";
 import type { WorkStore } from "./workStore.ts";
-import { FILE_KINDS, MEASURE_TYPE_LABEL, MEASURE_TYPES, RUN_KIND_LABEL, type Measure, type Run } from "../shared/definition.ts";
+import { FILE_KINDS, FILE_STATE_LABEL, MEASURE_TYPE_LABEL, MEASURE_TYPES, RUN_KIND_LABEL, type FileState, type Measure, type Run } from "../shared/definition.ts";
 import {
   InvalidSuggestion,
   MISSING_FIELDS,
@@ -42,10 +42,15 @@ export const SUGGEST_INSTRUCTIONS = `あなたは、ソフトウェアの観測�
    切り替えの条件（switchWhen）・呼び出し方の案（invoke）。スクリプトを用意するのは別の作業で、用意して確かめた後に利用者が切り替える
 3. 参照先に既に使えるコマンド・テスト・スクリプトがあれば、それを今の実行方法にし、根拠（evidence）にそのファイルや script の名前を書く
 
+調べ方:
+- 入口（アプリの起動方法・画面の URL・既存のテストやスクリプトの置き場所と書き方・package.json の scripts・テストの補助）は、利用者に聞く前に
+  参照先を自分で調べて見つける（README・docs・package.json・既存のテストとその補助のファイル）。ls・rg・cat・git log など読むだけのコマンドで調べてよい
+- 調べても分からないときだけ missing に書き、reason にどこを調べて何が分からなかったかを書く
+- 今ある手順のうち、まだ無いファイルを今の実行方法にしているもの（［新規予定］）は、そのままでは実行できない。AI への指示に直し、そのファイルを置き換え候補にした手順を提案する
+- ファイルの作成・変更、アプリの起動、テストやスクリプトの実行はしない（提案だけ）
+
 - まだ無いファイルを今の実行方法（run）に書かない（置き換え候補に書く）。無いものを有るように書かない
 - 測定項目が足りなければ候補（measures）を出す（名前は英数字・_・-、型 ${MEASURE_TYPES.join(" / ")}、数値なら単位、説明）。定義に既にある名前は使わない
-- 判断に必要な材料が足りなければ、推測で手順を作らず、足りない材料を missing に書く（どの材料が・なぜ要るか）
-- ファイルを作ったり、コマンドを実行して確かめたりしない（提案だけ）
 - 最後の応答は次の形の JSON だけにする（説明の文を付けない）
 
 {
@@ -70,7 +75,7 @@ const runLine = (r: Run) =>
   r.kind === "ai-instruction" ? `AI への指示（対象: ${r.target}）` : r.kind === "command" ? `コマンド ${[r.command, ...r.args].join(" ")}` : `${RUN_KIND_LABEL[r.kind]} ${r.repo}:${r.path}`;
 
 /** 依頼文（プロジェクトの文脈・定義の入力・参照先・補足） */
-export function suggestPrompt(req: SuggestionRequest, repos: string[], project?: string): string {
+export function suggestPrompt(req: SuggestionRequest, repos: string[], project?: string, files?: (repo: string, path: string) => FileState): string {
   const d = req.definition;
   const lines = [
     ...(project ? [project, ""] : []),
@@ -79,12 +84,19 @@ export function suggestPrompt(req: SuggestionRequest, repos: string[], project?:
     `- カテゴリ: ${d.category || "（未入力）"}`,
     "- 観測内容:",
     d.description ? d.description.split("\n").map((l) => `  ${l}`).join("\n") : "  （未入力）",
+    "- 期待する結果:",
+    d.expected ? d.expected.split("\n").map((l) => `  ${l}`).join("\n") : "  （未入力。判定は観測内容から決める）",
     "",
     "## 測定項目",
     ...(d.measures.length ? d.measures.map((m) => `- ${m.name}: ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? ` — ${m.description}` : ""}`) : ["（まだ無い。要るものを measures の候補に出す）"]),
     "",
-    "## 今ある手順（参考。重ねて提案しない）",
-    ...(d.procedures.length ? d.procedures.map((p) => `- ${p.title}: ${runLine(p.run)}${p.replacement ? `（置き換え候補 ${p.replacement.repo}:${p.replacement.path}）` : ""}`) : ["（無い）"]),
+    "## 今ある手順（実行できるものは重ねて提案しない。［新規予定］の今の実行方法は直す提案をする）",
+    ...(d.procedures.length
+      ? d.procedures.map((p) => {
+          const state = p.run.kind !== "ai-instruction" && p.run.kind !== "command" && files ? `［${FILE_STATE_LABEL[files(p.run.repo, p.run.path)]}］` : "";
+          return `- ${p.title}: ${runLine(p.run)}${state}${p.replacement ? `（置き換え候補 ${p.replacement.repo}:${p.replacement.path}）` : ""}`;
+        })
+      : ["（無い）"]),
     "",
     "## 読める参照先",
     ...(repos.length ? repos.map((r) => `- ${r}`) : ["（無い。参照先が要るなら missing に repo を書く）"]),
@@ -162,7 +174,7 @@ export class SuggestionService {
 
   constructor(
     private readonly adapter: SuggestAdapter,
-    private readonly opts: { timeoutMs?: number; keep?: number; store?: WorkStore } = {},
+    private readonly opts: { timeoutMs?: number; keep?: number; store?: WorkStore; files?: (repo: string, path: string) => FileState } = {},
   ) {}
 
   context(): Promise<SuggestionContext> {
@@ -241,7 +253,7 @@ export class SuggestionService {
       const readable = ctx.repos.filter((r) => r.available);
       const repos = readable.map((r) => r.name);
       job.context = { ...(ctx.qualityVersion !== undefined ? { qualityVersion: ctx.qualityVersion } : {}), repos: readable.map((r) => r.path ?? r.name) };
-      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, readable.map((x) => x.path ?? x.name), ctx.project), repos, request: req }, () => {}, signal);
+      const r = await this.adapter.ask({ instructions: SUGGEST_INSTRUCTIONS, prompt: suggestPrompt(req, readable.map((x) => x.path ?? x.name), ctx.project, this.opts.files), repos, request: req }, () => {}, signal);
       if (signal.aborted) throw signal.reason;
       end = { engine: r.engine, result: parseSuggestion(r.message, req.definition.measures), status: "completed" };
     } catch (e) {

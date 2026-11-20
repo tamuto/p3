@@ -946,7 +946,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
 - 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
   （shared の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
   決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
-- 形: `{ format: 2, id, rev, title, category, description, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。手順は
+- 形: `{ format: 2, id, rev, title, category, description, expected?, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。手順は
   `{ id: P1…, title, measures, run: 今の実行方法, replacement?: 置き換え候補, history?: 切り替えの履歴 }`。形の版 1（手順に kind を直に持つ）は読むときに今の形に移し
   （`migrateProcedures`。提案の記録も同じ）、更新のときに 2 で書く。手順の識別子は保存の層が付け、履歴は保存の層だけが書く（入力の履歴は使わない）
 - 確認の手順の段取り: スクリプト等が無いあいだは AI への指示（前提・対象・順に行う操作・判定・測定値の記録方法）で確かめ、毎回同じ動作で結果を機械的に処理できる
