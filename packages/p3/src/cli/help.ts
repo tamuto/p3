@@ -152,8 +152,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                add <文>...  足す / edit <ID> <文>  文を変える（記録済みの証拠は再確認が必要になる）
                                rm <ID>...  消す（証拠は残る。ID は使い直さない） / order <ID>...  並べ替える（今の ID を全部）
   evidence <T003> <ID> <結果>   証拠を残す（再記録は置き換え）。本文は続けて書くか --body 本文|- / --file 本文.md
-                               --basis unverified|declaration|read|machine  根拠の種類（作業した側の申告。P3 は検査を実行しない）
+                               --basis unverified|declaration|read|machine|observation  根拠の種類（作業した側の申告。P3 は検査を実行しない）
                                  read: --reference 読んだもの / machine: --command コマンド --check-result 結果 --target <参照先>:<コミット>
+                                 observation: --observation <観測ID>/<結果ID>（満たしたの根拠は完了して期待どおりの結果だけ）
                                evidence <T003> --file 証拠.md|-  まとめて / --evidence-json 証拠.json|-  根拠つきでまとめて
                                evidence <T003> rm <ID>...  消す
                                済みのタスクの基準・証拠の中身を変えると済みが外れる（同じ値の再保存・成果物の追加では外れない）

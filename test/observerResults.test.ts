@@ -13,6 +13,7 @@ import { singleProjectApp } from "../packages/app/src/server/server.ts";
 import { openProject } from "../packages/tasks/src/core/context.ts";
 import { PRODUCTS } from "../packages/app/src/core/products.ts";
 import { followUpAdapter } from "../packages/app/src/core/observerFollowUp.ts";
+import { installObservationSource } from "../packages/app/src/core/observerMaterial.ts";
 
 /**
  * 観測の実行と結果（docs/architecture.md「p3-observer」の観測の実行と結果）: 開始で定義の版と中身・使う準備を写す・段の記録の検証・
@@ -223,6 +224,52 @@ describe("期待どおりでなかった結果から要望を作る", () => {
     expect((await post("bug")).status).toBe(409);
     const obs = (await (await app.request(`/requests/${rid}/observations`)).json()) as { results: unknown[] };
     expect(obs.results).toEqual([{ observation: d.id, result: ng2, title: "速さ" }]);
+    ctx.ws.close();
+  });
+});
+
+describe("受け入れ基準の証拠の根拠「観測の結果」", () => {
+  it("完了して期待どおりの結果だけを満たしたの根拠にでき、詳細に結果の版と今の版が分かる", async () => {
+    const { root, rid } = await initialized();
+    const run = (args: string[], input?: unknown) => p3(root, args, { P3_ACTOR: "ai:t" }, undefined, input === undefined ? undefined : JSON.stringify(input));
+    const j = (args: string[], input?: unknown) => {
+      const r = run([...args, "--json"], input);
+      expect(r.code, r.err).toBe(0);
+      return r.json();
+    };
+    const d = j(["observer", "add", "--input", "-"], { title: "速さ", description: "x", expected: "1秒以内", procedures: [{ title: "開く", measures: [], run: AI }] });
+    const result = (verdict: "met" | "unmet", finish = true) => {
+      const r = j(["observer", "run", d.id]);
+      j(["observer", "record", d.id, r.id, "--input", "-"], { phase: "procedure", ref: "P1", result: verdict, basis: machine });
+      if (finish) j(["observer", "finish", d.id, r.id]);
+      return r.id as string;
+    };
+    j(["new", "観測し直す", "--req", rid, "--criterion", `観測 ${d.id}（速さ）を観測し直し、期待どおりであることを確かめる`]);
+    const ev = (res: string, result = "met") => run(["evidence", "T001", "A1", result, "観測し直した", "--req", rid, "--basis", "observation", "--observation", `${d.id}/${res}`]);
+    const ng = ev(result("unmet"));
+    expect(ng.code).toBe(1);
+    expect(ng.err).toContain("判定が期待どおりではありません");
+    expect(ev(result("met", false)).err).toContain("まだ完了していません");
+    expect(ev("res-261121-zzzzz").err).toContain("観測の結果がありません");
+    expect(ev(result("unmet"), "unmet").code).toBe(0);
+    const ok = result("met");
+    expect(ev(ok).code).toBe(0);
+    const shown = run(["show", `${rid}/T001`]).out;
+    expect(shown).toContain("根拠: 観測の結果");
+    expect(shown).toContain(`結果: ${ok}`);
+    // evidence-json も同じ照合
+    const bad = run(["evidence", "T001", "--req", rid, "--evidence-json", "-"], [{ id: "A1", result: "met", evidence: "x", basis: { kind: "observation", observation: d.id, result: "res-261121-zzzzz" } }]);
+    expect(bad.code).toBe(1);
+    expect(run(["evidence", "T001", "A1", "met", "x", "--req", rid, "--basis", "read", "--observation", `${d.id}/${ok}`]).code).toBe(1);
+
+    // タスクの詳細が読む結果の状態: 観測の期待を変えると今の版が進む
+    j(["observer", "update", d.id, "--rev", "1", "--expected", "0.5秒以内", "--reason", "速さ"]);
+    const dataDir = j(["whoami"]).dataDir as string;
+    installObservationSource();
+    const ctx = await openProject(dataDir, { projectName: "app" });
+    const res = await singleProjectApp(ctx, PRODUCTS).request(`/observation-results/${d.id}/${ok}`);
+    expect(await res.json()).toEqual({ status: "completed", verdict: "met", rev: 1, currentRev: 2 });
+    expect((await singleProjectApp(ctx, PRODUCTS).request(`/observation-results/${d.id}/res-261121-zzzzz`)).status).toBe(404);
     ctx.ws.close();
   });
 });

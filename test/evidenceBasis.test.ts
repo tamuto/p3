@@ -47,7 +47,7 @@ describe("根拠の規則（shared）", () => {
     expect(basisLabel(old.acceptanceEvidence![1])).toBe("未確認（種類未記録）");
     const st = acceptanceStatus(old)!;
     // 本文に「テスト」とあっても格上げしない
-    expect(st.metByBasis).toEqual({ unverified: 0, declaration: 1, read: 0, machine: 0 });
+    expect(st.metByBasis).toEqual({ unverified: 0, declaration: 1, read: 0, machine: 0, observation: 0 });
     expect(st.declarationOnly).toEqual(["A1"]);
     // 古い証拠を開いて同じ値で保存し直しても、根拠は足されず、記録の日時も変わらない
     const same = applyAcceptanceOps(old, [{ op: "record", id: "A1", result: "met", evidence: "テストを通した" }], at);
@@ -125,11 +125,11 @@ describe("根拠の規則（shared）", () => {
       ],
       at,
     );
-    expect(acceptanceStatus(s)!.metByBasis).toEqual({ unverified: 0, declaration: 1, read: 1, machine: 1 });
+    expect(acceptanceStatus(s)!.metByBasis).toEqual({ unverified: 0, declaration: 1, read: 1, machine: 1, observation: 0 });
     s = applyAcceptanceOps(s, [{ op: "edit", id: "A1", text: "いち" }, { op: "remove", id: "A3" }], at);
     const st = acceptanceStatus(s)!;
     expect(st.met).toBe(1);
-    expect(st.metByBasis).toEqual({ unverified: 0, declaration: 0, read: 1, machine: 0 });
+    expect(st.metByBasis).toEqual({ unverified: 0, declaration: 0, read: 1, machine: 0, observation: 0 });
     expect(st.declarationOnly).toEqual([]);
     expect(st.items.map((i) => i.state)).toEqual(["stale", "met"]);
     expect(st.orphans.map((e) => e.criterionId)).toEqual(["A3"]);
@@ -214,7 +214,7 @@ describe("保存と更新（core）", () => {
     await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "秘密の本文", basis: machine }, { op: "record", id: "A2", result: "met", evidence: "e" }] });
     const row = progress(ctx).find((p) => p.request.id === rid)!;
     const [a, b] = row.tasks;
-    expect(a.evidence).toEqual({ met: 2, total: 2, declarationOnly: 1, metByBasis: { unverified: 0, declaration: 1, read: 0, machine: 1 }, problems: false });
+    expect(a.evidence).toEqual({ met: 2, total: 2, declarationOnly: 1, metByBasis: { unverified: 0, declaration: 1, read: 0, machine: 1, observation: 0 }, problems: false });
     expect(b.evidence).toBeUndefined();
     expect(JSON.stringify(row)).not.toContain("秘密の本文");
     expect(JSON.stringify(row)).not.toContain("pnpm vitest");

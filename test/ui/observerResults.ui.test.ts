@@ -89,6 +89,19 @@ describe.skipIf(!inject("chromium").available)("観測の実行と結果", () =>
       await page.goto(`/observer/${id}`);
       await until.visible(page.getByRole("region", { name: "結果", exact: true }).getByText("古い（版 1 で実行）").first());
     });
+    await step("観測の結果を受け入れ基準の証拠の根拠にすると、タスクの詳細から結果へ移れ、期待が変わった後なら知らされる", async () => {
+      const met = (JSON.parse(await env.p3(["observer", "results", id, "--json"])) as { results: { id: string; verdict: string }[] }).results.find((x) => x.verdict === "met")!.id;
+      const rid = JSON.parse(await env.p3(["request", "new", "一覧を観測し直す", "--json"])).id as string;
+      await env.p3(["new", "観測し直す", "--req", rid, "--criterion", `観測 ${id}（一覧の速さ）を観測し直す`]);
+      await env.p3(["evidence", "T001", "A1", "met", "観測し直した", "--req", rid, "--basis", "observation", "--observation", `${id}/${met}`]);
+      await page.goto(`/requests/${rid}/board`);
+      await page.locator("section article").filter({ hasText: "T001" }).click();
+      const aside = page.locator("aside");
+      await until.text(aside, /観測の結果（期待どおり・版 1）|期待どおり・版 1/);
+      await until.text(aside, /観測の期待が変わりました（結果は版 1・今は版 2）/);
+      await aside.getByRole("link", { name: "観測の結果を開く" }).click();
+      await until.url(page, new RegExp(`/observer/${id}/runs/${met}$`));
+    });
     // 画面で記録した結果も CLI と同じ記録（2件・定義は期待の変更で版 2 だけ）
     const listed = JSON.parse(await env.p3(["observer", "results", id, "--json"])) as { results: { verdict: string; rev: number }[] };
     expect(listed.results.map((x) => [x.verdict, x.rev])).toEqual([["unmet", 1], ["met", 1]]);

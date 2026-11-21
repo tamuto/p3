@@ -50,3 +50,36 @@ export function observationSection(s: ObservationSnapshot | undefined): string {
 - 期待が未記入の観測は確定した仕様として扱わない（必要なら確認事項に書く）。影響が無ければ何も足さない
 `;
 }
+
+/**
+ * 受け入れ基準の証拠の根拠「観測の結果」の照合（docs/architecture.md「p3-observer」の観測の実行と結果）。アプリが起動のときに置き、
+ * 証拠を書く前に、満たしたの根拠にする結果が完了して期待どおりかを確かめる。供給口が無ければ確かめられないので断る
+ */
+export interface ObservationResultState {
+  status: "running" | "completed" | "interrupted";
+  verdict?: "met" | "unmet" | "unconfirmed";
+  /** 結果を実行した観測の版と、今の観測の版 */
+  rev: number;
+  currentRev: number;
+}
+type ResultSource = (dataDir: string, observation: string, result: string) => Promise<ObservationResultState | undefined>;
+let resultSource: ResultSource | undefined;
+
+export function setObservationResultSource(f: ResultSource | undefined) {
+  resultSource = f;
+}
+
+/** 観測の結果を読む（供給口が無い・読めないなら undefined） */
+export async function observationResultState(dataDir: string, observation: string, result: string): Promise<ObservationResultState | undefined> {
+  return resultSource?.(dataDir, observation, result).catch(() => undefined);
+}
+
+/** 満たしたの根拠に使えない理由（使えれば undefined） */
+export async function observationBasisProblem(dataDir: string, observation: string, result: string): Promise<string | undefined> {
+  if (!resultSource) return "観測の結果を確かめられません（観測の製品が組み込まれていません）";
+  const s = await observationResultState(dataDir, observation, result);
+  if (!s) return `観測の結果がありません・読めません: ${observation}/${result}`;
+  if (s.status !== "completed") return `観測の結果 ${result} はまだ完了していません（${s.status === "running" ? "実行中" : "中断"}）`;
+  if (s.verdict !== "met") return `観測の結果 ${result} の判定が期待どおりではありません（${s.verdict === "unmet" ? "期待どおりでない" : "未確認"}）`;
+  return undefined;
+}

@@ -1,5 +1,6 @@
 import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
-import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
+import { observationBasisProblem } from "./preflight/observations.ts";
+import { AcceptanceInputError, acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
 import { readManual } from "../features/metrics/core/manual.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../features/quality/shared/quality.ts";
@@ -277,6 +278,12 @@ export async function updateTask(
   let reworkSkipped: string | undefined;
   // 完了・済みになりうる更新なら、参照先を書く前に取る（ロックの外。取得時刻を残す）
   const refs = next.status === "done" || checked === true ? await captureRefs(ctx.ws.refs()) : undefined;
+  // 観測の結果を満たしたの根拠にするなら、書く前に結果が完了して期待どおりかを確かめる（アプリが置いた照合。tasks は observer を読まない）
+  for (const op of acceptance ?? []) {
+    if (op.op !== "record" || op.result !== "met" || op.basis?.kind !== "observation") continue;
+    const problem = await observationBasisProblem(ctx.ws.dataDir, op.basis.observation, op.basis.result);
+    if (problem) throw new AcceptanceInputError(`${op.id} の根拠にできません: ${problem}`);
+  }
   // 停止の操作だけで何も変わらない（同じ内容の付け直し・付いていない解除）なら書かない（rev を上げない）
   const onlyBlock = !!blockOp && !acceptance?.length && Object.keys(next).length === 0;
   let unchanged: Task | undefined;

@@ -1478,9 +1478,12 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - **証拠は申告**: 結果は `met` / `unmet` / `unverified`。`met` は本文が要る（空は入力の誤り）。未記録（証拠なし）と未検証は分ける。
   これは作業した側の申告で、レビューの判定ではない（AI のレビューを足すときも、その判定は証拠とは別の型で持ち、証拠を書き換えない）
 - **根拠の種類**: 証拠は任意の `basis` を持つ（`{kind: unverified}` 未確認 / `{kind: declaration}` 申告のみ / `{kind: read, reference}`
-  読んで確認 / `{kind: machine, command, result, target}` 検査結果あり）。結果と別の軸で、どれも作業した側の申告（P3 は実行しない。
+  読んで確認 / `{kind: machine, command, result, target}` 検査結果あり / `{kind: observation, observation, result}` 観測の結果）。結果と別の軸で、どれも作業した側の申告（P3 は実行しない。
   read と machine に正しさの上下は付けない。人の済みはタスクの `checkedAt` で、basis に human は作らない。AI レビューの判定は写さない）。
   型・ラベル・組み合わせ（met / unmet に未確認は不可、unverified は未確認だけ）・古い値の解釈・内訳・変更の比較は `features/requirements/shared/acceptance.ts`。
+  観測の結果を `met` の根拠にする記録は、書く前に `updateTask` が照合する（完了して判定が期待どおりの結果だけ。tasks は observer を読まないので、照合の
+  供給口 `setObservationResultSource`（`core/preflight/observations.ts`）をアプリが起動のときに置く。無ければ断る）。タスクの詳細は結果の状態と、結果を実行した版・
+  観測の今の版を後から読み（`GET /observation-results/:obs/:rid`。アプリの `server/api/requestObservations.ts`）、期待が変わっていれば知らせる
   根拠を省いた record は、同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ（古い CLI・画面の更新を
   妨げず、古い証拠を同じ値で保存し直しても根拠を足さない）。保存した値に basis が無い古い証拠は書き換えず、読むときだけ
   unverified は未確認、ほかは「申告のみ（種類未記録）」と解釈する（本文から推し量って格上げしない）。`acceptanceStatus` の `met` は
