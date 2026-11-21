@@ -1,3 +1,4 @@
+import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReleaseGeneration, ReleaseWarning } from "../../../shared/types.ts";
 import { api, ApiError, conflictNote, type ReleaseNoteDetail } from "../../../web/lib/api.ts";
@@ -43,6 +44,7 @@ export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: stri
   const [basedOn, setBasedOn] = useState<string | undefined>();
   const [msg, setMsg] = useState<{ ok: boolean; text: string; warnings?: ReleaseWarning[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  const once = useStartOnce(milestone);
   const latest = useRef(latestOnly());
   // 保存していない入力があるか（ページのタブの印）。別のマイルストーンに移ったら消す
   const dirty = !!draft && isNoteDirty(draft);
@@ -92,14 +94,10 @@ export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: stri
   const m = detail.material.milestone;
   const hasSources = detail.material.sources.some((s) => s.tasks.length);
 
-  async function generate() {
+  function generate() {
     setMsg(null);
-    try {
-      setGen(await api.generateReleaseNote(milestone));
-    } catch (e) {
-      // 始められなくても（Codex を使えない・材料が上限を超えるなど）、本文は手で書いて保存できる
-      setMsg({ ok: false, text: `${(e as Error).message}。${MANUAL_NOTE}` });
-    }
+    // 始められなくても（Codex を使えない・材料が上限を超えるなど）、本文は手で書いて保存できる（もう一度押せる）
+    void once.start(() => api.generateReleaseNote(milestone), setGen, (e) => setMsg({ ok: false, text: `${e.message}。${MANUAL_NOTE}` }));
   }
 
   function takeGenerated() {
@@ -165,7 +163,7 @@ export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: stri
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <GenerationView gen={gen} currentHash={detail.material.hash} hasSources={hasSources} onGenerate={() => void generate()} onTake={takeGenerated} />
+        <GenerationView gen={gen} currentHash={detail.material.hash} hasSources={hasSources} starting={once.pending} onGenerate={generate} onTake={takeGenerated} />
         <NoteEditor
           milestone={milestone}
           detail={detail}
@@ -193,12 +191,15 @@ function GenerationView({
   gen,
   currentHash,
   hasSources,
+  starting,
   onGenerate,
   onTake,
 }: {
   gen: ReleaseGeneration | null;
   currentHash: string;
   hasSources: boolean;
+  /** 開始待ち（押した直後から応答まで。実行中とは別の表示） */
+  starting: boolean;
   onGenerate: () => void;
   onTake: () => void;
 }) {
@@ -268,8 +269,8 @@ function GenerationView({
         {running ? (
           <Button onClick={() => void api.cancelReleaseGeneration(gen.id)}>生成を取り消す</Button>
         ) : (
-          <Button variant={gen?.status === "completed" ? "secondary" : "primary"} disabled={!hasSources} onClick={onGenerate}>
-            {gen?.status === "failed" || gen?.status === "cancelled" ? "もう一度生成する" : gen ? "生成し直す" : "機能の要約を生成"}
+          <Button variant={gen?.status === "completed" ? "secondary" : "primary"} disabled={!hasSources || starting} onClick={onGenerate}>
+            {starting ? STARTING_LABEL : gen?.status === "failed" || gen?.status === "cancelled" ? "もう一度生成する" : gen ? "生成し直す" : "機能の要約を生成"}
           </Button>
         )}
       </div>

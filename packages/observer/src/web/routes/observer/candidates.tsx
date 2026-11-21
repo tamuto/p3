@@ -1,6 +1,7 @@
 import { Alert, Button, buttonCls, Empty, Field, inputCls, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
 import type { CandidateJob } from "../../../shared/candidates.ts";
 import { fetchCandidates, listCandidates, startCandidates } from "../../lib/api.ts";
 
@@ -24,6 +25,7 @@ function Candidates() {
     return () => clearTimeout(t);
   }, [job]);
   const running = job?.status === "running";
+  const once = useStartOnce("candidates");
   return (
     <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
       <Link to="/observer" className={linkCls}>
@@ -36,8 +38,8 @@ function Candidates() {
       <Field label="補足（任意）">
         <textarea className={inputCls} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
-      <Button variant="primary" disabled={running} onClick={() => void startCandidates(note).then(setJob, (e: Error) => setError(e.message))}>
-        {running ? "候補を待っています…" : job ? "もう一度頼む" : "候補を頼む"}
+      <Button variant="primary" disabled={running || once.pending} onClick={() => void once.start(() => startCandidates(note), setJob, (e) => setError(e.message))}>
+        {once.pending ? STARTING_LABEL : running ? "候補を待っています…" : job ? "もう一度頼む" : "候補を頼む"}
       </Button>
       {error && <Alert>候補を頼めませんでした: {error}</Alert>}
       {job === undefined && <Loading />}

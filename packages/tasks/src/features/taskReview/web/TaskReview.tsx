@@ -135,7 +135,8 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
       setSelected(run.id);
       setChecked(undefined);
       setMsg({ ok: true, text: "レビューを始めました（新しい Codex のスレッド）" });
-      void load();
+      // 実行中の表示を読み直してから押せるように戻す（開始の操作が再び押せる間を挟まない）
+      await load();
     } catch (e) {
       if (e instanceof ApiError && (e.body as { code?: string } | null)?.code === "material_changed") setChecked(undefined);
       setMsg({ ok: false, text: `始められません: ${failureText(e)}` });

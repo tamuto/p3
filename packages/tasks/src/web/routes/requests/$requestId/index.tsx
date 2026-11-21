@@ -4,6 +4,7 @@ import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
 import { Badge, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
+import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
 import { RequestObservations } from "../../../components/RequestObservations.tsx";
 import { notesPanelState, PLAIN_RUN_BLOCKED } from "../../../lib/notes.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
@@ -176,26 +177,28 @@ function RequestPanel({
     }
   });
 
+  // 開始待ち（概要・確認事項・メモ欄のどの開始も同じ要望の状態を使う。応答が遅くても二重に送らない）と、この画面で始めた run
+  const once = useStartOnce(request.id);
+  const [startedId, setStartedId] = useState<string>();
   function started(r: PreflightRun) {
+    setStartedId(r.id);
     setRun(r);
     setRunId(r.id);
     ctx.reload();
   }
 
-  async function start() {
+  function start() {
     setError(null);
-    try {
-      started(await api.startPreflight(request.id));
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    void once.start(() => api.startPreflight(request.id), started, (e) => setError(`Preflight を始められませんでした（もう一度押せます）: ${e.message}`));
   }
 
   // 再実行・本文の編集・メモは、選んでいる run ではなく要望の最新の run（lastPreflight）が動いているかで決める
   // （古い履歴を見ていても、最新が動いていれば始めない。古い running の run を見ていても、最新が終わっていれば始められる）
-  const latestId = latest?.id ?? request.lastPreflight;
+  // この画面で始めた run は、要望の読み直しを待たずに最新として扱う（run の ID は始めた時刻の順に並ぶ）
+  const latestId = [latest?.id ?? request.lastPreflight, startedId].filter((x): x is string => !!x).sort().at(-1);
   const latestStatus = latest?.id === latestId && latest?.status ? latest.status : run?.id === latestId ? run?.status : runs.find((r) => r.id === latestId)?.status;
   const running = latestStatus === "running";
+  const starting = once.pending;
   // 選んでいる run が running なら中断できる（最新でなくても）
   const selectedRunning = run?.status === "running";
   const [cancelNote, setCancelNote] = useState<{ runId: string; text: string } | null>(null);
@@ -223,7 +226,7 @@ function RequestPanel({
   useUnsaved(!!draft.trim());
   // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
   const hasHistory = runs.length > 0 || !!run;
-  const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: false, pending: 0 });
+  const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: starting, pending: 0 });
   // 本文を保存したら、表示中の run の評価対象との比較も取り直す
   const refreshRun = () => runId && void api.run(request.id, runId).then(setRun, () => undefined);
   // メモ欄は評価の下（評価を読んでから書くため）。入力中の文はここで持つので、表示が変わっても消えない
@@ -237,6 +240,8 @@ function RequestPanel({
       draft={draft}
       onDraft={setDraft}
       onStarted={started}
+      starting={starting}
+      startOnce={once.start}
       gone={data.gone}
       blocked={blocked}
     />
@@ -287,8 +292,8 @@ function RequestPanel({
       <RequestObservations requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={() => void start()} disabled={running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
-          {running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
+        <Button variant="primary" onClick={start} disabled={starting || running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
+          {starting ? STARTING_LABEL : running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
         </Button>
         {engine && (
           <span
@@ -357,7 +362,7 @@ function RequestPanel({
               // 表示中の run でなければ取り込まない（切り替えたあとに届いた応答）
               return next.id === runIdRef.current ? next : cur;
             })
-          } onOpenRun={setRunId} notes={notes} blocked={blocked} onAnswersDirty={setAnswersDirty} onRequestChanged={() => { data.reload(); refreshRun(); }} onRerun={() => void start()} canRerun={!running && engine?.ok !== false && !notesState.blockPlainRun && !blocked} />
+          } onOpenRun={setRunId} notes={notes} blocked={blocked} onAnswersDirty={setAnswersDirty} onRequestChanged={() => { data.reload(); refreshRun(); }} onRerun={start} canRerun={!starting && !running && engine?.ok !== false && !notesState.blockPlainRun && !blocked} />
       ) : (
         // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
         notes
