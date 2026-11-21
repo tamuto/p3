@@ -19,6 +19,7 @@ describe.skipIf(!inject("chromium").available)("観測の実行と結果", () =>
     const prep = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify({ name: "データ", setup: { run: AI }, teardown: { run: AI }, exclusive: [] }))).id;
     const def = { title: "一覧の速さ", description: "x", expected: "1秒以内", preparations: [prep], measures: [{ name: "ms", type: "number", unit: "ms" }], procedures: [{ title: "開く", measures: ["ms"], run: AI }] };
     const id = (await j(["observer", "add", "--input", "-"], JSON.stringify(def))).id;
+    let ng = "";
     const stage = () => page.getByRole("combobox", { name: /^段/ });
 
     await step("詳細の「実行を記録する」で始めると、実行の指示と、最初の段（前処理）を選んだ記録の欄が出る", async () => {
@@ -55,7 +56,7 @@ describe.skipIf(!inject("chromium").available)("観測の実行と結果", () =>
       await until.visible(page.getByText("理由: すべての手順が期待どおり"));
     });
     await step("同じ版で期待どおりでない結果が混ざると、詳細に不安定、一覧に最後の結果と不安定が出る", async () => {
-      const r = (await j(["observer", "run", id])).id;
+      const r = (ng = (await j(["observer", "run", id])).id);
       for (const st of [{ phase: "setup", ref: prep }, { phase: "procedure", ref: "P1", result: "unmet" }])
         await env.p3(["observer", "record", id, r, "--input", "-"], JSON.stringify({ result: "met", basis: { kind: "declaration" }, ...st }));
       await env.p3(["observer", "finish", id, r]);
@@ -65,6 +66,20 @@ describe.skipIf(!inject("chromium").available)("観測の実行と結果", () =>
       const row = page.getByRole("row").filter({ hasText: "一覧の速さ" });
       await until.text(row, /期待どおりでない/);
       await until.text(row, /不安定/);
+    });
+    await step("期待どおりでなかった結果から、原因の種類を選んで下書きの要望を作ると、結果と要望の詳細が相互にリンクする", async () => {
+      await page.goto(`/observer/${id}/runs/${ng}`);
+      const panel = page.getByRole("region", { name: "要望を作る" });
+      await until.text(panel, /不具合: 観測「一覧の速さ」が期待どおりでない/);
+      await panel.getByRole("combobox", { name: /^原因の種類/ }).selectOption("spec");
+      await until.text(panel, /仕様のずれ: 観測「一覧の速さ」が期待どおりでない[\s\S]*の期待を〜に変える/);
+      await panel.getByRole("button", { name: "下書きの要望を作る" }).click();
+      const link = page.getByRole("link", { name: /仕様のずれ: 観測「一覧の速さ」/ });
+      await until.visible(link);
+      await link.click();
+      await until.url(page, /\/requests\/\d{6}-/);
+      await page.getByRole("link", { name: new RegExp(`一覧の速さ の結果 ${ng}`) }).click();
+      await until.url(page, new RegExp(`/runs/${ng}$`));
     });
     await step("期待を変えると、前の版の結果は古いと分かる（不安定は今の版だけで数える）", async () => {
       await env.p3(["observer", "update", id, "--rev", "1", "--expected", "0.5秒以内", "--reason", "速さを上げた"]);
@@ -77,5 +92,6 @@ describe.skipIf(!inject("chromium").available)("観測の実行と結果", () =>
     // 画面で記録した結果も CLI と同じ記録（2件・定義は期待の変更で版 2 だけ）
     const listed = JSON.parse(await env.p3(["observer", "results", id, "--json"])) as { results: { verdict: string; rev: number }[] };
     expect(listed.results.map((x) => [x.verdict, x.rev])).toEqual([["unmet", 1], ["met", 1]]);
+    expect(JSON.parse(await env.p3(["observer", "followup", id, ng, "--json"])).existing.title).toBe("仕様のずれ: 観測「一覧の速さ」が期待どおりでない");
   });
 });

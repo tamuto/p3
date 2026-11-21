@@ -96,6 +96,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   observer record <ID> <結果 ID> --input <段の JSON|->   段を1つ記録する（phase・ref・result・measures・basis・evidence）
   observer finish <ID> <結果 ID> | interrupt <ID> <結果 ID> --reason <理由>   完了して判定する（期待どおり・期待どおりでない・未確認）・中断として閉じる
   observer results <ID> [<結果 ID>]   結果の一覧・1件
+  observer followup <ID> <結果 ID> [--create bug|spec]   期待どおりでなかった結果の要望の原稿（--create を付けたときだけ下書きの要望を作る）
   observer prep list | show | add | update | switch | rm   準備（観測の前後で状態を作る・戻すもの）の一覧・詳細・作成・更新・切り替え・削除
                                add / update は --input か --title <名前>・--body <説明>。switch は <準備 ID> <check|setup|teardown>。rm は使う観測が無いときだけ
                                --json で product・version・state・dataDir（今は何も保存しないので null）

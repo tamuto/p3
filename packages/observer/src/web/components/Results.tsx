@@ -1,8 +1,8 @@
 import { Alert, Badge, Button, Empty, Field, inputCls, Loading, linkCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { BASIS_LABEL, PHASE_LABEL, STEP_RESULT_LABEL, UNSTABLE_TEXT, VERDICT_LABEL, type ObservationResult, type ResultSummary, type StepRecord, type Verdict } from "../../shared/result.ts";
-import { fetchResults, startResult } from "../lib/api.ts";
+import { BASIS_LABEL, FOLLOW_UP_KINDS, FOLLOW_UP_LABEL, type FollowUpKind, PHASE_LABEL, STEP_RESULT_LABEL, UNSTABLE_TEXT, VERDICT_LABEL, type ObservationResult, type ResultSummary, type StepRecord, type Verdict } from "../../shared/result.ts";
+import { createFollowUp, fetchFollowUp, fetchResults, startResult } from "../lib/api.ts";
 import { useLoad } from "../lib/useLoad.ts";
 
 const TONE: Record<Verdict, Tone> = { met: "emerald", unmet: "rose", unconfirmed: "slate" };
@@ -151,6 +151,51 @@ export function ResultsSection({ id, rev, ended }: { id: string; rev: number; en
           )}
         </>
       )}
+    </section>
+  );
+}
+
+/** 期待どおりでなかった結果から要望を作る（人が不具合か仕様のずれかを選び、原稿を確かめて明示したときだけ）。作った要望があればそのリンク */
+export function FollowUpPanel({ r }: { r: ObservationResult }) {
+  const [tick, setTick] = useState(0);
+  const load = useLoad(() => fetchFollowUp(r.observation, r.id), `${r.id}:${tick}`);
+  const [kind, setKind] = useState<FollowUpKind>("bug");
+  const [error, setError] = useState<string>();
+  if (load.kind === "loading") return <Loading />;
+  if (load.kind === "error") return <Alert>要望の状態を読めませんでした: {load.message}</Alert>;
+  const { existing, drafts } = load.value;
+  if (existing)
+    return (
+      <p>
+        この結果から作った要望:{" "}
+        <Link to="/requests/$requestId" params={{ requestId: existing.request }} className={linkCls}>
+          {existing.request} {existing.title}
+        </Link>
+        （{existing.status}）
+      </p>
+    );
+  if (!drafts) return null;
+  return (
+    <section aria-labelledby="followup-heading" className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-800">
+      <h2 id="followup-heading" className="text-xl font-semibold">
+        要望を作る
+      </h2>
+      <p>期待どおりでなかった原因を選んでください。選んだ種類の原稿で下書きの要望を作ります（作るまで何も登録しません）。</p>
+      <Field label="原因の種類">
+        <select className={inputCls} value={kind} onChange={(e) => setKind(e.target.value as FollowUpKind)}>
+          {FOLLOW_UP_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {FOLLOW_UP_LABEL[k]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="font-semibold">{drafts[kind].title}</p>
+      <pre className="whitespace-pre-wrap break-all">{drafts[kind].body}</pre>
+      {error && <Alert box>{error}</Alert>}
+      <Button variant="primary" onClick={() => void createFollowUp(r.observation, r.id, kind).then(() => setTick((t) => t + 1), (e: Error) => setError(e.message))}>
+        下書きの要望を作る
+      </Button>
     </section>
   );
 }

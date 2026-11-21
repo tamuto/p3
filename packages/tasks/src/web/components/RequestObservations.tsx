@@ -34,7 +34,7 @@ export function RequestObservations({ requestId, tick }: { requestId: string; ti
       {state.kind === "ok" && (
         <>
           {state.value.observations.length === 0 ? (
-            <Empty>この要望の作業で作った・期待を変えた・終えた観測はありません。</Empty>
+            !state.value.results?.length && <Empty>この要望の作業で作った・期待を変えた・終えた観測はありません。</Empty>
           ) : (
             <ul className="list-disc space-y-1 pl-6">
               {state.value.observations.map((o) => (
@@ -48,6 +48,14 @@ export function RequestObservations({ requestId, tick }: { requestId: string; ti
               ))}
             </ul>
           )}
+          {state.value.results?.map((r) => (
+            <p key={r.result}>
+              この要望は観測の結果から作りました:{" "}
+              <Link to="/observer/$id/runs/$rid" params={{ id: r.observation, rid: r.result }} className={linkCls}>
+                {r.title ?? r.observation} の結果 {r.result}
+              </Link>
+            </p>
+          ))}
           {state.value.unreadable > 0 && <Alert warn>読めない観測のファイルが {state.value.unreadable} 件あり、その中の履歴は数えていません。</Alert>}
         </>
       )}

@@ -5,7 +5,7 @@ import { BASIS_LABEL, lastSteps, PHASE_LABEL, STEP_RESULT_LABEL, STEP_RESULTS, t
 import { MEASURE_TYPE_LABEL } from "../../../../../shared/definition.ts";
 import { fetchResult, finishResult, interruptResult, ObserverApiError, recordStep, type RunningResult } from "../../../../lib/api.ts";
 import { useLoad } from "../../../../lib/useLoad.ts";
-import { ResultBadge, ResultBody, StepList } from "../../../../components/Results.tsx";
+import { FollowUpPanel, ResultBadge, ResultBody, StepList } from "../../../../components/Results.tsx";
 
 /**
  * /observer/<ID>/runs/<結果ID>: 実行の記録。実行の指示を見ながら、段（準備の確かめ・前処理・手順・後処理）ごとに判定・測定値・根拠・証跡を記録し、
@@ -37,7 +37,14 @@ function RunPage() {
               版 {r.rev} で開始・<span data-aux>{r.id}</span>・期待: {r.snapshot.expected ?? "（未記入。判定は未確認になります）"}
             </p>
           </header>
-          {r.status === "running" ? <Recording r={r} update={update} /> : <ResultBody r={r} currentRev={r.rev} />}
+          {r.status === "running" ? (
+            <Recording r={r} update={update} />
+          ) : (
+            <>
+              <ResultBody r={r} currentRev={r.rev} />
+              <FollowUpPanel r={r} />
+            </>
+          )}
         </>
       )}
     </div>

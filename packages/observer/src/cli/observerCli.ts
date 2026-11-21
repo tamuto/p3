@@ -9,7 +9,7 @@ import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { WorkStore } from "../core/workStore.ts";
 import { readEnvironment, ResultStore } from "../core/resultStore.ts";
-import { PHASE_LABEL, resultText, runInstructions, runLines, STEP_RESULT_LABEL } from "../shared/result.ts";
+import { FOLLOW_UP_KINDS, FOLLOW_UP_LABEL, followUpDraft, PHASE_LABEL, resultText, runInstructions, runLines, STEP_RESULT_LABEL, type FollowUpAdapter, type FollowUpKind } from "../shared/result.ts";
 import type { CandidateService } from "../core/candidates.ts";
 import type { CandidateJob, ObservationCandidate } from "../shared/candidates.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
@@ -31,6 +31,7 @@ export const OBSERVER_USAGE = [
   "p3 observer record <ID> <結果 ID> --input <段の JSON|->（段を1つ記録する: phase・ref・result・measures・basis・evidence）",
   "p3 observer finish <ID> <結果 ID>（完了して判定する）/ interrupt <ID> <結果 ID> --reason <理由>（中断として閉じる）",
   "p3 observer results <ID> [<結果 ID>] [--json]（結果の一覧・1件）",
+  "p3 observer followup <ID> <結果 ID> [--create bug|spec]（期待どおりでなかった結果の要望の原稿・作った要望。--create を付けたときだけ下書きの要望を作る）",
   "p3 observer prep list | show <準備 ID>（準備の一覧・詳細と、それを使う観測）",
   "p3 observer prep add [--input <JSON のファイル|->] [--title <名前>] [--body <説明>]",
   "p3 observer prep update <準備 ID> --rev <今の版> [--input ..] [--title <名前>] [--body <説明>]",
@@ -39,9 +40,9 @@ export const OBSERVER_USAGE = [
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep", "candidates", "run", "record", "finish", "interrupt", "results"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep", "candidates", "run", "record", "finish", "interrupt", "results", "followup"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
-export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch", "run", "record", "finish", "interrupt"] as const;
+export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch", "run", "record", "finish", "interrupt", "followup"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
 export const observerWrites = (args: string[]) =>
@@ -74,6 +75,10 @@ export interface ObserverCliOptions {
   /** add: 観測の候補（<CID>:<番号>）と、その推定の経緯を残すか */
   candidate?: string;
   origin?: boolean;
+  /** followup: 作る要望の種類（bug / spec）。付けたときだけ作る */
+  create?: string;
+  /** followup: 入口が組み立てた要望の作り方（tasks の要望を作る・探す） */
+  followUp?: () => Promise<FollowUpAdapter>;
   /** candidates: 入口が組み立てた観測の候補の提案の実行 */
   candidates?: () => Promise<CandidateService>;
   /** suggest: 入口が組み立てた提案の実行（Codex の接続を共有するアダプター入り） */
@@ -149,7 +154,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
     if (sub === "prep") return await prepCommand(rest, opts, actor, files);
-    if (["run", "record", "finish", "interrupt", "results"].includes(sub)) return await resultCommand(sub, rest, opts, store, actor);
+    if (["run", "record", "finish", "interrupt", "results", "followup"].includes(sub)) return await resultCommand(sub, rest, opts, store, actor);
     if (sub === "candidates") {
       const [cid, ...extra] = rest;
       if (extra.length) throw new UsageError("p3 observer candidates [<CID>] [--note <補足>]");
@@ -252,6 +257,21 @@ async function resultCommand(sub: string, rest: string[], opts: ObserverCliOptio
     const l = await results.list(id);
     const rev = await current();
     return { data: l, text: [`結果 ${l.results.length} 件（${id}・今の版 v${rev}）`, ...l.results.map((r) => resultText(r, rev).split("\n")[0]), ...l.unreadable.map((u) => `⚠ 読めないファイル ${u.file}: ${u.reason}`)].join("\n") };
+  }
+  if (sub === "followup") {
+    if (!opts.followUp) throw new Error("observer: 要望の作り方が渡されていません");
+    const adapter = await opts.followUp();
+    if (opts.create !== undefined) {
+      if (!FOLLOW_UP_KINDS.includes(opts.create as FollowUpKind)) throw new UsageError("--create は bug（不具合）か spec（仕様のずれ）です");
+      const f = await results.followUp(id, rid, opts.create as FollowUpKind, actor, adapter);
+      return { data: f, text: `下書きの要望を作りました: ${f.request}「${f.title}」` };
+    }
+    const r = await results.get(id, rid);
+    const existing = await adapter.find(id, rid);
+    if (existing) return { data: { existing }, text: `この結果の要望: ${existing.request}「${existing.title}」（${existing.status}）` };
+    if (r.status !== "completed" || r.verdict !== "unmet") return { code: 1, error: `要望を作れるのは、判定が期待どおりでない結果だけです（${rid}）` };
+    const drafts = { bug: followUpDraft(r, "bug"), spec: followUpDraft(r, "spec") };
+    return { data: { drafts }, text: [...FOLLOW_UP_KINDS.flatMap((k) => [`## ${FOLLOW_UP_LABEL[k]}（--create ${k}）`, drafts[k].title, drafts[k].body, ""]), "まだ作っていません。種類を選んで --create bug か --create spec を付けると下書きの要望を作ります"].join("\n") };
   }
   if (sub === "run") {
     const r = await results.start(id, actor, { repos: readEnvironment((t.repoNames?.() ?? []).map((n) => [n, t.repoPath?.(n)])), note: opts.body });

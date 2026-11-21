@@ -1,7 +1,7 @@
 import type { DefinitionInput, DefinitionProblem, Drift, FileState, ObservationDefinition, References } from "../../shared/definition.ts";
 import type { Preparation, Slot } from "../../shared/preparation.ts";
 import type { CandidateJob } from "../../shared/candidates.ts";
-import type { ObservationResult, ResultSummary } from "../../shared/result.ts";
+import type { FollowUp, FollowUpKind, ObservationResult, ResultSummary } from "../../shared/result.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
 import { observerScope } from "./scope.ts";
@@ -96,3 +96,5 @@ export const fetchResult = (id: string, rid: string) => call<RunningResult>(`${d
 export const recordStep = (id: string, rid: string, step: unknown) => call<ObservationResult>(`${def(id)}/results/${rid}/steps`, { method: "POST", headers: project().headers, body: JSON.stringify(step) });
 export const finishResult = (id: string, rid: string) => call<ObservationResult>(`${def(id)}/results/${rid}/finish`, { method: "POST", headers: project().headers });
 export const interruptResult = (id: string, rid: string, reason: string) => call<ObservationResult>(`${def(id)}/results/${rid}/interrupt`, { method: "POST", headers: project().headers, body: JSON.stringify({ reason }) });
+export const fetchFollowUp = (id: string, rid: string) => call<{ existing?: FollowUp; drafts?: Record<FollowUpKind, { title: string; body: string }> }>(`${def(id)}/results/${rid}/followup`, { headers: project().headers });
+export const createFollowUp = (id: string, rid: string, kind: FollowUpKind) => call<FollowUp>(`${def(id)}/results/${rid}/followup`, { method: "POST", headers: project().headers, body: JSON.stringify({ kind }) });

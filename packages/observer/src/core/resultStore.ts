@@ -4,7 +4,7 @@ import { createExclusive, newRequestId, nowIso, withFileLock, writeFileAtomic } 
 import { git } from "@infodb/p3-shared/node/usage.ts";
 import { DefinitionError, type DefinitionStore, type PreparationStore } from "./definitionStore.ts";
 import { isDefinitionId } from "../shared/definition.ts";
-import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, resultSummary, type ResultSummary, snapshotOf, validateStep, type EnvRepo, type ObservationResult, type PrerequisiteState } from "../shared/result.ts";
+import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, resultSummary, followUpDraft, VERDICT_LABEL, type FollowUp, type FollowUpAdapter, type FollowUpKind, type ResultSummary, snapshotOf, validateStep, type EnvRepo, type ObservationResult, type PrerequisiteState } from "../shared/result.ts";
 
 /** 参照先ごとの今のコミット・ブランチ・未コミットの変更（読めないものは commit が無い） */
 export function readEnvironment(repos: [string, string | undefined][]): EnvRepo[] {
@@ -119,6 +119,20 @@ export class ResultStore {
     const out: Record<string, ResultSummary> = {};
     for (const d of defs) out[d.id] = resultSummary((await this.list(d.id)).results, d.rev);
     return out;
+  }
+
+  /**
+   * 期待どおりでなかった結果から要望を作る（人が種類を選んで明示したときだけ）。同じ結果の要望が既にあれば作らずに知らせる（結び付きは要望のタグ）。
+   * 探す・作るはロックの中で行い、重ねて作らない
+   */
+  followUp(obs: string, rid: string, kind: FollowUpKind, actor: string, adapter: FollowUpAdapter): Promise<FollowUp> {
+    return this.locked(async () => {
+      const r = await this.get(obs, rid);
+      if (r.status !== "completed" || r.verdict !== "unmet") throw new DefinitionError("invalid", `要望を作れるのは、判定が期待どおりでない結果だけです（${rid} は ${r.status === "completed" ? VERDICT_LABEL[r.verdict!] : r.status === "running" ? "実行中" : "中断"}）`);
+      const existing = await adapter.find(obs, rid);
+      if (existing) throw new DefinitionError("conflict", `この結果の要望は既にあります: ${existing.request}「${existing.title}」`);
+      return adapter.create(obs, rid, followUpDraft(r, kind), actor);
+    });
   }
 
   /** 前提の観測の今の状態（今の版で完了した最後の結果の判定） */
