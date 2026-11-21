@@ -9,7 +9,7 @@ import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { WorkStore } from "../core/workStore.ts";
 import { readEnvironment, ResultStore } from "../core/resultStore.ts";
-import { PHASE_LABEL, resultText, STEP_RESULT_LABEL } from "../shared/result.ts";
+import { PHASE_LABEL, resultText, runInstructions, runLines, STEP_RESULT_LABEL } from "../shared/result.ts";
 import type { CandidateService } from "../core/candidates.ts";
 import type { CandidateJob, ObservationCandidate } from "../shared/candidates.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
@@ -255,7 +255,8 @@ async function resultCommand(sub: string, rest: string[], opts: ObserverCliOptio
   }
   if (sub === "run") {
     const r = await results.start(id, actor, { repos: readEnvironment((t.repoNames?.() ?? []).map((n) => [n, t.repoPath?.(n)])), note: opts.body });
-    return { data: r, text: `始めました: ${r.id}（${id} 版 ${r.rev}）。段を記録したら p3 observer finish ${id} ${r.id}\n${resultText(r)}` };
+    const instructions = runInstructions(r, await results.prerequisites(r));
+    return { data: { ...r, instructions }, text: `始めました: ${r.id}（${id} 版 ${r.rev}）\n${resultText(r)}\n\n${instructions}` };
   }
   if (sub === "record") {
     if (opts.input === undefined) throw new UsageError("段の記録は --input <JSON のファイル|-> で渡してください（phase・ref・result・measures・basis・evidence・note）");
@@ -311,12 +312,7 @@ function procedureLines(p: Procedure, files: Files, indent = "  "): string[] {
 /** 今の実行方法・置き換え候補・切り替えの履歴を読める文にする（ファイルは有無を添える。手順と準備で共通） */
 function executableLines(p: Executable, files: Files, i2: string): string[] {
   const r = p.run;
-  const out: string[] = [];
-  if (r.kind === "ai-instruction") {
-    if (r.premise) out.push(`${i2}前提: ${r.premise}`);
-    out.push(`${i2}対象: ${r.target}`, ...r.steps.map((x, j) => `${i2}${j + 1}. ${x}`), `${i2}判定: ${r.judge}`, `${i2}記録: ${r.record}`);
-  } else if (r.kind === "command") out.push(`${i2}${[r.command, ...r.args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))].join(" ")}${r.repo ? `  （作業場所 ${r.repo}:${r.cwd ?? "."}）` : ""}`);
-  else out.push(`${i2}${r.repo}:${r.path} ${fileNote(files, r.repo, r.path)}${r.invoke ? `  呼び出し方: ${r.invoke}` : ""}`);
+  const out = r.kind === "ai-instruction" || r.kind === "command" ? runLines(r, i2) : [`${i2}${r.repo}:${r.path} ${fileNote(files, r.repo, r.path)}${r.invoke ? `  呼び出し方: ${r.invoke}` : ""}`];
   const rep = p.replacement;
   if (rep) {
     out.push(`${i2}置き換え候補: ${RUN_KIND_LABEL[rep.kind]} ${rep.repo}:${rep.path} ${fileNote(files, rep.repo, rep.path)}`);

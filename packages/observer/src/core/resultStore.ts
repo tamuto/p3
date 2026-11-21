@@ -4,7 +4,7 @@ import { createExclusive, newRequestId, nowIso, withFileLock, writeFileAtomic } 
 import { git } from "@infodb/p3-shared/node/usage.ts";
 import { DefinitionError, type DefinitionStore, type PreparationStore } from "./definitionStore.ts";
 import { isDefinitionId } from "../shared/definition.ts";
-import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, snapshotOf, validateStep, type EnvRepo, type ObservationResult } from "../shared/result.ts";
+import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, snapshotOf, validateStep, type EnvRepo, type ObservationResult, type PrerequisiteState } from "../shared/result.ts";
 
 /** 参照先ごとの今のコミット・ブランチ・未コミットの変更（読めないものは commit が無い） */
 export function readEnvironment(repos: [string, string | undefined][]): EnvRepo[] {
@@ -106,17 +106,22 @@ export class ResultStore {
     return this.locked(async () => {
       const r = await this.get(obs, rid);
       this.running(r);
-      const prerequisites = await Promise.all(
-        r.snapshot.prerequisites.map(async (id) => {
-          const cur = await this.defs.get(id).catch(() => undefined);
-          return prerequisiteState(id, cur, cur ? (await this.list(id)).results : []);
-        }),
-      );
+      const prerequisites = await this.prerequisites(r);
       const j = judge(r, prerequisites);
       const next: ObservationResult = { ...r, status: "completed", prerequisites, verdict: j.verdict, reason: j.reason, ...(j.teardownProblems.length ? { teardownProblems: j.teardownProblems } : {}), finishedAt: nowIso(), finishedBy: actor };
       await this.save(next);
       return next;
     });
+  }
+
+  /** 前提の観測の今の状態（今の版で完了した最後の結果の判定） */
+  prerequisites(r: ObservationResult): Promise<PrerequisiteState[]> {
+    return Promise.all(
+      r.snapshot.prerequisites.map(async (id) => {
+        const cur = await this.defs.get(id).catch(() => undefined);
+        return prerequisiteState(id, cur, cur ? (await this.list(id)).results : []);
+      }),
+    );
   }
 
   /** 中断として閉じる（途中で止めた・続けられない）。判定しない */

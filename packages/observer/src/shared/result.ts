@@ -1,4 +1,4 @@
-import { isRecord, LIMIT, type DefinitionProblem, type Executable, type Measure, type ObservationDefinition, type Procedure } from "./definition.ts";
+import { isRecord, LIMIT, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, type DefinitionProblem, type Executable, type Measure, type ObservationDefinition, type Procedure, type Run } from "./definition.ts";
 import { SLOT_LABEL, type Preparation, type Slot } from "./preparation.ts";
 
 /**
@@ -238,4 +238,56 @@ export function resultText(r: ObservationResult, currentRev?: number): string {
     lines.push(`  - ${PHASE_LABEL[st.phase]} ${st.ref}: ${STEP_RESULT_LABEL[st.result]}${m}（${b}）${st.evidence ? ` 証跡 ${st.evidence}` : ""}`);
   }
   return lines.join("\n");
+}
+
+/** 今の実行方法を読める文にする（CLI の表示と実行の指示で共通） */
+export function runLines(r: Run, i: string): string[] {
+  if (r.kind === "ai-instruction") return [...(r.premise ? [`${i}前提: ${r.premise}`] : []), `${i}対象: ${r.target}`, ...r.steps.map((x, j) => `${i}${j + 1}. ${x}`), `${i}判定: ${r.judge}`, `${i}記録: ${r.record}`];
+  if (r.kind === "command") return [`${i}${[r.command, ...r.args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))].join(" ")}${r.repo ? `  （作業場所 ${r.repo}:${r.cwd ?? "."}）` : ""}`];
+  return [`${i}${r.repo}:${r.path}${r.invoke ? `  呼び出し方: ${r.invoke}` : ""}`];
+}
+
+/** 準備の原則（docs/architecture.md「前提の観測と準備」。実行の指示に入れる） */
+export const PREPARATION_PRINCIPLES = [
+  "始める前に既知の状態に戻す（後処理はできるときにやる片付けで、頼りにしない）",
+  "作るデータには実行ごとに一意な名前を付ける",
+  "失敗したら片付ける前に証跡（スクリーンショット・ログ）を取り、その段の evidence に書く",
+  "決まった秒数ではなく条件で待つ",
+];
+
+/**
+ * 実行の指示: 前提の観測の今の状態 → 準備の確かめ → 前処理 → 手順 → 証跡 → 後処理 → 完了 の順に、各段の今の実行方法と記録のコマンドを並べる。
+ * 結果の写しから作るので、実行中に定義が変わっても指示は変わらない。P3 は実行しない（実行するのは読んだ人か AI）
+ */
+export function runInstructions(r: ObservationResult, prereqs: PrerequisiteState[]): string {
+  const s = r.snapshot;
+  const rec = (phase: Phase, ref: string, measures = "") =>
+    `    記録: p3 observer record ${r.observation} ${r.id} --input - に {"phase":"${phase}","ref":"${ref}","result":"met|unmet|failed",${measures}"basis":{"kind":"machine","command":"…","result":"…"} か {"kind":"read","reference":"…"} か {"kind":"declaration"},"evidence":"…"}`;
+  const bad = prereqs.filter((p) => p.state !== "met");
+  const out = [
+    `観測 ${r.observation}「${s.title}」（版 ${r.rev}）の実行の指示。P3 は手順を実行しません。あなた（人か担当の AI）が順に実行し、段ごとに記録します。`,
+    `期待: ${s.expected ?? "（未記入。判定は未確認になります）"}`,
+    ...bad.map((p) => `⚠ 前提の観測 ${p.id} は今の版で期待どおりの結果がありません（${PREREQ_LABEL[p.state]}）。続けても判定は未確認になります（先に ${p.id} を実行してください）`),
+    "",
+    "準備の原則:",
+    ...PREPARATION_PRINCIPLES.map((x) => `- ${x}`),
+    "",
+  ];
+  let n = 0;
+  const step = (title: string, lines: string[]) => out.push(`${++n}. ${title}`, ...lines);
+  if (s.prerequisites.length) step("前提の観測（照らすだけ。完了のときに今の版の最後の結果を見る）", prereqs.map((p) => `    ${p.id}: ${PREREQ_LABEL[p.state]}${p.result ? `（${p.result}）` : ""}`));
+  for (const slot of ["check", "setup"] as const)
+    for (const p of s.preparations) if (p[slot]) step(`準備「${p.name}」の${SLOT_LABEL[slot]}（${RUN_KIND_LABEL[p[slot].run.kind]}）`, [...runLines(p[slot].run, "    "), rec(slot, p.id)]);
+  for (const p of s.procedures) {
+    const ms = p.measures.map((name) => s.measures.find((m) => m.name === name)).filter((m): m is Measure => !!m);
+    step(`手順 ${p.id} ${p.title}（${RUN_KIND_LABEL[p.run.kind]}）`, [
+      ...runLines(p.run, "    "),
+      ...(ms.length ? [`    測る: ${ms.map((m) => `${m.name}（${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `・${m.unit}` : ""}）`).join("・")}`] : []),
+      rec("procedure", p.id, ms.length ? `"measures":{${ms.map((m) => `"${m.name}":…`).join(",")}},` : ""),
+    ]);
+  }
+  step("証跡", ["    期待どおりでない・実行できなかった段は、片付ける前に証跡を取り、その段の evidence に書く"]);
+  for (const p of s.preparations) if (p.teardown) step(`準備「${p.name}」の後処理（${RUN_KIND_LABEL[p.teardown.run.kind]}。失敗しても判定は変わらない）`, [...runLines(p.teardown.run, "    "), rec("teardown", p.id)]);
+  step("完了", [`    p3 observer finish ${r.observation} ${r.id}（判定する）。続けられなくなったら p3 observer interrupt ${r.observation} ${r.id} --reason "…"`]);
+  return out.join("\n");
 }

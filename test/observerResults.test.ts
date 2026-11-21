@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DefinitionStore, PreparationStore } from "../packages/observer/src/core/definitionStore.ts";
 import { ResultStore } from "../packages/observer/src/core/resultStore.ts";
-import { judge, prerequisiteState } from "../packages/observer/src/shared/result.ts";
+import { judge, prerequisiteState, runInstructions } from "../packages/observer/src/shared/result.ts";
+import { GUIDE_SOURCE } from "../packages/p3/src/cli/guide.ts";
+const GUIDE = readFileSync(GUIDE_SOURCE, "utf8");
 import { observerRoutes } from "../packages/observer/src/server/api/routes.ts";
 import { tempDir } from "./helpers.ts";
 import { initialized, p3 } from "./cliHelpers.ts";
@@ -99,6 +101,32 @@ describe("結果の記録と判定", () => {
   });
 });
 
+describe("実行の指示", () => {
+  it("前提 → 確かめ → 前処理 → 手順 → 証跡 → 後処理 → 完了 の順に、実行方法と記録のコマンドを並べ、前提が足りなければ頭に出す", async () => {
+    const { d, pre, prep, results } = await setup();
+    const r = await results.start(d.id, "ai:t", { repos: [] });
+    const text = runInstructions(r, await results.prerequisites(r));
+    expect(text.split("\n").slice(0, 3).join("\n")).toContain(`⚠ 前提の観測 ${pre.id} は今の版で期待どおりの結果がありません（まだ実行していない）。続けても判定は未確認になります`);
+    const order = ["1. 前提の観測", "2. 準備「データ」の確かめ", "3. 準備「データ」の前処理", "4. 手順 P1 開く", "5. 証跡", "6. 準備「データ」の後処理", "7. 完了"].map((h) => text.indexOf(h));
+    expect(order.every((x, i) => x >= 0 && (i === 0 || x > order[i - 1]))).toBe(true);
+    expect(text).toContain(`p3 observer record ${d.id} ${r.id} --input - に {"phase":"setup","ref":"${prep.id}"`);
+    expect(text).toContain('"measures":{"ms":…}');
+    expect(text).toContain("測る: ms（数値・ms）");
+    for (const w of ["既知の状態に戻す", "一意な名前", "片付ける前に証跡", "条件で待つ"]) expect(text).toContain(w);
+    expect(text).toContain("P3 は手順を実行しません");
+    // 前提が今の版で期待どおりなら警告は出ない
+    const p = await results.start(pre.id, "x", { repos: [] });
+    await results.record(pre.id, p.id, { phase: "procedure", ref: "P1", result: "met", basis: { kind: "declaration" } }, "x");
+    await results.finish(pre.id, p.id, "x");
+    expect(runInstructions(r, await results.prerequisites(r))).not.toContain("⚠");
+  });
+
+  it("AI の手順に、頼まれたときだけ実行し、P3 は実行しない・根拠を正直に書く・自分で要望を作らないが書かれている", () => {
+    const g = GUIDE.slice(GUIDE.indexOf("## 観測の実行を頼まれたとき"), GUIDE.indexOf("## してはいけないこと"));
+    for (const w of ["人が観測（ID）を挙げて実行を頼んだときだけ", "P3 は手順を実行しない", "確かめていない段を `met` にしない", "自分で要望を作らない", "observer run <観測ID> --json"]) expect(g).toContain(w);
+  });
+});
+
 describe("CLI と API", () => {
   it("run・record・finish・results と、API の開始・記録・完了", async () => {
     const { root } = await initialized();
@@ -111,6 +139,7 @@ describe("CLI と API", () => {
     const r = j(["observer", "run", d.id, "--body", "手元"]);
     expect(r.environment.repos[0]).toMatchObject({ name: expect.any(String) });
     expect(r.environment.note).toBe("手元");
+    expect(r.instructions).toContain("1. 手順 P1 開く");
     j(["observer", "record", d.id, r.id, "--input", "-"], { phase: "procedure", ref: "P1", result: "met", basis: machine });
     expect(j(["observer", "finish", d.id, r.id])).toMatchObject({ status: "completed", verdict: "met" });
     expect(j(["observer", "results", d.id]).results.map((x: { id: string }) => x.id)).toEqual([r.id]);
@@ -127,6 +156,7 @@ describe("CLI と API", () => {
     const started = await call(`/definitions/${d.id}/results`, { note: "画面" });
     expect(started.status).toBe(201);
     const rid = started.json.id as string;
+    expect(started.json.instructions).toContain("P3 は手順を実行しません");
     expect((await call(`/definitions/${d.id}/results/${rid}/steps`, { phase: "procedure", ref: "P1", result: "unmet", basis: machine })).status).toBe(200);
     expect((await call(`/definitions/${d.id}/results/${rid}/steps`, { phase: "procedure", ref: "P2" })).status).toBe(400);
     expect((await call(`/definitions/${d.id}/results/${rid}/finish`, {})).json).toMatchObject({ verdict: "unmet" });
