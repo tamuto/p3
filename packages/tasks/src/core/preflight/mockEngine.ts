@@ -64,7 +64,6 @@ export class MockEngine implements PreflightEngine {
       description: `要望 ${request.id} より。\n\n## 完了条件\n- ${title} が動作すること\n- 既存機能に回帰がないこと`,
       areas,
       dependsOn: i === 0 ? [] : [`D${i}`],
-      supersedes: [],
       include: !rejected.has(title),
       acceptanceCriteria: [
         { id: "A1", text: `${title} が動作することをテストで確かめられる` },

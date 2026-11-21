@@ -1,9 +1,8 @@
 import { requestRequirementView } from "../features/requirements/shared/requirementSource.ts";
 import { absRef } from "../shared/refs.ts";
-import { relationRole, type Request, type SupersededMark, type Task } from "../shared/types.ts";
+import { relationRole, type Request, type Task } from "../shared/types.ts";
 import { type P3Context } from "../core/context.ts";
 import { resolve, titleOf } from "../core/ops.ts";
-import { type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { formatAcceptance, formatBlock, formatCompletionDetail, formatRequirement, formatRework } from "./showView.ts";
 import { taskWork } from "../core/workTargets.ts";
@@ -50,10 +49,7 @@ export function formatEntity(ctx: P3Context, item: Task | Request, file: string)
   if (item.completionRecords?.length || item.completionProblems?.length) lines.push("", ...formatCompletionDetail(item));
   if ("ref" in item) {
     const out = item.relations.map((r) => `  → ${pad(relationRole(r.type, "out"))} ${r.target} ${titleOf(ctx, `${home}/${r.target}`)}`);
-    const inc = [
-      ...dependentsOf(ctx, item).map((t) => `  ← ${pad(relationRole("depends_on", "in"))} ${t.id} ${t.title}`),
-      ...ctx.ws.tasksOf(home).list().filter((t) => t.relations.some((r) => r.type === "supersedes" && r.target === item.id)).map((t) => `  ← ${pad(relationRole("supersedes", "in"))} ${t.id} ${t.title}`),
-    ];
+    const inc = dependentsOf(ctx, item).map((t) => `  ← ${pad(relationRole("depends_on", "in"))} ${t.id} ${t.title}`);
     if (out.length || inc.length) lines.push("", "関係:", ...out, ...inc);
   }
   lines.push("", `ファイル: ${file}`);
@@ -69,11 +65,6 @@ export function ambiguous(out: Output, ctx: P3Context, query: string, current?: 
 }
 
 /** 依存先（同じ要望なら T003、別の要望なら絶対参照） */
-/** 置き換えられたタスクの印（同じ要望の中は T005 と短く） */
-export const replacedBy = (t: Task, marks: Map<string, SupersededMark[]>) => {
-  const m = marks.get(t.ref);
-  return m?.length ? `※置換 ← ${m.map((x) => (x.from.startsWith(`${t.request}/`) ? x.from.slice(t.request.length + 1) : x.from)).join(",")}` : "";
-};
 
 /** タスクを変えた後、対応済の要望を進行中に戻していたら知らせる（requestOps が戻す）。戻した要望の ID を返す */
 export function reopenedNote(rid: string | undefined, ancestors: string[] = []): string | undefined {
@@ -100,7 +91,7 @@ export function directTaskHint(rid: string, scope: { project?: string; dir?: str
 }
 
 /** 警告は stderr に出す（--json の stdout を汚さない。JSON では warnings フィールドで返す） */
-export const warn = (warnings: Pick<Warning, "message">[]) => {
+export const warn = (warnings: { message: string }[]) => {
   for (const w of warnings) process.stderr.write(`警告: ${w.message}\n`);
 };
 

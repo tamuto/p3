@@ -33,12 +33,12 @@ describe("要望の対応済", () => {
     await expect(checkStatusChange(ctx.ws, req.id, "resolved")).resolves.toBeUndefined();
   });
 
-  it("未完了・タスク無し・読めないタスクがあれば拒む。置き換えられて残したタスクも数え、アーカイブしたものは数えない", async () => {
+  it("未完了・タスク無し・読めないタスクがあれば拒む。アーカイブしたものは数えない", async () => {
     const { ctx, req, tasks, dataDir } = await setup();
     await expect(checkStatusChange(ctx.ws, req.id, "resolved")).rejects.toThrow("タスクがありません");
     await newTask(ctx, req.id, { title: "A", status: "done" });
-    await newTask(ctx, req.id, { title: "古い案（置き換えられて残した）", status: "todo" });
-    await newTask(ctx, req.id, { title: "C", status: "done", relations: [{ type: "supersedes", target: "T002" }] });
+    await newTask(ctx, req.id, { title: "古い案", status: "todo" });
+    await newTask(ctx, req.id, { title: "C", status: "done" });
     await expect(checkStatusChange(ctx.ws, req.id, "resolved")).rejects.toThrow("T002(todo)");
     await tasks.archive("T002");
     await expect(checkStatusChange(ctx.ws, req.id, "resolved")).resolves.toBeUndefined();

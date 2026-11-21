@@ -1,5 +1,5 @@
 // アーカイブしたタスクの閲覧: 要望の「アーカイブ」タブの一覧と閲覧専用の詳細（?archived=T003）。通常の完了タスクと、アーカイブした
-// 未着手・完了のタスクが混ざった要望で、タブの移動・詳細・直接の URL・再読み込み・旧案のリンクを確かめる。ボード・見出しの完了数には
+// 未着手・完了のタスクが混ざった要望で、タブの移動・詳細・直接の URL・再読み込み・アーカイブした依存先のリンクを確かめる。ボード・見出しの完了数には
 // 入らず、空・壊れ・無い・通信の失敗から再試行でき、詳細から書き込みが起きない。幅 1280 / 375 で長い題・本文を読め、キーボードで
 // 開閉でき、閉じたらフォーカスを戻す。状態は CLI で用意する（関係は Preflight のタスク化が張るものなので、ファイルに直接書く）。
 import { readFile, writeFile } from "node:fs/promises";
@@ -26,10 +26,10 @@ async function prepare(env: UiEnv) {
   await env.p3(["archive", "T003", ...req]);
   const dataDir = (JSON.parse(await env.p3(["whoami", "--json"])) as { dataDir: string }).dataDir;
   const tasks = join(dataDir, "requests", ids.mixed, "tasks");
-  // 残した T001 が T002 を置き換えた（旧案のリンク）
+  // 残した T001 がアーカイブした T002 に依存している（依存先のリンク）
   const t1 = join(tasks, "T001.md");
   const text = await readFile(t1, "utf8");
-  await writeFile(t1, text.replace(/^status: (.*)$/m, "status: $1\nrelations:\n  - type: supersedes\n    target: T002"));
+  await writeFile(t1, text.replace(/^status: (.*)$/m, "status: $1\nrelations:\n  - type: depends_on\n    target: T002"));
   // 壊れたアーカイブ
   await writeFile(join(tasks, ".archive", "T009.md"), "---\n: [broken\n---\n");
 }
@@ -47,7 +47,7 @@ describe.skipIf(!inject("chromium").available)("アーカイブしたタスク�
     await s?.close();
   });
 
-  it("タブの一覧・詳細・直接の URL・再読み込み・旧案のリンク。ボードと完了数には入らず、書き込みは起きない", async () => {
+  it("タブの一覧・詳細・直接の URL・再読み込み・依存先のリンク。ボードと完了数には入らず、書き込みは起きない", async () => {
     const { page, step } = s;
     const dialog = page.getByRole("dialog", { name: /アーカイブしたタスク/ });
     const list = page.getByRole("list", { name: "アーカイブしたタスク" });
@@ -99,7 +99,7 @@ describe.skipIf(!inject("chromium").available)("アーカイブしたタスク�
       await until.count(dialog, 0);
     });
 
-    await step("通常のタスクの旧案のリンクから、アーカイブの詳細を開ける", async () => {
+    await step("通常のタスクのアーカイブした依存先のリンクから、アーカイブの詳細を開ける", async () => {
       await page.goto(`/requests/${ids.mixed}?task=T001`);
       const open = page.getByRole("button", { name: /閲覧専用の詳細を開く/ });
       await until.visible(open);

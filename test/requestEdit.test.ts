@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { ApiError, failureOf } from "../packages/tasks/src/web/lib/api.ts";
 import { discardDraft, draftOf, editDraft, isDirty, sameBody, syncFieldDraft } from "../packages/tasks/src/web/lib/draft.ts";
-import { bodySaveErrorText, excerpt, materializeErrorText, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../packages/tasks/src/web/lib/requestEdit.ts";
+import { bodySaveErrorText, excerpt, staleNotice, UNSAVED_BLOCKED, unsavedFields } from "../packages/tasks/src/web/lib/requestEdit.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 describe("要望の本文の下書き（タイトル・タグと同じ rev を共有する）", () => {
@@ -56,10 +56,7 @@ describe("Preflight とタスク化を止める・知らせる", () => {
     expect(staleNotice({ status: "unknown", reason: "request.md がない" }, { done: false })!.text).toContain("request.md がない");
   });
 
-  it("タスク化の 409 は code で分ける。本文の保存の失敗は入力を残すと伝える", () => {
-    expect(materializeErrorText(new ApiError(409, "評価のあとで要望の本文が変わりました…", { code: "stale_input" }))).toBe("評価のあとで要望の本文が変わりました…");
-    expect(materializeErrorText(new ApiError(409, "rev conflict", { code: "rev_conflict" }))).toContain("置き換えられるタスクが他で更新されました");
-    expect(materializeErrorText(new Error("ほか"))).toBe("ほか");
+  it("本文の保存の失敗は入力を残すと伝える", () => {
     expect(bodySaveErrorText(new ApiError(409, "", {}))).toContain("入力は残してあります");
     expect(bodySaveErrorText(new ApiError(404, "", {}))).toContain("見つからない");
     expect(bodySaveErrorText(new Error("network"))).toContain("入力は残してあります");
@@ -86,7 +83,7 @@ describe("画面の保存と再評価（API を通して）", () => {
     expect(saved.status).toBe(200);
     expect((await call("GET", `/requests/${req.id}/preflight/${first!.id}`)).body.inputMatch).toEqual({ status: "changed", changed: ["body"] });
     const refused = await call("POST", `/requests/${req.id}/preflight/${first!.id}/materialize`, {});
-    expect(materializeErrorText(new ApiError(refused.status, refused.body.error, refused.body))).toContain("もう一度 Preflight");
+    expect(refused.body.error).toContain("もう一度 Preflight");
 
     const second = await ctx.preflight.wait(req.id, (await call("POST", `/requests/${req.id}/preflight`, { engine: "mock" })).body.id);
     expect(second!.input?.body).toBe("- 送信\n- 再送");

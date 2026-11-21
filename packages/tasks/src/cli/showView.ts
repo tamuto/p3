@@ -1,12 +1,11 @@
 import { ANSWER_STATE_LABEL, criteriaSourceView, requestRequirementView, SOURCE_STATE_LABEL, type RequestRequirementView, type SourceConfirmation, type SourceView } from "../features/requirements/shared/requirementSource.ts";
 import { absRef, parseRef } from "../shared/refs.ts";
-import type { Request, SupersededMark, Task } from "../shared/types.ts";
+import type { Request, Task } from "../shared/types.ts";
 import { acceptanceStatus, basisDetail, basisLabel, EVIDENCE_BASIS_KINDS, EVIDENCE_BASIS_LABEL, evidenceBasisOf, type AcceptanceEvidence, type CriterionState } from "../features/requirements/shared/acceptance.ts";
 import { blockWarnings } from "../shared/taskBlock.ts";
 import { REWORK_CAUSE_LABEL, reworkLine } from "../features/records/shared/reworkHistory.ts";
 import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type RefCapture } from "../features/records/shared/completionRecord.ts";
 import type { P3Context } from "../core/context.ts";
-import { supersededWarnings, type Warning } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskWork } from "../core/workTargets.ts";
 import { requestWorkstreams } from "../shared/workTarget.ts";
@@ -17,7 +16,7 @@ import type { hierarchyView } from "../core/hierarchy.ts";
  *
  * 短い出力は、AI がタスクを進めるのに要るものだけにする（本文は切り詰めない）:
  *   タスク: id・ref・request・title・status・body・rev・outputs・repoOutputs・依存（relations の depends_on）・受け入れ基準と証拠
- *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・superseded・warnings・acceptance（基準があるときだけ）
+ *          + work（作業先とそのブランチ）・dependencies（依存の相手と状態）・acceptance（基準があるときだけ）
  *   要望:   id・title・status・body・rev・workstreams + branches（作業先ごとのブランチ）+
  *          タスクの一覧（id・ref・title・status・repo）・issue + 親子（parent・ancestors・children・hierarchyIssues）
  * 省くもの: 日時・areas・labels・変更者・ファイルのパス・依存以外の関係・関係しそう（暗黙の近さ）・影響範囲。
@@ -43,10 +42,8 @@ export function dependencyStates(ctx: P3Context, task: Task): DependencyState[] 
 }
 
 /** タスクの詳細で共通に出す項目（通常・短い出力の両方） */
-export function taskExtras(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
-  const superseded = marks.get(task.ref) ?? [];
-  const warnings: Warning[] = supersededWarnings(superseded, task.ref);
-  return { superseded, dependencies: dependencyStates(ctx, task), warnings };
+export function taskExtras(ctx: P3Context, task: Task) {
+  return { dependencies: dependencyStates(ctx, task) };
 }
 
 const BRIEF_TASK_KEYS = ["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"] as const;
@@ -106,7 +103,7 @@ export function formatAcceptance(task: Task, { emptyLine = true } = {}): string[
   return lines;
 }
 
-export function briefTask(ctx: P3Context, task: Task, marks: Map<string, SupersededMark[]>) {
+export function briefTask(ctx: P3Context, task: Task) {
   const item = Object.fromEntries(BRIEF_TASK_KEYS.map((k) => [k, task[k]])) as unknown as Pick<Task, (typeof BRIEF_TASK_KEYS)[number]> & Pick<Task, "repoOutputs" | "record" | "acceptanceCriteria" | "acceptanceEvidence" | "acceptanceSources" | "acceptanceProblems" | "block" | "blockProblems">;
   item.relations = task.relations.filter((r) => r.type === "depends_on");
   if (task.repoOutputs?.length) item.repoOutputs = task.repoOutputs;
@@ -125,7 +122,7 @@ export function briefTask(ctx: P3Context, task: Task, marks: Map<string, Superse
   // 基準・証拠の状態（基準なしのタスクでは省く）
   const acceptance = acceptanceStatus(task);
   const completion = completionBrief(task);
-  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task, marks), ...(acceptance ? { acceptance } : {}), ...(completion ? { completion } : {}) };
+  return { item, work: taskWork(ctx.ws, task), ...taskExtras(ctx, task), ...(acceptance ? { acceptance } : {}), ...(completion ? { completion } : {}) };
 }
 
 /** 完了の記録の概要（契機・日時・主体・rev。条件の写しは p3 show（--brief でない）か API の詳細で読む）。記録も問題も無ければ省く */
@@ -184,7 +181,7 @@ export function formatCompletion(c: NonNullable<ReturnType<typeof completionBrie
 }
 
 export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
-  const { item, work, dependencies, warnings } = view;
+  const { item, work, dependencies } = view;
   const short = (ref: string) => (ref.startsWith(`${item.request}/`) ? ref.slice(item.request.length + 1) : ref);
   const lines = [`${item.ref}  ${item.title}`, `  status  ${item.status}  rev ${item.rev}`];
   lines.push(...formatBlock(item));
@@ -196,7 +193,6 @@ export function formatBriefTask(view: ReturnType<typeof briefTask>): string {
   }
   for (const o of item.outputs) lines.push(`  成果物  ${o}`);
   for (const o of item.repoOutputs ?? []) lines.push(`  成果物  ${o.repo}: ${o.output}`);
-  for (const w of warnings) lines.push(`※ ${w.message}`);
   if (item.body.trim()) lines.push("", item.body.trim());
   if (item.record) lines.push("", "## 変更の記録", item.record);
   lines.push("", ...formatAcceptance(item as Task));

@@ -27,7 +27,6 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
     "status=resolved", // 作業を終えたら対応済
     "rejected", // 完了済・見送りは人
     "check", // 済みは人
-    "superseded", // 置き換えられたタスクから始めない
     "warnings",
     "人への質問をタスクにしない",
     "`work`", // 作業先のリポジトリとブランチ

@@ -52,9 +52,9 @@ ID（F01…）は後続の要望から参照するための番号。
 | F11 | 要求の出典と確認・確認事項への回答・前提の変化・メモ | 維持 | tasks | `src/shared/requirementSource.ts`・`src/core/requestOps.ts`・`src/core/store/noteStore.ts`・`src/cli/{requirementCommands,revisitCommands}.ts`。要望・基準を変えると確認が効かなくなり、評価対象の固定と採用の判定に効く |
 | F12 | 添付の保存と参照、xlsx から Preflight の資料を作る経路 | 維持 | tasks | `src/core/store/attachments.ts`・`src/core/preflight/{xlsx,input}.ts`。元の添付と run に固定した資料の関係を守る |
 | F13 | Preflight の評価・評価対象の固定・履歴・再評価・取り消し・取り込み（Codex と手元のエージェント） | 維持 | tasks | `src/core/preflight/service.ts`・`src/cli/preflightCommands.ts`。Codex と手元のエージェントを選べること、古い run と評価対象の照合、Mock での確かめる経路が要る |
-| F14 | タスク案の編集・タスク化・子の要望への分割と採用 | 維持 | tasks | `src/core/preflight/{service,split,carryover}.ts`。案は人が選ぶ。タスクの直接作成の経路と、採用で引き継ぐ ID・基準・出典・依存・置き換えを守る |
+| F14 | タスク案の編集・タスク化・子の要望への分割と採用 | 維持 | tasks | `src/core/preflight/{service,split,carryover}.ts`。案は人が選ぶ。タスクの直接作成の経路と、採用で引き継ぐ ID・基準・出典・依存を守る |
 | F15 | 画面資料の原稿・描画・表示と `render` コマンド | 維持 | tasks | `src/core/preflight/{uiMaterials,uiRender,wireframe,render}.ts`・`src/cli/render.ts`。描画の環境は任意。原稿と描いた画像の対応、描けないときの表示、既存のコマンドを守る |
-| F16 | タスクの直接作成・作業先とブランチ・状態・停止・依存・置き換え・アーカイブ | 維持 | tasks | `src/core/{workTargets,requestOps,supersede}.ts`・`src/core/store/archivedTasks.ts`・`src/cli/taskCommands.ts`。要望を単位にした作業、タスクの状態と人の「済み」を分けること、古い ID と履歴を守る |
+| F16 | タスクの直接作成・作業先とブランチ・状態・停止・依存・アーカイブ | 維持 | tasks | `src/core/{workTargets,requestOps}.ts`・`src/core/store/archivedTasks.ts`・`src/cli/taskCommands.ts`。要望を単位にした作業、タスクの状態と人の「済み」を分けること、古い ID と履歴を守る |
 | F17 | 受け入れ基準・証拠と根拠の種類・成果物・変更の記録・人の「済み」、完了の記録と参照先のコミットの取得 | 維持 | tasks | `src/shared/{acceptance,completionRecord}.ts`・`src/core/{requestOps,completionRefs,repoRefs}.ts`。証拠は申告と根拠の記録。中身が変わると済みを外す規則、古い形の読み込み、申告と未確認の区別を守る |
 | F18 | 品質基準とテンプレート、Preflight での固定と基準への取り込み | 維持 | tasks | `src/core/quality.ts`・`src/shared/qualityTemplates.ts`・`src/cli/qualityCommands.ts`。未設定でも使えること、版と作業先に応じた当てはめ、レビューの材料への影響を守る |
 | F19 | タスクの AI レビュー、マイルストーンレビューと run の管理 | 統合 | tasks | `src/core/{taskReview/,milestoneReview/,reviewRuns.ts}`。統合は既に共用している保存・取り消し・回復の範囲に限る。材料・結果・実行の対象の契約はそれぞれ残す。Preflight・リリースノートの生成も含めた run の管理の統合は、回復と取り消しの違いを照らしてから判断する |

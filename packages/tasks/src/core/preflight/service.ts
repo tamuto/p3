@@ -20,15 +20,14 @@ import { type ObservationChange,
   type PreflightPulse,
   type RunLiveness,
 } from "../../shared/types.ts";
-import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
+import { REQUEST_ID } from "../../shared/refs.ts";
 import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readDraftCriteria, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../features/requirements/shared/acceptance.ts";
 import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
 import { qualityCriteria, qualitySnapshot } from "../../features/quality/shared/quality.ts";
 import { changedObservations, observationSnapshot } from "./observations.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
-import { ConflictError, NotFoundError } from "../store/collection.ts";
+import { NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
-import { supersedeCandidates } from "../supersede.ts";
 import { hierarchyNow, reopenAncestors } from "../requestStatus.ts";
 import { archivedRequestIds, inheritFrom, withHierarchyLock } from "../hierarchy.ts";
 import { childBody, childrenVersion, draftProblems, parseSplit, splitMarker } from "./split.ts";
@@ -886,6 +885,8 @@ export class PreflightService {
     const rawCriteriaFile = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceCriteria");
     const rawSources = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSources");
     const rawSourceSeq = await this.ws.preflight.rawDraftField(requestId, runId, key, "acceptanceSourceSeq");
+    // 以前の案の置き換え（supersedes）は使わないが、案を直してもファイルから消さない（履歴として残す）
+    const rawSupersedes = await this.ws.preflight.rawDraftField(requestId, runId, key, "supersedes");
     const sourceProblems: string[] = [];
     readCriterionSources(rawSources, sourceProblems);
     readSourceSeq(rawSourceSeq, sourceProblems);
@@ -910,6 +911,7 @@ export class PreflightService {
     const keep: Record<string, unknown> = {
       ...(rawCriteria === undefined && readDraftCriteria(rawCriteriaFile).problems ? { acceptanceCriteria: rawCriteriaFile } : {}),
       ...(sourceProblems.length ? { acceptanceSources: rawSources, acceptanceSourceSeq: rawSourceSeq } : {}),
+      ...(rawSupersedes !== undefined ? { supersedes: rawSupersedes } : {}),
     };
     if (Object.keys(keep).length) await this.ws.preflight.saveDraftRaw(requestId, runId, next, keep);
     else await this.ws.preflight.saveDraft(requestId, runId, next);
@@ -953,7 +955,7 @@ export class PreflightService {
     return ownerState(run.owner, this.probe);
   }
 
-  /** タスク化の前に見せるもの: 採用する案と、置き換えられる既存タスク、評価対象が今の要望と同じか（ファイルは変えない） */
+  /** タスク化の前に見せるもの: 採用する案と、評価対象が今の要望と同じか（ファイルは変えない） */
   async previewMaterialize(requestId: string, runId: string) {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run) throw new NotFoundError(runId);
@@ -964,7 +966,6 @@ export class PreflightService {
       return {
         mode: "children" as const,
         include: included.map((c) => c.key),
-        candidates: [],
         materialized: [],
         inputMatch,
         version: childrenVersion(run.children),
@@ -975,7 +976,6 @@ export class PreflightService {
     return {
       mode: "tasks" as const,
       include: run.drafts.filter((d) => d.include).map((d) => d.key),
-      candidates: supersedeCandidates(this.ws, run),
       materialized: run.materialized ?? [],
       inputMatch,
     };
@@ -1102,23 +1102,18 @@ export class PreflightService {
   /**
    * タスク化: 採用されたタスク案を、要望のフォルダの tasks/T00x.md として書き出し、関係を張る。
    *   - 同じ run 内の dependsOn → depends_on（要望の中なので相対参照 T00x）
-   *   - 案が持つ既存項目への関係 → 存在するものだけ（origin: preflight）。置き換え（supersedes）もここで各タスクに残る
-   *   - 案の supersedes → 同じ要望の今あるタスクへの supersedes（置き換え）
-   *   - archive: 置き換えられるタスク（previewMaterialize の候補）のうちアーカイブするもの。既定はどれも残す。
-   *     確定の時点で候補を読み直し、候補でない・rev が変わったものがあれば何も変えずに失敗する
-   *
-   * 古いタスクを先に外さないよう、新しいタスクと関係を保存してからアーカイブする。途中経過は run.json の
-   * materialization に残し、途中で失敗したら同じ呼び出しでやり直せる（作った案は作り直さず、アーカイブも重ねない）。
+   * 既存のタスクは変えない（タスク化した後の要望は再評価しないので、置き換えは持たない）。途中経過は run.json の materialization に残し、
+   * 途中で失敗したら同じ呼び出しでやり直せる（作った案は作り直さず、割り当てるブランチも同じ）。以前の版が残したアーカイブの指定の残りは実行しない。
    *
    * 評価対象（タイトル・本文）が今の要望と違う・確かめられない run からはタスク化しない（StaleInputError。やり直しも同じ）。
    * 直前に要望をディスクから読み直して比べ、断るときは何も書かない
    */
-  materialize(requestId: string, runId: string, actor = "preflight", opts: { archive?: { id: string; rev?: number }[] } = {}): Promise<MaterializeResult> {
+  materialize(requestId: string, runId: string, actor = "preflight"): Promise<MaterializeResult> {
     // Preflight を始める処理と同じロックの中で行う（タスク化と同時に再評価を始めない）
-    return this.locked(requestId, () => this.materializeLocked(requestId, runId, actor, opts));
+    return this.locked(requestId, () => this.materializeLocked(requestId, runId, actor));
   }
 
-  private async materializeLocked(requestId: string, runId: string, actor: string, opts: { archive?: { id: string; rev?: number }[] }): Promise<MaterializeResult> {
+  private async materializeLocked(requestId: string, runId: string, actor: string): Promise<MaterializeResult> {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
     if (run.children) throw new Error(`${runId} は子の要望の案の run です（タスクではなく子を作ります。p3 accept で採用します）`);
@@ -1151,28 +1146,14 @@ export class PreflightService {
             drafts.map(draftRepo).filter((r): r is string => !!r),
           );
 
-    const candidates = supersedeCandidates(this.ws, run);
     if (!resuming) {
-      const chosen: string[] = [];
-      for (const sel of opts.archive ?? []) {
-        const id = normalizeTaskId(sel.id) ?? sel.id;
-        const c = candidates.find((x) => x.id === id);
-        if (!c) throw new Error(`${id} は置き換えられるタスクの候補ではありません（もう一度確認してください）`);
-        if (sel.rev !== undefined && sel.rev !== c.rev) throw new ConflictError(`${requestId}/${id}`, sel.rev, c.rev);
-        if (!chosen.includes(id)) chosen.push(id);
-      }
-      run.materialization = { created: {}, archive: chosen, archived: [], done: false, workstreams: plan };
+      run.materialization = { created: {}, done: false, workstreams: plan };
       await this.ws.preflight.save(run);
     }
     const state = run.materialization!;
 
     const keyToId = new Map<string, string>();
     const created: Task[] = [];
-    // 置き換えは、同じ要望に今あるタスクだけ（Codex が書いた T3 / 3 も T003 にそろえる）
-    const supersedes = (d: ProposedTask): Relation[] =>
-      [...new Set(d.supersedes.map((x) => normalizeTaskId(x) ?? x))]
-        .filter((id) => tasks.get(id))
-        .map((target) => ({ type: "supersedes" as const, target, origin: "preflight" as const }));
 
     for (const d of drafts) {
       const marker = `> preflight: ${runId} / ${d.key}`;
@@ -1188,7 +1169,7 @@ export class PreflightService {
             labels: [],
             areas: d.areas,
             outputs: [],
-            relations: supersedes(d),
+            relations: [],
             // 案の受け入れ基準を ID ごと写し、作業先に当てはまる品質基準（始めたときの版）を出典つきで足す（採用した案だけ。やり直しで作ったタスクは上書きしない）
             ...withQuality(criteriaForTask(d.acceptanceCriteria, d.acceptanceSources, request.requirementSources, undefined, d.acceptanceSourceSeq), run.quality, draftRepo(d)),
             body: `${d.description}\n\n${marker}`,
@@ -1229,13 +1210,6 @@ export class PreflightService {
     run.materialized = created.map((t) => t.id);
     await this.ws.preflight.save(run);
 
-    // 新しいタスクと関係を保存してから、選んだ置き換えられるタスクをアーカイブする
-    for (const id of state.archive) {
-      if (state.archived.includes(id)) continue;
-      if (tasks.get(id)) await tasks.archive(id);
-      state.archived.push(id);
-      await this.ws.preflight.save(run);
-    }
     state.done = true;
     await this.ws.preflight.save(run);
 
@@ -1246,8 +1220,6 @@ export class PreflightService {
     for (const a of up.reopened) this.ws.emit({ type: "changed", kind: "request", request: a });
     return {
       tasks: created,
-      archived: state.archived,
-      kept: candidates.filter((c) => !state.archive.includes(c.id)),
       ...(up.reopened.length ? { reopenedAncestors: up.reopened } : {}),
       ...(up.warnings.length ? { warnings: up.warnings } : {}),
     };

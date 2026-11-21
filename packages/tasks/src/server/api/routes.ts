@@ -21,7 +21,6 @@ import { bodyLimit } from "hono/body-limit";
 import { getArchivedTask, listArchivedTasks } from "../../core/store/archivedTasks.ts";
 import { completionCheckOf, hierarchyNow, resolvedIssue } from "../../core/requestStatus.ts";
 import { hierarchyView } from "../../core/hierarchy.ts";
-import { supersededMarks } from "../../core/supersede.ts";
 import { chatgptRoutes } from "./chatgptRoutes.ts";
 import { userThemeRoutes, userThemeScriptRoute } from "../../features/settings/server/userThemeRoutes.ts";
 import { AI_MANIFEST } from "./manifest.ts";
@@ -268,10 +267,6 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       completion: completionCheckOf(ws, hierarchyNow(ws), id),
       // 見直しが必要（候補）: 要望自身（対応済・完了済）・タスクごとの概要・配下の件数（読むだけ。shared/reviewCandidate.ts）
       review: requestReview(ctx, id),
-      // 置き換えられたタスクの印（T001 → 置き換えた側）
-      superseded: Object.fromEntries(
-        [...supersededMarks(ws)].filter(([ref]) => ref.startsWith(`${id}/`)).map(([ref, m]) => [ref.slice(id.length + 1), m]),
-      ),
     });
   });
   app.patch("/requests/:rid", async (c) => {
@@ -410,7 +405,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
-    return c.json({ task, superseded: supersededMarks(ws).get(task.ref) ?? [], acceptance: acceptanceStatus(task) ?? null, review: taskReview(ctx, task) ?? null });
+    return c.json({ task, acceptance: acceptanceStatus(task) ?? null, review: taskReview(ctx, task) ?? null });
   });
   app.patch("/requests/:rid/tasks/:tid", async (c) => {
     const { rev, checked, acceptance, blockOp: bop, ...patch } = taskPatch.parse(await c.req.json());
@@ -421,7 +416,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(checked !== undefined ? { checked } : {}),
       ...(acceptance?.length ? { acceptance } : {}),
     };
-    // 置き換えられたタスクを作業中にしたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
+    // 完了済の祖先の下に未完了ができたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
     // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）
     const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped, reworkSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({
@@ -605,16 +600,17 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
   });
   app.get("/requests/:rid/preflight/:run/materialize", async (c) => c.json(await preflight.previewMaterialize(rid(c), c.req.param("run"))));
   app.post("/requests/:rid/preflight/:run/materialize", async (c) => {
-    const body = z
-      .object({ archive: z.array(z.object({ id: z.string(), rev: z.number().int().optional() })).optional(), version: z.string().optional() })
-      .parse(await c.req.json().catch(() => ({})));
+    const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // 以前の置き換えられるタスクのアーカイブの指定は、何も変える前に断る（置き換えは無い）
+    if (raw && typeof raw === "object" && "archive" in raw) return c.json({ error: "archive（置き換えられるタスクのアーカイブ）はなくなりました。不要なタスクは個別にアーカイブしてください", code: "archive_removed" }, 400);
+    const body = z.object({ version: z.string().optional() }).parse(raw);
     const run = await preflight.get(rid(c), c.req.param("run"));
     // 分割の run は子の要望を作る（version: 確認したときの子の案の版。違えば 409 drafts_changed）
     if (run?.children) {
       const r = await preflight.adopt(rid(c), c.req.param("run"), actorOf(c), { version: body.version });
       return c.json(r, r.failed.length ? 207 : 201);
     }
-    return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c), { archive: body.archive }), 201);
+    return c.json(await preflight.materialize(rid(c), c.req.param("run"), actorOf(c)), 201);
   });
 
   // --- 横断 --------------------------------------------------------------

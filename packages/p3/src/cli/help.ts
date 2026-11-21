@@ -202,7 +202,6 @@ Preflight
   drafts [<要望>]               最新の評価とタスク案  --run PF-...（評価対象が今の要望と同じか: inputMatch）
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
                                評価のあとでタイトル・本文が変わった run からはしない（code: stale_input。再評価する）
-                               置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
                                分割の run（子の要望の案 C1, C2 ...）は、選んだ案から下書きの子の要望を作る（親は残す。子の Preflight はまだ）。
                                途中で失敗したら同じ accept で続ける（作った子は作り直さない）
 

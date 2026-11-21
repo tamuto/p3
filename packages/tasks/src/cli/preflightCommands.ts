@@ -121,21 +121,16 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
     case "drafts": {
       const rid = requestArg(args[0]);
       const run = await pickRun(ctx, rid, o.run);
-      // タスク化の前なら、置き換えられる既存タスクも見せる（分割の run には無い）
-      const supersedes = run.materialized?.length || run.children ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
       const inputMatch = await ctx.preflight.inputMatch(rid, run);
       const next = runNext(rid, run);
       // 評価のあとで変わった観測（採る前に再評価が要るかの判断材料。タスク化は止めない）
       const observationsChanged = run.materialized?.length ? [] : await ctx.preflight.observationsChanged(run);
-      return out.result({ ...run, inputMatch, supersedes, ...(observationsChanged.length ? { observationsChanged } : {}), ...(next ? { next } : {}) }, () =>
+      return out.result({ ...run, inputMatch, ...(observationsChanged.length ? { observationsChanged } : {}), ...(next ? { next } : {}) }, () =>
         [
           formatRun(ctx, rid, run),
           inputMatchLine(rid, run, inputMatch),
           observationsChanged.length
             ? `\n⚠ 評価のあとで観測が変わりました（${observationsChanged.map((o) => `${o.id} ${o.title}: 版 ${o.evaluated} → ${o.current === null ? "無い" : `版 ${o.current}`}`).join("・")}）。今の期待で評価し直すか決めてから accept してください（p3 preflight ${rid}）`
-            : "",
-          supersedes.length
-            ? `\n置き換えられる既存タスク（accept では残す。--archive-superseded でアーカイブ）:\n${table(supersedes.map((c) => [c.id, c.status, c.title]))}`
             : "",
         ].join("\n"),
       );
@@ -143,6 +138,8 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
 
     case "accept": {
       const rid = requestArg(args[0]);
+      // 以前の置き換えられるタスクのアーカイブの指定は、何も変える前に断る（タスク化した後の要望は再評価しないので置き換えは無い）
+      if (o["archive-superseded"]) throw new UsageError("--archive-superseded はなくなりました（タスク化した後の要望は再評価せず、置き換えもしません。不要なタスクは p3 archive <T>）");
       const run = await pickRun(ctx, rid, o.run);
       const keys = (s: string | undefined) => s?.split(",").map((x) => x.trim().toUpperCase());
       const only = keys(o.only);
@@ -152,29 +149,16 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
         const include = (only ? only.includes(d.key) : d.include) && !skip.includes(d.key);
         if (include !== d.include) await ctx.preflight.updateDraft(rid, run.id, d.key, { include });
       }
-      // 置き換えられるタスクは --archive-superseded のときだけ、確定時点の候補（プレビューと同じ rev）をアーカイブする
-      const { candidates } = await ctx.preflight.previewMaterialize(rid, run.id);
-      const archive = o["archive-superseded"] ? candidates.map((c) => ({ id: c.id, rev: c.rev })) : [];
       let r: MaterializeResult;
       try {
-        r = await ctx.preflight.materialize(rid, run.id, actor, { archive });
+        r = await ctx.preflight.materialize(rid, run.id, actor);
       } catch (e) {
         if (!(e instanceof StaleInputError) || !o.json) throw e;
         // --json では理由を機械可読で返す（終了コードは 1）
         out.result({ error: e.message, code: e.code, request: rid, run: run.id, inputMatch: e.match }, () => "");
         return 1;
       }
-      return out.result(r, () =>
-        [
-          `タスク化 (${rid} / ${run.id}):\n${table(r.tasks.map((t) => [t.id, t.title, deps(t)]))}`,
-          r.archived.length ? `\n置き換えられたタスクをアーカイブしました: ${r.archived.join(", ")}` : "",
-          r.kept.length
-            ? `\n置き換えられるタスクを残しました（着手前に確かめ、不要なら p3 archive <T> か accept --archive-superseded）:\n${table(
-                r.kept.map((c) => [c.id, c.status, c.title, c.reasons.map((x) => `案 ${x.draft}`).join(",")]),
-              )}`
-            : "",
-        ].join("\n"),
-      );
+      return out.result(r, () => `タスク化 (${rid} / ${run.id}):\n${table(r.tasks.map((t) => [t.id, t.title, deps(t)]))}`);
     }
 
   }

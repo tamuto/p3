@@ -27,8 +27,6 @@ import type { ObservationChange,
   Request,
   RequestProgress,
   RequestReviewCounts,
-  SupersedeCandidate,
-  SupersededMark,
   Task,
   Theme,
   Attachment,
@@ -174,8 +172,6 @@ export interface RequestDetail {
   request: Request;
   tasks: Task[];
   runs: RunInfo[];
-  /** 置き換えられたタスクの印（T001 → 置き換えた側） */
-  superseded: Record<string, SupersededMark[]>;
   /** 対応済なのに未完了のタスクがある（外部の直接編集など）ときの知らせ */
   issue: string | null;
   /** 親子（無い以前のサーバでも動くように省略可）。ancestors は根から順、children は直下だけ（自分のタスクの数つき） */
@@ -301,7 +297,7 @@ export const api = {
   /** 子の表示順の保存（直下の子を全部、上から順に）。子が変わっていれば 409 code: child_order_invalid（今の並び children）、rev 違いは rev_conflict */
   orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
 
-  task: (ref: string) => call<{ task: Task; superseded: SupersededMark[]; review?: ReviewDiagnosis | null }>("GET", taskPath(ref)),
+  task: (ref: string) => call<{ task: Task; review?: ReviewDiagnosis | null }>("GET", taskPath(ref)),
   /** criteria: 受け入れ基準の文の並び（ID はサーバが振る） */
   createTask: (rid: string, t: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" | string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** 今の品質基準との差分（読むだけ）と、明示した差分の取り込み */
@@ -403,12 +399,11 @@ export const api = {
     },
   ) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),
-  /** タスク化の確認（採用する案と置き換えられるタスクの候補）。何も変えない。分割の run は mode: children と案の版・問題・途中経過 */
+  /** タスク化の確認（採用する案）。何も変えない。分割の run は mode: children と案の版・問題・途中経過 */
   previewMaterialize: (rid: string, runId: string) =>
     call<{
       mode: "tasks" | "children";
       include: string[];
-      candidates: SupersedeCandidate[];
       materialized: string[];
       inputMatch: InputMatch;
       version?: string;
@@ -421,6 +416,5 @@ export const api = {
   /** 子の案の採用（version: 確認したときの案の版。違えば 409 drafts_changed。失敗があっても結果を返す） */
   adopt: (rid: string, runId: string, version?: string) => call<AdoptionResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { version }),
   /** archive: アーカイブする置き換えられるタスク（候補として見た rev つき） */
-  materialize: (rid: string, runId: string, archive: { id: string; rev: number }[] = []) =>
-    call<MaterializeResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, { archive }),
+  materialize: (rid: string, runId: string) => call<MaterializeResult>("POST", `/requests/${rid}/preflight/${runId}/materialize`, {}),
 };

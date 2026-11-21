@@ -190,13 +190,14 @@ describe("古い評価からのタスク化", () => {
     expect(ctx.ws.tasksOf(req.id).list()).toEqual([]);
   });
 
-  it("途中で失敗したタスク化のやり直しも、本文が変わっていれば断り、戻せば作ったタスクを作り直さずに続ける", async () => {
+  it("途中で失敗したタスク化のやり直しも、本文が変わっていれば断り、戻せば作ったタスクを作り直さずに続ける。以前の版のアーカイブの指定の残りは実行しない", async () => {
     const { ctx, req, preflight } = await setup();
     const old = await newTask(ctx, req.id, { title: "古いタスク" });
     const run = await preflight();
     // D1 だけ作ったところで止まった状態
     const made = await newTask(ctx, req.id, { title: "送信基盤", body: `x\n\n> preflight: ${run.id} / D1` });
     const saved = (await ctx.preflight.get(req.id, run.id))!;
+    // 以前の版が残したアーカイブの指定（archive）も読めるが、やり直しでは実行しない
     saved.materialization = { created: { D1: made.id }, archive: [old.id], archived: [], done: false };
     await ctx.ws.preflight.save(saved);
 
@@ -207,7 +208,8 @@ describe("古い評価からのタスク化", () => {
     await ctx.ws.requests.update(req.id, { body: "- 送信基盤\n- 設定画面" });
     const r = await ctx.preflight.materialize(req.id, run.id);
     expect(r.tasks.map((t) => t.id)).toEqual([made.id, "T003"]);
-    expect(r.archived).toEqual([old.id]);
+    expect(r).not.toHaveProperty("archived");
+    expect(ctx.ws.tasksOf(req.id).get(old.id)).toBeDefined();
   });
 });
 

@@ -8,10 +8,10 @@ import { QualityDiffPanel } from "../../features/quality/web/QualityDiff.tsx";
 import { CompletionRecords, ReviewPanel } from "../../features/records/web/CompletionReview.tsx";
 import type { ReviewDiagnosis } from "../../features/records/shared/reviewCandidate.ts";
 import { normalizeTaskId } from "../../shared/refs.ts";
-import { relationRole, type RepoOutput, type SupersededMark, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
+import { relationRole, type RepoOutput, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
 import { api, failureOf } from "../lib/api.ts";
-import { markFrom, warningText } from "../lib/supersede.ts";
+import { warningText } from "../lib/warnings.ts";
 import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
@@ -45,7 +45,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const rid = data.request.id;
   const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
-  const [superseded, setSuperseded] = useState<SupersededMark[]>([]);
   // 見直しの診断（API の共通の結果。取り直しに失敗したら前の表示のまま知らせ、「候補なし」に置き換えない）
   const [review, setReview] = useState<ReviewDiagnosis | null>(null);
   // 入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で。lib/draft.ts）
@@ -75,7 +74,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
       const r = await latest.current.run(() => api.task(id));
       if (r === STALE) return;
       setTask(r.task);
-      setSuperseded(r.superseded);
       setReview(r.review ?? null);
       setGone(false);
       const server = toDraft(r.task);
@@ -156,7 +154,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
         rev: draft!.baseRev,
       });
       setDraft(draftOf(toDraft(res), res.rev));
-      // 置き換えられたタスクを作業中にしたときは、保存したうえで知らせる
+      // 完了済の祖先の下に未完了ができたときなどは、保存したうえで知らせる
       const w = warningText(res);
       setMsg(w ? `警告: ${w}` : null);
       await load();
@@ -221,26 +219,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </div>
         )}
         {msg && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{msg}</div>}
-        {superseded.length > 0 && task.status !== "done" && (
-          <div className="bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-            このタスクは置き換えられています:{" "}
-            {superseded.map((m, i) => (
-              <span key={m.from}>
-                {i > 0 && " / "}
-                {m.from === rid ? (
-                  "要望の再評価"
-                ) : (
-                  <Button variant="link" className="font-mono" onClick={() => open(m.from)}>
-                    {markFrom(m, rid)}
-                  </Button>
-                )}
-                {m.note ? `（${m.note}）` : ""}
-              </span>
-            ))}
-            。着手する前に確かめ、不要ならアーカイブしてください。
-          </div>
-        )}
-
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           <input className={`${inputCls} text-lg font-semibold`} value={fields.title} onChange={(e) => set("title", e.target.value)} />
 

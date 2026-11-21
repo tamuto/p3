@@ -35,12 +35,6 @@ export function staleNotice(m: InputMatch | undefined, opts: { done: boolean }):
       };
 }
 
-/** タスク化の失敗の表示。409 は code で分ける（評価のあとで要望が変わった / 置き換えられるタスクが他で更新された） */
-export function materializeErrorText(e: unknown): string {
-  const kind = failureOf(e);
-  if (kind === "rev_conflict") return "置き換えられるタスクが他で更新されました。内容を確かめて、もう一度タスク化してください";
-  return (e as Error).message;
-}
 
 /** 本文の保存の失敗の表示（入力は消さない） */
 export function bodySaveErrorText(e: unknown): string {

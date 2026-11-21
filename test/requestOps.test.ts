@@ -56,14 +56,14 @@ describe("タスクの更新", () => {
     expect((await updateTask(ctx, rid, t.id, { checked: false })).task.checkedAt).toBeUndefined();
   });
 
-  it("置き換えられたタスクを作業中にすると警告を返し、変更はする。完了から戻すと対応済の要望を進行中に戻す", async () => {
+  it("完了から戻すと対応済の要望を進行中に戻す（置き換えの警告は無い）", async () => {
     const { ctx, rid } = await setup();
     const old = await newTask(ctx, rid, { title: "古い", status: "done" });
-    await newTask(ctx, rid, { title: "新しい", status: "done", relations: [{ type: "supersedes", target: old.id }] });
+    await newTask(ctx, rid, { title: "新しい", status: "done" });
     await updateRequest(ctx, rid, { status: "resolved" });
     const r = await updateTask(ctx, rid, old.id, { status: "doing" });
     expect(r.task.status).toBe("doing");
-    expect(r.warnings.map((w) => w.code)).toEqual(["superseded"]);
+    expect(r.warnings).toEqual([]);
     expect(r.reopened).toBe(rid);
   });
 
