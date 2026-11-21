@@ -65,7 +65,7 @@ describe("確認の手順とスクリプトへの置き換え", () => {
     expect(edited.procedures[0].history).toEqual(again.procedures[0].history);
   });
 
-  it("形の版 1 の定義と、そのときに保存した提案を今の形で読み、更新で今の形の版（3）にする", async () => {
+  it("形の版 1 の定義と、そのときに保存した提案を今の形で読み、更新で今の形の版（4）にする", async () => {
     const dataDir = tempDir("p3-obs-proc-v1-");
     const id = "obs-261120-abcde";
     const v1 = {
@@ -96,7 +96,7 @@ describe("確認の手順とスクリプトへの置き換え", () => {
     ]);
     const { format: _f, id: _i, rev: _r, createdAt: _a, createdBy: _b, updatedAt: _c, updatedBy: _d, ...content } = d;
     await store.update(id, 1, content, "a");
-    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(3);
+    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(4);
     // 形の版 1 のときに保存した提案
     mkdirSync(join(dataDir, "observer", "work", id, "suggestions"), { recursive: true });
     writeFileSync(

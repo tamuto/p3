@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore, PreparationStore } from "../core/definitionStore.ts";
-import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type ObservationDefinition, type Procedure, type References } from "../shared/definition.ts";
+import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type HistoryEntry, HISTORY_LABEL, type ObservationDefinition, type Procedure, type References, STORED_ONLY, type WorkRef } from "../shared/definition.ts";
 import { SLOT_LABEL, SLOTS, type Preparation, type Slot } from "../shared/preparation.ts";
 import { fileChecker } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
@@ -15,7 +15,8 @@ export const OBSERVER_USAGE = [
   "p3 observer list [--json]",
   "p3 observer show <ID> [--json]",
   "p3 observer add [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>] [--expected <期待する結果>]",
-  "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>]",
+  "p3 observer update <ID> --rev <今の版> [--input <JSON のファイル|->] [--title ..] [--category ..] [--body <観測内容>] [--expected ..] [--reason <期待を変えた理由>]",
+  "p3 observer end <ID> --rev <今の版> --reason <終える理由> [--moved-to <機械的な判定を移した CI など>]（観測を終える。前提として使われていれば断る）",
   "p3 observer suggest <ID> [--note <補足>]（保存した観測に提案を頼み、依頼と結果を観測に残す）",
   "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
   "p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>（置き換え候補のスクリプトに切り替える）",
@@ -28,9 +29,9 @@ export const OBSERVER_USAGE = [
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "suggest", "suggestions", "switch", "prep"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
-export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "switch"] as const;
+export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
 export const observerWrites = (args: string[]) =>
@@ -48,6 +49,12 @@ export interface ObserverCliOptions {
   rev?: string;
   /** add / update / suggest: 期待する結果 */
   expected?: string;
+  /** 作業の帰属（入口が CLI の作業の文脈を確かめて渡す。タスクを起点にした操作のときだけ） */
+  work?: WorkRef;
+  /** update: 期待を変えた理由 / end: 終える理由 */
+  reason?: string;
+  /** end: 機械的な判定を移した先 */
+  movedTo?: string;
   /** switch: 確かめた呼び出し方 */
   command?: string;
   /** --repo（observer では使わない。黙って無視しないために受け取って断る） */
@@ -64,7 +71,7 @@ export type ObserverResult = { data: unknown; text: string; code?: undefined } |
 
 const EXIT: Record<DefinitionError["code"], 1 | 2 | 3> = { invalid: 1, unreadable: 1, not_found: 2, conflict: 3, in_use: 3 };
 /** 保存の層が付ける項目（show --json の出力をそのまま --input に渡せるよう、入力からは落とす） */
-const META = ["format", "id", "rev", "createdAt", "createdBy", "updatedAt", "updatedBy"];
+const META: string[] = ["format", "id", "rev", "createdAt", "createdBy", "updatedAt", "updatedBy", ...STORED_ONLY];
 
 /**
  * p3 observer <サブコマンド>。status は入口がプロジェクトを決める前に呼ぶ（tasks のプロジェクトの解決・個人設定を経ない）。
@@ -83,6 +90,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   }
   if (opts.repo?.length) throw new UsageError("p3 observer は --repo を使いません（手順の提案では、読める参照先を全部 AI に渡します）");
   if (sub !== "suggest" && opts.note !== undefined) throw new UsageError("--note は p3 observer suggest でだけ使えます");
+  if (opts.movedTo !== undefined && sub !== "end") throw new UsageError("--moved-to は p3 observer end でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const files = opts.target.repoPath && fileChecker(opts.target.repoPath);
   const store = new DefinitionStore(opts.target.dataDir, files);
@@ -117,10 +125,16 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       if (rest.length) throw new UsageError(`add は位置引数を取りません: ${rest.join(" ")}（中身は --input か --title・--category・--body）`);
       if (opts.rev !== undefined) throw new UsageError("add に --rev は要りません（版は作成で 1 になる）");
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
-      const d = await store.create(fromFlags(input.input), actor);
+      const d = await store.create(fromFlags(input.input), actor, { reason: opts.reason, work: opts.work });
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
     if (sub === "prep") return await prepCommand(rest, opts, actor, files);
+    if (sub === "end") {
+      const [id, ...extra] = rest;
+      if (!id || extra.length || opts.rev === undefined) throw new UsageError("p3 observer end <ID> --rev <今の版> --reason <終える理由> [--moved-to <移した先>]");
+      const d = await store.end(id, parseRev(opts.rev), { reason: opts.reason, movedTo: opts.movedTo }, actor, { work: opts.work });
+      return { data: d, text: `終えました: ${d.id}（v${d.rev}）${d.ended?.movedTo ? `  移した先: ${d.ended.movedTo}` : ""}` };
+    }
     if (sub === "switch") {
       const [id, pid, ...extra] = rest;
       if (!id || !pid || extra.length) throw new UsageError("p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>");
@@ -178,11 +192,11 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       rev ??= r.rev;
     } else {
       // --input を省くと今の定義に --title などを重ねる（版は必ず添える。読んだ版に黙って合わせない）
-      const { format: _f, id: _i, rev: _r, createdAt: _ca, createdBy: _cb, updatedAt: _ua, updatedBy: _ub, ...content } = await store.get(id);
-      base = { ...content };
+      base = { ...(await store.get(id)) };
+      for (const k of META) delete base[k];
     }
     if (rev === undefined) throw new UsageError("更新には今の定義の版を --rev で添えてください（p3 observer show <ID> で読める）");
-    const d = await store.update(id, rev, fromFlags(base), actor);
+    const d = await store.update(id, rev, fromFlags(base), actor, { reason: opts.reason, work: opts.work });
     return { data: d, text: `更新しました: ${d.id}（v${d.rev}）` };
   } catch (e) {
     return fail(e);
@@ -271,9 +285,14 @@ function describe(d: ObservationDefinition, files: Files, refs: References): str
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
   for (const p of d.procedures) lines.push(...procedureLines(p, files));
+  if (d.ended) lines.push("", `終了 ${d.ended.at} ${d.ended.by}: ${d.ended.reason}${d.ended.movedTo ? `（移した先: ${d.ended.movedTo}）` : ""}`);
+  lines.push("", `期待の履歴 ${d.history?.length ?? 0} 件`, ...(d.history ?? []).map(historyLine));
   lines.push("", `作成 ${d.createdAt} ${d.createdBy} / 更新 ${d.updatedAt} ${d.updatedBy}`);
   return lines.join("\n");
 }
+
+const historyLine = (h: HistoryEntry) =>
+  `  ${h.at} ${HISTORY_LABEL[h.kind] ?? h.kind} ${h.by}${h.work ? `（${h.work.request}/${h.work.task} の作業）` : ""}${h.reason ? `: ${h.reason}` : ""}${h.kind === "expected" ? `  ${h.before ?? "（未記入）"} → ${h.expected ?? "（未記入）"}` : ""}${h.movedTo ? `  移した先: ${h.movedTo}` : ""}`;
 
 /** p3 observer prep <list|show|add|update|switch|rm>（準備。観測の定義と同じ保存の層・検証） */
 async function prepCommand(args: string[], opts: ObserverCliOptions, actor: string, files: Files): Promise<ObserverResult> {

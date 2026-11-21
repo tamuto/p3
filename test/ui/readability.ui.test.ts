@@ -262,6 +262,10 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.goto(`/observer/${ids.observation}`);
       await until.visible(page.getByRole("heading", { name: /観測（経費精算/ }));
       none(await tabTo(page, page.getByRole("link", { name: "編集・AI に提案を頼む" }), "編集"), at("観測の詳細"));
+      await page.getByRole("button", { name: "観測を終える" }).click();
+      await page.getByLabel("終える理由").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "終える", exact: true }), "終える"), at("観測の詳細の終了"));
+      await page.getByRole("button", { name: "やめる" }).click();
     }, page);
     await s.step(at("準備の一覧から登録・詳細から編集・登録と編集の保存"), async () => {
       await page.goto("/observer/preparations");

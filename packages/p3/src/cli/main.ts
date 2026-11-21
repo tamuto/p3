@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { renderCommand } from "@infodb/p3-tasks/cli/render.ts";
 import { machineSettingsSource, resolveMachineSettings } from "@infodb/p3-tasks/core/machineSettings.ts";
 import { startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
@@ -25,6 +26,9 @@ import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
 import { fileChecker } from "@infodb/p3-observer/core/files.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
 import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
+import { resolveWork } from "@infodb/p3-app/core/observerWork.ts";
+import { readWorkSession } from "@infodb/p3-shared/node/workContext.ts";
+import type { WorkRef } from "@infodb/p3-observer/shared/definition.ts";
 import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
 
 /**
@@ -224,7 +228,18 @@ async function main(argv: string[]): Promise<number> {
 
   // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
   if (cmd === "observer") {
+    // 作業の帰属: p3 move <T> doing で残した作業の文脈が、このプロジェクトの作業中のタスクのときだけ渡す（文脈の無い操作・古い文脈には付けない）
+    const session = observerWrites(args) ? readWorkSession(cwd) : undefined;
+    let work: WorkRef | undefined;
+    if (session && resolve(session.dataDir) === resolve(target.dataDir)) {
+      const w = resolveWork(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() }), session.ref);
+      if (w.ok) work = w.work;
+      else process.stderr.write(`p3: ${w.reason}。作業の帰属は付けません\n`);
+    }
     const r = await observerCommand(args, {
+      work,
+      reason: o.reason,
+      movedTo: o["moved-to"],
       target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),

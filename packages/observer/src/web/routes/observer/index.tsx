@@ -32,7 +32,7 @@ function DefinitionList() {
                   <th className="py-1 pr-3 font-normal">タイトル</th>
                   <th className="py-1 pr-3 font-normal">カテゴリ</th>
                   <th className="py-1 pr-3 font-normal">測定・手順</th>
-                  <th className="py-1 font-normal">版</th>
+                  <th className="py-1 font-normal">版・状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -47,7 +47,10 @@ function DefinitionList() {
                     <td className="py-2 pr-3">
                       {d.measures.length}・{d.procedures.length}
                     </td>
-                    <td className="py-2">v{d.rev}</td>
+                    <td className="py-2">
+                      v{d.rev}
+                      {d.ended ? "・終了" : ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -55,6 +58,7 @@ function DefinitionList() {
           )}
         </>
       )}
+      <p className="pt-2 text-slate-600 dark:text-slate-400">観測は、今の期待（仕様）が実際の環境・データ・使い方で成り立っているかを確かめる記録です。テストを流す仕組み（CI）ではありません。</p>
     </div>
   );
 }

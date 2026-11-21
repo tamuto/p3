@@ -24,7 +24,7 @@ describe("前提の観測と使う準備の保存", () => {
     const signIn = await defs.create(obs("サインイン"), "a");
     expect(signIn).not.toHaveProperty("prerequisites");
     const d = await defs.create(obs("業務画面", { prerequisites: [signIn.id], preparations: [" サインイン済み "] }), "a");
-    expect(d).toMatchObject({ format: 3, prerequisites: [signIn.id], preparations: [p.id] });
+    expect(d).toMatchObject({ format: 4, prerequisites: [signIn.id], preparations: [p.id] });
     await preps.update(p.id, 1, { name: "利用者でサインイン済み" }, "a");
     expect(await defs.references(await defs.get(d.id))).toEqual({ prerequisites: [{ id: signIn.id, title: "サインイン" }], preparations: [{ id: p.id, name: "利用者でサインイン済み" }] });
     expect((await defs.update(d.id, 1, obs("業務画面", { preparations: [p.id] }), "a")).preparations).toEqual([p.id]);
@@ -91,21 +91,21 @@ describe("前提の観測と使う準備の保存", () => {
     }
   });
 
-  it("形の版 1・2 の観測は参照の無い定義として読み、更新・切り替えで形の版 3 を書く", async () => {
+  it("形の版 1・2 の観測は参照の無い定義として読み、更新・切り替えで今の形の版（4）を書く", async () => {
     const { dataDir, defs } = stores();
     const d = await defs.create(obs("古い形", { procedures: [{ title: "見る", run: { kind: "ai-instruction", target: "画面", steps: ["開く"], judge: "出る", record: "なし" }, replacement: { kind: "script", repo: "app", path: "x.mjs", operation: "o", output: "o", compare: "c", switchWhen: "s" } }] }), "a");
     const file = join(dataDir, "observer", "definitions", `${d.id}.json`);
     writeFileSync(file, JSON.stringify({ ...d, format: 2 }));
     const read = await defs.get(d.id);
-    expect(read).toMatchObject({ format: 3 });
+    expect(read).toMatchObject({ format: 4 });
     expect(read).not.toHaveProperty("prerequisites");
     expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(2);
     await defs.update(d.id, 1, obs("古い形", { procedures: read.procedures }), "a");
-    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(3);
+    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(4);
     writeFileSync(file, JSON.stringify({ ...(await defs.get(d.id)), format: 2 }));
     const files = (repo: string) => (repo === "app" ? ("exists" as const) : ("unverified" as const));
     await new DefinitionStore(dataDir, files).switchProcedure(d.id, 2, "P1", { invoke: "node x.mjs", evidence: "同じ結果" }, "a");
-    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(3);
+    expect(JSON.parse(readFileSync(file, "utf8")).format).toBe(4);
   });
 });
 

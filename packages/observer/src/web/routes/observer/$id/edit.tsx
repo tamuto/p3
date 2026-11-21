@@ -32,6 +32,7 @@ function EditDefinition() {
       {load.kind === "ok" && (() => {
         const { definition: d, draft } = load.value;
         const old = draft && draft.basedOnRev !== d.rev;
+        if (d.ended) return <Alert box warn>この観測は終了しているので直せません（{d.ended.reason}）。</Alert>;
         return (
           <>
             <p className="text-slate-600 dark:text-slate-400">
@@ -52,7 +53,7 @@ function EditDefinition() {
               restore={!!draft && (!old || useOld)}
               addPreparation={addPreparation}
               submitLabel="保存する"
-              onSave={(input) => updateDefinition(id, d.rev, input)}
+              onSave={(input, reason) => updateDefinition(id, d.rev, input, reason)}
               onSaved={() => void navigate({ to: "/observer/$id", params: { id } })}
             />
           </>

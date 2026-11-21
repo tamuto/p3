@@ -1,8 +1,8 @@
-import { Alert, buttonCls, Empty, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, buttonCls, Empty, Field, inputCls, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
-import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type References } from "../../../../shared/definition.ts";
-import { fetchDefinition, switchProcedure } from "../../../lib/api.ts";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type References, HISTORY_LABEL } from "../../../../shared/definition.ts";
+import { endDefinition, fetchDefinition, switchProcedure } from "../../../lib/api.ts";
 import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
 import { ProcedureView } from "../../../components/ProcedureView.tsx";
@@ -41,10 +41,18 @@ function Detail({ d, refs, reload }: { d: ObservationDefinition; refs: Reference
             {d.category || "カテゴリ未設定"}・版 v{d.rev}・<span data-aux>{d.id}</span>
           </p>
         </div>
-        <Link to="/observer/$id/edit" params={{ id: d.id }} className={buttonCls("primary")}>
-          編集・AI に提案を頼む
-        </Link>
+        {!d.ended && (
+          <Link to="/observer/$id/edit" params={{ id: d.id }} className={buttonCls("primary")}>
+            編集・AI に提案を頼む
+          </Link>
+        )}
       </header>
+      {d.ended && (
+        <Alert box warn>
+          この観測は終了しています（{new Date(d.ended.at).toLocaleString()} {d.ended.by}）: {d.ended.reason}
+          {d.ended.movedTo ? `。機械的な判定を移した先: ${d.ended.movedTo}` : ""}
+        </Alert>
+      )}
       <section aria-labelledby="desc-heading" className="space-y-2">
         <h2 id="desc-heading" className="text-xl font-semibold">
           観測内容
@@ -128,9 +136,70 @@ function Detail({ d, refs, reload }: { d: ObservationDefinition; refs: Reference
           </ProcedureView>
         ))}
       </section>
+      <section aria-labelledby="history-heading" className="space-y-2">
+        <h2 id="history-heading" className="text-xl font-semibold">
+          期待の履歴
+        </h2>
+        {!d.history?.length ? (
+          <Empty>まだありません（この版より前に作った観測には履歴がありません）。</Empty>
+        ) : (
+          <ol className="list-decimal space-y-1 pl-6">
+            {d.history.map((h, i) => (
+              <li key={i}>
+                {new Date(h.at).toLocaleString()} {HISTORY_LABEL[h.kind] ?? h.kind}（{h.by}
+                {h.work ? `・${h.work.request}/${h.work.task} の作業` : ""}）{h.reason ? `: ${h.reason}` : ""}
+                {h.kind === "expected" && <span className="block">「{h.before ?? "（未記入）"}」→「{h.expected ?? "（未記入）"}」</span>}
+                {h.kind === "created" && h.expected && <span className="block">期待: {h.expected}</span>}
+                {h.movedTo && <span className="block">移した先: {h.movedTo}</span>}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+      {!d.ended && <EndForm d={d} onDone={reload} />}
       <p className="text-slate-600 dark:text-slate-400" data-aux>
         作成 {new Date(d.createdAt).toLocaleString()} {d.createdBy}／更新 {new Date(d.updatedAt).toLocaleString()} {d.updatedBy}
       </p>
     </>
+  );
+}
+
+/** 観測を終える（理由が要る。機械的な判定を外部の CI に移したなら移した先。今の版を添える。前提として使われていれば断られる） */
+function EndForm({ d, onDone }: { d: ObservationDefinition; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [movedTo, setMovedTo] = useState("");
+  const [error, setError] = useState<string>();
+  if (!open)
+    return (
+      <div>
+        <Button onClick={() => setOpen(true)}>観測を終える</Button>
+      </div>
+    );
+  return (
+    <form
+      className="space-y-3"
+      aria-label="観測を終える"
+      onSubmit={(e) => {
+        e.preventDefault();
+        endDefinition(d.id, d.rev, reason, movedTo).then(onDone, (x: Error) => setError(x.message));
+      }}
+    >
+      {error && <Alert box>{error}</Alert>}
+      <Field label="終える理由">
+        <textarea className={inputCls} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+      <Field label="移した先（任意）" hint="毎回同じ動作で機械的に判定できるようになり、外部の CI に移したときのジョブ名や URL">
+        <input className={inputCls} value={movedTo} onChange={(e) => setMovedTo(e.target.value)} />
+      </Field>
+      <div className="flex gap-3">
+        <Button type="submit" variant="primary">
+          終える
+        </Button>
+        <Button variant="cancel" onClick={() => setOpen(false)}>
+          やめる
+        </Button>
+      </div>
+    </form>
   );
 }

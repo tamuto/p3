@@ -13,8 +13,13 @@ import {
   reachesSelf,
   validateDefinitionInput,
   type DefinitionProblem,
+  type Baseline,
+  type Ending,
+  type EstimatedOrigin,
+  type HistoryEntry,
   type ObservationDefinition,
   type References,
+  type WorkRef,
 } from "../shared/definition.ts";
 import { isPreparationId, PREPARATION_FORMAT, PREPARATIONS_DIR, SLOT_LABEL, validatePreparationInput, type Preparation, type PreparationInput, type Slot } from "../shared/preparation.ts";
 
@@ -146,12 +151,17 @@ const strip = ({ format: _f, id: _i, rev: _r, createdAt: _ca, createdBy: _cb, up
 const unknownFormat = (f: unknown, known: string) => `知らない形の版です（format: ${JSON.stringify(f)}。この p3 が読めるのは ${known}）。新しい p3 で作ったものなら、p3 を更新してください`;
 
 function parseDefinition(d: Record<string, unknown>, id: string): Parsed<ObservationDefinition> {
-  if (d.format !== DEFINITION_FORMAT && d.format !== 1 && d.format !== 2) return { ok: false, reason: unknownFormat(d.format, `1・2・${DEFINITION_FORMAT}`) };
-  const content = strip(d);
-  // 形の版 1・2 は読むときに今の形にする（書くのは更新のとき。2 までは前提の観測・使う準備が無い）
+  if (![1, 2, 3, DEFINITION_FORMAT].includes(d.format as number)) return { ok: false, reason: unknownFormat(d.format, `1〜${DEFINITION_FORMAT}`) };
+  const { history, ended, baseline, estimatedOrigin, ...content } = strip(d);
+  // 形の版 1〜3 は読むときに今の形にする（書くのは更新のとき。2 までは前提の観測・使う準備が、3 までは期待の履歴・終了が無い）
   const v = validateDefinitionInput(d.format === 1 ? { ...content, procedures: migrateProcedures(content.procedures) } : content);
   if (!v.ok) return { ok: false, reason: `中身が正しくありません（${v.problems.map((p) => `${p.path}: ${p.message}`).join("・")}）` };
-  return { ok: true, value: { format: DEFINITION_FORMAT, id, ...v.value, ...meta(d) } };
+  // 保存の層が書く項目は形だけ確かめる（中身は書いたときのまま）
+  const obj = (x: unknown) => typeof x === "object" && x !== null && !Array.isArray(x);
+  if (history !== undefined && (!Array.isArray(history) || !history.every((h) => obj(h) && typeof (h as HistoryEntry).kind === "string" && typeof (h as HistoryEntry).at === "string"))) return { ok: false, reason: "期待の履歴（history）の形が正しくありません" };
+  for (const [k, x] of Object.entries({ ended, baseline, estimatedOrigin })) if (x !== undefined && !obj(x)) return { ok: false, reason: `${k} の形が正しくありません` };
+  const stored = { ...(history ? { history: history as HistoryEntry[] } : {}), ...(ended ? { ended: ended as Ending } : {}), ...(baseline ? { baseline: baseline as Baseline } : {}), ...(estimatedOrigin ? { estimatedOrigin: estimatedOrigin as EstimatedOrigin } : {}) };
+  return { ok: true, value: { format: DEFINITION_FORMAT, id, ...v.value, ...stored, ...meta(d) } };
 }
 
 function parsePreparation(d: Record<string, unknown>, id: string): Parsed<Preparation> {
@@ -233,7 +243,7 @@ export class DefinitionStore {
     const procedures = assignProcedureIds(v.value.procedures).map((p) => keepHistory(p, self?.procedures.find((c) => c.id === p.id)));
     const problems = plannedProblems(this.files, procedures.map((p, i) => [`procedures[${i}]`, p]));
     const preparations = await this.resolvePreparations(v.value.preparations ?? [], problems);
-    await this.checkPrerequisites(self?.id, v.value.prerequisites ?? [], problems);
+    await this.checkPrerequisites(self?.id, v.value.prerequisites ?? [], problems, self?.prerequisites);
     if (problems.length) throw invalid(problems);
     const { preparations: _p, ...rest } = v.value;
     return { ...rest, ...(preparations.length ? { preparations } : {}), procedures };
@@ -253,7 +263,7 @@ export class DefinitionStore {
   }
 
   /** 前提の観測: 存在すること・自分自身でないこと・たどって自分に戻らないこと（ほかの観測の今の前提をたどる） */
-  private async checkPrerequisites(self: string | undefined, refs: string[], problems: DefinitionProblem[]) {
+  private async checkPrerequisites(self: string | undefined, refs: string[], problems: DefinitionProblem[], current?: string[]) {
     if (!refs.length) return;
     const { items } = await this.f.defs.list();
     const known = new Set(items.map((d) => d.id));
@@ -261,6 +271,7 @@ export class DefinitionStore {
     for (const [j, r] of refs.entries()) {
       const at = `prerequisites[${j}]`;
       if (r === self) problems.push({ path: at, message: "自分自身は前提にできません" });
+      else if (items.find((d) => d.id === r)?.ended && !current?.includes(r)) problems.push({ path: at, message: `終了した観測は前提にできません: ${r}` });
       else if (!known.has(r)) {
         const got = await this.f.defs.read(r);
         problems.push({ path: at, message: !got.ok && got.missing ? `観測がありません: ${r}` : `観測を読めないので確かめられません: ${r}` });
@@ -277,22 +288,54 @@ export class DefinitionStore {
     };
   }
 
-  async create(input: unknown, actor: string): Promise<ObservationDefinition> {
+  /** 作る。履歴に作成（そのときの期待・作業の帰属）を残す */
+  async create(input: unknown, actor: string, ctx: ChangeContext = {}): Promise<ObservationDefinition> {
     return this.f.locked(async () => {
       const content = await this.content(input);
-      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content }), actor);
+      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content, history: [entry("created", actor, ctx, { expected: content.expected })] }), actor);
     });
   }
 
-  /** 今の版（expectedRev）を添えて置き換える。違えば conflict（今の定義を添える）。読めないファイルは上書きしない */
-  async update(id: string, expectedRev: number, input: unknown, actor: string): Promise<ObservationDefinition> {
-    return this.f.locked(() => this.f.defs.replace(id, expectedRev, actor, async (current) => ({ ...pick(current), format: DEFINITION_FORMAT, ...(await this.content(input, current)) })));
+  /**
+   * 今の版（expectedRev）を添えて置き換える。違えば conflict（今の定義を添える）。読めないファイル・終了した観測は上書きしない。
+   * 期待が変わったときだけ履歴に期待の変更（前の期待・理由・作業の帰属）を足す（手順・測定項目だけの編集は足さない）
+   */
+  async update(id: string, expectedRev: number, input: unknown, actor: string, ctx: ChangeContext = {}): Promise<ObservationDefinition> {
+    return this.f.locked(() =>
+      this.f.defs.replace(id, expectedRev, actor, async (current) => {
+        active(current);
+        const content = await this.content(input, current);
+        const changed = (content.expected ?? "") !== (current.expected ?? "");
+        const history = [...(current.history ?? []), ...(changed ? [entry("expected", actor, ctx, { expected: content.expected, before: current.expected })] : [])];
+        return { ...pick(current), ...kept(current), format: DEFINITION_FORMAT, ...content, ...(history.length ? { history } : {}) };
+      }),
+    );
+  }
+
+  /**
+   * 終える（理由が要る。機械的な判定を外部の CI に移したなら移した先を残す）。終了した観測は読めるが直せない。
+   * 終えていない観測から前提として使われていれば、参照元を示して断る
+   */
+  async end(id: string, expectedRev: number, ending: { reason?: string; movedTo?: string }, actor: string, ctx: ChangeContext = {}): Promise<ObservationDefinition> {
+    const reason = ending.reason?.trim();
+    const movedTo = ending.movedTo?.trim();
+    if (!reason) throw new DefinitionError("invalid", "終える理由を書いてください", [{ path: "reason", message: "終える理由を書いてください" }]);
+    return this.f.locked(() =>
+      this.f.defs.replace(id, expectedRev, actor, async (current) => {
+        active(current);
+        const users = (await this.f.defs.list()).items.filter((d) => !d.ended && d.prerequisites?.includes(id));
+        if (users.length) throw new DefinitionError("in_use", `この観測を前提にしている観測があります（${users.map((d) => `${d.id} ${d.title}`).join("・")}）。前提から外してから終えてください`);
+        const at = nowIso();
+        return { ...current, format: DEFINITION_FORMAT, ended: { at, by: actor, reason, ...(movedTo ? { movedTo } : {}) }, history: [...(current.history ?? []), entry("ended", actor, { ...ctx, reason }, { movedTo })] };
+      }),
+    );
   }
 
   /** 手順を置き換え候補のスクリプトに切り替える（切り替えの決まりは switched） */
   async switchProcedure(id: string, expectedRev: number, pid: string, confirm: { invoke?: string; evidence?: string }, actor: string): Promise<ObservationDefinition> {
     return this.f.locked(() =>
       this.f.defs.replace(id, expectedRev, actor, (current) => {
+        active(current);
         const i = current.procedures.findIndex((p) => p.id === pid);
         const p = current.procedures[i];
         if (!p) throw new DefinitionError("not_found", `手順がありません: ${pid}`);
@@ -302,6 +345,23 @@ export class DefinitionStore {
     );
   }
 }
+
+/** 変更の文脈: 理由と作業の帰属（タスクを起点にした操作のときだけ。入口・アプリが確かめて渡す） */
+export interface ChangeContext {
+  reason?: string;
+  work?: WorkRef;
+}
+
+const entry = (kind: HistoryEntry["kind"], by: string, ctx: ChangeContext, extra: Partial<HistoryEntry>): HistoryEntry => {
+  const reason = ctx.reason?.trim();
+  const fields = Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined && v !== ""));
+  return { kind, at: nowIso(), by, ...(reason ? { reason } : {}), ...fields, ...(ctx.work ? { work: ctx.work } : {}) };
+};
+const active = (d: ObservationDefinition) => {
+  if (d.ended) throw new DefinitionError("invalid", `観測 ${d.id} は終了しています（${d.ended.reason}）。終了した観測は直せません`, [{ path: "", message: "終了した観測は直せません" }]);
+};
+/** 保存の層が書く項目のうち、中身の更新で変えないもの */
+const kept = ({ baseline, estimatedOrigin }: ObservationDefinition) => ({ ...(baseline ? { baseline } : {}), ...(estimatedOrigin ? { estimatedOrigin } : {}) });
 
 /** 保存の層が付ける項目だけ（中身は入れ替える） */
 const pick = <T extends Meta>({ id, rev, createdAt, createdBy, updatedAt, updatedBy }: T) => ({ id, rev, createdAt, createdBy, updatedAt, updatedBy });

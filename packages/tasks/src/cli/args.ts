@@ -53,6 +53,7 @@ const OPTIONS = {
   "check-result": { type: "string" },
   target: { type: "string", multiple: true },
   reason: { type: "string" },
+  "moved-to": { type: "string" },
   text: { type: "string" },
   command: { type: "string" },
   success: { type: "string" },
