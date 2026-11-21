@@ -246,7 +246,7 @@ async function main(argv: string[]): Promise<number> {
       candidate: o.candidate,
       origin: o.origin,
       candidates: async () => candidateService(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
-      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
+      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name], repoNames: () => Object.keys(target.repos) },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
       input: o.input,

@@ -24,4 +24,6 @@ export interface DefinitionTarget {
   dataDir: string;
   /** 参照先の名前 → このマシンのパス（ファイルの有無を照らすため。読めない参照先は undefined） */
   repoPath?: (repo: string) => string | undefined;
+  /** 参照先の名前（観測の実行の環境に、参照先ごとのコミットを残すため） */
+  repoNames?: () => string[];
 }

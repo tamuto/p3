@@ -8,6 +8,8 @@ import { fileChecker, fileHasher } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { WorkStore } from "../core/workStore.ts";
+import { readEnvironment, ResultStore } from "../core/resultStore.ts";
+import { PHASE_LABEL, resultText, STEP_RESULT_LABEL } from "../shared/result.ts";
 import type { CandidateService } from "../core/candidates.ts";
 import type { CandidateJob, ObservationCandidate } from "../shared/candidates.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
@@ -25,6 +27,10 @@ export const OBSERVER_USAGE = [
   "p3 observer suggest --input <定義の JSON|-> [--title ..] [--body ..] [--note ..]（ID の無い互換の経路。保存しない）",
   "p3 observer candidates [--note <補足>]（AI に観測の候補を頼む。人が頼んだときだけ）/ candidates <CID>（記録した候補）",
   "p3 observer add --candidate <CID>:<番号> [--origin]（候補を確かめて登録する。--origin で推定の経緯も残す）",
+  "p3 observer run <ID> [--body <環境のメモ>]（実行を始める。P3 は手順を実行しない: 人か担当の AI が実行して記録する）",
+  "p3 observer record <ID> <結果 ID> --input <段の JSON|->（段を1つ記録する: phase・ref・result・measures・basis・evidence）",
+  "p3 observer finish <ID> <結果 ID>（完了して判定する）/ interrupt <ID> <結果 ID> --reason <理由>（中断として閉じる）",
+  "p3 observer results <ID> [<結果 ID>] [--json]（結果の一覧・1件）",
   "p3 observer prep list | show <準備 ID>（準備の一覧・詳細と、それを使う観測）",
   "p3 observer prep add [--input <JSON のファイル|->] [--title <名前>] [--body <説明>]",
   "p3 observer prep update <準備 ID> --rev <今の版> [--input ..] [--title <名前>] [--body <説明>]",
@@ -33,9 +39,9 @@ export const OBSERVER_USAGE = [
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep", "candidates"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep", "candidates", "run", "record", "finish", "interrupt", "results"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
-export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch"] as const;
+export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch", "run", "record", "finish", "interrupt"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
 export const observerWrites = (args: string[]) =>
@@ -143,6 +149,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
     if (sub === "prep") return await prepCommand(rest, opts, actor, files);
+    if (["run", "record", "finish", "interrupt", "results"].includes(sub)) return await resultCommand(sub, rest, opts, store, actor);
     if (sub === "candidates") {
       const [cid, ...extra] = rest;
       if (extra.length) throw new UsageError("p3 observer candidates [<CID>] [--note <補足>]");
@@ -228,6 +235,36 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   } catch (e) {
     return fail(e);
   }
+}
+
+/** 観測の実行と結果（P3 は手順を実行しない。開始・段の記録・完了・中断・読むだけ） */
+async function resultCommand(sub: string, rest: string[], opts: ObserverCliOptions, store: DefinitionStore, actor: string): Promise<ObserverResult> {
+  const t = opts.target!;
+  const results = new ResultStore(t.dataDir, store, new PreparationStore(t.dataDir));
+  const [id, rid, ...extra] = rest;
+  if (!id || extra.length || (sub === "run" ? rid : sub !== "results" && !rid)) throw new UsageError(`使い方: ${OBSERVER_USAGE.split("\n  ").find((l) => l.startsWith(`p3 observer ${sub} `) || l.includes(`/ ${sub} `)) ?? ""}`);
+  const current = async () => (await store.get(id)).rev;
+  if (sub === "results") {
+    if (rid) {
+      const r = await results.get(id, rid);
+      return { data: r, text: resultText(r, await current()) };
+    }
+    const l = await results.list(id);
+    const rev = await current();
+    return { data: l, text: [`結果 ${l.results.length} 件（${id}・今の版 v${rev}）`, ...l.results.map((r) => resultText(r, rev).split("\n")[0]), ...l.unreadable.map((u) => `⚠ 読めないファイル ${u.file}: ${u.reason}`)].join("\n") };
+  }
+  if (sub === "run") {
+    const r = await results.start(id, actor, { repos: readEnvironment((t.repoNames?.() ?? []).map((n) => [n, t.repoPath?.(n)])), note: opts.body });
+    return { data: r, text: `始めました: ${r.id}（${id} 版 ${r.rev}）。段を記録したら p3 observer finish ${id} ${r.id}\n${resultText(r)}` };
+  }
+  if (sub === "record") {
+    if (opts.input === undefined) throw new UsageError("段の記録は --input <JSON のファイル|-> で渡してください（phase・ref・result・measures・basis・evidence・note）");
+    const r = await results.record(id, rid, (await readInput(opts)).input, actor);
+    const st = r.steps.at(-1)!;
+    return { data: r, text: `記録しました: ${PHASE_LABEL[st.phase]} ${st.ref} ${STEP_RESULT_LABEL[st.result]}` };
+  }
+  const r = sub === "finish" ? await results.finish(id, rid, actor) : await results.interrupt(id, rid, actor, opts.reason ?? "");
+  return { data: r, text: resultText(r, await current()) };
 }
 
 function parseRev(v: string): number {

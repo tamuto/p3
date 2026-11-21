@@ -41,7 +41,7 @@ export function projectsRoutes(registry: ProjectRegistry, opts: { products?: rea
     let r = routes.get(ctx);
     if (!r) {
       r = new Hono();
-      if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir, repoPath: readablePath(ctx) }, suggestions: opts.suggestions?.(ctx), candidates: opts.candidates?.(ctx), resolveWork: (ref) => resolveWork(ctx, ref) }));
+      if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir, repoPath: readablePath(ctx), repoNames: () => ctx.ws.refs().map((r) => r.name) }, suggestions: opts.suggestions?.(ctx), candidates: opts.candidates?.(ctx), resolveWork: (ref) => resolveWork(ctx, ref) }));
       if (products.includes("observer")) r.route("/", requestObservationsRoute(ctx));
       r.route("/", apiRoutes(ctx, { notify: (kind) => registry.notify(kind) }));
       // 無い API は 404 の JSON（画面の index.html に流さない）

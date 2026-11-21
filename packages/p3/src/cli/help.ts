@@ -92,6 +92,10 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                作成・期待の変更・終了は期待の履歴に残る（update の --reason は期待を変えた理由）。p3 move <T> doing で始めた作業のタスクも残る
   observer candidates [--note <補足>] | candidates <CID>   AI に観測の候補を頼む（人が頼んだときだけ）・記録した候補
                                add --candidate <CID>:<番号> [--origin] で確かめて登録（--origin で推定の経緯も残す）
+  observer run <ID> [--body <環境のメモ>]   実行を始める（P3 は手順を実行しない。人か担当の AI が実行して記録する。定義の版と中身を写す）
+  observer record <ID> <結果 ID> --input <段の JSON|->   段を1つ記録する（phase・ref・result・measures・basis・evidence）
+  observer finish <ID> <結果 ID> | interrupt <ID> <結果 ID> --reason <理由>   完了して判定する（期待どおり・期待どおりでない・未確認）・中断として閉じる
+  observer results <ID> [<結果 ID>]   結果の一覧・1件
   observer prep list | show | add | update | switch | rm   準備（観測の前後で状態を作る・戻すもの）の一覧・詳細・作成・更新・切り替え・削除
                                add / update は --input か --title <名前>・--body <説明>。switch は <準備 ID> <check|setup|teardown>。rm は使う観測が無いときだけ
                                --json で product・version・state・dataDir（今は何も保存しないので null）
