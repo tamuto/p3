@@ -5,6 +5,7 @@ import { ProcedureView } from "./ProcedureView.tsx";
 import { MISSING_LABEL, SURFACE_LABEL, type SuggestionContext, type SuggestionJob } from "../../shared/suggestion.ts";
 import { Alert, Button, buttonCls, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { Link } from "@tanstack/react-router";
+import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
 import { SLOT_LABEL, SLOTS } from "../../shared/preparation.ts";
 import type { Refs } from "./RefPicker.tsx";
 import { cancelSuggestion, fetchSuggestion, fetchSuggestionContext, listSuggestions, ObserverApiError, startSuggestion } from "../lib/api.ts";
@@ -79,16 +80,21 @@ export function SuggestPanel({
     return () => clearTimeout(t);
   }, [id, job]);
 
-  async function ask(body: { definition: unknown; note?: string; basedOnRev: number }) {
+  // 開始待ち（押した直後から応答まで。中断した提案の頼み直しも同じ）。応答が遅くても二重に頼まない
+  const once = useStartOnce(id);
+  function ask(body: { definition: unknown; note?: string; basedOnRev: number }) {
     setError(undefined);
-    setAdopted([]);
-    try {
-      const j = await startSuggestion(id, body);
-      if (alive.current) setJob(j);
-    } catch (e) {
-      const problems = e instanceof ObserverApiError ? e.problems.map((p) => `${p.path}: ${p.message}`) : [];
-      if (alive.current) setError([(e as Error).message, ...problems].join("\n"));
-    }
+    void once.start(
+      () => startSuggestion(id, body),
+      (j) => {
+        setAdopted([]);
+        if (alive.current) setJob(j);
+      },
+      (e) => {
+        const problems = e instanceof ObserverApiError ? e.problems.map((p) => `${p.path}: ${p.message}`) : [];
+        if (alive.current) setError([e.message, ...problems].join("\n"));
+      },
+    );
   }
   const measureNames = measures.map((m) => m.name);
   const stale = job?.basedOnRev !== undefined && job.basedOnRev !== rev;
@@ -113,8 +119,8 @@ export function SuggestPanel({
         <textarea className={inputCls} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
       <div className="flex gap-3">
-        <Button variant="primary" disabled={running} onClick={() => void ask({ definition: material(), basedOnRev: rev, ...(note.trim() ? { note } : {}) })}>
-          {running ? "提案を待っています…" : job ? "もう一度頼む" : "提案を頼む"}
+        <Button variant="primary" disabled={running || once.pending} onClick={() => ask({ definition: material(), basedOnRev: rev, ...(note.trim() ? { note } : {}) })}>
+          {once.pending ? STARTING_LABEL : running ? "提案を待っています…" : job ? "もう一度頼む" : "提案を頼む"}
         </Button>
         {running && (
           <Button variant="cancel" onClick={() => void cancelSuggestion(id, job.id).catch((e: Error) => setError(e.message))}>
@@ -128,7 +134,9 @@ export function SuggestPanel({
       {job?.status === "interrupted" && job.request && (
         <Alert box warn>
           {job.error}{" "}
-          <Button onClick={() => void ask({ definition: job.request!.definition, basedOnRev: job.basedOnRev ?? rev, ...(job.request!.note ? { note: job.request!.note } : {}) })}>同じ入力で頼み直す</Button>
+          <Button disabled={once.pending} onClick={() => ask({ definition: job.request!.definition, basedOnRev: job.basedOnRev ?? rev, ...(job.request!.note ? { note: job.request!.note } : {}) })}>
+            {once.pending ? STARTING_LABEL : "同じ入力で頼み直す"}
+          </Button>
         </Alert>
       )}
       {stale && job?.status === "completed" && <Alert warn>{`この提案は版 v${job.basedOnRev} の定義に頼んだものです（今は v${rev}）。取り込むときに確かめます`}</Alert>}

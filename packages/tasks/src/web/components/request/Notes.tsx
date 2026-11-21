@@ -3,6 +3,7 @@ import { type PreflightRun, type Request } from "../../../shared/types.ts";
 import { Badge, Button, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { api, type NotesInfo } from "../../lib/api.ts";
 import { nextRunLabel, notesPanelState, submitNote } from "../../lib/notes.ts";
+import { STARTING_LABEL } from "@infodb/p3-shared/web/startOnce.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 
 /** Preflight へのメモ欄 */
@@ -33,6 +34,8 @@ export function Notes({
   draft,
   onDraft,
   onStarted,
+  starting,
+  startOnce,
   blocked,
 }: {
   ctx: AppCtx;
@@ -45,6 +48,9 @@ export function Notes({
   draft: string;
   onDraft: Dispatch<SetStateAction<string>>;
   onStarted: (r: PreflightRun) => void;
+  /** 要望の開始待ち（概要・確認事項の開始と共有。保存して再実行はこれを通して二重に送らない） */
+  starting: boolean;
+  startOnce: <T>(fn: () => Promise<T>, onDone: (r: T) => void, onError: (e: Error) => void) => Promise<void>;
   /** 要望が外で消された（入力は残し、保存はしない） */
   gone: boolean;
 }) {
@@ -52,7 +58,7 @@ export function Notes({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
   const pending = info?.notes.filter((n) => n.pending).length ?? 0;
-  const st = notesPanelState({ hasHistory, running, engineOk, draft, busy, pending });
+  const st = notesPanelState({ hasHistory, running, engineOk, draft, busy: busy || starting, pending });
 
   useEffect(() => {
     // 取れなければ前の一覧のまま（入力中のメモには触らない）
@@ -60,27 +66,33 @@ export function Notes({
   }, [request.id, ctx.tick]);
 
   async function submit(run: boolean) {
-    if (busy) return;
+    if (busy || (run && starting)) return;
     if (gone) return setMessage({ error: true, text: "この要望は見つからないので保存しません。入力は残してあります" });
-    setBusy(true);
     setMessage(null);
+    const sent = draft;
+    // 保存して再実行は要望の開始待ちを通す（概要の開始と重ねない）。メモだけの保存は今までどおり
+    if (run) return startOnce(() => submitNote(api, request.id, sent, true), (r) => void done(sent, r), (e) => setMessage({ error: true, text: e.message }));
+    setBusy(true);
     try {
-      const sent = draft;
-      const r = await submitNote(api, request.id, sent, run);
-      // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）。保存の前に失敗したら入力は残す。
-      // 送った後に書き足していれば、その文は消さない
-      onDraft((cur) => (cur === sent ? "" : cur));
-      if (r.kind === "started") setMessage({ error: false, text: "メモを保存して、Preflight を始めました" });
-      else if (r.kind === "not-started")
-        setMessage({ error: true, text: `メモ ${r.note.id} は保存済みです（書き直しは不要）。Preflight を始められませんでした: ${r.error}` });
-      else setMessage({ error: false, text: `メモ ${r.note.id} を保存しました。${running ? "実行中の評価ではなく、" : ""}次の Preflight に渡します` });
-      if (r.kind === "started") onStarted(r.run);
-      setInfo(await api.notes(request.id));
+      await done(sent, await submitNote(api, request.id, sent, false));
     } catch (e) {
       setMessage({ error: true, text: (e as Error).message });
     } finally {
       setBusy(false);
     }
+  }
+
+  /** 保存・開始の結果を出す（開始したら実行中の表示へ移すのを、開始待ちを外すのと同じ描画で行う） */
+  async function done(sent: string, r: Awaited<ReturnType<typeof submitNote>>) {
+    // 保存できたら入力を消す（再試行で同じメモを重ねて保存しない）。保存の前に失敗したら入力は残す。
+    // 送った後に書き足していれば、その文は消さない
+    onDraft((cur) => (cur === sent ? "" : cur));
+    if (r.kind === "started") setMessage({ error: false, text: "メモを保存して、Preflight を始めました" });
+    else if (r.kind === "not-started")
+      setMessage({ error: true, text: `メモ ${r.note.id} は保存済みです（書き直しは不要）。Preflight を始められませんでした: ${r.error}` });
+    else setMessage({ error: false, text: `メモ ${r.note.id} を保存しました。${running ? "実行中の評価ではなく、" : ""}次の Preflight に渡します` });
+    if (r.kind === "started") onStarted(r.run);
+    setInfo(await api.notes(request.id).catch(() => info));
   }
 
   // まだ実行しておらず、保存済みのメモも無ければ何も出さない
@@ -128,7 +140,7 @@ export function Notes({
             />
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="primary" disabled={!st.canSaveAndRun || gone || !!blocked} title={blocked ?? undefined} onClick={() => void submit(true)}>
-                保存して再実行
+                {starting ? STARTING_LABEL : "保存して再実行"}
               </Button>
               <Button disabled={!st.canSaveOnly || gone} onClick={() => void submit(false)}>
                 {running ? "メモだけ保存（次回に渡す）" : "メモだけ保存"}

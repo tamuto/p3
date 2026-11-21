@@ -111,7 +111,8 @@ export function MilestoneReviewPanel({
       // 確かめた材料（品質基準を含む）の hash で始める（変わっていれば断られる）
       await api.startReview(milestone, preview?.hash);
       onSelectRun(undefined);
-      void load();
+      // 実行中の表示を読み直してから押せるように戻す（開始の操作が再び押せる間を挟まない）
+      await load();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
