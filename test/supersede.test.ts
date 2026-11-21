@@ -18,7 +18,7 @@ async function setup() {
   const { ctx } = p;
   const other = await newRequest(ctx, { title: "別の要望" });
 
-  const req = await newRequest(ctx, { title: "再評価する要望", status: "active", body: "- 新しい案 A\n- 新しい案 B" });
+  const req = await newRequest(ctx, { title: "再評価する要望", status: "draft", body: "- 新しい案 A\n- 新しい案 B" });
   for (const title of ["古い案 1", "古い案 2", "古い案 3"]) await newTask(ctx, req.id, { title });
   await newTask(ctx, req.id, { title: "完了済み", status: "done" });
   await ctx.ws.tasksOf(req.id).update("T002", { status: "doing" });

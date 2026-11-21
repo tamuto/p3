@@ -13,7 +13,7 @@ async function setup() {
     });
     return { status: res.status, body: await res.json() };
   };
-  const req = await newRequest(p.ctx, { title: "要望" });
+  const req = await newRequest(p.ctx, { title: "要望", status: "draft" });
   return { ...p, call, rid: req.id };
 }
 

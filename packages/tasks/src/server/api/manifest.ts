@@ -177,7 +177,7 @@ export const AI_MANIFEST = {
         "アーカイブしたタスク（読むだけ。各タスクに archived: true）。一覧は {request, tasks, errors}（ID の数値順。壊れたファイルは errors）、" +
         "1件は {task}。無い → 404、読めない → 500 code: archive_unreadable。通常の tasks・進捗・対応済の判定には入らない。DELETE /tasks/:tid がアーカイブする",
     },
-    { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
+    { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ。タスク化した後の要望は 409 code: preflight_closed（メモも残さない。変えたいことは新しい要望に）" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
     {
       method: "GET",

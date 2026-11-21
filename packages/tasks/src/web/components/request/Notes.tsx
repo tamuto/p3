@@ -37,7 +37,10 @@ export function Notes({
   starting,
   startOnce,
   blocked,
+  closed,
 }: {
+  /** タスク化した後で再評価しない理由（あればメモの入力と再実行を出さない。保存済みのメモは読める） */
+  closed?: string;
   ctx: AppCtx;
   request: Request;
   /** 実行を止める理由（未保存のタイトル・本文）。メモだけの保存は止めない */
@@ -123,11 +126,12 @@ export function Notes({
                 読めないメモ（渡しません）: {i.file} — {i.error}
               </p>
             ))}
-            {st.mode === "input" && <p className="text-base text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
+            {st.mode === "input" && !closed && <p className="text-base text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
           </>
         )}
-        {st.hint && <p className="text-base text-slate-600 dark:text-slate-400">{st.hint}</p>}
-        {st.mode === "input" && (
+        {st.hint && !closed && <p className="text-base text-slate-600 dark:text-slate-400">{st.hint}</p>}
+        {closed && <p className="text-base text-slate-600 dark:text-slate-400">{closed}。メモは次の Preflight に渡すものなので、ここでは書き足しません。</p>}
+        {st.mode === "input" && !closed && (
           <>
             <textarea
               id={NOTE_INPUT_ID}

@@ -13,6 +13,8 @@ import { checkPending, sendPending, setUnsentAttachments, type PendingAttach } f
 
 export const Route = createFileRoute("/requests/new")({
   component: NewRequest,
+  // parent: 親の要望を選んだ状態で開く（タスク化した後の要望の続きを子として登録する導線など）
+  validateSearch: (s: Record<string, unknown>): { parent?: string } => (typeof s.parent === "string" && s.parent ? { parent: s.parent } : {}),
 });
 
 function NewRequest() {
@@ -28,7 +30,7 @@ function NewRequest() {
   const [due, setDue] = useState("");
   const [milestone, setMilestone] = useState("");
   /** 親の要望（子として作る。省いた期限・マイルストーン・タグは親から写す） */
-  const [parent, setParent] = useState("");
+  const [parent, setParent] = useState(Route.useSearch().parent ?? "");
   const [tags, setTags] = useState<string[]>([]);
   /** タグの入力欄の、まだ足していない文字（作成するときに足す） */
   const [tagText, setTagText] = useState("");

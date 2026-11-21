@@ -10,7 +10,7 @@ import { HierarchyError } from "./hierarchy.ts";
 import { SettingsError } from "./machineSettings.ts";
 import { ReviewRejected } from "../features/milestoneReview/core/service.ts";
 import { StaleInputError } from "./preflight/input.ts";
-import { ChildConflictError, ChildDraftsChangedError, DraftConflictError } from "./preflight/service.ts";
+import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PreflightClosedError } from "./preflight/service.ts";
 import { ImprovementError } from "../features/quality/core/qualityImprovement.ts";
 import { CompletionRejected } from "../features/releaseNotes/core/completeRequests.ts";
 import { GenerationRejected } from "../features/releaseNotes/core/generate.ts";
@@ -96,6 +96,7 @@ export function errorOutcome(e: unknown): ErrorOutcome | undefined {
   // Preflight の案・子の案・評価対象（API だけ。409 は code で分ける: rev_conflict は読み直してやり直す / stale_input は評価のあとで要望が変わった）
   if (e instanceof DraftConflictError || e instanceof ChildConflictError) return { ...coded(409, "rev_conflict", { current: e.current }) };
   if (e instanceof ChildDraftsChangedError) return { ...coded(409, e.code) };
+  if (e instanceof PreflightClosedError) return { exit: 1, cli: e.message, ...coded(409, e.code) };
   if (e instanceof StaleInputError) return { ...coded(409, e.code, { inputMatch: e.match }) };
   if (e instanceof ReloadError) return { status: 503 };
   if (e instanceof ArchivedTaskReadError) return { ...coded(500, e.code) };

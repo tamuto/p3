@@ -14,6 +14,7 @@ const LONG_RISK = `既存の CSV の取り込みが壊れる（${"区切り文�
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
   ids.a = (await j(["request", "new", "請求書の書き出し", "--body", "-"], "- PDF で保存する\n- CSV を取り込む\n")).id;
+  // タスク化した後は再評価しないので、以前のデータ（同じ要望で2つの run をタスク化した）は、評価を2回してから順にタスク化して作る
   const runOf = async (risks: string[]) => {
     const r = JSON.parse(await env.p3(["preflight", ids.a, "--engine", "mock", "--json"])) as { run?: { id: string }; id?: string };
     const run = r.run?.id ?? r.id!;
@@ -21,11 +22,12 @@ async function prepare(env: UiEnv) {
     const data = JSON.parse(await readFile(file, "utf8")) as { assessment: { risks: string[] } };
     data.assessment.risks = risks;
     await writeFile(file, JSON.stringify(data, null, 2));
-    await env.p3(["accept", ids.a, "--run", run]);
     return run;
   };
   ids.run1 = await runOf(["性能が落ちる", LONG_RISK]);
   ids.run2 = await runOf(["二番目の評価のリスク"]);
+  await env.p3(["accept", ids.a, "--run", ids.run1]);
+  await env.p3(["accept", ids.a, "--run", ids.run2]);
   // T001 を完了 → 済み → 再開（手戻り R1）
   await env.p3(["move", "T001", "done", "--req", ids.a]);
   await env.p3(["check", "T001", "--req", ids.a]);

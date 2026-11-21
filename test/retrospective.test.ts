@@ -16,7 +16,7 @@ import { makeProject, newRequest, newTask, openTestProject, tempDir } from "./he
 
 async function setup(body = "- 案 A\n- 案 B") {
   const p = await makeProject();
-  const req = await newRequest(p.ctx, { title: "請求", status: "active", body });
+  const req = await newRequest(p.ctx, { title: "請求", status: "draft", body });
   const runDir = (rid: string, run: string) => p.ctx.ws.preflight.runDir(rid, run);
   /** run.json を直接直す（リスクを足す・途中の採用にするなど） */
   const patchRun = async (rid: string, run: string, fn: (j: Record<string, unknown>) => void) => {
@@ -37,11 +37,12 @@ async function setup(body = "- 案 A\n- 案 B") {
 describe("候補と根拠", () => {
   it("タスク化を終えた run を、作ったタスクの根拠と一緒に新しい順で出す。採用の前・評価の途中の run は候補にしない", async () => {
     const { ctx, rid, run } = await setup();
+    // タスク化した後は再評価しないので、以前のデータ（同じ要望で2つの run をタスク化した）は、評価を2回してから順にタスク化して作る
     const r1 = await run();
     expect((await retrospectiveView(ctx, rid)).candidates).toEqual([]);
     expect((await retrospectiveView(ctx, rid)).none).toMatch(/採用を終えた Preflight がありません/);
-    await ctx.preflight.materialize(rid, r1, "human:a");
     const r2 = await run();
+    await ctx.preflight.materialize(rid, r1, "human:a");
     await ctx.preflight.materialize(rid, r2, "human:a");
     await ctx.ws.tasksOf(rid).archive("T001");
     const v = await retrospectiveView(ctx, rid);
@@ -63,7 +64,7 @@ describe("候補と根拠", () => {
     const v = await retrospectiveView(ctx, parent.id);
     expect(v.candidates[0]).toMatchObject({ run: r, kind: "split", basis: adopted.created.map((c) => ({ key: c.key, target: c.id, state: "present" })) });
     // 旧記録
-    const old = await newRequest(ctx, { title: "古い要望", status: "active", body: "- x\n- y" });
+    const old = await newRequest(ctx, { title: "古い要望", status: "draft", body: "- x\n- y" });
     const r0 = await run(old.id);
     await ctx.preflight.materialize(old.id, r0);
     await patchRun(old.id, r0, (j) => {
@@ -78,11 +79,11 @@ describe("確定", () => {
   it("マイルストーンの無い要望でも1つの対象を確定でき、評価の版・リスクの原文・確定者と日時が読み直しても残る。最新の実行・採用では変わらない", async () => {
     const { ctx, rid, run, dataDir } = await setup();
     const r1 = await run();
+    const r2 = await run(rid, ["別のリスク"]);
     await ctx.preflight.materialize(rid, r1);
     const v = await confirmRetrospectiveTarget(ctx, rid, { run: r1 }, { expectedVersion: 0, actor: "human:a" });
     expect(v.target).toMatchObject({ id: "V1", run: r1, kind: "tasks", by: "human:a", risks: [{ index: 0, text: "性能が落ちる" }, { index: 1, text: "既存の CSV が壊れる" }] });
     expect(v.target?.assessmentVersion).toMatch(/^[0-9a-f]{16}$/);
-    const r2 = await run(rid, ["別のリスク"]);
     await ctx.preflight.materialize(rid, r2);
     const fresh = await openTestProject(dataDir);
     const again = await retrospectiveView(fresh, rid);
@@ -95,7 +96,7 @@ describe("確定", () => {
     const { ctx, rid, run, patchRun, dataDir } = await setup();
     const r1 = await run();
     await ctx.preflight.materialize(rid, r1);
-    const other = await newRequest(ctx, { title: "別", status: "active", body: "- p\n- q" });
+    const other = await newRequest(ctx, { title: "別", status: "draft", body: "- p\n- q" });
     const ro = await run(other.id);
     await ctx.preflight.materialize(other.id, ro);
     const file = join(dataDir, "requests", rid, "retrospective.json");
@@ -120,8 +121,8 @@ describe("確定", () => {
   it("訂正は理由が要り、前の対象と理由が残る。読んだ版が違えば何も書かず、同時の保存は片方だけ通る", async () => {
     const { ctx, rid, run } = await setup();
     const r1 = await run();
-    await ctx.preflight.materialize(rid, r1);
     const r2 = await run();
+    await ctx.preflight.materialize(rid, r1);
     await ctx.preflight.materialize(rid, r2);
     await confirmRetrospectiveTarget(ctx, rid, { run: r1 }, { actor: "human:a" });
     await expect(confirmRetrospectiveTarget(ctx, rid, { run: r1 })).rejects.toThrow(/既に振り返りの対象/);

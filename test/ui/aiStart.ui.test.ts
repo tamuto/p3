@@ -5,13 +5,15 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
-const ids = { request: "", observation: "" };
+const ids = { request: "", preflight: "", observation: "" };
 async function prepare(env: UiEnv) {
   await env.p3(["milestone", "add", "v1", "--title", "最初のリリース"]);
   ids.request = JSON.parse(await env.p3(["request", "new", "申請の検索", "--milestone", "v1", "--body", "申請を検索する", "--json"])).id;
   await env.p3(["new", "検索の索引を作る", "--req", ids.request]);
   await env.p3(["move", "T001", "done", "--req", ids.request, "--record", "申請を題で検索できるようにした"]);
   await env.p3(["request", "set", ids.request, "status=resolved"]);
+  // Preflight はタスク化の前の要望で（対応済の要望は再評価しない）
+  ids.preflight = JSON.parse(await env.p3(["request", "new", "申請の絞り込み", "--body", "申請を絞り込む", "--json"])).id;
   ids.observation = JSON.parse(await env.p3(["observer", "add", "--title", "検索の速さ", "--body", "画面で検索が速いか", "--json"])).id;
 }
 
@@ -40,7 +42,7 @@ describe.skipIf(!inject("chromium").available)("AI の実行の開始待ち", ()
   it("開始の応答が遅くても押した直後から開始待ちになり、開始は1回だけ送られる。断られたらもう一度押せる", async () => {
     const { page, step } = s;
     await step("Preflight: 断られたら理由が出てもう一度押せ、受け付けられたら押せる間を挟まずに実行中へ移る", async () => {
-      await page.goto(`/requests/${ids.request}`);
+      await page.goto(`/requests/${ids.preflight}`);
       const run = page.getByRole("button", { name: "▶ Preflight を実行" });
       let h = await hold(page, /\/api\/requests\/[^/]+\/preflight$/, true);
       await run.click();

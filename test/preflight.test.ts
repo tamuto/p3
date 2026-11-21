@@ -5,14 +5,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_IMAGE, dockerCommand } from "@infodb/codex-workspace";
-import { progress } from "../packages/tasks/src/core/ops.ts";
 import { OPENAI_ENDPOINTS } from "@infodb/chatgpt-plan";
 import { chatgptAccount } from "../packages/tasks/src/core/chatgpt.ts";
 import { redact } from "../packages/tasks/src/core/redact.ts";
 import { CodexWorkspaceEngine, codexConfig, withMounts } from "../packages/tasks/src/core/preflight/codexEngine.ts";
 import { resolveMachineSettings } from "../packages/tasks/src/core/machineSettings.ts";
-import { supersededMarks } from "../packages/tasks/src/core/supersede.ts";
-import { parseAssessment } from "../packages/tasks/src/core/preflight/service.ts";
+import { parseAssessment, PreflightClosedError } from "../packages/tasks/src/core/preflight/service.ts";
 import { PREFLIGHT_CANCELLED, preflightFailed } from "../packages/tasks/src/shared/directTask.ts";
 import type { Renderer } from "../packages/tasks/src/core/preflight/uiRender.ts";
 import { RenderError } from "../packages/tasks/src/core/preflight/render.ts";
@@ -112,16 +110,15 @@ describe("PreflightService（mock エンジン）", () => {
     expect(preflightFailed({ status: "running" })).toBe(false);
   });
 
-  it("タスク化済みの要望で再評価しても、要望のステータスは変えない（進行中のまま）", async () => {
+  it("タスク化した要望は再評価しない（run を作らず、要望の状態と最新の run も変えない）", async () => {
     const { ctx, req } = await withRequest();
     const first = await ctx.preflight.start(req.id);
     await ctx.preflight.wait(req.id, first.id);
     await ctx.preflight.materialize(req.id, first.id);
     expect(ctx.ws.requests.get(req.id)?.status).toBe("active");
-    const again = await ctx.preflight.start(req.id);
-    expect(ctx.ws.requests.get(req.id)?.status).toBe("active");
-    await ctx.preflight.wait(req.id, again.id);
-    expect(ctx.ws.requests.get(req.id)).toMatchObject({ status: "active", lastPreflight: again.id });
+    await expect(ctx.preflight.start(req.id)).rejects.toBeInstanceOf(PreflightClosedError);
+    expect(ctx.ws.requests.get(req.id)).toMatchObject({ status: "active", lastPreflight: first.id });
+    expect((await ctx.preflight.list(req.id)).map((r) => r.id)).toEqual([first.id]);
   });
 
   it("タスクがある要望でも、追加のタスク化は続きの番号になる", async () => {
@@ -308,19 +305,18 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     expect(prompt).toContain("（human:a, ");
   });
 
-  it("再評価から置き換えまで: 前回とメモを引き継ぎ、置き換えられるタスクを選んでアーカイブし、番号は再利用しない", async () => {
-    // データはリポジトリの外。置き換えの参照は2回目の評価からだけ書かせる
+  it("タスク化の前の再評価: 前回とメモを引き継ぎ、タスク化した後は始めない。アーカイブした番号は再利用しない", async () => {
+    // データはリポジトリの外
     const repo = await makeRepo();
     const dataDir = tempDir("p3-data-");
     await mkdir(join(dataDir, "requests"));
     await writeTestProject(dataDir);
-    let supersede = "";
     const codex = new CodexWorkspaceEngine({
       authVolume: "vol",
       account: chatgptAccount(join(tempDir(), "chatgpt.json")),
       pathMap: [],
       ensureImage: false,
-      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", `FAKE_SUPERSEDE=${supersede}`, process.execPath, FAKE_CODEX],
+      command: () => ["env", `FAKE_REPO=${repo.root}`, `FAKE_DATA=${dataDir}`, "FAKE_LOG=/dev/null", process.execPath, FAKE_CODEX],
     });
     const ctx = await openTestProject(dataDir, { codex }, { repos: { main: repo.root } });
     const req = await newRequest(ctx, { title: "x", status: "draft", body: "本文" });
@@ -330,27 +326,15 @@ describe("CodexWorkspaceEngine（偽の app-server）", () => {
     };
 
     const first = await run();
-    expect((await ctx.preflight.materialize(req.id, first.id)).tasks.map((t) => t.id)).toEqual(["T001", "T002"]);
-    const doneTask = await ctx.ws.tasksOf(req.id).update("T002", { status: "done", outputs: ["https://example.com/pull/1"] });
-
-    supersede = `${req.id}/T001`;
-    await ctx.preflight.addNote(req.id, "T001 は新しい方式にする", "human:a");
+    await ctx.preflight.addNote(req.id, "対象は CLI だけにする", "human:a");
     const second = await run();
     expect(second).toMatchObject({ status: "completed", previous: first.id, notes: [expect.any(String)] });
-    const preview = await ctx.preflight.previewMaterialize(req.id, second.id);
-    expect(preview.candidates.map((c) => [c.id, c.reasons.map((r) => r.draft)])).toEqual([["T001", ["D2"]]]); // 完了した T002 は候補にしない
-
-    const r = await ctx.preflight.materialize(req.id, second.id, "human:a", { archive: [{ id: "T001", rev: preview.candidates[0].rev }] });
-    expect(r).toMatchObject({ archived: ["T001"], kept: [] });
-    expect(r.tasks.map((t) => t.id)).toEqual(["T003", "T004"]);
-    // アーカイブしたタスクには印を付けず、進捗にも数えない。完了したタスクの成果物と rev は変わらない
-    expect(supersededMarks(ctx.ws).size).toBe(0);
-    expect(progress(ctx).find((p) => p.request.id === req.id)).toMatchObject({ total: 3, done: 1 });
-    expect(ctx.ws.tasksOf(req.id).get("T002")).toMatchObject({ rev: doneTask.rev, outputs: ["https://example.com/pull/1"] });
+    expect((await ctx.preflight.materialize(req.id, second.id)).tasks.map((t) => t.id)).toEqual(["T001", "T002"]);
+    await expect(run()).rejects.toThrow(/再評価しません/);
 
     // 最大番号をアーカイブしても、次の番号は重ならない
-    await ctx.ws.tasksOf(req.id).archive("T004");
-    expect((await ctx.ws.tasksOf(req.id).create({ title: "追加" })).id).toBe("T005");
+    await ctx.ws.tasksOf(req.id).archive("T002");
+    expect((await ctx.ws.tasksOf(req.id).create({ title: "追加" })).id).toBe("T003");
   });
 
   it("run ディレクトリの外の変更は警告としてログに残す", async () => {

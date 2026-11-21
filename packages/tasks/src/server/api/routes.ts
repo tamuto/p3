@@ -461,6 +461,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       .parse(await c.req.json().catch(() => ({})));
     const id = rid(c);
     const actor = actorOf(c);
+    // タスク化した後の要望は再評価しない（開始に付けるメモも残さない）
+    await preflight.assertOpen(id);
     // メモを書き足してから実行する。実行を始められなくてもメモは残し、その ID を返す（再試行で書き直さない）
     const note = body.note?.trim() ? await preflight.addNote(id, body.note, actor) : undefined;
     try {

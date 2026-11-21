@@ -23,7 +23,7 @@ async function setup() {
   };
   const events: ServerEvent[] = [];
   p.ctx.ws.on((e) => events.push(e));
-  const req = await newRequest(p.ctx, { title: "検索の改善", body: "本文" });
+  const req = await newRequest(p.ctx, { status: "draft", title: "検索の改善", body: "本文" });
   await newTask(p.ctx, req.id, { title: "索引を作る" });
   /** 外（CLI）から書く */
   const cli = async () => {

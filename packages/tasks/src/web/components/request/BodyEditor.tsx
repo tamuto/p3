@@ -4,6 +4,7 @@ import { Badge, Button, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { api, ApiError, failureOf } from "../../lib/api.ts";
 import { discardDraft, draftOf, editDraft, isDirty, sameBody, type Draft } from "../../lib/draft.ts";
 import { bodySaveErrorText, excerpt } from "../../lib/requestEdit.ts";
+import { NEW_REQUEST_HINT } from "../../../shared/preflightClosed.ts";
 import { ExternalChange } from "./ExternalChange.tsx";
 
 /** 要望の本文の表示と編集 */
@@ -21,9 +22,12 @@ export function BodyEditor({
   gone,
   running,
   hasRuns,
+  closed,
   onSaved,
   onConflict,
 }: {
+  /** タスク化した後で再評価しない理由（あれば再評価の案内の代わりに新しい要望を案内する） */
+  closed?: string;
   request: Request;
   draft: Draft<string>;
   setDraft: Dispatch<SetStateAction<Draft<string>>>;
@@ -65,7 +69,9 @@ export function BodyEditor({
       setEditing(false);
       setMessage({
         error: false,
-        text: hasRuns
+        text: closed
+          ? `本文を保存しました。${closed}（${NEW_REQUEST_HINT}）`
+          : hasRuns
           ? "本文を保存しました。今の内容で評価するには「もう一度 Preflight」を実行してください（既存のタスク・成果物・ステータスはそのまま残ります）"
           : "本文を保存しました。次の Preflight でこの内容を評価します",
       });
@@ -103,10 +109,18 @@ export function BodyEditor({
           />
           <ExternalChange label="本文" draft={draft} eq={sameBody} show={(v) => excerpt(v)} onDiscard={() => (setDraft((d) => discardDraft(d)), setMessage(null))} />
           <ul className="list-disc space-y-0.5 pl-5 text-base text-slate-600 dark:text-slate-400">
-            <li>保存すると、この内容が次の Preflight の評価対象になります。</li>
-            {running && <li>実行中の評価には、始めたときの内容が使われます。</li>}
-            {hasRuns && <li>保存しても既存のタスク・成果物・ステータスは残ります。評価のあとで変えると、その評価からはタスク化できません（もう一度 Preflight）。</li>}
-            {hasRuns && <li>再評価では保存済みのメモも渡します。置き換えるタスクは、タスク化のときに選びます。</li>}
+            {closed ? (
+              <li>
+                {closed}。本文の修正は要望の記録として残ります。{NEW_REQUEST_HINT}。
+              </li>
+            ) : (
+              <>
+                <li>保存すると、この内容が次の Preflight の評価対象になります。</li>
+                {running && <li>実行中の評価には、始めたときの内容が使われます。</li>}
+                {hasRuns && <li>保存しても既存のタスク・成果物・ステータスは残ります。評価のあとで変えると、その評価からはタスク化できません（もう一度 Preflight）。</li>}
+                {hasRuns && <li>再評価では保存済みのメモも渡します。</li>}
+              </>
+            )}
           </ul>
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="primary" disabled={busy || gone} onClick={() => void save()}>

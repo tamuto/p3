@@ -74,11 +74,10 @@ describe("p3 preflight --note / notes", () => {
 });
 
 describe("置き換えられたタスク", () => {
-  /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を、D2 が T003 を置き換えると書かれた状態を作る */
+  /** Preflight を通さずに足したタスク（T001〜T003）がある要望を評価し、新しい案 D1 が T001・T002 を、D2 が T003 を置き換えると書かれた状態を作る */
   async function reassessed() {
     const { root, rid } = await initialized();
-    p3(root, ["preflight", rid, "--engine", "mock"]);
-    p3(root, ["accept", rid]);
+    for (const t of ["古い 1", "古い 2", "古い 3"]) p3(root, ["new", t, "--req", rid]);
     p3(root, ["move", "T002", "doing", "--req", rid]);
     const run = p3(root, ["preflight", rid, "--engine", "mock", "--json"]).json();
     expect(run, JSON.stringify({ status: run.status, error: run.error, log: run.log?.slice(-3) })).toMatchObject({ status: "completed" });

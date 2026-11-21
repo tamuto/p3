@@ -46,6 +46,7 @@ import { applyUiShortage, IMAGE_TYPES, loadUiMaterials, readUiImage, UI_DIR, UiM
 import { compareFamily, compareInput, inputHash, normalizeInput, renderRequestSnapshot, runInput, StaleInputError } from "./input.ts";
 import { changedLabel } from "../../shared/preflightInput.ts";
 import { PREFLIGHT_CANCELLED } from "../../shared/directTask.ts";
+import { NEW_REQUEST_HINT, preflightClosedReason } from "../../shared/preflightClosed.ts";
 import { currentOwner, ownerState, systemProbe, type OwnerProbe } from "./owner.ts";
 
 /** 始められない理由をそのまま失敗にするエンジン（run の記録とログに残すため） */
@@ -57,6 +58,14 @@ const failing = (name: PreflightEngine["name"], message: string): PreflightEngin
 
 /** 同じ要望の Preflight が実行中（エンジンを使えないのとは別） */
 export class PreflightBusyError extends Error {}
+
+/** タスク化した後の要望なので始めない（409 code: preflight_closed。shared/preflightClosed.ts） */
+export class PreflightClosedError extends Error {
+  readonly code = "preflight_closed";
+  constructor(reason: string) {
+    super(`${reason}。${NEW_REQUEST_HINT}（p3 request new "…"。続きの要望なら --parent で子にできます）`);
+  }
+}
 
 /** タスク案の題か受け入れ基準が、編集を始めたあとに外で変わった（409 code: rev_conflict。current に今の案） */
 export class DraftConflictError extends Error {
@@ -469,11 +478,19 @@ export class PreflightService {
     return { recovered, errors };
   }
 
+  /** タスク化した後の要望なら PreflightClosedError（始める前に呼ぶ。メモを足す前に確かめる入口からも使う） */
+  async assertOpen(requestId: string): Promise<void> {
+    const reason = preflightClosedReason(this.ws.requests.require(requestId).status, await this.ws.preflight.list(requestId));
+    if (reason) throw new PreflightClosedError(reason);
+  }
+
   /** 評価対象を固定する（ディスクから読み直す）。同じ要望の Preflight が動いていれば PreflightBusyError */
   private async fix(requestId: string) {
     // 評価対象はディスクから読み直して固定する（監視していない外部の編集も取り込む）。この後に変わっても、この run は固定した内容で評価する
     await this.ws.requests.reload(requestId);
     const current = this.ws.requests.require(requestId);
+    // タスク化した後の要望は再評価しない（タスク化・分割の採用と同じロックの中で、ディスクの最新の状態と記録から決める）
+    await this.assertOpen(requestId);
     const text = normalizeInput(current);
     const request: Request = { ...current, ...text };
     // 親子の評価対象も固定する: 子なら親の目的、親なら今の子（分割の採用・子のタスク化の直前に比べる。input.ts の compareFamily）
@@ -987,7 +1004,8 @@ export class PreflightService {
    *   - 結果は作った・失敗・未実行。全部を取り消すために作った子を消さない
    */
   async adopt(requestId: string, runId: string, actor = "preflight", opts: { version?: string } = {}): Promise<AdoptionResult> {
-    return withHierarchyLock(this.ws, async () => {
+    // Preflight を始める処理と同じロックを先に取る（採用と同時に再評価を始めない。順は Preflight → 関係のロック）
+    return this.locked(requestId, () => withHierarchyLock(this.ws, async () => {
       const run = await this.ws.preflight.get(requestId, runId);
       if (!run || run.status !== "completed") throw new Error("完了した preflight のみ採用できます");
       if (!run.children) throw new Error(`${runId} は子の案の run ではありません（タスク案は p3 accept でタスク化します）`);
@@ -1066,7 +1084,7 @@ export class PreflightService {
       }
       this.ws.emit({ type: "changed", kind: "request", request: requestId });
       return result;
-    });
+    }));
   }
 
   /**
@@ -1095,12 +1113,12 @@ export class PreflightService {
    * 評価対象（タイトル・本文）が今の要望と違う・確かめられない run からはタスク化しない（StaleInputError。やり直しも同じ）。
    * 直前に要望をディスクから読み直して比べ、断るときは何も書かない
    */
-  async materialize(
-    requestId: string,
-    runId: string,
-    actor = "preflight",
-    opts: { archive?: { id: string; rev?: number }[] } = {},
-  ): Promise<MaterializeResult> {
+  materialize(requestId: string, runId: string, actor = "preflight", opts: { archive?: { id: string; rev?: number }[] } = {}): Promise<MaterializeResult> {
+    // Preflight を始める処理と同じロックの中で行う（タスク化と同時に再評価を始めない）
+    return this.locked(requestId, () => this.materializeLocked(requestId, runId, actor, opts));
+  }
+
+  private async materializeLocked(requestId: string, runId: string, actor: string, opts: { archive?: { id: string; rev?: number }[] }): Promise<MaterializeResult> {
     const run = await this.ws.preflight.get(requestId, runId);
     if (!run || run.status !== "completed") throw new Error("完了した preflight のみタスク化できます");
     if (run.children) throw new Error(`${runId} は子の要望の案の run です（タスクではなく子を作ります。p3 accept で採用します）`);

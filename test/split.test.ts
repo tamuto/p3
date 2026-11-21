@@ -121,10 +121,11 @@ describe("子の案の採用", () => {
     const other = await ctx.preflight.adopt(parent.id, r1.id).catch((e: unknown) => e);
     expect((other as StaleInputError).match.changed).toEqual(["children"]);
     expect(ctx.ws.requests.list().filter((x) => x.parent === parent.id)).toHaveLength(2);
-    // 手で子を足した後の run の採用も断る
-    const r3 = await run();
-    await createRequest(ctx, { title: "手で足した子", parent: parent.id });
-    expect(((await ctx.preflight.adopt(parent.id, r3.id).catch((e: unknown) => e)) as StaleInputError).match.changed).toEqual(["children"]);
+    // 手で子を足した後の run の採用も断る（採用した要望は再評価しないので、別の要望で確かめる）
+    const other2 = await createRequest(ctx, { title: "別の大きい要望", body: bullets(6) });
+    const r3 = await run(other2.id);
+    await createRequest(ctx, { title: "手で足した子", parent: other2.id });
+    expect(((await ctx.preflight.adopt(other2.id, r3.id).catch((e: unknown) => e)) as StaleInputError).match.changed).toEqual(["children"]);
   });
 
   it("採用で作った子が requests にもアーカイブにも無ければ、親の詳細に知らせる（parent は戻さない）", async () => {

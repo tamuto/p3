@@ -11,6 +11,7 @@ import { markText, warningText } from "../../../lib/supersede.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
+import { preflightClosedReason } from "../../../../shared/preflightClosed.ts";
 
 /**
  * 要望のタスクボード（V 字）。
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/requests/$requestId/board")({
 
 function BoardPage() {
   const ctx = useAppCtx();
-  const { request, tasks, reload, superseded } = useRequestData();
+  const { request, tasks, reload, superseded, runs } = useRequestData();
   const [dragId, setDragId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 直接作ったタスクの知らせ */
@@ -167,7 +168,9 @@ function BoardPage() {
       {!tasks.length ? (
         <div className="mx-auto w-full max-w-xl p-5 md:p-10">
           <Empty>
-            タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、「タスクを追加」で直接作ってください（CLI では `p3 new`）。
+            {preflightClosedReason(request.status, runs)
+              ? "タスクはありません。この要望はタスク化した後なので再評価しません。足りない作業は「タスクを追加」で足すか、新しい要望を登録してください。"
+              : "タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、「タスクを追加」で直接作ってください（CLI では `p3 new`）。"}
           </Empty>
         </div>
       ) : (

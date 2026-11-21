@@ -22,7 +22,7 @@ async function setup() {
   git(p.root, "add", "-A");
   git(p.root, "commit", "-qm", "x");
   const sha = git(p.root, "rev-parse", "HEAD");
-  const req = await newRequest(p.ctx, { title: "請求", status: "active", body: "- 案 A\n- 案 B", milestone: "v1" });
+  const req = await newRequest(p.ctx, { title: "請求", status: "draft", body: "- 案 A\n- 案 B", milestone: "v1" });
   const rid = req.id;
   const patchRun = async (run: string, fn: (j: Record<string, unknown>) => void) => {
     const file = join(p.ctx.ws.preflight.runDir(rid, run), "run.json");
@@ -30,14 +30,17 @@ async function setup() {
     fn(j);
     await writeFile(file, JSON.stringify(j, null, 2));
   };
-  const preflight = async (risks: string[]) => {
+  const evaluate = async (risks: string[]) => {
     const { id } = await p.ctx.preflight.start(rid, { engine: "mock" });
     await p.ctx.preflight.wait(rid, id);
     await patchRun(id, (j) => ((j.assessment as { risks: string[] }).risks = risks));
-    await p.ctx.preflight.materialize(rid, id);
     return id;
   };
-  const run1 = await preflight(["性能が落ちる", "既存の CSV が壊れる", "性能が落ちる"]);
+  // タスク化した後は再評価しないので、訂正の対象にする2つ目の run は先に評価しておき、後でタスク化する（以前のデータの形）
+  const run1 = await evaluate(["性能が落ちる", "既存の CSV が壊れる", "性能が落ちる"]);
+  const later = await evaluate(["新しいリスク"]);
+  await p.ctx.preflight.materialize(rid, run1);
+  const preflight = async () => (await p.ctx.preflight.materialize(rid, later), later);
   await confirmRetrospectiveTarget(p.ctx, rid, { run: run1 }, { actor: "human:a" });
   // T001 を完了→済み→再開（手戻り R1）、T002 を完了してレビュー
   await updateTask(p.ctx, rid, "T001", { status: "done", outputs: [`https://example.com/commit/${sha}`] });
@@ -82,7 +85,7 @@ describe("三状態と根拠", () => {
     const v = await judgeRisk(ctx, rid, { risk: 0, state: "unchecked", evidence: [{ kind: "milestone_review", milestone: "v1", run: mr, section: "units", index: 0, reason: "請求書の出力が性能の懸念の対象" }] });
     expect(v.risks[0].judgment?.evidence[0]).toMatchObject({ kind: "milestone_review", reason: "請求書の出力が性能の懸念の対象", excerpt: expect.stringContaining("G1: insufficient") });
     // 直接の対象でない要望（マイルストーンが違う）から同じ所見は結び付けられない
-    const outside = await newRequest(ctx, { title: "外", status: "active", body: "- x\n- y" });
+    const outside = await newRequest(ctx, { title: "外", status: "draft", body: "- x\n- y" });
     const { id } = await ctx.preflight.start(outside.id, { engine: "mock" });
     await ctx.preflight.wait(outside.id, id);
     await ctx.preflight.materialize(outside.id, id);
@@ -121,7 +124,7 @@ describe("訂正と読み方", () => {
     expect(v.checks[j.id]).toEqual(["changed"]);
     expect(j.evidence[0]).toMatchObject({ excerpt: "（Mock）評価していません" });
     // 対象を訂正する（別の run）
-    const run2 = await preflight(["新しいリスク"]);
+    const run2 = await preflight();
     v = await confirmRetrospectiveTarget(ctx, rid, { run: run2, reason: "採用し直した" });
     expect(v.counts).toEqual({ occurred: 0, not_occurred: 0, unchecked: 1 });
     expect(v.judgments[0]).toMatchObject({ target: "V1", riskText: "性能が落ちる", state: "occurred" });

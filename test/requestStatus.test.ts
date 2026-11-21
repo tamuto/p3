@@ -69,15 +69,9 @@ describe("要望の対応済", () => {
     expect(ctx.ws.requests.get(req.id)?.status).toBe("done");
   });
 
-  it("再評価では対応済のままにし、実行中に変えたステータスを終わったときに上書きしない", async () => {
-    const { ctx, req } = await setup();
-    await newTask(ctx, req.id, { title: "A", status: "done" });
-    await ctx.ws.requests.update(req.id, { status: "resolved" });
-    const ok = await ctx.preflight.start(req.id, { engine: "mock" });
-    await ctx.preflight.wait(req.id, ok.id);
-    expect(ctx.ws.requests.get(req.id)?.status).toBe("resolved");
-
-    // 実行中に人が完了済にした
+  it("実行中に変えたステータスを、終わったときに上書きしない（タスク化した後の要望は再評価しない: test/preflightClosed.test.ts）", async () => {
+    const { ctx } = await setup();
+    // 実行中に人が見送りにした
     let release!: () => void;
     const slow: PreflightEngine = {
       name: "codex",
@@ -93,16 +87,6 @@ describe("要望の対応済", () => {
     release();
     await ctx2.preflight.wait(draft.id, run.id);
     expect(ctx2.ws.requests.get(draft.id)?.status).toBe("rejected");
-  });
-
-  it("再評価のタスク化では進行中に戻す", async () => {
-    const { ctx, req } = await setup();
-    await newTask(ctx, req.id, { title: "A", status: "done" });
-    await ctx.ws.requests.update(req.id, { status: "resolved", body: "- 追加の作業" });
-    const { id } = await ctx.preflight.start(req.id, { engine: "mock" });
-    await ctx.preflight.wait(req.id, id);
-    await ctx.preflight.materialize(req.id, id);
-    expect(ctx.ws.requests.get(req.id)?.status).toBe("active");
   });
 });
 

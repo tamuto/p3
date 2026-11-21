@@ -11,7 +11,7 @@ import { StaleInputError, staleMessage } from "../core/preflight/input.ts";
 import { changedLabel, isMaterialized } from "../shared/preflightInput.ts";
 import { readBody, type CommandEnv } from "./args.ts";
 import { deps, directTaskHint, indent } from "./output.ts";
-import { LocalResultError, PreflightBusyError } from "../core/preflight/service.ts";
+import { LocalResultError, PreflightBusyError, PreflightClosedError } from "../core/preflight/service.ts";
 import { preflightFailed } from "../shared/directTask.ts";
 
 /** Preflight のコマンド（preflight / attach / notes / drafts / accept）。扱わないコマンドは undefined */
@@ -26,6 +26,8 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       if (o["note-only"] && o.note === undefined) throw new UsageError("--note-only には --note でメモを渡してください");
       if (o["note-only"] && engine) throw new UsageError("--note-only は実行しないので --engine は使えません");
       const local = localMode(o);
+      // タスク化した後の要望は再評価しない（開始に付けるメモも残さない。メモだけを残す --note-only は使える）
+      if (!o["note-only"] && local !== "complete" && local !== "cancel") await ctx.preflight.assertOpen(rid);
       if (local) return localPreflight(env, rid, local);
       const note = o.note === undefined ? undefined : await ctx.preflight.addNote(rid, readBody(o.note), actor);
       if (o["note-only"]) return out.result(note, () => `メモ ${note!.id} を書き足しました（次の Preflight に渡します）`);
@@ -39,7 +41,7 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
         // メモは残っているので、書き直さずに p3 preflight だけで再実行できる
         const err = note ? new Error(`${e.message}（メモ ${note.id} は保存済みです。p3 preflight ${rid} で再実行できます）`) : e;
         // 始められなかったら直接作る道を添える（実行中・要望が無いときは別の理由なので添えない。終了コードは変えない）
-        if (!(e instanceof PreflightBusyError) && !(e instanceof NotFoundError)) err.message += `\n${hint()}`;
+        if (!(e instanceof PreflightBusyError) && !(e instanceof NotFoundError) && !(e instanceof PreflightClosedError)) err.message += `\n${hint()}`;
         throw err;
       });
       if (!out.json) process.stderr.write(`preflight ${started.id} (${started.engine})\n`);
