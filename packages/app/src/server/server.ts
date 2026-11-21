@@ -11,6 +11,7 @@ import { machineSettingsSource, type MachineSettings, type SettingsSource } from
 import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import { resolveWork } from "../core/observerWork.ts";
+import { requestObservationsRoute } from "./api/requestObservations.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
 import { fileChecker } from "@infodb/p3-observer/core/files.ts";
@@ -50,6 +51,7 @@ export interface RunningServer {
 export function singleProjectApp(ctx: P3Context, products: readonly Product[] = ["tasks"]) {
   const app = new Hono();
   app.get("/mode", (c) => c.json({ mode: "single", project: ctx.projectName ?? null, products }));
+  if (products.includes("observer")) app.route("/", requestObservationsRoute(ctx));
   app.route("/", apiRoutes(ctx));
   // 無い API は画面（index.html）に流さない
   app.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

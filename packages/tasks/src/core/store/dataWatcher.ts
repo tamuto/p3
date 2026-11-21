@@ -58,6 +58,11 @@ export class DataWatcher {
     this.o = { ...WATCH_DEFAULTS, watch: fsWatch, log: (m) => console.error(m), ...given };
   }
 
+  /** 監視している間の目印（立て直すと変わる。監視していなければ undefined）。監視に頼る索引が、途切れた間の変更を取りこぼさないために使う */
+  get epoch(): number | undefined {
+    return this.state === "watching" ? this.startedAt : undefined;
+  }
+
   start() {
     if (this.closed || this.watcher) return;
     clearTimeout(this.retryTimer);

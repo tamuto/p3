@@ -415,7 +415,19 @@ export class Workspace {
     return this.watcher;
   }
 
+  /** 監視が知らせたデータのフォルダからの相対パスを、ほかの製品の索引（アプリの観測の索引など）にも渡す */
+  private pathListeners = new Set<(rel: string) => void>();
+  onPath(l: (rel: string) => void): () => void {
+    this.pathListeners.add(l);
+    return () => this.pathListeners.delete(l);
+  }
+  /** 監視している間の目印（DataWatcher.epoch。監視していなければ undefined） */
+  get watchEpoch(): number | undefined {
+    return this.watcher?.epoch;
+  }
+
   private async onFileChanged(rel: string) {
+    for (const l of this.pathListeners) l(rel);
     const [top, rid, kind, file] = rel.split(/[\\/]/);
     if (top === MILESTONE_REVIEWS_DIR) {
       // レビューの履歴（ほかのプロセスの実行・取消）。ロックのフォルダ .locks は除く

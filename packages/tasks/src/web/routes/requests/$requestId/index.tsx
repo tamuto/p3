@@ -4,6 +4,7 @@ import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
 import { Badge, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
+import { RequestObservations } from "../../../components/RequestObservations.tsx";
 import { notesPanelState, PLAIN_RUN_BLOCKED } from "../../../lib/notes.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
@@ -282,6 +283,8 @@ function RequestPanel({
       <RequestReviewNotice ctx={ctx} data={data} />
 
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
+
+      <RequestObservations requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
         <Button variant="primary" onClick={() => void start()} disabled={running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>

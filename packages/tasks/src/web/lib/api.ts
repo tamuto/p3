@@ -277,6 +277,9 @@ export const api = {
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),
   request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
+  /** この要望の作業で作った・期待を変えた・終えた観測（アプリが観測の履歴の逆引きで返す。要望の詳細の本体とは別に後から読む） */
+  requestObservations: (rid: string) =>
+    call<{ observations: { id: string; title: string; ended: boolean; kinds: ("created" | "expected" | "ended")[] }[]; unreadable: number }>("GET", `/requests/${rid}/observations`),
   createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[]; parent?: string }) => call<Request>("POST", "/requests", r),
   /** 要望の更新。配下に未完了ができて祖先を戻したら reopenedAncestors、完了済の祖先は warnings（ancestor_done） */
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>

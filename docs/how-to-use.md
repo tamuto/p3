@@ -1403,6 +1403,9 @@ p3 observer show obs-261121-k7m3x                   # 期待の履歴が出る
 p3 observer end obs-261121-k7m3x --rev 4 --reason "毎回同じ判定になった" --moved-to "GitHub Actions: list-speed"
 ```
 
+要望の詳細の「この要望で扱った観測」に、その要望の作業で作った・期待を変えた・終えた観測が出る（観測の履歴の逆引き。推定の経緯は数えない）。
+要望の本体を先に出し、観測の欄は後から読む。一覧・ボード・`p3 ls` には観測の情報を出さない。
+
 観測を終えるには理由が要る。機械的に判定できるようになって外部の CI に移したなら、移した先（`--moved-to`）を残す。終えた観測は読めるが直せず、新しく前提にもできない。
 ほかの観測の前提として使われているときは、参照元を示して断る（前提から外してから終える）。画面では観測の詳細の「観測を終える」。
 API は `PUT /definitions/:id` の `{ rev, definition, reason }`・`POST /definitions/:id/end` の `{ rev, reason, movedTo }`。

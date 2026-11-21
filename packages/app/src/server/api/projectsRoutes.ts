@@ -9,6 +9,7 @@ import { AI_MANIFEST } from "@infodb/p3-tasks/server/api/manifest.ts";
 import type { Product } from "../../core/products.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import { resolveWork } from "../../core/observerWork.ts";
+import { requestObservationsRoute } from "./requestObservations.ts";
 import type { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { readablePath } from "../../core/observerAssistant.ts";
 
@@ -40,6 +41,7 @@ export function projectsRoutes(registry: ProjectRegistry, opts: { products?: rea
     if (!r) {
       r = new Hono();
       if (products.includes("observer")) r.route("/observer", observerRoutes({ products, target: { project: ctx.projectName, dataDir: ctx.ws.dataDir, repoPath: readablePath(ctx) }, suggestions: opts.suggestions?.(ctx), resolveWork: (ref) => resolveWork(ctx, ref) }));
+      if (products.includes("observer")) r.route("/", requestObservationsRoute(ctx));
       r.route("/", apiRoutes(ctx, { notify: (kind) => registry.notify(kind) }));
       // 無い API は 404 の JSON（画面の index.html に流さない）
       r.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));

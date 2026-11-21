@@ -41,6 +41,14 @@ describe.skipIf(!inject("chromium").available)("観測の期待の履歴と終�
       await until.text(history, new RegExp(`期待の変更（.*${rid}/T001 の作業）: 要望で速さを上げた`));
       await until.text(history, /「1秒以内に出る」→「0\.5秒以内に出る」/);
     });
+    await step("要望の詳細には、本体の後に、この要望の作業で扱った観測が読み込まれて出る", async () => {
+      await page.goto(`/requests/${rid}`);
+      const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "この要望で扱った観測" }) });
+      await until.visible(section.getByRole("link", { name: "一覧の速さ" }));
+      await until.text(section, /作成・期待の変更/);
+      await page.goto(`/observer/${id}`);
+      await until.visible(page.getByRole("region", { name: "期待の履歴" }));
+    });
     await step("作業の文脈を外すと、終えたときに作業の帰属は残らない。終えた観測は直せない", async () => {
       await page.getByRole("button", { name: "作業の文脈を外す" }).click();
       await page.getByRole("button", { name: "観測を終える" }).click();
