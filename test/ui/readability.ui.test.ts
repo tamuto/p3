@@ -21,8 +21,11 @@ async function prepare(env: UiEnv) {
   ids.board = (await j(["request", "new", LONG_TITLE, "--milestone", "v1.1", "--due", "2026-11-20", "--body", "-"], body)).id;
   await env.p3(["preflight", ids.board, "--engine", "mock"]);
   await env.p3(["accept", ids.board]);
+  // 評価の材料にした観測が、評価のあとで変わった（案の画面に再評価を判断する知らせが出る）
+  const early = (await j(["observer", "add", "--title", `評価の材料（${LONG_TITLE}）`, "--body", LONG_TITLE])).id;
   ids.drafts = (await j(["request", "new", `案を見る要望（${LONG_TITLE}）`, "--body", "-"], body)).id;
   await env.p3(["preflight", ids.drafts, "--engine", "mock"]);
+  await env.p3(["observer", "update", early, "--rev", "1", "--expected", LONG_TITLE]);
   // 観測: 長いパスと呼び出し方の手順と置き換え候補、完了した提案（Mock）
   const long = "test/ui/expense/receipt/attachments/approval-history/monthly-closing-workflow.ui.test.ts";
   const steps = Array.from({ length: 3 }, (_, i) => `手順 ${i + 1}: ${LONG_TITLE}`);
@@ -77,6 +80,7 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto(`/requests/${ids.drafts}`);
       await until.visible(page.getByRole("button", { name: /件をタスク化/ }));
+      await until.visible(page.getByText(/評価のあとで観測が変わりました/));
     },
   },
   {
@@ -240,6 +244,11 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.getByLabel("タイトル").fill(LONG_TITLE);
       await page.getByLabel("タイトル").focus();
       none(await tabTo(page, page.getByRole("button", { name: "作成", exact: true }), "作成"), at("新しい要望"));
+    }, page);
+    await s.step(at("案の画面の観測の変化から再評価へ"), async () => {
+      await screens[2].open(page);
+      await page.getByText(/評価のあとで観測が変わりました/).click();
+      none(await tabTo(page, page.getByRole("button", { name: "今の内容で再評価する" }), "今の内容で再評価する"), at("案の画面"));
     }, page);
     await s.step(at("設定の入力と保存"), async () => {
       await screens[5].open(page);

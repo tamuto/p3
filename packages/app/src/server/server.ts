@@ -11,6 +11,7 @@ import { machineSettingsSource, type MachineSettings, type SettingsSource } from
 import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
 import { resolveWork } from "../core/observerWork.ts";
+import { installObservationSource } from "../core/observerMaterial.ts";
 import { requestObservationsRoute } from "./api/requestObservations.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
@@ -60,6 +61,8 @@ export function singleProjectApp(ctx: P3Context, products: readonly Product[] = 
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions): Promise<RunningServer> {
+  // Preflight の材料に観測（今の期待）を入れる供給口（入口を経ずに serve だけを起動するときも置く）
+  installObservationSource();
   const app = new Hono();
   // 製品は常に全部（tasks・observer）を付ける（製品ごとの ON/OFF は無い）
   const products = PRODUCTS;

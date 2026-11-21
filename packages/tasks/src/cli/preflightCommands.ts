@@ -123,10 +123,15 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       const supersedes = run.materialized?.length || run.children ? [] : (await ctx.preflight.previewMaterialize(rid, run.id)).candidates;
       const inputMatch = await ctx.preflight.inputMatch(rid, run);
       const next = runNext(rid, run);
-      return out.result({ ...run, inputMatch, supersedes, ...(next ? { next } : {}) }, () =>
+      // 評価のあとで変わった観測（採る前に再評価が要るかの判断材料。タスク化は止めない）
+      const observationsChanged = run.materialized?.length ? [] : await ctx.preflight.observationsChanged(run);
+      return out.result({ ...run, inputMatch, supersedes, ...(observationsChanged.length ? { observationsChanged } : {}), ...(next ? { next } : {}) }, () =>
         [
           formatRun(ctx, rid, run),
           inputMatchLine(rid, run, inputMatch),
+          observationsChanged.length
+            ? `\n⚠ 評価のあとで観測が変わりました（${observationsChanged.map((o) => `${o.id} ${o.title}: 版 ${o.evaluated} → ${o.current === null ? "無い" : `版 ${o.current}`}`).join("・")}）。今の期待で評価し直すか決めてから accept してください（p3 preflight ${rid}）`
+            : "",
           supersedes.length
             ? `\n置き換えられる既存タスク（accept では残す。--archive-superseded でアーカイブ）:\n${table(supersedes.map((c) => [c.id, c.status, c.title]))}`
             : "",

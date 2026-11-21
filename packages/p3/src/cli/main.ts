@@ -27,6 +27,7 @@ import { fileChecker } from "@infodb/p3-observer/core/files.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
 import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
 import { resolveWork } from "@infodb/p3-app/core/observerWork.ts";
+import { installObservationSource } from "@infodb/p3-app/core/observerMaterial.ts";
 import { readWorkSession } from "@infodb/p3-shared/node/workContext.ts";
 import type { WorkRef } from "@infodb/p3-observer/shared/definition.ts";
 import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
@@ -89,6 +90,8 @@ function observerOutput(out: Output, r: ObserverResult): number {
 async function main(argv: string[]): Promise<number> {
   // 製品（tasks）が名乗る版は、配布の単位の版（この CLI のパッケージ）
   setAppVersion(cliVersion());
+  // Preflight の材料に観測（今の期待）を入れる供給口（tasks は observer を読まないので入口が置く）
+  installObservationSource();
   const { values: o, positionals } = parse(argv);
   const [cmd, ...args] = positionals;
   if (!cmd || o.help || cmd === "help") {
