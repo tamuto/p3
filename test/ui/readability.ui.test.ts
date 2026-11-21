@@ -10,7 +10,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "" };
+const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "", candidates: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -47,6 +47,9 @@ async function prepare(env: UiEnv) {
   const prep = { name: `準備（${LONG_TITLE}）`, description: LONG_TITLE, exclusive: [`account:${"x".repeat(60)}`], setup: { run: obs.procedures[0].run, replacement: obs.procedures[0].replacement } };
   ids.preparation = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify(prep))).id;
   ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
+  // 観測の候補（Mock。人が確かめる品質基準から）
+  await env.p3(["quality", "add", "--text", LONG_TITLE, "--reference", LONG_TITLE]);
+  ids.candidates = (await j(["observer", "candidates"])).id;
   // 期待の見直しの注意: 期待を確定した後に、手順のファイルが変わった観測
   const watched = long.replace("monthly-closing-workflow", "monthly-closing-workflow-watched");
   mkdirSync(dirname(join(env.repo, watched)), { recursive: true });
@@ -154,6 +157,20 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto(`/observer/${ids.drift}`);
       await until.visible(page.getByRole("list", { name: "期待を確定した後の参照ファイルの変化" }));
+    },
+  },
+  {
+    name: "観測の候補",
+    open: async (page) => {
+      await page.goto("/observer/candidates");
+      await until.visible(page.getByRole("link", { name: "確かめて登録" }).first());
+    },
+  },
+  {
+    name: "観測の候補から登録",
+    open: async (page) => {
+      await page.goto(`/observer/new?candidate=${ids.candidates}&n=0`);
+      await until.value(page.getByLabel("タイトル"), "品質基準 Q1 の確認");
     },
   },
   {
@@ -291,6 +308,13 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.getByLabel("終える理由").focus();
       none(await tabTo(page, page.getByRole("button", { name: "終える", exact: true }), "終える"), at("観測の詳細の終了"));
       await page.getByRole("button", { name: "やめる" }).click();
+    }, page);
+    await s.step(at("観測の候補を頼む・確かめて登録"), async () => {
+      await page.goto("/observer/candidates");
+      await until.visible(page.getByRole("link", { name: "確かめて登録" }).first());
+      await page.getByLabel("補足（任意）").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "もう一度頼む" }), "もう一度頼む"), at("観測の候補"));
+      none(await tabTo(page, page.getByRole("link", { name: "確かめて登録" }).first(), "確かめて登録"), at("観測の候補"));
     }, page);
     await s.step(at("準備の一覧から登録・詳細から編集・登録と編集の保存"), async () => {
       await page.goto("/observer/preparations");

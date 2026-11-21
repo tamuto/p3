@@ -63,4 +63,33 @@ describe.skipIf(!inject("chromium").available)("観測の期待の履歴と終�
       expect(d.history.map((h: { kind: string; work?: unknown }) => [h.kind, !!h.work])).toEqual([["created", true], ["expected", true], ["ended", false]]);
     });
   });
+
+  it("AI に観測の候補を頼み、確かめて登録した候補だけが観測になる", async () => {
+    s = await openScenario("観測の候補");
+    const { page, step, env } = s;
+    await env.p3(["quality", "add", "--text", "画面の文字は 16px 以上", "--reference", "画面を開いて確かめる"]);
+    await step("観測の一覧から候補の画面へ移り、頼むと期待・理由・根拠つきの候補が出る（まだ観測は増えない）", async () => {
+      await page.goto("/observer");
+      await page.getByRole("link", { name: "AI に観測の候補を頼む" }).click();
+      await until.url(page, /\/observer\/candidates$/);
+      await page.getByRole("button", { name: "候補を頼む" }).click();
+      const card = page.getByRole("article", { name: "品質基準 Q1 の確認" });
+      await until.text(card, /期待: 画面の文字は 16px 以上が守られている/);
+      await until.text(card, /根拠: Q1/);
+      expect(JSON.parse(await env.p3(["observer", "list", "--json"])).definitions).toEqual([]);
+    });
+    await step("「確かめて登録」で候補を入れた登録の画面が開き、直して保存すると観測になる", async () => {
+      await page.getByRole("article", { name: "品質基準 Q1 の確認" }).getByRole("link", { name: "確かめて登録" }).click();
+      await until.url(page, /\/observer\/new\?/);
+      await until.value(page.getByLabel("タイトル"), "品質基準 Q1 の確認");
+      await until.value(page.getByLabel("期待する結果（任意）"), "画面の文字は 16px 以上が守られている");
+      expect(await page.getByRole("checkbox", { name: /推定の経緯/ }).count()).toBe(0);
+      await page.getByLabel("タイトル").fill("文字の大きさ");
+      await page.getByRole("button", { name: "保存して続ける" }).click();
+      await until.url(page, /\/edit$/);
+      const list = JSON.parse(await env.p3(["observer", "list", "--json"])).definitions;
+      expect(list.map((d: { title: string; expected: string }) => [d.title, d.expected])).toEqual([["文字の大きさ", "画面の文字は 16px 以上が守られている"]]);
+      expect(list[0]).not.toHaveProperty("estimatedOrigin");
+    });
+  });
 });

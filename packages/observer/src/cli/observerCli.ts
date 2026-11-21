@@ -8,6 +8,8 @@ import { fileChecker, fileHasher } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { WorkStore } from "../core/workStore.ts";
+import type { CandidateService } from "../core/candidates.ts";
+import type { CandidateJob, ObservationCandidate } from "../shared/candidates.ts";
 import { MISSING_LABEL, SURFACE_LABEL, validateSuggestionRequest, type SuggestionJob } from "../shared/suggestion.ts";
 
 export const OBSERVER_USAGE = [
@@ -21,6 +23,8 @@ export const OBSERVER_USAGE = [
   "p3 observer suggestions <ID> [<提案 ID>] [--json]（提案の履歴・1件）",
   "p3 observer switch <ID> <手順 P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>（置き換え候補のスクリプトに切り替える）",
   "p3 observer suggest --input <定義の JSON|-> [--title ..] [--body ..] [--note ..]（ID の無い互換の経路。保存しない）",
+  "p3 observer candidates [--note <補足>]（AI に観測の候補を頼む。人が頼んだときだけ）/ candidates <CID>（記録した候補）",
+  "p3 observer add --candidate <CID>:<番号> [--origin]（候補を確かめて登録する。--origin で推定の経緯も残す）",
   "p3 observer prep list | show <準備 ID>（準備の一覧・詳細と、それを使う観測）",
   "p3 observer prep add [--input <JSON のファイル|->] [--title <名前>] [--body <説明>]",
   "p3 observer prep update <準備 ID> --rev <今の版> [--input ..] [--title <名前>] [--body <説明>]",
@@ -29,13 +33,13 @@ export const OBSERVER_USAGE = [
 ].join("\n  ");
 
 /** 定義を読み書きするサブコマンド（入口がプロジェクトを決めてから呼ぶ。status だけはプロジェクトを決めない） */
-export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep"] as const;
+export const OBSERVER_PROJECT_SUBCOMMANDS = ["list", "ls", "show", "add", "update", "end", "suggest", "suggestions", "switch", "prep", "candidates"] as const;
 /** 定義を変えるサブコマンド（登録が1つだけで決まったときなどに、入口が書き込みを止めるため） */
 export const OBSERVER_WRITE_SUBCOMMANDS = ["add", "update", "end", "switch"] as const;
 
 export const observerNeedsProject = (args: string[]) => (OBSERVER_PROJECT_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "");
 export const observerWrites = (args: string[]) =>
-  (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1) || (args[0] === "prep" && ["add", "update", "switch", "rm"].includes(args[1] ?? ""));
+  (OBSERVER_WRITE_SUBCOMMANDS as readonly string[]).includes(args[0] ?? "") || (args[0] === "suggest" && args.length > 1) || (args[0] === "prep" && ["add", "update", "switch", "rm"].includes(args[1] ?? "")) || (args[0] === "candidates" && args.length === 1);
 
 export interface ObserverCliOptions {
   /** 入口が解決したプロジェクト（status 以外で要る） */
@@ -61,6 +65,11 @@ export interface ObserverCliOptions {
   repo?: string[];
   /** suggest: 補足 */
   note?: string;
+  /** add: 観測の候補（<CID>:<番号>）と、その推定の経緯を残すか */
+  candidate?: string;
+  origin?: boolean;
+  /** candidates: 入口が組み立てた観測の候補の提案の実行 */
+  candidates?: () => Promise<CandidateService>;
   /** suggest: 入口が組み立てた提案の実行（Codex の接続を共有するアダプター入り） */
   suggestions?: () => Promise<SuggestionService>;
   /** 標準入力（--input - のとき。テストで差し替える） */
@@ -89,7 +98,8 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
     throw new UsageError(sub === undefined ? `サブコマンドを指定してください:\n  ${OBSERVER_USAGE}` : `observer のサブコマンドではありません: ${sub}\n  ${OBSERVER_USAGE}`);
   }
   if (opts.repo?.length) throw new UsageError("p3 observer は --repo を使いません（手順の提案では、読める参照先を全部 AI に渡します）");
-  if (sub !== "suggest" && opts.note !== undefined) throw new UsageError("--note は p3 observer suggest でだけ使えます");
+  if (sub !== "suggest" && sub !== "candidates" && opts.note !== undefined) throw new UsageError("--note は p3 observer suggest・candidates でだけ使えます");
+  if ((opts.candidate !== undefined || opts.origin) && sub !== "add") throw new UsageError("--candidate・--origin は p3 observer add でだけ使えます");
   if (opts.movedTo !== undefined && sub !== "end") throw new UsageError("--moved-to は p3 observer end でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const files = opts.target.repoPath && fileChecker(opts.target.repoPath);
@@ -125,10 +135,27 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       if (rest.length) throw new UsageError(`add は位置引数を取りません: ${rest.join(" ")}（中身は --input か --title・--category・--body）`);
       if (opts.rev !== undefined) throw new UsageError("add に --rev は要りません（版は作成で 1 になる）");
       const input = opts.input !== undefined ? await readInput(opts) : { input: {} as Record<string, unknown> };
-      const d = await store.create(fromFlags(input.input), actor, { reason: opts.reason, work: opts.work });
+      // 候補から作る: 候補の題・観測内容・期待に、--input・フラグを重ねる。推定の経緯は --origin で確かめたときだけ残す
+      const cand = opts.candidate !== undefined ? await candidateOf(new WorkStore(opts.target.dataDir), opts.candidate) : undefined;
+      if (opts.origin && !cand?.estimatedOrigin) throw new UsageError("--origin は推定の経緯のある候補（--candidate）でだけ使えます");
+      const base = cand ? { title: cand.title, description: cand.description, expected: cand.expected, ...input.input } : input.input;
+      const d = await store.create(fromFlags(base), actor, { reason: opts.reason, work: opts.work, ...(opts.origin && cand?.estimatedOrigin ? { estimatedOrigin: cand.estimatedOrigin } : {}) });
       return { data: d, text: `作成しました: ${d.id}（v${d.rev}）` };
     }
     if (sub === "prep") return await prepCommand(rest, opts, actor, files);
+    if (sub === "candidates") {
+      const [cid, ...extra] = rest;
+      if (extra.length) throw new UsageError("p3 observer candidates [<CID>] [--note <補足>]");
+      if (cid) {
+        const j = await new WorkStore(opts.target.dataDir).getCandidates(cid);
+        if (!j) return { code: 2, error: `観測の候補の依頼がありません: ${cid}` };
+        return { data: j, text: candidatesText(j) };
+      }
+      if (!opts.candidates) throw new Error("observer: 観測の候補の提案の実行が渡されていません");
+      const j = await (await opts.candidates()).run(opts.note);
+      if (j.status !== "completed") return { code: 1, error: `観測の候補を出せませんでした（${j.failure ?? j.status}）: ${j.error ?? ""}（p3 observer candidates ${j.id} で読める）` };
+      return { data: j, text: candidatesText(j) };
+    }
     if (sub === "end") {
       const [id, ...extra] = rest;
       if (!id || extra.length || opts.rev === undefined) throw new UsageError("p3 observer end <ID> --rev <今の版> --reason <終える理由> [--moved-to <移した先>]");
@@ -361,3 +388,24 @@ function describePreparation(p: Preparation, usedBy: { id: string; title: string
   return lines.join("\n");
 }
 
+
+/** 記録した候補の1件（<CID>:<番号>。番号は 1 から） */
+async function candidateOf(work: WorkStore, ref: string): Promise<ObservationCandidate> {
+  const [cid, n] = ref.split(":");
+  const c = (await work.getCandidates(cid ?? ""))?.candidates?.[Number(n) - 1];
+  if (!c) throw new UsageError(`観測の候補がありません: ${ref}（p3 observer candidates <CID> で番号を確かめる）`);
+  return c;
+}
+
+function candidatesText(j: CandidateJob): string {
+  const lines = [`観測の候補 ${j.id}（${j.engine || "—"}・${j.status}）${j.candidates?.length ?? 0} 件`];
+  (j.candidates ?? []).forEach((c, i) => {
+    lines.push("", `${i + 1}. ${c.title}`, `   期待: ${c.expected}`, `   理由: ${c.reason}`, `   根拠: ${c.evidence.join("・")}`);
+    if (c.similar) lines.push(`   近い既存の観測: ${c.similar}`);
+    if (c.estimatedOrigin) lines.push(`   推定の経緯: ${c.estimatedOrigin.requests.join("・")}（${c.estimatedOrigin.basis}）`);
+    lines.push(`   登録: p3 observer add --candidate ${j.id}:${i + 1}${c.estimatedOrigin ? " [--origin]" : ""}`);
+  });
+  for (const w of j.warnings ?? []) lines.push(`⚠ ${w}`);
+  if (j.error) lines.push(`失敗: ${j.error}`);
+  return lines.join("\n");
+}

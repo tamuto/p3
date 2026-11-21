@@ -1,21 +1,38 @@
 import { Alert, Button, Field, inputCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { createDefinition, ObserverApiError } from "../../lib/api.ts";
+import { useEffect, useState } from "react";
+import { createDefinition, fetchCandidates, ObserverApiError } from "../../lib/api.ts";
+import type { ObservationCandidate } from "../../../shared/candidates.ts";
 import { RefPicker, type Refs } from "../../components/RefPicker.tsx";
 import type { DefinitionProblem } from "../../../shared/definition.ts";
 
 /** /observer/new: タイトルと観測内容（カテゴリは任意）で観測を先に保存して ID を付け、編集の画面へ移る（手順・測定項目・AI の提案はそこで） */
-export const Route = createFileRoute("/observer/new")({ component: NewDefinition });
+export const Route = createFileRoute("/observer/new")({
+  component: NewDefinition,
+  // candidate・n: 観測の候補の「確かめて登録」から開いたとき
+  validateSearch: (s: Record<string, unknown>): { candidate?: string; n?: number } => ({ candidate: typeof s.candidate === "string" ? s.candidate : undefined, n: typeof s.n === "number" ? s.n : undefined }),
+});
 
 function NewDefinition() {
   const navigate = useNavigate();
+  const { candidate, n } = Route.useSearch();
   const [v, setV] = useState({ title: "", category: "", description: "", expected: "" });
+  const [cand, setCand] = useState<ObservationCandidate>();
+  const [origin, setOrigin] = useState(false);
+  useEffect(() => {
+    if (!candidate) return;
+    void fetchCandidates(candidate).then((j) => {
+      const c = j.candidates?.[n ?? 0];
+      if (!c) return;
+      setCand(c);
+      setV((x) => ({ ...x, title: c.title, description: c.description, expected: c.expected }));
+    });
+  }, [candidate, n]);
   const [refs, setRefs] = useState<Refs>({ prerequisites: [], preparations: [] });
   const [error, setError] = useState<{ message: string; problems: DefinitionProblem[]; fields: Record<string, string> }>();
   async function submit() {
     try {
-      const d = await createDefinition({ ...v, ...refs });
+      const d = await createDefinition({ ...v, ...refs }, cand && candidate ? { candidate, n: n ?? 0, origin } : undefined);
       void navigate({ to: "/observer/$id/edit", params: { id: d.id } });
     } catch (e) {
       const problems = e instanceof ObserverApiError ? e.problems : [];
@@ -44,6 +61,19 @@ function NewDefinition() {
       </Link>
       <h1 className="text-2xl font-bold">観測を登録</h1>
       <p className="text-slate-600 dark:text-slate-400">まずタイトルと観測内容で保存します。測定項目・確認の手順・AI への提案の依頼は、保存したあとの編集の画面で行います。</p>
+      {cand && (
+        <p className="text-slate-600 dark:text-slate-400">
+          AI の観測の候補を入れています（理由: {cand.reason}・根拠: {cand.evidence.join("・")}）。確かめて直してから保存してください。
+        </p>
+      )}
+      {cand?.estimatedOrigin && (
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-1.5" checked={origin} onChange={(e) => setOrigin(e.target.checked)} />
+          <span>
+            推定の経緯を確かめたので残す（この期待は {cand.estimatedOrigin.requests.join("・")} で決まった。根拠: {cand.estimatedOrigin.basis}）。実際に作業した要望としては扱いません
+          </span>
+        </label>
+      )}
       {error && <Alert box>{error.message}</Alert>}
       {field("title", "タイトル")}
       {field("category", "カテゴリ（任意）", "例: 性能・可用性・品質・使い勝手")}

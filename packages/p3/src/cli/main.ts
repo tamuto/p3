@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { renderCommand } from "@infodb/p3-tasks/cli/render.ts";
 import { machineSettingsSource, resolveMachineSettings } from "@infodb/p3-tasks/core/machineSettings.ts";
-import { startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
+import { candidateService, startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
 import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject } from "@infodb/p3-tasks/core/store/locate.ts";
 import { loadUserConfig } from "@infodb/p3-tasks/core/userConfig.ts";
 import { codexCommand } from "@infodb/p3-tasks/cli/codex.ts";
@@ -243,6 +243,9 @@ async function main(argv: string[]): Promise<number> {
       work,
       reason: o.reason,
       movedTo: o["moved-to"],
+      candidate: o.candidate,
+      origin: o.origin,
+      candidates: async () => candidateService(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
       target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),

@@ -54,6 +54,8 @@ const OPTIONS = {
   target: { type: "string", multiple: true },
   reason: { type: "string" },
   "moved-to": { type: "string" },
+  candidate: { type: "string" },
+  origin: { type: "boolean" },
   text: { type: "string" },
   command: { type: "string" },
   success: { type: "string" },

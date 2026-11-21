@@ -1,5 +1,6 @@
 import type { DefinitionInput, DefinitionProblem, Drift, FileState, ObservationDefinition, References } from "../../shared/definition.ts";
 import type { Preparation, Slot } from "../../shared/preparation.ts";
+import type { CandidateJob } from "../../shared/candidates.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
 import { observerScope } from "./scope.ts";
@@ -38,8 +39,12 @@ export const fetchStatus = () => call<ObserverStatus>(`${OBSERVER_API}/status`);
 export const fetchDefinitions = () => call<DefinitionListing>(`${project().apiBase}/definitions`, { headers: project().headers });
 export const fetchDefinition = (id: string) =>
   call<{ definition: ObservationDefinition; references: References; drift: Drift }>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { headers: project().headers });
-export const createDefinition = (input: unknown) =>
-  call<ObservationDefinition>(`${project().apiBase}/definitions`, { method: "POST", headers: project().headers, body: JSON.stringify(input) });
+/** from: 観測の候補から作るとき（origin で推定の経緯も残す） */
+export const createDefinition = (input: unknown, from?: { candidate: string; n: number; origin: boolean }) =>
+  call<ObservationDefinition>(`${project().apiBase}/definitions${from ? `?candidate=${from.candidate}&n=${from.n}${from.origin ? "&origin=1" : ""}` : ""}`, { method: "POST", headers: project().headers, body: JSON.stringify(input) });
+export const startCandidates = (note: string) => call<CandidateJob>(`${project().apiBase}/candidates`, { method: "POST", headers: project().headers, body: JSON.stringify({ note }) });
+export const listCandidates = () => call<{ candidates: CandidateJob[] }>(`${project().apiBase}/candidates`, { headers: project().headers });
+export const fetchCandidates = (cid: string) => call<CandidateJob>(`${project().apiBase}/candidates/${cid}`, { headers: project().headers });
 export const updateDefinition = (id: string, rev: number, input: unknown, reason?: string) =>
   call<ObservationDefinition>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { method: "PUT", headers: project().headers, body: JSON.stringify({ rev, definition: input, ...(reason ? { reason } : {}) }) });
 export const endDefinition = (id: string, rev: number, reason: string, movedTo: string) =>

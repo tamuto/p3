@@ -12,9 +12,14 @@ function DefinitionList() {
     <div className="w-full space-y-2 px-4 py-3 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">観測</h1>
-        <Link to="/observer/preparations" className={linkCls}>
-          準備（観測の前後で状態を作る・戻すもの）
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/observer/candidates" className={linkCls}>
+            AI に観測の候補を頼む
+          </Link>
+          <Link to="/observer/preparations" className={linkCls}>
+            準備（観測の前後で状態を作る・戻すもの）
+          </Link>
+        </div>
       </div>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}

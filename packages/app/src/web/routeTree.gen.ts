@@ -15,6 +15,7 @@ import { Route as ObserverRouteRouteImport } from './../../../observer/src/web/r
 import { Route as ReleaseNotesRouteImport } from './../../../tasks/src/web/routes/release-notes'
 import { Route as SettingsRouteImport } from './../../../tasks/src/web/routes/settings'
 import { Route as ObserverIndexRouteImport } from './../../../observer/src/web/routes/observer/index'
+import { Route as ObserverCandidatesRouteImport } from './../../../observer/src/web/routes/observer/candidates'
 import { Route as ObserverNewRouteImport } from './../../../observer/src/web/routes/observer/new'
 import { Route as RequestsRequestIdRouteImport } from './../../../tasks/src/web/routes/requests/$requestId'
 import { Route as RequestsNewRouteImport } from './../../../tasks/src/web/routes/requests/new'
@@ -57,6 +58,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ObserverIndexRoute = ObserverIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => ObserverRouteRoute,
+} as any)
+const ObserverCandidatesRoute = ObserverCandidatesRouteImport.update({
+  id: '/candidates',
+  path: '/candidates',
   getParentRoute: () => ObserverRouteRoute,
 } as any)
 const ObserverNewRoute = ObserverNewRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
+  '/observer/candidates': typeof ObserverCandidatesRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
+  '/observer/candidates': typeof ObserverCandidatesRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/new': typeof RequestsNewRoute
   '/observer': typeof ObserverIndexRoute
@@ -176,6 +184,7 @@ export interface FileRoutesById {
   '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
+  '/observer/candidates': typeof ObserverCandidatesRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
@@ -199,6 +208,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/release-notes'
     | '/settings'
+    | '/observer/candidates'
     | '/observer/new'
     | '/requests/$requestId'
     | '/requests/new'
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/release-notes'
     | '/settings'
+    | '/observer/candidates'
     | '/observer/new'
     | '/requests/new'
     | '/observer'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/release-notes'
     | '/settings'
+    | '/observer/candidates'
     | '/observer/new'
     | '/requests/$requestId'
     | '/requests/new'
@@ -307,6 +319,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/observer/'
       preLoaderRoute: typeof ObserverIndexRouteImport
+      parentRoute: typeof ObserverRouteRoute
+    }
+    '/observer/candidates': {
+      id: '/observer/candidates'
+      path: '/candidates'
+      fullPath: '/observer/candidates'
+      preLoaderRoute: typeof ObserverCandidatesRouteImport
       parentRoute: typeof ObserverRouteRoute
     }
     '/observer/new': {
@@ -404,6 +423,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ObserverRouteRouteChildren {
+  ObserverCandidatesRoute: typeof ObserverCandidatesRoute
   ObserverNewRoute: typeof ObserverNewRoute
   ObserverIndexRoute: typeof ObserverIndexRoute
   ObserverIdEditRoute: typeof ObserverIdEditRoute
@@ -415,6 +435,7 @@ interface ObserverRouteRouteChildren {
 }
 
 const ObserverRouteRouteChildren: ObserverRouteRouteChildren = {
+  ObserverCandidatesRoute: ObserverCandidatesRoute,
   ObserverNewRoute: ObserverNewRoute,
   ObserverIndexRoute: ObserverIndexRoute,
   ObserverIdEditRoute: ObserverIdEditRoute,

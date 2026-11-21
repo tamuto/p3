@@ -298,7 +298,8 @@ export class DefinitionStore {
     return this.f.locked(async () => {
       const content = await this.content(input);
       const baseline = content.expected ? await this.baselineOf(content) : undefined;
-      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content, history: [entry("created", actor, ctx, { expected: content.expected })], ...(baseline ? { baseline } : {}) }), actor);
+      const origin = ctx.estimatedOrigin && { ...ctx.estimatedOrigin, confirmedAt: nowIso(), confirmedBy: actor };
+      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content, history: [entry("created", actor, ctx, { expected: content.expected })], ...(baseline ? { baseline } : {}), ...(origin ? { estimatedOrigin: origin } : {}) }), actor);
     });
   }
 
@@ -395,6 +396,8 @@ export class DefinitionStore {
 export interface ChangeContext {
   reason?: string;
   work?: WorkRef;
+  /** 作成のときだけ: 利用者が確かめた推定の経緯（観測の候補から。実作業の帰属ではない） */
+  estimatedOrigin?: { requests: string[]; basis: string };
 }
 
 const entry = (kind: HistoryEntry["kind"], by: string, ctx: ChangeContext, extra: Partial<HistoryEntry>): HistoryEntry => {

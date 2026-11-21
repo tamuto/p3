@@ -6,6 +6,7 @@ import { WorkStore } from "../../core/workStore.ts";
 import { fileChecker, fileHasher } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
+import type { CandidateService } from "../../core/candidates.ts";
 import { validateSuggestionRequest } from "../../shared/suggestion.ts";
 import type { Slot } from "../../shared/preparation.ts";
 
@@ -30,6 +31,8 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /preparations/:id             1つの準備と、それを使う観測 { preparation, usedBy: { definitions, unreadable } }
  *   PUT  /preparations/:id             更新（{ rev, preparation }）/ DELETE ?rev=<今の版> 消す（使っている観測があれば 409 の in_use）
  *   POST /preparations/:id/:slot/switch  確かめ・前処理・後処理（check|setup|teardown）を置き換え候補に切り替える（{ rev, invoke, evidence }）
+ *   POST /candidates                   観測の候補を頼む（{ note? }。人が頼んだときだけ）。202 で依頼 / GET /candidates・/candidates/:cid 履歴・1件
+ *   POST /definitions?candidate=<CID>&n=<番号>&origin=1  候補から作り、確かめた推定の経緯を残す（origin を付けたときだけ）
  *   GET  /files?ref=<参照先>:<パス>   ファイルの有無 { files: { "<参照先>:<パス>": { state: exists|planned|unverified, checkedAt } } }
  *   GET  /suggestions/context          頼む先の状態とプロジェクトの参照先
  *   POST /suggestions・GET /suggestions/:sid・POST .../cancel  ID の無い互換の経路（未保存の入力。このプロセスの中だけで保存しない）
@@ -39,7 +42,9 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
 /** 画面がタスクの詳細から移ったときに添える作業の文脈（<要望ID>/<T>） */
 export const WORK_HEADER = "x-p3-work";
 
-export function observerRoutes(opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService; resolveWork?: (ref: string) => { ok: true; work: WorkRef } | { ok: false; reason: string } } = {}) {
+export function observerRoutes(
+  opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService; candidates?: CandidateService; resolveWork?: (ref: string) => { ok: true; work: WorkRef } | { ok: false; reason: string } } = {},
+) {
   const app = new Hono();
   app.onError((e, c) => {
     if (!(e instanceof DefinitionError)) throw e;
@@ -73,7 +78,23 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
       return { ...r, work: w.work };
     };
     app.get("/definitions", async (c) => c.json(await store.list()));
-    app.post("/definitions", async (c) => c.json(await store.create(await body(c), actorOf(c), change(c)), 201));
+    app.post("/definitions", async (c) => {
+      // 観測の候補から作るとき（?candidate=<CID>&n=<番号>&origin=1）は、記録した候補の推定の経緯を、利用者が確かめたときだけ残す
+      const cid = c.req.query("candidate");
+      const cand = cid ? (await work.getCandidates(cid))?.candidates?.[Number(c.req.query("n"))] : undefined;
+      if (cid && !cand) throw new DefinitionError("not_found", `観測の候補がありません: ${cid}#${c.req.query("n")}`);
+      const origin = c.req.query("origin") === "1" ? cand?.estimatedOrigin : undefined;
+      return c.json(await store.create(await body(c), actorOf(c), { ...change(c), ...(origin ? { estimatedOrigin: origin } : {}) }), 201);
+    });
+    app.get("/candidates", async (c) => c.json({ candidates: await work.listCandidates() }));
+    app.get("/candidates/:cid", async (c) => {
+      const j = await work.getCandidates(c.req.param("cid"));
+      return j ? c.json(j) : c.json({ error: `観測の候補の依頼がありません: ${c.req.param("cid")}`, code: "not_found" }, 404);
+    });
+    if (opts.candidates) {
+      const cands = opts.candidates;
+      app.post("/candidates", async (c) => c.json(await cands.start(str((await body(c)).note)), 202));
+    }
     app.get("/definitions/:id", async (c) => {
       const d = await store.get(c.req.param("id"));
       return c.json({ definition: d, references: await store.references(d), drift: await store.drift(d) });
