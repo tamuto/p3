@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { DefinitionError } from "./definitionStore.ts";
 import { migrateSuggestion, type SuggestionJob } from "../shared/suggestion.ts";
+import type { CandidateJob } from "../shared/candidates.ts";
 
 /**
  * 観測ごとの作業の記録（docs/architecture.md「p3-observer」）。確定した定義（observer/definitions/）とは別に、観測の ID に結び付けて
@@ -90,6 +91,23 @@ export class WorkStore {
     const raw = await this.read<SuggestionJob>(join(this.dir(id), "suggestions", `${sid}.json`));
     const j = raw && migrateSuggestion(raw);
     return j && (j.status === "running" && !alive(j.owner) ? { ...j, status: "interrupted", error: "実行していたプロセスが終わっています（中断）。同じ入力で頼み直せます" } : j);
+  }
+
+  /** 観測の候補の依頼と結果（observer/candidates/<CID>.json。観測の ID に結び付かない） */
+  private candidateFile = (cid: string) => join(this.dataDir, "observer", "candidates", `${cid}.json`);
+  async saveCandidates(job: CandidateJob): Promise<void> {
+    await this.locked(() => this.write(this.candidateFile(job.id), { ...job, owner: { host: hostname(), pid: process.pid } }));
+  }
+  /** 1件。実行していたプロセスが終わっていれば中断（失敗）と読む */
+  async getCandidates(cid: string): Promise<CandidateJob | undefined> {
+    if (!/^cd-[0-9a-f]{12}$/.test(cid)) return undefined;
+    const j = await this.read<CandidateJob & { owner?: SuggestionJob["owner"] }>(this.candidateFile(cid));
+    return j && (j.status === "running" && !alive(j.owner) ? { ...j, status: "failed", failure: "error", error: "実行していたプロセスが終わっています（中断）。頼み直せます" } : j);
+  }
+  async listCandidates(): Promise<CandidateJob[]> {
+    const names = await readdir(join(this.dataDir, "observer", "candidates")).catch(() => [] as string[]);
+    const all = await Promise.all(names.filter((n) => n.endsWith(".json")).map((n) => this.getCandidates(n.slice(0, -5))));
+    return all.filter((j): j is CandidateJob => !!j).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }
 
   /** 新しい順 */

@@ -74,6 +74,15 @@ export class MockEngine implements PreflightEngine {
       repo: writableRepos(job.project)[0] ?? null,
     }));
 
+    // 観測への影響（Mock: 本文にタイトルが出てくる観測。「期待を変える」とあれば期待の変更のタスク案、ほかは観測し直す受け入れ基準）
+    for (const o of (job.observations?.items ?? []).filter((x) => !x.ended && request.body.includes(x.title))) {
+      if (/期待を変える/.test(request.body)) {
+        drafts.push({ ...drafts[0], key: `D${drafts.length + 1}`, title: `観測 ${o.id} の期待を変える`, description: `要望 ${request.id} で ${o.title} の期待が変わる（mock）`, dependsOn: [], acceptanceCriteria: [{ id: "A1", text: `観測 ${o.id} の期待する結果が要望に合っている` }] });
+      } else if (drafts[0]) {
+        drafts[0].acceptanceCriteria = [...(drafts[0].acceptanceCriteria ?? []), { id: `A${(drafts[0].acceptanceCriteria?.length ?? 0) + 1}`, text: `観測 ${o.id}（${o.title}）を観測し直し、期待どおりであることを人か担当の AI が確かめる` }];
+      }
+    }
+
     // 箇条書きが分割の目安（SPLIT_HINT_TASKS）以上なら、タスク案ではなく子の要望の案にする（3件ずつ）
     const split = items.length >= SPLIT_HINT_TASKS;
     const children: ProposedChild[] = split

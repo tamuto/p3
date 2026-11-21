@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { type PreflightLogEntry, type Request } from "../../../shared/types.ts";
-import { Button, Badge, cx, Meter, scoreTone, Section, type Tone } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, Badge, cx, Meter, scoreTone, Section, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 import { type RunInfo } from "../../lib/api.ts";
 import { type AppCtx } from "../../lib/appCtx.ts";
 import { preflightSteps } from "../../lib/preflightSteps.ts";
@@ -93,6 +93,14 @@ export function RunView({
           <p className="font-semibold">{stale.title}</p>
           <p className="break-words">{stale.text}</p>
         </div>
+      )}
+
+      {!!run.observationsChanged?.length && !isMaterialized(run) && (
+        <Alert box warn>
+          評価のあとで観測が変わりました（{run.observationsChanged.map((o) => `${o.title}: 版 ${o.evaluated} → ${o.current === null ? "無い" : `版 ${o.current}`}`).join("・")}）。
+          今の期待で評価し直すかを決めてから採用してください。{" "}
+          {onRerun && canRerun && <Button onClick={onRerun}>今の内容で再評価する</Button>}
+        </Alert>
       )}
 
       {run.interrupted && (

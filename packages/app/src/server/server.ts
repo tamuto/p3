@@ -10,6 +10,10 @@ import { openProject, type P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { machineSettingsSource, type MachineSettings, type SettingsSource } from "@infodb/p3-tasks/core/machineSettings.ts";
 import { ProjectRegistry } from "../core/projectRegistry.ts";
 import { observerRoutes } from "@infodb/p3-observer/server/api/routes.ts";
+import { resolveWork } from "../core/observerWork.ts";
+import { candidateMaterial, installObservationSource } from "../core/observerMaterial.ts";
+import { CandidateService } from "@infodb/p3-observer/core/candidates.ts";
+import { requestObservationsRoute } from "./api/requestObservations.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
 import { fileChecker } from "@infodb/p3-observer/core/files.ts";
@@ -46,9 +50,13 @@ export interface RunningServer {
  * 1つのプロジェクトの API（通常の serve）。/api の下。products は /api/mode で返す、実際に取り付けた製品（observer の API は startServer が
  * 付ける。この部品だけを使うときは observer を付けないので tasks だけ）
  */
+/** 観測の候補の提案（手順の提案と同じアダプター。材料はアプリが tasks の記録から作る） */
+export const candidateService = (ctx: P3Context) => new CandidateService(observerAssistant(ctx), { store: new WorkStore(ctx.ws.dataDir), material: () => candidateMaterial(ctx) });
+
 export function singleProjectApp(ctx: P3Context, products: readonly Product[] = ["tasks"]) {
   const app = new Hono();
   app.get("/mode", (c) => c.json({ mode: "single", project: ctx.projectName ?? null, products }));
+  if (products.includes("observer")) app.route("/", requestObservationsRoute(ctx));
   app.route("/", apiRoutes(ctx));
   // 無い API は画面（index.html）に流さない
   app.all("*", (c) => c.json({ error: `API がありません: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404));
@@ -57,6 +65,8 @@ export function singleProjectApp(ctx: P3Context, products: readonly Product[] = 
 
 /** ブラウザ用のローカルサーバ。ファイルを監視して画面へ流すビューア兼エディタ */
 export async function startServer(opts: ServeOptions): Promise<RunningServer> {
+  // Preflight の材料に観測（今の期待）を入れる供給口（入口を経ずに serve だけを起動するときも置く）
+  installObservationSource();
   const app = new Hono();
   // 製品は常に全部（tasks・observer）を付ける（製品ごとの ON/OFF は無い）
   const products = PRODUCTS;
@@ -72,11 +82,11 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
     await registry.refresh();
     // 起動状態だけ。観測の定義はプロジェクトごと（/api/projects/<名前>/observer。projectsRoutes が付ける）
     app.route("/api/observer", observerRoutes({ products }));
-    app.route("/api", projectsRoutes(registry, { products, suggestions: (c) => track(new SuggestionService(observerAssistant(c), { store: new WorkStore(c.ws.dataDir), files: fileChecker(readablePath(c)) })) }));
+    app.route("/api", projectsRoutes(registry, { products, suggestions: (c) => track(new SuggestionService(observerAssistant(c), { store: new WorkStore(c.ws.dataDir), files: fileChecker(readablePath(c)) })), candidates: candidateService }));
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
-    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir, repoPath: readablePath(ctx) }, suggestions: track(new SuggestionService(observerAssistant(ctx), { store: new WorkStore(opts.dataDir), files: fileChecker(readablePath(ctx)) })) }));
+    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir, repoPath: readablePath(ctx) }, suggestions: track(new SuggestionService(observerAssistant(ctx), { store: new WorkStore(opts.dataDir), files: fileChecker(readablePath(ctx)) })), candidates: candidateService(ctx), resolveWork: (ref) => resolveWork(ctx!, ref) }));
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));

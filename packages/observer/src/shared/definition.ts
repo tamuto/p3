@@ -5,10 +5,10 @@
  */
 
 /**
- * 保存の形の版（定義のファイルの format）。1・2 は読むときに今の形に移し（1 は手順の形、2 までは前提の観測・使う準備が無い）、
- * 更新のときに 3 で書く。知らない版のファイルは読むだけで上書きしない
+ * 保存の形の版（定義のファイルの format）。1〜3 は読むときに今の形に移し（1 は手順の形、2 までは前提の観測・使う準備が無い、3 までは期待の履歴・
+ * 終了が無い）、更新のときに 4 で書く。知らない版のファイルは読むだけで上書きしない
  */
-export const DEFINITION_FORMAT = 3;
+export const DEFINITION_FORMAT = 4;
 
 /** 測定項目の型 */
 export const MEASURE_TYPES = ["number", "boolean", "string"] as const;
@@ -122,10 +122,94 @@ export interface DefinitionInput {
   procedures: Procedure[];
 }
 
+/** 作業の帰属（タスクを起点にした操作のときだけ。入口・アプリが確かめて渡す） */
+export interface WorkRef {
+  request: string;
+  task: string;
+}
+
+/** 期待の履歴の種類: 作成・期待の変更・終了 */
+export const HISTORY_KINDS = ["created", "expected", "ended"] as const;
+export type HistoryKind = (typeof HISTORY_KINDS)[number];
+export const HISTORY_LABEL: Record<HistoryKind, string> = { created: "作成", expected: "期待の変更", ended: "終了" };
+
+/** 期待の履歴の1件（保存の層だけが足す。足すだけで消さない） */
+export interface HistoryEntry {
+  kind: HistoryKind;
+  at: string;
+  by: string;
+  reason?: string;
+  /** 作成・期待の変更のときの期待（作成で期待が無ければ省く）と、変更の前の期待 */
+  expected?: string;
+  before?: string;
+  /** 終了で、機械的な判定を移した外部の CI など */
+  movedTo?: string;
+  work?: WorkRef;
+}
+
+/** 終了（観測の役目を終えた。履歴と定義は読める） */
+export interface Ending {
+  at: string;
+  by: string;
+  reason: string;
+  movedTo?: string;
+}
+
+/**
+ * 期待を確定したとき（期待のある作成・期待の変更）の、現行の参照ファイルの内容の比較基準。詳細を開くたびに今の内容と比べ、
+ * 期待を直さないまま変わったものを「期待の見直しが要るかもしれない」と出す（保存はしない）
+ */
+export interface Baseline {
+  at: string;
+  /** hash は内容の sha256（読めなかったものは無く、state が unverified） */
+  files: { repo: string; path: string; hash?: string }[];
+}
+
+/** 期待の見直しの注意（詳細を開くたびに計算する。保存しない） */
+export interface Drift {
+  /** none 変わっていない / changed 期待を直さないまま変わった / unverified 比較基準が無い・読めないものがある */
+  state: "none" | "changed" | "unverified";
+  /** changed 内容が変わった / deleted 消えた / replaced 期待を確定した後に参照から外れた / added 期待を確定した後に足された（比較基準なし）/ unreadable 読めない */
+  files: { repo: string; path: string; change: "changed" | "deleted" | "replaced" | "added" | "unreadable" }[];
+  /** 比較基準を取った時刻（無ければ省く） */
+  baselineAt?: string;
+}
+export const DRIFT_LABEL: Record<Drift["files"][number]["change"], string> = {
+  changed: "内容が変わった",
+  deleted: "消えた",
+  unreadable: "読めない（未確認）",
+  replaced: "期待を確定した後に参照から外れた（差し替え）",
+  added: "期待を確定した後に足された（比較基準なし）",
+};
+
+/** 期待の見直しの注意の見出し（CLI と画面で同じ言い方） */
+export const driftText = (d: Drift) =>
+  d.state === "changed"
+    ? "⚠ 期待の見直しが要るかもしれません（期待を確定した後に、参照するファイルが期待を直さないまま変わった）"
+    : d.state === "none"
+      ? "参照するファイルは期待を確定したときから変わっていません"
+      : d.baselineAt
+        ? "期待の見直しの要否は一部未確認です（比較基準の無い・読めないファイルがある）"
+        : "期待の見直しの要否は未確認です（期待を確定したときの比較基準がありません）";
+
+/** 推定の経緯（あとから作った観測の期待が、どの要望で決まったか。AI が根拠付きで推定し、利用者が確かめたときだけ残す。実作業の帰属ではない） */
+export interface EstimatedOrigin {
+  requests: string[];
+  basis: string;
+  confirmedAt: string;
+  confirmedBy: string;
+}
+
 /** 保存した観測の定義（1つの定義が1つのファイル） */
 export interface ObservationDefinition extends DefinitionInput {
   format: typeof DEFINITION_FORMAT;
   id: string;
+  /** 期待の履歴（保存の層が書く。形の版 3 までのものには無い） */
+  history?: HistoryEntry[];
+  /** 終了していればその記録 */
+  ended?: Ending;
+  baseline?: Baseline;
+  estimatedOrigin?: EstimatedOrigin;
   /** 定義の版（作成で 1。更新のたびに 1 増える。更新は今の版を添え、違えば断る） */
   rev: number;
   createdAt: string;
@@ -145,6 +229,9 @@ export interface DefinitionProblem {
   path: string;
   message: string;
 }
+
+/** 保存の層が書く項目（入力では受け付けず、読むときは形だけ確かめる） */
+export const STORED_ONLY = ["history", "ended", "baseline", "estimatedOrigin"] as const;
 
 export type ValidationResult = { ok: true; value: DefinitionInput } | { ok: false; problems: DefinitionProblem[] };
 

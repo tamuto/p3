@@ -1,6 +1,8 @@
 // 文字の大きさと拡大表示: 主な画面で、本文・フォームの見出し・主な操作の計算済みの文字が 16px 以上、ID・日時などの補助の情報が
 // 14px 以上（test/ui/layout.ts の fontProblems）。200% の拡大（1280×900 の画面を 640×450 の CSS の幅で描くのと同じ）でも
 // ページが横にはみ出さず、入力と主な操作にキーボード（Tab）で届く。方針は docs/development.md の「画面の文字と余白」
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Locator, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { fontProblems, inViewport, pageOverflow } from "./layout.ts";
@@ -8,7 +10,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "", observation: "", preparation: "" };
+const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "", candidates: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -19,8 +21,11 @@ async function prepare(env: UiEnv) {
   ids.board = (await j(["request", "new", LONG_TITLE, "--milestone", "v1.1", "--due", "2026-11-20", "--body", "-"], body)).id;
   await env.p3(["preflight", ids.board, "--engine", "mock"]);
   await env.p3(["accept", ids.board]);
+  // 評価の材料にした観測が、評価のあとで変わった（案の画面に再評価を判断する知らせが出る）
+  const early = (await j(["observer", "add", "--title", `評価の材料（${LONG_TITLE}）`, "--body", LONG_TITLE])).id;
   ids.drafts = (await j(["request", "new", `案を見る要望（${LONG_TITLE}）`, "--body", "-"], body)).id;
   await env.p3(["preflight", ids.drafts, "--engine", "mock"]);
+  await env.p3(["observer", "update", early, "--rev", "1", "--expected", LONG_TITLE]);
   // 観測: 長いパスと呼び出し方の手順と置き換え候補、完了した提案（Mock）
   const long = "test/ui/expense/receipt/attachments/approval-history/monthly-closing-workflow.ui.test.ts";
   const steps = Array.from({ length: 3 }, (_, i) => `手順 ${i + 1}: ${LONG_TITLE}`);
@@ -42,6 +47,16 @@ async function prepare(env: UiEnv) {
   const prep = { name: `準備（${LONG_TITLE}）`, description: LONG_TITLE, exclusive: [`account:${"x".repeat(60)}`], setup: { run: obs.procedures[0].run, replacement: obs.procedures[0].replacement } };
   ids.preparation = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify(prep))).id;
   ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
+  // 観測の候補（Mock。人が確かめる品質基準から）
+  await env.p3(["quality", "add", "--text", LONG_TITLE, "--reference", LONG_TITLE]);
+  ids.candidates = (await j(["observer", "candidates"])).id;
+  // 期待の見直しの注意: 期待を確定した後に、手順のファイルが変わった観測
+  const watched = long.replace("monthly-closing-workflow", "monthly-closing-workflow-watched");
+  mkdirSync(dirname(join(env.repo, watched)), { recursive: true });
+  writeFileSync(join(env.repo, watched), "// 1\n");
+  const drifted = { title: `注意（${LONG_TITLE}）`, description: LONG_TITLE, expected: LONG_TITLE, procedures: [{ title: "テスト", run: { kind: "ui-script", repo: "repo", path: watched } }] };
+  ids.drift = (await j(["observer", "add", "--input", "-"], JSON.stringify(drifted))).id;
+  writeFileSync(join(env.repo, watched), "// 2\n");
   await env.p3(["observer", "suggest", ids.observation, "--note", LONG_TITLE]);
 }
 
@@ -68,6 +83,7 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     open: async (page) => {
       await page.goto(`/requests/${ids.drafts}`);
       await until.visible(page.getByRole("button", { name: /件をタスク化/ }));
+      await until.visible(page.getByText(/評価のあとで観測が変わりました/));
     },
   },
   {
@@ -134,6 +150,27 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
       // 提案の結果は完了の表示まで待ってから検査する
       await until.visible(page.getByTestId("suggestion").getByText(/操作面:/));
       await until.visible(page.getByTestId("suggestion").getByRole("article").first());
+    },
+  },
+  {
+    name: "観測の詳細（期待の見直しの注意）",
+    open: async (page) => {
+      await page.goto(`/observer/${ids.drift}`);
+      await until.visible(page.getByRole("list", { name: "期待を確定した後の参照ファイルの変化" }));
+    },
+  },
+  {
+    name: "観測の候補",
+    open: async (page) => {
+      await page.goto("/observer/candidates");
+      await until.visible(page.getByRole("link", { name: "確かめて登録" }).first());
+    },
+  },
+  {
+    name: "観測の候補から登録",
+    open: async (page) => {
+      await page.goto(`/observer/new?candidate=${ids.candidates}&n=0`);
+      await until.value(page.getByLabel("タイトル"), "品質基準 Q1 の確認");
     },
   },
   {
@@ -225,6 +262,11 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.getByLabel("タイトル").focus();
       none(await tabTo(page, page.getByRole("button", { name: "作成", exact: true }), "作成"), at("新しい要望"));
     }, page);
+    await s.step(at("案の画面の観測の変化から再評価へ"), async () => {
+      await screens[2].open(page);
+      await page.getByText(/評価のあとで観測が変わりました/).click();
+      none(await tabTo(page, page.getByRole("button", { name: "今の内容で再評価する" }), "今の内容で再評価する"), at("案の画面"));
+    }, page);
     await s.step(at("設定の入力と保存"), async () => {
       await screens[5].open(page);
       await page.getByLabel("プロジェクト名").fill("uitest-拡大");
@@ -262,6 +304,17 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
       await page.goto(`/observer/${ids.observation}`);
       await until.visible(page.getByRole("heading", { name: /観測（経費精算/ }));
       none(await tabTo(page, page.getByRole("link", { name: "編集・AI に提案を頼む" }), "編集"), at("観測の詳細"));
+      await page.getByRole("button", { name: "観測を終える" }).click();
+      await page.getByLabel("終える理由").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "終える", exact: true }), "終える"), at("観測の詳細の終了"));
+      await page.getByRole("button", { name: "やめる" }).click();
+    }, page);
+    await s.step(at("観測の候補を頼む・確かめて登録"), async () => {
+      await page.goto("/observer/candidates");
+      await until.visible(page.getByRole("link", { name: "確かめて登録" }).first());
+      await page.getByLabel("補足（任意）").focus();
+      none(await tabTo(page, page.getByRole("button", { name: "もう一度頼む" }), "もう一度頼む"), at("観測の候補"));
+      none(await tabTo(page, page.getByRole("link", { name: "確かめて登録" }).first(), "確かめて登録"), at("観測の候補"));
     }, page);
     await s.step(at("準備の一覧から登録・詳細から編集・登録と編集の保存"), async () => {
       await page.goto("/observer/preparations");

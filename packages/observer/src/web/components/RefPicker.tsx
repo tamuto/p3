@@ -28,7 +28,7 @@ export function RefPicker({ self, value, onChange, problems }: { self?: string; 
         label="前提の観測（任意）"
         hint="先に通っていてこそ意味がある観測。前提が失敗したら、この観測は失敗ではなく未確認として扱う"
         empty="ほかの観測がありません。"
-        options={keep(load.value.defs.filter((d) => d.id !== self).map((d) => ({ value: d.id, label: d.title })), value.prerequisites)}
+        options={keep(load.value.defs.filter((d) => d.id !== self && !d.ended).map((d) => ({ value: d.id, label: d.title })), value.prerequisites)}
         value={value.prerequisites}
         onChange={(prerequisites) => onChange({ ...value, prerequisites })}
         error={err("prerequisites")}

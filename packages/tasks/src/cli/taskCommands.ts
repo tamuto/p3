@@ -1,3 +1,4 @@
+import { clearWorkSession, writeWorkSession } from "@infodb/p3-shared/node/workContext.ts";
 import { readFileSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { relationRole, type ArchivedTask, type ProposedTask, type Task } from "../shared/types.ts";
@@ -172,6 +173,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const acceptance = evidenceOps(o);
       const r = await updateTask(ctx, cur.request, tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
+      // 作業の文脈（観測の操作に作業の帰属として渡す）: 作業中にしたら残し、作業中から動かしたら消す
+      if (status === "doing") writeWorkSession(cwd, { project: ctx.projectName ?? "", dataDir: ctx.ws.dataDir, ref: next.ref, at: new Date().toISOString() });
+      else clearWorkSession(cwd, next.ref);
       warn(warnings);
       checkClearedNote(r.checkCleared);
       completionSkippedNote(r.completionSkipped);

@@ -30,10 +30,10 @@ export function observerAssistant(ctx: P3Context): SuggestAdapter {
     async ask(input, log, signal) {
       const name = await engineName();
       if (!ctx.assistant || !name) throw new SuggestionError("unavailable", "AI に頼む接続がありません");
-      if (name === "mock") return { message: suggestionMessage(mockSuggestion(input.request, input.repos)), engine: "mock" };
+      if (name === "mock") return { message: input.mock ? input.mock() : suggestionMessage(mockSuggestion(input.request!, input.repos)), engine: "mock" };
       const refs = ctx.ws.refs().filter((r) => input.repos.includes(r.name));
       try {
-        const r = await ctx.assistant.codex.ask({ instructions: input.instructions, prompt: input.prompt, label: "観測の手順の提案", refs }, (e) => log(e.text), signal);
+        const r = await ctx.assistant.codex.ask({ instructions: input.instructions, prompt: input.prompt, label: input.label ?? "観測の手順の提案", refs }, (e) => log(e.text), signal);
         return { message: r.message, engine: "codex" };
       } catch (e) {
         if (signal.aborted) throw e;

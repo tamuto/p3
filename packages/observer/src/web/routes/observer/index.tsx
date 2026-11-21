@@ -12,9 +12,14 @@ function DefinitionList() {
     <div className="w-full space-y-2 px-4 py-3 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">観測</h1>
-        <Link to="/observer/preparations" className={linkCls}>
-          準備（観測の前後で状態を作る・戻すもの）
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/observer/candidates" className={linkCls}>
+            AI に観測の候補を頼む
+          </Link>
+          <Link to="/observer/preparations" className={linkCls}>
+            準備（観測の前後で状態を作る・戻すもの）
+          </Link>
+        </div>
       </div>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
@@ -32,7 +37,7 @@ function DefinitionList() {
                   <th className="py-1 pr-3 font-normal">タイトル</th>
                   <th className="py-1 pr-3 font-normal">カテゴリ</th>
                   <th className="py-1 pr-3 font-normal">測定・手順</th>
-                  <th className="py-1 font-normal">版</th>
+                  <th className="py-1 font-normal">版・状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -47,7 +52,10 @@ function DefinitionList() {
                     <td className="py-2 pr-3">
                       {d.measures.length}・{d.procedures.length}
                     </td>
-                    <td className="py-2">v{d.rev}</td>
+                    <td className="py-2">
+                      v{d.rev}
+                      {d.ended ? "・終了" : ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -55,6 +63,7 @@ function DefinitionList() {
           )}
         </>
       )}
+      <p className="pt-2 text-slate-600 dark:text-slate-400">観測は、今の期待（仕様）が実際の環境・データ・使い方で成り立っているかを確かめる記録です。テストを流す仕組み（CI）ではありません。</p>
     </div>
   );
 }

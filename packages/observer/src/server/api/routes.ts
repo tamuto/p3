@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono";
 import { observerStatus } from "../../core/status.ts";
-import { DefinitionError, DefinitionStore, PreparationStore } from "../../core/definitionStore.ts";
+import { type ChangeContext, DefinitionError, DefinitionStore, PreparationStore } from "../../core/definitionStore.ts";
+import type { WorkRef } from "../../shared/definition.ts";
 import { WorkStore } from "../../core/workStore.ts";
-import { fileChecker } from "../../core/files.ts";
+import { fileChecker, fileHasher } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
+import type { CandidateService } from "../../core/candidates.ts";
 import { validateSuggestionRequest } from "../../shared/suggestion.ts";
 import type { Slot } from "../../shared/preparation.ts";
 
@@ -15,8 +17,10 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /status                       起動状態（ObserverStatus）。プロジェクトを決めなくても使える
  *   GET  /definitions                  観測の定義の一覧 { definitions, unreadable }
  *   POST /definitions                  作成（タイトルと観測内容だけでよい）。201 で作った定義（ID が付く）
- *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前 { definition, references }
- *   PUT  /definitions/:id              更新（{ rev: 今の版, definition }）。版が違えば 409（current に今の定義）
+ *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前・期待の見直しの注意 { definition, references, drift }
+ *   PUT  /definitions/:id              更新（{ rev: 今の版, definition, reason?: 期待を変えた理由 }）。版が違えば 409（current に今の定義）
+ *   POST /definitions/:id/end          終える（{ rev, reason, movedTo? }）。前提として使われていれば 409 の in_use
+ *   作成・更新・終了に作業の文脈のヘッダー（x-p3-work: <要望ID>/<T>）を添えると、アプリが確かめて履歴に作業の帰属を残す
  *   GET  /definitions/:id/draft        編集途中の入力 { draft }（無ければ null）
  *   PUT  /definitions/:id/draft        保存（{ version: 読んだ版か null, basedOnRev, input }）。版が違えば 409
  *   GET  /definitions/:id/suggestions  提案の履歴（新しい順。実行していたプロセスが終わっていれば interrupted）
@@ -27,13 +31,20 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /preparations/:id             1つの準備と、それを使う観測 { preparation, usedBy: { definitions, unreadable } }
  *   PUT  /preparations/:id             更新（{ rev, preparation }）/ DELETE ?rev=<今の版> 消す（使っている観測があれば 409 の in_use）
  *   POST /preparations/:id/:slot/switch  確かめ・前処理・後処理（check|setup|teardown）を置き換え候補に切り替える（{ rev, invoke, evidence }）
+ *   POST /candidates                   観測の候補を頼む（{ note? }。人が頼んだときだけ）。202 で依頼 / GET /candidates・/candidates/:cid 履歴・1件
+ *   POST /definitions?candidate=<CID>&n=<番号>&origin=1  候補から作り、確かめた推定の経緯を残す（origin を付けたときだけ）
  *   GET  /files?ref=<参照先>:<パス>   ファイルの有無 { files: { "<参照先>:<パス>": { state: exists|planned|unverified, checkedAt } } }
  *   GET  /suggestions/context          頼む先の状態とプロジェクトの参照先
  *   POST /suggestions・GET /suggestions/:sid・POST .../cancel  ID の無い互換の経路（未保存の入力。このプロセスの中だけで保存しない）
  * 入力の誤りは 400 の { error, code: "invalid", problems: [{ path, message }] }（CLI・画面と同じ検証）。
  * target を渡さないとき（プロジェクトを決めていない）は /status だけを付ける。プロジェクトを跨ぐ serve の登録世代はアプリが確かめる
  */
-export function observerRoutes(opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService } = {}) {
+/** 画面がタスクの詳細から移ったときに添える作業の文脈（<要望ID>/<T>） */
+export const WORK_HEADER = "x-p3-work";
+
+export function observerRoutes(
+  opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService; candidates?: CandidateService; resolveWork?: (ref: string) => { ok: true; work: WorkRef } | { ok: false; reason: string } } = {},
+) {
   const app = new Hono();
   app.onError((e, c) => {
     if (!(e instanceof DefinitionError)) throw e;
@@ -47,7 +58,7 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
   const { target, suggestions } = opts;
   if (target) {
     const files = target.repoPath && fileChecker(target.repoPath);
-    const store = new DefinitionStore(target.dataDir, files);
+    const store = new DefinitionStore(target.dataDir, files, target.repoPath && fileHasher(target.repoPath));
     const work = new WorkStore(target.dataDir);
     const actorOf = (c: Context) => c.req.header("x-p3-actor") ?? "human:web";
     const body = async (c: Context): Promise<Record<string, unknown>> => {
@@ -57,15 +68,44 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
     const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
     const id = async (c: Context) => (await store.get(c.req.param("id")!)).id;
+    // 作業の帰属: 作業の文脈のヘッダーがあれば、アプリが同じプロジェクトの作業中のタスクかを確かめる（確かめられなければ断る）
+    const change = (c: Context, reason?: unknown): ChangeContext => {
+      const ref = c.req.header(WORK_HEADER);
+      const r = typeof reason === "string" ? { reason } : {};
+      if (!ref) return r;
+      const w = opts.resolveWork?.(ref) ?? { ok: false as const, reason: "作業の文脈を確かめられません" };
+      if (!w.ok) throw new DefinitionError("invalid", w.reason, [{ path: "work", message: w.reason }]);
+      return { ...r, work: w.work };
+    };
     app.get("/definitions", async (c) => c.json(await store.list()));
-    app.post("/definitions", async (c) => c.json(await store.create(await body(c), actorOf(c)), 201));
+    app.post("/definitions", async (c) => {
+      // 観測の候補から作るとき（?candidate=<CID>&n=<番号>&origin=1）は、記録した候補の推定の経緯を、利用者が確かめたときだけ残す
+      const cid = c.req.query("candidate");
+      const cand = cid ? (await work.getCandidates(cid))?.candidates?.[Number(c.req.query("n"))] : undefined;
+      if (cid && !cand) throw new DefinitionError("not_found", `観測の候補がありません: ${cid}#${c.req.query("n")}`);
+      const origin = c.req.query("origin") === "1" ? cand?.estimatedOrigin : undefined;
+      return c.json(await store.create(await body(c), actorOf(c), { ...change(c), ...(origin ? { estimatedOrigin: origin } : {}) }), 201);
+    });
+    app.get("/candidates", async (c) => c.json({ candidates: await work.listCandidates() }));
+    app.get("/candidates/:cid", async (c) => {
+      const j = await work.getCandidates(c.req.param("cid"));
+      return j ? c.json(j) : c.json({ error: `観測の候補の依頼がありません: ${c.req.param("cid")}`, code: "not_found" }, 404);
+    });
+    if (opts.candidates) {
+      const cands = opts.candidates;
+      app.post("/candidates", async (c) => c.json(await cands.start(str((await body(c)).note)), 202));
+    }
     app.get("/definitions/:id", async (c) => {
       const d = await store.get(c.req.param("id"));
-      return c.json({ definition: d, references: await store.references(d) });
+      return c.json({ definition: d, references: await store.references(d), drift: await store.drift(d) });
     });
     app.put("/definitions/:id", async (c) => {
       const b = await body(c);
-      return c.json(await store.update(c.req.param("id"), num(b.rev), b.definition, actorOf(c)));
+      return c.json(await store.update(c.req.param("id"), num(b.rev), b.definition, actorOf(c), change(c, b.reason)));
+    });
+    app.post("/definitions/:id/end", async (c) => {
+      const b = await body(c);
+      return c.json(await store.end(c.req.param("id"), num(b.rev), { reason: str(b.reason), movedTo: str(b.movedTo) }, actorOf(c), change(c)));
     });
     app.post("/definitions/:id/procedures/:pid/switch", async (c) => {
       const b = await body(c);

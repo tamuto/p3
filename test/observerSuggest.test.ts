@@ -98,7 +98,7 @@ describe("依頼と応答の読み方", () => {
 
 describe("提案の実行（代替の接続）", () => {
   it("CLI を示す材料ではコマンド、画面を示す材料では画面操作スクリプトを提案する（Mock）。手がかりが無ければ足りない材料と理由を返す", async () => {
-    const svc = new SuggestionService(fake((input) => suggestionMessage(mockSuggestion(input.request, input.repos))).adapter);
+    const svc = new SuggestionService(fake((input) => suggestionMessage(mockSuggestion(input.request!, input.repos))).adapter);
     const cli = await svc.run(request());
     expect(cli).toMatchObject({ status: "completed", result: { surface: "cli", measures: [], procedures: [{ procedure: { run: { kind: "command" }, measures: ["elapsed", "ok"] } }], missing: [] } });
     const ui = await svc.run(request({ description: "要望の画面でボタンを押すと一覧が出るか" }));

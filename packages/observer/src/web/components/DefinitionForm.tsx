@@ -58,7 +58,8 @@ export function DefinitionForm({
 }: {
   initial?: DefinitionInput;
   submitLabel: string;
-  onSave: (input: unknown) => Promise<ObservationDefinition>;
+  /** reason: 期待を変えた理由（期待が変わったときだけ履歴に残る） */
+  onSave: (input: unknown, reason?: string) => Promise<ObservationDefinition>;
   onSaved: (d: ObservationDefinition) => void;
   /** 保存した観測の ID と版 */
   id: string;
@@ -77,6 +78,7 @@ export function DefinitionForm({
   const [problems, setProblems] = useState<DefinitionProblem[]>([]);
   const [error, setError] = useState<{ message: string; conflict?: { rev: number } }>();
   const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
   const err = (path: string) => problems.find((p) => p.path === path)?.message;
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setMeasure = (i: number, patch: Partial<MeasureDraft>) => setDraft((d) => ({ ...d, measures: d.measures.map((m, j) => (j === i ? { ...m, ...patch } : m)) }));
@@ -96,7 +98,7 @@ export function DefinitionForm({
     setProblems([]);
     setSaving(true);
     try {
-      const d = await onSave(v.value);
+      const d = await onSave(v.value, reason.trim() || undefined);
       await status.flush(d.rev);
       onSaved(d);
     } catch (e) {
@@ -138,6 +140,9 @@ export function DefinitionForm({
         </Field>
         <Field label="期待する結果（任意）" error={err("expected")} hint="どうなっていれば期待どおりか（判定のもとになる）">
           <textarea className={inputCls} rows={3} value={draft.expected} aria-invalid={!!err("expected")} onChange={(e) => set({ expected: e.target.value })} />
+        </Field>
+        <Field label="期待を変えた理由（任意）" hint="期待する結果を変えたときだけ、期待の履歴に残る（手順だけの編集では残らない）">
+          <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
         <RefPicker self={id} value={{ prerequisites: draft.prerequisites, preparations: draft.preparations }} onChange={set} problems={problems} />
       </section>

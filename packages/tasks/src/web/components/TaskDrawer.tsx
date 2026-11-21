@@ -16,7 +16,8 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Badge, Button, Empty, Field, Id, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Badge, Button, buttonCls, Empty, Field, Id, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Link } from "@tanstack/react-router";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -352,6 +353,14 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             }}
           />
 
+          {task.status === "doing" && (
+            <Section title="観測（この作業として）">
+              <p className="text-base text-slate-600 dark:text-slate-400">この作業で観測を作る・期待を変える・終えると、観測の履歴にこのタスクが残ります。</p>
+              <Link to="/observer" search={{ work: task.ref }} className={buttonCls()}>
+                この作業として観測を開く
+              </Link>
+            </Section>
+          )}
           <Section title="タスクの AI レビュー">
             <TaskReviewPanel task={task} unsaved={dirty || accDirty || blockDirty} />
           </Section>

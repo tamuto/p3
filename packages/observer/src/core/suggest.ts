@@ -28,7 +28,17 @@ export interface SuggestAdapter {
    * 1回の頼みごと。repos は読める参照先の名前（全部。読むだけで渡す）。request は Mock が使う元の依頼。
    * 失敗は SuggestionError（種類つき）か、そのほかのエラー
    */
-  ask(input: { instructions: string; prompt: string; repos: string[]; request: SuggestionRequest }, log: (text: string) => void, signal: AbortSignal): Promise<{ message: string; engine: string }>;
+  ask(input: AskInput, log: (text: string) => void, signal: AbortSignal): Promise<{ message: string; engine: string }>;
+}
+
+/** 1回の頼みごと。手順の提案は request（Mock の材料）、ほかの依頼（観測の候補）は mock（Mock の応答）と label（記録の名前）を渡す */
+export interface AskInput {
+  instructions: string;
+  prompt: string;
+  repos: string[];
+  request?: SuggestionRequest;
+  mock?: () => string;
+  label?: string;
 }
 
 export const SUGGEST_TIMEOUT_MS = 10 * 60_000;

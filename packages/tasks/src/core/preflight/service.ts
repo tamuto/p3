@@ -2,7 +2,7 @@ import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises
 import { existsSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import {
+import { type ObservationChange,
   type PreflightAssessment,
   type PreflightLogEntry,
   type PreflightRun,
@@ -24,6 +24,7 @@ import { normalizeTaskId, REQUEST_ID } from "../../shared/refs.ts";
 import { AcceptanceInputError, applyAcceptanceOps, applyDraftSourceOps, criteriaForTask, readDraftCriteria, readSourceSeq, sameCriteria, sameSources, settleDraftSources, tidyDraftCriteria, type AcceptanceCriterion } from "../../features/requirements/shared/acceptance.ts";
 import { readClarifications, readCriterionSources, RequirementInputError, requirementInputOf, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
 import { qualityCriteria, qualitySnapshot } from "../../features/quality/shared/quality.ts";
+import { changedObservations, observationSnapshot } from "./observations.ts";
 import { newRequestId, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { ConflictError, NotFoundError } from "../store/collection.ts";
 import type { Workspace } from "../store/workspace.ts";
@@ -523,6 +524,9 @@ export class PreflightService {
       // 品質基準も始めるときに固定する（実行中に設定が変わっても、評価とタスク化はこの版を使う）
       quality: qualitySnapshot(this.ws.project.quality, this.ws.project.qualityVersion),
     };
+    // 観測（今の期待）も始めるときに固定する（アプリの供給口が無ければ無い）
+    const observations = await observationSnapshot(this.ws.dataDir);
+    if (observations) run.observations = observations;
     // 実行しているプロセスの記録（codex / mock）。手元のエージェントの run はプロセスを跨いで待つので記録しない
     const owner = engine === "local" ? undefined : currentOwner();
     if (owner) run.owner = owner;
@@ -581,6 +585,7 @@ export class PreflightService {
       carryover: o.carried,
       attachments: o.run.attachments ?? [],
       ...(o.run.quality ? { quality: o.run.quality } : {}),
+      ...(o.run.observations ? { observations: o.run.observations } : {}),
       ...o.family,
     };
   }
@@ -914,8 +919,14 @@ export class PreflightService {
   }
 
   /** run に今の要望との比較（inputMatch）を添える（画面・CLI・API の表示用。run.json には書かない） */
-  async withInputMatch(requestId: string, run: PreflightRun): Promise<PreflightRun & { inputMatch: InputMatch; liveness?: RunLiveness }> {
-    return { ...run, inputMatch: await this.inputMatch(requestId, run), ...(run.status === "running" ? { liveness: this.liveness(run) } : {}) };
+  async withInputMatch(requestId: string, run: PreflightRun): Promise<PreflightRun & { inputMatch: InputMatch; liveness?: RunLiveness; observationsChanged?: ObservationChange[] }> {
+    const changed = await this.observationsChanged(run);
+    return { ...run, inputMatch: await this.inputMatch(requestId, run), ...(run.status === "running" ? { liveness: this.liveness(run) } : {}), ...(changed.length ? { observationsChanged: changed } : {}) };
+  }
+
+  /** 評価のあとで版が変わった・消えた観測（採る前に再評価が要るかの判断材料。タスク化は止めない） */
+  async observationsChanged(run: PreflightRun): Promise<ObservationChange[]> {
+    return run.observations && run.status === "completed" ? changedObservations(run.observations, await observationSnapshot(this.ws.dataDir)) : [];
   }
 
   /** running の run を実行しているプロセスの今の状態（画面の「中止」の出し分け。書かない）。local は待っている（waiting） */
