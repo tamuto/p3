@@ -291,3 +291,21 @@ export function runInstructions(r: ObservationResult, prereqs: PrerequisiteState
   step("完了", [`    p3 observer finish ${r.observation} ${r.id}（判定する）。続けられなくなったら p3 observer interrupt ${r.observation} ${r.id} --reason "…"`]);
   return out.join("\n");
 }
+
+/** 一覧・詳細に出す要約: 最後の結果（完了・中断・実行中）・今の版より前の版での実行か・同じ今の版の完了した結果に期待どおりと期待どおりでないが混ざる（不安定。保存しない） */
+export interface ResultSummary {
+  latest?: { id: string; status: ObservationResult["status"]; verdict?: Verdict; at: string; rev: number; stale: boolean };
+  running?: string;
+  unstable: boolean;
+}
+export function resultSummary(results: ObservationResult[], currentRev: number): ResultSummary {
+  const r = results[0];
+  const now = results.filter((x) => x.status === "completed" && x.rev === currentRev).map((x) => x.verdict);
+  const running = results.find((x) => x.status === "running")?.id;
+  return {
+    ...(r ? { latest: { id: r.id, status: r.status, ...(r.verdict ? { verdict: r.verdict } : {}), at: r.finishedAt ?? r.startedAt, rev: r.rev, stale: r.rev !== currentRev } } : {}),
+    ...(running ? { running } : {}),
+    unstable: now.includes("met") && now.includes("unmet"),
+  };
+}
+export const UNSTABLE_TEXT = "不安定: 今の版の結果に「期待どおり」と「期待どおりでない」が混ざっています。手順や準備（既知の状態に戻せているか・条件で待っているか）を見直してください";

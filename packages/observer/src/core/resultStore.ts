@@ -4,7 +4,7 @@ import { createExclusive, newRequestId, nowIso, withFileLock, writeFileAtomic } 
 import { git } from "@infodb/p3-shared/node/usage.ts";
 import { DefinitionError, type DefinitionStore, type PreparationStore } from "./definitionStore.ts";
 import { isDefinitionId } from "../shared/definition.ts";
-import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, snapshotOf, validateStep, type EnvRepo, type ObservationResult, type PrerequisiteState } from "../shared/result.ts";
+import { isResultId, judge, prerequisiteState, RESULT_FORMAT, RESULTS_DIR, resultSummary, type ResultSummary, snapshotOf, validateStep, type EnvRepo, type ObservationResult, type PrerequisiteState } from "../shared/result.ts";
 
 /** 参照先ごとの今のコミット・ブランチ・未コミットの変更（読めないものは commit が無い） */
 export function readEnvironment(repos: [string, string | undefined][]): EnvRepo[] {
@@ -112,6 +112,13 @@ export class ResultStore {
       await this.save(next);
       return next;
     });
+  }
+
+  /** 観測ごとの要約（一覧で後から読む。読めない結果は数えない） */
+  async summaries(defs: { id: string; rev: number }[]): Promise<Record<string, ResultSummary>> {
+    const out: Record<string, ResultSummary> = {};
+    for (const d of defs) out[d.id] = resultSummary((await this.list(d.id)).results, d.rev);
+    return out;
   }
 
   /** 前提の観測の今の状態（今の版で完了した最後の結果の判定） */

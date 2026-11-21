@@ -4,7 +4,7 @@ import { type ChangeContext, DefinitionError, DefinitionStore, PreparationStore 
 import type { WorkRef } from "../../shared/definition.ts";
 import { WorkStore } from "../../core/workStore.ts";
 import { readEnvironment, ResultStore } from "../../core/resultStore.ts";
-import { runInstructions, type ObservationResult } from "../../shared/result.ts";
+import { resultSummary, runInstructions, type ObservationResult } from "../../shared/result.ts";
 import { fileChecker, fileHasher } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
@@ -29,7 +29,8 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   POST /definitions/:id/suggestions  提案を頼む（{ definition: 頼むときの入力, note, basedOnRev }）。依頼を保存してから始め、202
  *   GET  /definitions/:id/suggestions/:sid  1件 / POST .../:sid/cancel 取り消す
  *   POST /definitions/:id/procedures/:pid/switch  手順を置き換え候補のスクリプトに切り替える（{ rev, invoke, evidence }。ファイルが有ること・今の版が要る）
- *   GET  /definitions/:id/results      観測の結果の一覧 { results, unreadable }（新しい順）/ POST 実行を始める（{ note? }。開始時点の定義と準備を写す。201）
+ *   GET  /results/summary              観測ごとの結果の要約 { summaries: { <ID>: { latest?, running?, unstable } } }（一覧が後から読む）
+ *   GET  /definitions/:id/results      観測の結果の一覧 { results, unreadable, summary }（新しい順）/ POST 実行を始める（{ note? }。開始時点の定義と準備を写す。201）
  *   GET  /definitions/:id/results/:rid 1件（実行中なら実行の指示 instructions を添える。開始の応答も同じ）/ POST .../steps 段を1つ記録 / POST .../finish 完了して判定 / POST .../interrupt 中断として閉じる（{ reason }）
  *   GET  /preparations                 準備の一覧 { items, unreadable } / POST 作成（201）
  *   GET  /preparations/:id             1つの準備と、それを使う観測 { preparation, usedBy: { definitions, unreadable } }
@@ -118,7 +119,12 @@ export function observerRoutes(
     const preps = new PreparationStore(target.dataDir, files);
     // 観測の実行と結果（P3 は手順を実行しない。人か担当の AI が実行して記録する）
     const results = new ResultStore(target.dataDir, store, preps);
-    app.get("/definitions/:id/results", async (c) => c.json(await results.list(c.req.param("id"))));
+    app.get("/results/summary", async (c) => c.json({ summaries: await results.summaries((await store.list()).definitions) }));
+    app.get("/definitions/:id/results", async (c) => {
+      const id = c.req.param("id");
+      const l = await results.list(id);
+      return c.json({ ...l, summary: resultSummary(l.results, (await store.get(id)).rev) });
+    });
     app.post("/definitions/:id/results", async (c) => {
       const b = await body(c);
       return c.json(await withInstructions(await results.start(c.req.param("id"), actorOf(c), { repos: readEnvironment((target.repoNames?.() ?? []).map((n) => [n, target.repoPath?.(n)])), note: str(b.note) })), 201);
