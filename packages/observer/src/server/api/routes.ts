@@ -3,7 +3,7 @@ import { observerStatus } from "../../core/status.ts";
 import { type ChangeContext, DefinitionError, DefinitionStore, PreparationStore } from "../../core/definitionStore.ts";
 import type { WorkRef } from "../../shared/definition.ts";
 import { WorkStore } from "../../core/workStore.ts";
-import { fileChecker } from "../../core/files.ts";
+import { fileChecker, fileHasher } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
 import { validateSuggestionRequest } from "../../shared/suggestion.ts";
@@ -16,7 +16,7 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   GET  /status                       起動状態（ObserverStatus）。プロジェクトを決めなくても使える
  *   GET  /definitions                  観測の定義の一覧 { definitions, unreadable }
  *   POST /definitions                  作成（タイトルと観測内容だけでよい）。201 で作った定義（ID が付く）
- *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前 { definition, references }
+ *   GET  /definitions/:id              1つの定義と、前提の観測・使う準備の名前・期待の見直しの注意 { definition, references, drift }
  *   PUT  /definitions/:id              更新（{ rev: 今の版, definition, reason?: 期待を変えた理由 }）。版が違えば 409（current に今の定義）
  *   POST /definitions/:id/end          終える（{ rev, reason, movedTo? }）。前提として使われていれば 409 の in_use
  *   作成・更新・終了に作業の文脈のヘッダー（x-p3-work: <要望ID>/<T>）を添えると、アプリが確かめて履歴に作業の帰属を残す
@@ -53,7 +53,7 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
   const { target, suggestions } = opts;
   if (target) {
     const files = target.repoPath && fileChecker(target.repoPath);
-    const store = new DefinitionStore(target.dataDir, files);
+    const store = new DefinitionStore(target.dataDir, files, target.repoPath && fileHasher(target.repoPath));
     const work = new WorkStore(target.dataDir);
     const actorOf = (c: Context) => c.req.header("x-p3-actor") ?? "human:web";
     const body = async (c: Context): Promise<Record<string, unknown>> => {
@@ -76,7 +76,7 @@ export function observerRoutes(opts: { products?: readonly string[]; target?: De
     app.post("/definitions", async (c) => c.json(await store.create(await body(c), actorOf(c), change(c)), 201));
     app.get("/definitions/:id", async (c) => {
       const d = await store.get(c.req.param("id"));
-      return c.json({ definition: d, references: await store.references(d) });
+      return c.json({ definition: d, references: await store.references(d), drift: await store.drift(d) });
     });
     app.put("/definitions/:id", async (c) => {
       const b = await body(c);

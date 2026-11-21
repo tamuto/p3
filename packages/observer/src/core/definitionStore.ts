@@ -14,6 +14,7 @@ import {
   validateDefinitionInput,
   type DefinitionProblem,
   type Baseline,
+  type Drift,
   type Ending,
   type EstimatedOrigin,
   type HistoryEntry,
@@ -21,7 +22,7 @@ import {
   type References,
   type WorkRef,
 } from "../shared/definition.ts";
-import { isPreparationId, PREPARATION_FORMAT, PREPARATIONS_DIR, SLOT_LABEL, validatePreparationInput, type Preparation, type PreparationInput, type Slot } from "../shared/preparation.ts";
+import { isPreparationId, PREPARATION_FORMAT, PREPARATIONS_DIR, SLOT_LABEL, SLOTS, validatePreparationInput, type Preparation, type PreparationInput, type Slot } from "../shared/preparation.ts";
 
 /**
  * 観測の定義と準備の保存（docs/architecture.md「p3-observer」）。入口・アプリが解決したプロジェクトのデータのフォルダの下の
@@ -214,10 +215,14 @@ const invalid = (problems: DefinitionProblem[], what = "観測の定義") => new
 
 export class DefinitionStore {
   private readonly f: ReturnType<typeof observerFiles>;
-  /** files: 参照先の中でファイルの有無を照らす（入口が参照先のこのマシンのパスから作る。無ければ確かめない） */
+  /**
+   * files: 参照先の中でファイルの有無を照らす（入口が参照先のこのマシンのパスから作る。無ければ確かめない）。
+   * hash: 参照先の中のファイルの内容の hash（期待の比較基準。無ければ比較基準は未確認になる）
+   */
   constructor(
     readonly dataDir: string,
     private readonly files?: Files,
+    private readonly hash?: (repo: string, path: string) => string | undefined,
   ) {
     this.f = observerFiles(dataDir);
     this.dir = this.f.defs.dir;
@@ -292,7 +297,8 @@ export class DefinitionStore {
   async create(input: unknown, actor: string, ctx: ChangeContext = {}): Promise<ObservationDefinition> {
     return this.f.locked(async () => {
       const content = await this.content(input);
-      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content, history: [entry("created", actor, ctx, { expected: content.expected })] }), actor);
+      const baseline = content.expected ? await this.baselineOf(content) : undefined;
+      return this.f.defs.create((m) => ({ format: DEFINITION_FORMAT, ...m, ...content, history: [entry("created", actor, ctx, { expected: content.expected })], ...(baseline ? { baseline } : {}) }), actor);
     });
   }
 
@@ -307,7 +313,10 @@ export class DefinitionStore {
         const content = await this.content(input, current);
         const changed = (content.expected ?? "") !== (current.expected ?? "");
         const history = [...(current.history ?? []), ...(changed ? [entry("expected", actor, ctx, { expected: content.expected, before: current.expected })] : [])];
-        return { ...pick(current), ...kept(current), format: DEFINITION_FORMAT, ...content, ...(history.length ? { history } : {}) };
+        // 期待を確定し直したら、そのときの現行の参照ファイルを比較基準にする（期待を消したら比較基準も外す）
+        const { baseline: _b, ...keep } = kept(current);
+        const baseline = !changed ? current.baseline : content.expected ? await this.baselineOf(content) : undefined;
+        return { ...pick(current), ...keep, format: DEFINITION_FORMAT, ...content, ...(history.length ? { history } : {}), ...(baseline ? { baseline } : {}) };
       }),
     );
   }
@@ -329,6 +338,42 @@ export class DefinitionStore {
         return { ...current, format: DEFINITION_FORMAT, ended: { at, by: actor, reason, ...(movedTo ? { movedTo } : {}) }, history: [...(current.history ?? []), entry("ended", actor, { ...ctx, reason }, { movedTo })] };
       }),
     );
+  }
+
+  /** 現行の参照ファイル: 確認の手順の今の実行方法のファイルと、使う準備の確かめ・前処理・後処理の今の実行方法のファイル（置き換え候補・コマンドは入れない） */
+  private async currentFiles(d: Pick<DefinitionInput, "procedures" | "preparations">): Promise<{ repo: string; path: string }[]> {
+    const preps = d.preparations?.length ? (await this.f.preps.list()).items.filter((p) => d.preparations!.includes(p.id)) : [];
+    const runs = [...d.procedures.map((p) => p.run), ...preps.flatMap((p) => SLOTS.flatMap((s) => (p[s] ? [p[s].run] : [])))];
+    const out = new Map<string, { repo: string; path: string }>();
+    for (const r of runs) if (r.kind !== "ai-instruction" && r.kind !== "command") out.set(`${r.repo}:${r.path}`, { repo: r.repo, path: r.path });
+    return [...out.values()];
+  }
+
+  private async baselineOf(d: Pick<DefinitionInput, "procedures" | "preparations">): Promise<Baseline> {
+    return { at: nowIso(), files: (await this.currentFiles(d)).map((f) => ({ ...f, ...(this.hash?.(f.repo, f.path) ? { hash: this.hash(f.repo, f.path) } : {}) })) };
+  }
+
+  /**
+   * 期待の見直しの注意: 期待を確定したときの比較基準と、今の参照ファイルの内容を比べる（開くたびに計算し、保存しない）。
+   * 比較基準が無い（期待が無い・前の版で作った）・読めないものは未確認
+   */
+  async drift(d: ObservationDefinition): Promise<Drift> {
+    if (!d.baseline) return { state: "unverified", files: [] };
+    const now = await this.currentFiles(d);
+    const key = (f: { repo: string; path: string }) => `${f.repo}:${f.path}`;
+    const files: Drift["files"] = [];
+    for (const b of d.baseline.files) {
+      if (!now.some((n) => key(n) === key(b))) files.push({ repo: b.repo, path: b.path, change: "replaced" });
+      else {
+        const h = this.hash?.(b.repo, b.path);
+        if (b.hash && !h && this.files?.(b.repo, b.path) === "planned") files.push({ repo: b.repo, path: b.path, change: "deleted" });
+        else if (!b.hash || !h) files.push({ repo: b.repo, path: b.path, change: "unreadable" });
+        else if (h !== b.hash) files.push({ repo: b.repo, path: b.path, change: "changed" });
+      }
+    }
+    for (const n of now) if (!d.baseline.files.some((b) => key(b) === key(n))) files.push({ ...n, change: "added" });
+    const state = files.some((f) => ["changed", "deleted", "replaced"].includes(f.change)) ? "changed" : files.length ? "unverified" : "none";
+    return { state, files, baselineAt: d.baseline.at };
   }
 
   /** 手順を置き換え候補のスクリプトに切り替える（切り替えの決まりは switched） */

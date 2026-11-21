@@ -1,7 +1,7 @@
 import { Alert, Button, buttonCls, Empty, Field, inputCls, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
-import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type References, HISTORY_LABEL } from "../../../../shared/definition.ts";
+import { filesOf, fileKey, MEASURE_TYPE_LABEL, type ObservationDefinition, type References, HISTORY_LABEL, type Drift, DRIFT_LABEL, driftText } from "../../../../shared/definition.ts";
 import { endDefinition, fetchDefinition, switchProcedure } from "../../../lib/api.ts";
 import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
@@ -25,12 +25,12 @@ function DefinitionDetail() {
       </Link>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>観測の定義を読めませんでした: {load.message}</Alert>}
-      {load.kind === "ok" && <Detail d={load.value.definition} refs={load.value.references} reload={() => setTick((t) => t + 1)} />}
+      {load.kind === "ok" && <Detail d={load.value.definition} refs={load.value.references} drift={load.value.drift} reload={() => setTick((t) => t + 1)} />}
     </div>
   );
 }
 
-function Detail({ d, refs, reload }: { d: ObservationDefinition; refs: References; reload: () => void }) {
+function Detail({ d, refs, drift, reload }: { d: ObservationDefinition; refs: References; drift: Drift; reload: () => void }) {
   const files = useFileStates(filesOf(d.procedures).map((f) => fileKey(f.repo, f.path)));
   return (
     <>
@@ -64,6 +64,19 @@ function Detail({ d, refs, reload }: { d: ObservationDefinition; refs: Reference
           期待する結果
         </h2>
         {d.expected ? <p className="whitespace-pre-wrap">{d.expected}</p> : <Empty>まだ書かれていません（編集で書ける）。</Empty>}
+        {drift.state === "changed" ? <Alert box warn>{driftText(drift)}</Alert> : <p className="text-slate-600 dark:text-slate-400">{driftText(drift)}</p>}
+        {drift.files.length > 0 && (
+          <ul aria-label="期待を確定した後の参照ファイルの変化" className="list-disc space-y-1 pl-6">
+            {drift.files.map((f) => (
+              <li key={`${f.repo}:${f.path}`}>
+                <code className="break-all">
+                  {f.repo}:{f.path}
+                </code>
+                　{DRIFT_LABEL[f.change]}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
       <section aria-labelledby="refs-heading" className="space-y-2">
         <h2 id="refs-heading" className="text-xl font-semibold">

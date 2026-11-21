@@ -165,6 +165,33 @@ export interface Baseline {
   files: { repo: string; path: string; hash?: string }[];
 }
 
+/** 期待の見直しの注意（詳細を開くたびに計算する。保存しない） */
+export interface Drift {
+  /** none 変わっていない / changed 期待を直さないまま変わった / unverified 比較基準が無い・読めないものがある */
+  state: "none" | "changed" | "unverified";
+  /** changed 内容が変わった / deleted 消えた / replaced 期待を確定した後に参照から外れた / added 期待を確定した後に足された（比較基準なし）/ unreadable 読めない */
+  files: { repo: string; path: string; change: "changed" | "deleted" | "replaced" | "added" | "unreadable" }[];
+  /** 比較基準を取った時刻（無ければ省く） */
+  baselineAt?: string;
+}
+export const DRIFT_LABEL: Record<Drift["files"][number]["change"], string> = {
+  changed: "内容が変わった",
+  deleted: "消えた",
+  unreadable: "読めない（未確認）",
+  replaced: "期待を確定した後に参照から外れた（差し替え）",
+  added: "期待を確定した後に足された（比較基準なし）",
+};
+
+/** 期待の見直しの注意の見出し（CLI と画面で同じ言い方） */
+export const driftText = (d: Drift) =>
+  d.state === "changed"
+    ? "⚠ 期待の見直しが要るかもしれません（期待を確定した後に、参照するファイルが期待を直さないまま変わった）"
+    : d.state === "none"
+      ? "参照するファイルは期待を確定したときから変わっていません"
+      : d.baselineAt
+        ? "期待の見直しの要否は一部未確認です（比較基準の無い・読めないファイルがある）"
+        : "期待の見直しの要否は未確認です（期待を確定したときの比較基準がありません）";
+
 /** 推定の経緯（あとから作った観測の期待が、どの要望で決まったか。AI が根拠付きで推定し、利用者が確かめたときだけ残す。実作業の帰属ではない） */
 export interface EstimatedOrigin {
   requests: string[];

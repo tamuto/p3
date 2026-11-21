@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import { UsageError, resolvePath } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { DefinitionError, DefinitionStore, PreparationStore } from "../core/definitionStore.ts";
-import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Executable, type FileState, type HistoryEntry, HISTORY_LABEL, type ObservationDefinition, type Procedure, type References, STORED_ONLY, type WorkRef } from "../shared/definition.ts";
+import { FILE_STATE_LABEL, MEASURE_TYPE_LABEL, RUN_KIND_LABEL, problemText, type Drift, DRIFT_LABEL, driftText, type Executable, type FileState, type HistoryEntry, HISTORY_LABEL, type ObservationDefinition, type Procedure, type References, STORED_ONLY, type WorkRef } from "../shared/definition.ts";
 import { SLOT_LABEL, SLOTS, type Preparation, type Slot } from "../shared/preparation.ts";
-import { fileChecker } from "../core/files.ts";
+import { fileChecker, fileHasher } from "../core/files.ts";
 import type { DefinitionTarget } from "../shared/status.ts";
 import type { SuggestionService } from "../core/suggest.ts";
 import { WorkStore } from "../core/workStore.ts";
@@ -93,7 +93,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
   if (opts.movedTo !== undefined && sub !== "end") throw new UsageError("--moved-to は p3 observer end でだけ使えます");
   if (!opts.target) throw new Error("observer: プロジェクトが決まっていません");
   const files = opts.target.repoPath && fileChecker(opts.target.repoPath);
-  const store = new DefinitionStore(opts.target.dataDir, files);
+  const store = new DefinitionStore(opts.target.dataDir, files, opts.target.repoPath && fileHasher(opts.target.repoPath));
   const actor = opts.actor ?? "human:cli";
   const fail = (e: unknown): ObserverResult => {
     if (!(e instanceof DefinitionError)) throw e;
@@ -112,7 +112,7 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
       const [id, ...extra] = rest;
       if (!id || extra.length) throw new UsageError(`観測の定義の ID を1つ指定してください: p3 observer show <ID>`);
       const d = await store.get(id);
-      return { data: d, text: describe(d, files, await store.references(d)) };
+      return { data: d, text: describe(d, files, await store.references(d), await store.drift(d)) };
     }
     const fromFlags = (base: Record<string, unknown>) => ({
       ...base,
@@ -277,7 +277,7 @@ function suggestionText(job: SuggestionJob, files?: Files): string {
   return lines.join("\n");
 }
 
-function describe(d: ObservationDefinition, files: Files, refs: References): string {
+function describe(d: ObservationDefinition, files: Files, refs: References, drift: Drift): string {
   const lines = [`${d.id}  v${d.rev}  [${d.category}]  ${d.title}`, "", d.description, ...(d.expected ? ["", `期待する結果: ${d.expected}`] : []), ""];
   if (refs.prerequisites.length) lines.push(`前提の観測（失敗したらこの観測は未確認）: ${refs.prerequisites.map((r) => `${r.id} ${r.title ?? "（見つからない）"}`).join("・")}`);
   if (refs.preparations.length) lines.push(`使う準備: ${refs.preparations.map((r) => `${r.id} ${r.name ?? "（見つからない）"}`).join("・")}`);
@@ -285,6 +285,8 @@ function describe(d: ObservationDefinition, files: Files, refs: References): str
   for (const m of d.measures) lines.push(`  ${m.name}  ${MEASURE_TYPE_LABEL[m.type]}${m.unit ? `（${m.unit}）` : ""}${m.description ? `  ${m.description}` : ""}`);
   lines.push(`確認の手順 ${d.procedures.length} 件`);
   for (const p of d.procedures) lines.push(...procedureLines(p, files));
+  lines.push("", driftText(drift));
+  for (const f of drift.files) lines.push(`  ${f.repo}:${f.path}  ${DRIFT_LABEL[f.change]}`);
   if (d.ended) lines.push("", `終了 ${d.ended.at} ${d.ended.by}: ${d.ended.reason}${d.ended.movedTo ? `（移した先: ${d.ended.movedTo}）` : ""}`);
   lines.push("", `期待の履歴 ${d.history?.length ?? 0} 件`, ...(d.history ?? []).map(historyLine));
   lines.push("", `作成 ${d.createdAt} ${d.createdBy} / 更新 ${d.updatedAt} ${d.updatedBy}`);
@@ -358,3 +360,4 @@ function describePreparation(p: Preparation, usedBy: { id: string; title: string
   lines.push("", `作成 ${p.createdAt} ${p.createdBy} / 更新 ${p.updatedAt} ${p.updatedBy}`);
   return lines.join("\n");
 }
+

@@ -1,4 +1,4 @@
-import type { DefinitionInput, DefinitionProblem, FileState, ObservationDefinition, References } from "../../shared/definition.ts";
+import type { DefinitionInput, DefinitionProblem, Drift, FileState, ObservationDefinition, References } from "../../shared/definition.ts";
 import type { Preparation, Slot } from "../../shared/preparation.ts";
 import { OBSERVER_API, type ObserverStatus } from "../../shared/status.ts";
 import type { SuggestionContext, SuggestionJob } from "../../shared/suggestion.ts";
@@ -37,7 +37,7 @@ const project = observerScope;
 export const fetchStatus = () => call<ObserverStatus>(`${OBSERVER_API}/status`);
 export const fetchDefinitions = () => call<DefinitionListing>(`${project().apiBase}/definitions`, { headers: project().headers });
 export const fetchDefinition = (id: string) =>
-  call<{ definition: ObservationDefinition; references: References }>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { headers: project().headers });
+  call<{ definition: ObservationDefinition; references: References; drift: Drift }>(`${project().apiBase}/definitions/${encodeURIComponent(id)}`, { headers: project().headers });
 export const createDefinition = (input: unknown) =>
   call<ObservationDefinition>(`${project().apiBase}/definitions`, { method: "POST", headers: project().headers, body: JSON.stringify(input) });
 export const updateDefinition = (id: string, rev: number, input: unknown, reason?: string) =>

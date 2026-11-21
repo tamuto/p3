@@ -1,6 +1,8 @@
 // 文字の大きさと拡大表示: 主な画面で、本文・フォームの見出し・主な操作の計算済みの文字が 16px 以上、ID・日時などの補助の情報が
 // 14px 以上（test/ui/layout.ts の fontProblems）。200% の拡大（1280×900 の画面を 640×450 の CSS の幅で描くのと同じ）でも
 // ページが横にはみ出さず、入力と主な操作にキーボード（Tab）で届く。方針は docs/development.md の「画面の文字と余白」
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Locator, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { fontProblems, inViewport, pageOverflow } from "./layout.ts";
@@ -8,7 +10,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "", observation: "", preparation: "" };
+const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -42,6 +44,13 @@ async function prepare(env: UiEnv) {
   const prep = { name: `準備（${LONG_TITLE}）`, description: LONG_TITLE, exclusive: [`account:${"x".repeat(60)}`], setup: { run: obs.procedures[0].run, replacement: obs.procedures[0].replacement } };
   ids.preparation = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify(prep))).id;
   ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
+  // 期待の見直しの注意: 期待を確定した後に、手順のファイルが変わった観測
+  const watched = long.replace("monthly-closing-workflow", "monthly-closing-workflow-watched");
+  mkdirSync(dirname(join(env.repo, watched)), { recursive: true });
+  writeFileSync(join(env.repo, watched), "// 1\n");
+  const drifted = { title: `注意（${LONG_TITLE}）`, description: LONG_TITLE, expected: LONG_TITLE, procedures: [{ title: "テスト", run: { kind: "ui-script", repo: "repo", path: watched } }] };
+  ids.drift = (await j(["observer", "add", "--input", "-"], JSON.stringify(drifted))).id;
+  writeFileSync(join(env.repo, watched), "// 2\n");
   await env.p3(["observer", "suggest", ids.observation, "--note", LONG_TITLE]);
 }
 
@@ -134,6 +143,13 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
       // 提案の結果は完了の表示まで待ってから検査する
       await until.visible(page.getByTestId("suggestion").getByText(/操作面:/));
       await until.visible(page.getByTestId("suggestion").getByRole("article").first());
+    },
+  },
+  {
+    name: "観測の詳細（期待の見直しの注意）",
+    open: async (page) => {
+      await page.goto(`/observer/${ids.drift}`);
+      await until.visible(page.getByRole("list", { name: "期待を確定した後の参照ファイルの変化" }));
     },
   },
   {
