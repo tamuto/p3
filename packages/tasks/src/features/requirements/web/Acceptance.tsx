@@ -25,7 +25,8 @@ import type { Task } from "../../../shared/types.ts";
 import { api, failureOf } from "../../../web/lib/api.ts";
 import { fmtTime } from "../../../web/lib/format.ts";
 import { Markdown } from "../../../web/components/Markdown.tsx";
-import { Badge, Button, cx, Field, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Badge, Button, cx, Field, inputCls, linkCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
+import { Link } from "@tanstack/react-router";
 
 /**
  * 受け入れ基準と証拠の部品（shared/acceptance.ts の規則を使う）。
@@ -176,6 +177,36 @@ function BasisView({ e }: { e: AcceptanceEvidence }) {
           ))}
         </dl>
       )}
+      {basis.kind === "observation" && <ObservationResultView observation={basis.observation} result={basis.result} />}
+    </div>
+  );
+}
+
+const VERDICT = { met: "期待どおり", unmet: "期待どおりでない", unconfirmed: "未確認" } as const;
+
+/** 根拠にした観測の結果へのリンクと今の状態（後から読む）。観測の期待が変わって結果の版が古くなっていればそう出す */
+function ObservationResultView({ observation, result }: { observation: string; result: string }) {
+  const [state, setState] = useState<Awaited<ReturnType<typeof api.observationResult>> | "error">();
+  useEffect(() => {
+    let alive = true;
+    api.observationResult(observation, result).then(
+      (s) => alive && setState(s),
+      () => alive && setState("error"),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [observation, result]);
+  return (
+    <div className="space-y-1 text-base">
+      <Link to="/observer/$id/runs/$rid" params={{ id: observation, rid: result }} className={linkCls}>
+        観測の結果を開く
+      </Link>
+      {state === "error" && "（結果を読めません）"}
+      {state && state !== "error" && `（${state.status === "completed" ? VERDICT[state.verdict ?? "unconfirmed"] : state.status === "running" ? "実行中" : "中断"}・版 ${state.rev}）`}
+      {state && state !== "error" && state.currentRev !== state.rev && (
+        <Alert warn>観測の期待が変わりました（結果は版 {state.rev}・今は版 {state.currentRev}）。今の版で観測し直すか確かめてください</Alert>
+      )}
     </div>
   );
 }
@@ -264,16 +295,33 @@ interface BasisInput {
   command: string;
   result: string;
   target: string;
+  /** 観測の結果の観測 ID・結果 ID */
+  observation: string;
+  observationResult: string;
 }
 
 const basisInputOf = (e?: AcceptanceEvidence): BasisInput => {
   const b = e ? evidenceBasisOf(e).basis : ({ kind: "declaration" } as EvidenceBasis);
-  return { kind: b.kind, reference: b.kind === "read" ? b.reference : "", command: b.kind === "machine" ? b.command : "", result: b.kind === "machine" ? b.result : "", target: b.kind === "machine" ? b.target : "" };
+  return {
+    kind: b.kind,
+    reference: b.kind === "read" ? b.reference : "",
+    command: b.kind === "machine" ? b.command : "",
+    result: b.kind === "machine" ? b.result : "",
+    target: b.kind === "machine" ? b.target : "",
+    observation: b.kind === "observation" ? b.observation : "",
+    observationResult: b.kind === "observation" ? b.result : "",
+  };
 };
 
 /** 入力を保存する根拠にする（欄の空白は shared の cleanBasis が除く） */
 const basisOfInput = (b: BasisInput): EvidenceBasis =>
-  b.kind === "read" ? { kind: "read", reference: b.reference } : b.kind === "machine" ? { kind: "machine", command: b.command, result: b.result, target: b.target } : { kind: b.kind };
+  b.kind === "read"
+    ? { kind: "read", reference: b.reference }
+    : b.kind === "machine"
+      ? { kind: "machine", command: b.command, result: b.result, target: b.target }
+      : b.kind === "observation"
+        ? { kind: "observation", observation: b.observation, result: b.observationResult }
+        : { kind: b.kind };
 
 /** 種類に要る欄がそろっているか（そろっていなければ理由） */
 function basisMissing(b: BasisInput): string | undefined {
@@ -282,6 +330,7 @@ function basisMissing(b: BasisInput): string | undefined {
     const lack = [!b.command.trim() && "コマンド", !b.result.trim() && "結果", !b.target.trim() && "対象"].filter(Boolean);
     if (lack.length) return `検査の${lack.join("・")}を書いてください`;
   }
+  if (b.kind === "observation" && (!b.observation.trim() || !b.observationResult.trim())) return "観測の ID と結果の ID を書いてください（観測の結果の画面に出ます）";
   return undefined;
 }
 
@@ -529,12 +578,12 @@ function BasisEditor({ value, result, disabled, idPrefix, onChange }: { value: B
   const kinds = EVIDENCE_BASIS_KINDS.filter((k) => (result === "unverified" ? k === "unverified" : k !== "unverified"));
   const set = (patch: Partial<BasisInput>) => onChange({ ...value, ...patch });
   const missing = basisMissing(value);
-  const text = (key: "reference" | "command" | "result" | "target", label: string, hint: string, rows = 1) => (
+  const text = (key: "reference" | "command" | "result" | "target" | "observation" | "observationResult", label: string, hint: string, rows = 1) => (
     <Field label={label} hint={hint}>
       {rows > 1 ? (
-        <textarea id={`${idPrefix}-${key}`} rows={rows} maxLength={BASIS_LIMITS[key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+        <textarea id={`${idPrefix}-${key}`} rows={rows} maxLength={BASIS_LIMITS[key === "observationResult" ? "observation" : key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
       ) : (
-        <input id={`${idPrefix}-${key}`} maxLength={BASIS_LIMITS[key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+        <input id={`${idPrefix}-${key}`} maxLength={BASIS_LIMITS[key === "observationResult" ? "observation" : key]} className={`${inputCls} font-mono`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
       )}
     </Field>
   );
@@ -555,6 +604,12 @@ function BasisEditor({ value, result, disabled, idPrefix, onChange }: { value: B
           {text("command", "検査のコマンド（必須）", "実行したコマンド")}
           {text("result", "検査の結果（必須）", "終了コードと結果。失敗もそのまま書きます", 2)}
           {text("target", "対象（必須）", "参照先とコミット（例: app:3f2a1c0）。未コミットならそう書きます")}
+        </>
+      )}
+      {value.kind === "observation" && (
+        <>
+          {text("observation", "観測の ID（必須）", "obs-… の形。観測の詳細に出ます")}
+          {text("observationResult", "結果の ID（必須）", "res-… の形。満たしたの根拠にできるのは、完了して期待どおりの結果だけです")}
         </>
       )}
       {missing && <p className="text-base text-rose-600">{missing}</p>}

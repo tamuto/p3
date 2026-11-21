@@ -277,9 +277,15 @@ export const api = {
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),
   request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
-  /** この要望の作業で作った・期待を変えた・終えた観測（アプリが観測の履歴の逆引きで返す。要望の詳細の本体とは別に後から読む） */
+  /** この要望の作業で作った・期待を変えた・終えた観測（アプリが観測の履歴の逆引きで返す。要望の詳細の本体とは別に後から読む）と、この要望を作った観測の結果 */
   requestObservations: (rid: string) =>
-    call<{ observations: { id: string; title: string; ended: boolean; kinds: ("created" | "expected" | "ended")[] }[]; unreadable: number }>("GET", `/requests/${rid}/observations`),
+    call<{ observations: { id: string; title: string; ended: boolean; kinds: ("created" | "expected" | "ended")[] }[]; unreadable: number; results?: { observation: string; result: string; title?: string }[] }>(
+      "GET",
+      `/requests/${rid}/observations`,
+    ),
+  /** 受け入れ基準の証拠の根拠にした観測の結果の今の状態（アプリが observer から読む。観測の製品が無ければ 404） */
+  observationResult: (obs: string, rid: string) =>
+    call<{ status: "running" | "completed" | "interrupted"; verdict?: "met" | "unmet" | "unconfirmed"; rev: number; currentRev: number }>("GET", `/observation-results/${obs}/${rid}`),
   createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[]; parent?: string }) => call<Request>("POST", "/requests", r),
   /** 要望の更新。配下に未完了ができて祖先を戻したら reopenedAncestors、完了済の祖先は warnings（ancestor_done） */
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>

@@ -92,6 +92,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                作成・期待の変更・終了は期待の履歴に残る（update の --reason は期待を変えた理由）。p3 move <T> doing で始めた作業のタスクも残る
   observer candidates [--note <補足>] | candidates <CID>   AI に観測の候補を頼む（人が頼んだときだけ）・記録した候補
                                add --candidate <CID>:<番号> [--origin] で確かめて登録（--origin で推定の経緯も残す）
+  observer run <ID> [--body <環境のメモ>]   実行を始める（P3 は手順を実行しない。人か担当の AI が実行して記録する。定義の版と中身を写す）
+  observer record <ID> <結果 ID> --input <段の JSON|->   段を1つ記録する（phase・ref・result・measures・basis・evidence）
+  observer finish <ID> <結果 ID> | interrupt <ID> <結果 ID> --reason <理由>   完了して判定する（期待どおり・期待どおりでない・未確認）・中断として閉じる
+  observer results <ID> [<結果 ID>]   結果の一覧・1件
+  observer followup <ID> <結果 ID> [--create bug|spec]   期待どおりでなかった結果の要望の原稿（--create を付けたときだけ下書きの要望を作る）
   observer prep list | show | add | update | switch | rm   準備（観測の前後で状態を作る・戻すもの）の一覧・詳細・作成・更新・切り替え・削除
                                add / update は --input か --title <名前>・--body <説明>。switch は <準備 ID> <check|setup|teardown>。rm は使う観測が無いときだけ
                                --json で product・version・state・dataDir（今は何も保存しないので null）
@@ -147,8 +152,9 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                add <文>...  足す / edit <ID> <文>  文を変える（記録済みの証拠は再確認が必要になる）
                                rm <ID>...  消す（証拠は残る。ID は使い直さない） / order <ID>...  並べ替える（今の ID を全部）
   evidence <T003> <ID> <結果>   証拠を残す（再記録は置き換え）。本文は続けて書くか --body 本文|- / --file 本文.md
-                               --basis unverified|declaration|read|machine  根拠の種類（作業した側の申告。P3 は検査を実行しない）
+                               --basis unverified|declaration|read|machine|observation  根拠の種類（作業した側の申告。P3 は検査を実行しない）
                                  read: --reference 読んだもの / machine: --command コマンド --check-result 結果 --target <参照先>:<コミット>
+                                 observation: --observation <観測ID>/<結果ID>（満たしたの根拠は完了して期待どおりの結果だけ）
                                evidence <T003> --file 証拠.md|-  まとめて / --evidence-json 証拠.json|-  根拠つきでまとめて
                                evidence <T003> rm <ID>...  消す
                                済みのタスクの基準・証拠の中身を変えると済みが外れる（同じ値の再保存・成果物の追加では外れない）

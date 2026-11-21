@@ -1,5 +1,6 @@
-import { setObservationSource } from "@infodb/p3-tasks/core/preflight/observations.ts";
-import { DefinitionStore } from "@infodb/p3-observer/core/definitionStore.ts";
+import { setObservationResultSource, setObservationSource } from "@infodb/p3-tasks/core/preflight/observations.ts";
+import { DefinitionStore, PreparationStore } from "@infodb/p3-observer/core/definitionStore.ts";
+import { ResultStore } from "@infodb/p3-observer/core/resultStore.ts";
 import { CANDIDATE_LIMITS, type CandidateMaterial } from "@infodb/p3-observer/shared/candidates.ts";
 import type { P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { acceptanceStatus, evidenceBasisOf } from "@infodb/p3-tasks/features/requirements/shared/acceptance.ts";
@@ -9,6 +10,12 @@ import { acceptanceStatus, evidenceBasisOf } from "@infodb/p3-tasks/features/req
  * tasks と observer は読み合わないので、アプリが observer の定義を読み、判断に要る項目（ID・タイトル・期待・版・状態）だけを渡す
  */
 export function installObservationSource() {
+  // 受け入れ基準の証拠の根拠「観測の結果」の照合（結果の状態と、結果を実行した版・今の版）
+  setObservationResultSource(async (dataDir, observation, result) => {
+    const defs = new DefinitionStore(dataDir);
+    const r = await new ResultStore(dataDir, defs, new PreparationStore(dataDir)).get(observation, result);
+    return { status: r.status, ...(r.verdict ? { verdict: r.verdict } : {}), rev: r.rev, currentRev: (await defs.get(observation)).rev };
+  });
   setObservationSource(async (dataDir) => {
     const { definitions, unreadable } = await new DefinitionStore(dataDir).list();
     return { items: definitions.map((d) => ({ id: d.id, title: d.title, ...(d.expected ? { expected: d.expected } : {}), rev: d.rev, ended: !!d.ended })), unreadable: unreadable.length };

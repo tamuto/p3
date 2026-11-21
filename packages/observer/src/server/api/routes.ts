@@ -3,6 +3,8 @@ import { observerStatus } from "../../core/status.ts";
 import { type ChangeContext, DefinitionError, DefinitionStore, PreparationStore } from "../../core/definitionStore.ts";
 import type { WorkRef } from "../../shared/definition.ts";
 import { WorkStore } from "../../core/workStore.ts";
+import { readEnvironment, ResultStore } from "../../core/resultStore.ts";
+import { FOLLOW_UP_KINDS, followUpDraft, resultSummary, runInstructions, type FollowUpAdapter, type FollowUpKind, type ObservationResult } from "../../shared/result.ts";
 import { fileChecker, fileHasher } from "../../core/files.ts";
 import type { DefinitionTarget } from "../../shared/status.ts";
 import type { SuggestionService } from "../../core/suggest.ts";
@@ -27,6 +29,11 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
  *   POST /definitions/:id/suggestions  提案を頼む（{ definition: 頼むときの入力, note, basedOnRev }）。依頼を保存してから始め、202
  *   GET  /definitions/:id/suggestions/:sid  1件 / POST .../:sid/cancel 取り消す
  *   POST /definitions/:id/procedures/:pid/switch  手順を置き換え候補のスクリプトに切り替える（{ rev, invoke, evidence }。ファイルが有ること・今の版が要る）
+ *   GET  /results/summary              観測ごとの結果の要約 { summaries: { <ID>: { latest?, running?, unstable } } }（一覧が後から読む）
+ *   GET  /definitions/:id/results      観測の結果の一覧 { results, unreadable, summary }（新しい順）/ POST 実行を始める（{ note? }。開始時点の定義と準備を写す。201）
+ *   GET  /definitions/:id/results/:rid 1件（実行中なら実行の指示 instructions を添える。開始の応答も同じ）/ POST .../steps 段を1つ記録 / POST .../finish 完了して判定 / POST .../interrupt 中断として閉じる（{ reason }）
+ *   GET  /definitions/:id/results/:rid/followup  作った要望 { existing } か、期待どおりでない結果なら種類ごとの原稿 { drafts: { bug, spec } }
+ *   POST /definitions/:id/results/:rid/followup  要望を作る（{ kind: bug|spec }。人が選んで明示したときだけ。既にあれば 409）。201 で { request, title, status }
  *   GET  /preparations                 準備の一覧 { items, unreadable } / POST 作成（201）
  *   GET  /preparations/:id             1つの準備と、それを使う観測 { preparation, usedBy: { definitions, unreadable } }
  *   PUT  /preparations/:id             更新（{ rev, preparation }）/ DELETE ?rev=<今の版> 消す（使っている観測があれば 409 の in_use）
@@ -43,7 +50,7 @@ const STATUS: Record<DefinitionError["code"], 400 | 404 | 409 | 422> = { invalid
 export const WORK_HEADER = "x-p3-work";
 
 export function observerRoutes(
-  opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService; candidates?: CandidateService; resolveWork?: (ref: string) => { ok: true; work: WorkRef } | { ok: false; reason: string } } = {},
+  opts: { products?: readonly string[]; target?: DefinitionTarget; suggestions?: SuggestionService; candidates?: CandidateService; resolveWork?: (ref: string) => { ok: true; work: WorkRef } | { ok: false; reason: string }; followUp?: FollowUpAdapter } = {},
 ) {
   const app = new Hono();
   app.onError((e, c) => {
@@ -112,6 +119,39 @@ export function observerRoutes(
       return c.json(await store.switchProcedure(c.req.param("id"), num(b.rev), c.req.param("pid"), { invoke: str(b.invoke), evidence: str(b.evidence) }, actorOf(c)));
     });
     const preps = new PreparationStore(target.dataDir, files);
+    // 観測の実行と結果（P3 は手順を実行しない。人か担当の AI が実行して記録する）
+    const results = new ResultStore(target.dataDir, store, preps);
+    app.get("/results/summary", async (c) => c.json({ summaries: await results.summaries((await store.list()).definitions) }));
+    app.get("/definitions/:id/results", async (c) => {
+      const id = c.req.param("id");
+      const l = await results.list(id);
+      return c.json({ ...l, summary: resultSummary(l.results, (await store.get(id)).rev) });
+    });
+    app.post("/definitions/:id/results", async (c) => {
+      const b = await body(c);
+      return c.json(await withInstructions(await results.start(c.req.param("id"), actorOf(c), { repos: readEnvironment((target.repoNames?.() ?? []).map((n) => [n, target.repoPath?.(n)])), note: str(b.note) })), 201);
+    });
+    // 実行中の結果には実行の指示を添える（画面で続きから記録するため）
+    const withInstructions = async (r: ObservationResult) => (r.status === "running" ? { ...r, instructions: runInstructions(r, await results.prerequisites(r)) } : r);
+    app.get("/definitions/:id/results/:rid", async (c) => c.json(await withInstructions(await results.get(c.req.param("id"), c.req.param("rid")))));
+    app.post("/definitions/:id/results/:rid/steps", async (c) => c.json(await results.record(c.req.param("id"), c.req.param("rid"), await body(c), actorOf(c))));
+    // 期待どおりでなかった結果から要望を作る（アプリが要望の作り方を渡したときだけ）。GET は作った要望か、作れるなら種類ごとの原稿
+    const { followUp } = opts;
+    if (followUp) {
+      app.get("/definitions/:id/results/:rid/followup", async (c) => {
+        const r = await results.get(c.req.param("id"), c.req.param("rid"));
+        const existing = await followUp.find(r.observation, r.id);
+        if (existing) return c.json({ existing });
+        return c.json(r.status === "completed" && r.verdict === "unmet" ? { drafts: { bug: followUpDraft(r, "bug"), spec: followUpDraft(r, "spec") } } : {});
+      });
+      app.post("/definitions/:id/results/:rid/followup", async (c) => {
+        const kind = (await body(c)).kind;
+        if (!FOLLOW_UP_KINDS.includes(kind as FollowUpKind)) throw new DefinitionError("invalid", "種類（kind）は bug（不具合）か spec（仕様のずれ）です", [{ path: "kind", message: "bug か spec を選んでください" }]);
+        return c.json(await results.followUp(c.req.param("id"), c.req.param("rid"), kind as FollowUpKind, actorOf(c), followUp), 201);
+      });
+    }
+    app.post("/definitions/:id/results/:rid/finish", async (c) => c.json(await results.finish(c.req.param("id"), c.req.param("rid"), actorOf(c))));
+    app.post("/definitions/:id/results/:rid/interrupt", async (c) => c.json(await results.interrupt(c.req.param("id"), c.req.param("rid"), actorOf(c), str((await body(c)).reason) ?? "")));
     app.get("/preparations", async (c) => c.json(await preps.list()));
     app.post("/preparations", async (c) => c.json(await preps.create(await body(c), actorOf(c)), 201));
     app.get("/preparations/:id", async (c) => {

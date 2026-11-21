@@ -10,7 +10,7 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const LONG_TITLE = "経費精算の申請と承認の画面で、領収書の画像の添付・差し戻し・再申請・承認の履歴をまとめて扱えるようにし、月末の締めの作業を短くする";
-const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "", candidates: "" };
+const ids = { board: "", drafts: "", observation: "", preparation: "", drift: "", candidates: "", run: "" };
 
 async function prepare(env: UiEnv) {
   const j = async (args: string[], input?: string) => JSON.parse(await env.p3([...args, "--json"], input)) as { id: string };
@@ -47,6 +47,10 @@ async function prepare(env: UiEnv) {
   const prep = { name: `準備（${LONG_TITLE}）`, description: LONG_TITLE, exclusive: [`account:${"x".repeat(60)}`], setup: { run: obs.procedures[0].run, replacement: obs.procedures[0].replacement } };
   ids.preparation = (await j(["observer", "prep", "add", "--input", "-"], JSON.stringify(prep))).id;
   ids.observation = (await j(["observer", "add", "--input", "-"], JSON.stringify(obs))).id;
+  // 実行中の結果（長い環境のメモ・根拠・証跡の段）
+  ids.run = (await j(["observer", "run", ids.observation, "--body", LONG_TITLE])).id;
+  const step = { phase: "procedure", ref: "P1", result: "unmet", measures: { closing_minutes: 42 }, basis: { kind: "read", reference: LONG_TITLE }, evidence: long };
+  await env.p3(["observer", "record", ids.observation, ids.run, "--input", "-"], JSON.stringify(step));
   // 観測の候補（Mock。人が確かめる品質基準から）
   await env.p3(["quality", "add", "--text", LONG_TITLE, "--reference", LONG_TITLE]);
   ids.candidates = (await j(["observer", "candidates"])).id;
@@ -150,6 +154,13 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
       // 提案の結果は完了の表示まで待ってから検査する
       await until.visible(page.getByTestId("suggestion").getByText(/操作面:/));
       await until.visible(page.getByTestId("suggestion").getByRole("article").first());
+    },
+  },
+  {
+    name: "観測の実行の記録",
+    open: async (page) => {
+      await page.goto(`/observer/${ids.observation}/runs/${ids.run}`);
+      await until.visible(page.getByRole("list", { name: "記録した段" }));
     },
   },
   {

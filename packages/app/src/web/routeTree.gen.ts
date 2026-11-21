@@ -27,6 +27,7 @@ import { Route as RequestsRequestIdIndexRouteImport } from './../../../tasks/src
 import { Route as RequestsRequestIdArchiveRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/archive'
 import { Route as RequestsRequestIdBoardRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/board'
 import { Route as RequestsRequestIdDoneRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/done'
+import { Route as ObserverIdRunsRidRouteImport } from './../../../observer/src/web/routes/observer/$id/runs/$rid'
 import { Route as ObserverPreparationsPidIndexRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/index'
 import { Route as ObserverPreparationsPidEditRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/edit'
 
@@ -122,6 +123,11 @@ const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
   path: '/done',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
+const ObserverIdRunsRidRoute = ObserverIdRunsRidRouteImport.update({
+  id: '/$id/runs/$rid',
+  path: '/$id/runs/$rid',
+  getParentRoute: () => ObserverRouteRoute,
+} as any)
 const ObserverPreparationsPidIndexRoute =
   ObserverPreparationsPidIndexRouteImport.update({
     id: '/preparations/$pid/',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/observer/$id/': typeof ObserverIdIndexRoute
   '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
+  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
   '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
   '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/observer/$id': typeof ObserverIdIndexRoute
   '/observer/preparations': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
+  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
   '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
   '/observer/preparations/$pid': typeof ObserverPreparationsPidIndexRoute
 }
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/observer/$id/': typeof ObserverIdIndexRoute
   '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
+  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
   '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
   '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/observer/$id/'
     | '/observer/preparations/'
     | '/requests/$requestId/'
+    | '/observer/$id/runs/$rid'
     | '/observer/preparations/$pid/edit'
     | '/observer/preparations/$pid/'
   fileRoutesByTo: FileRoutesByTo
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/observer/$id'
     | '/observer/preparations'
     | '/requests/$requestId'
+    | '/observer/$id/runs/$rid'
     | '/observer/preparations/$pid/edit'
     | '/observer/preparations/$pid'
   id:
@@ -263,6 +274,7 @@ export interface FileRouteTypes {
     | '/observer/$id/'
     | '/observer/preparations/'
     | '/requests/$requestId/'
+    | '/observer/$id/runs/$rid'
     | '/observer/preparations/$pid/edit'
     | '/observer/preparations/$pid/'
   fileRoutesById: FileRoutesById
@@ -405,6 +417,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdDoneRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
+    '/observer/$id/runs/$rid': {
+      id: '/observer/$id/runs/$rid'
+      path: '/$id/runs/$rid'
+      fullPath: '/observer/$id/runs/$rid'
+      preLoaderRoute: typeof ObserverIdRunsRidRouteImport
+      parentRoute: typeof ObserverRouteRoute
+    }
     '/observer/preparations/$pid/': {
       id: '/observer/preparations/$pid/'
       path: '/preparations/$pid'
@@ -430,6 +449,7 @@ interface ObserverRouteRouteChildren {
   ObserverPreparationsNewRoute: typeof ObserverPreparationsNewRoute
   ObserverIdIndexRoute: typeof ObserverIdIndexRoute
   ObserverPreparationsIndexRoute: typeof ObserverPreparationsIndexRoute
+  ObserverIdRunsRidRoute: typeof ObserverIdRunsRidRoute
   ObserverPreparationsPidEditRoute: typeof ObserverPreparationsPidEditRoute
   ObserverPreparationsPidIndexRoute: typeof ObserverPreparationsPidIndexRoute
 }
@@ -442,6 +462,7 @@ const ObserverRouteRouteChildren: ObserverRouteRouteChildren = {
   ObserverPreparationsNewRoute: ObserverPreparationsNewRoute,
   ObserverIdIndexRoute: ObserverIdIndexRoute,
   ObserverPreparationsIndexRoute: ObserverPreparationsIndexRoute,
+  ObserverIdRunsRidRoute: ObserverIdRunsRidRoute,
   ObserverPreparationsPidEditRoute: ObserverPreparationsPidEditRoute,
   ObserverPreparationsPidIndexRoute: ObserverPreparationsPidIndexRoute,
 }

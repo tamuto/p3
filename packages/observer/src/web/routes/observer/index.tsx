@@ -1,13 +1,16 @@
 import { Alert, Empty, Loading, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { fetchDefinitions, type DefinitionListing } from "../../lib/api.ts";
+import { fetchDefinitions, fetchResultSummaries, type DefinitionListing } from "../../lib/api.ts";
 import { useLoad } from "../../lib/useLoad.ts";
+import { SummaryCell } from "../../components/Results.tsx";
 
 /** /observer: このプロジェクトの観測の定義の一覧（詳細と準備の一覧への導線。登録は共通のツールバーの「新しい観測」から）。observer の API だけを読む */
 export const Route = createFileRoute("/observer/")({ component: DefinitionList });
 
 function DefinitionList() {
   const load = useLoad<DefinitionListing>(fetchDefinitions);
+  // 結果の要約は一覧の後から読む（一覧の表示を待たせない）
+  const summaries = useLoad(fetchResultSummaries);
   return (
     <div className="w-full space-y-2 px-4 py-3 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -37,7 +40,8 @@ function DefinitionList() {
                   <th className="py-1 pr-3 font-normal">タイトル</th>
                   <th className="py-1 pr-3 font-normal">カテゴリ</th>
                   <th className="py-1 pr-3 font-normal">測定・手順</th>
-                  <th className="py-1 font-normal">版・状態</th>
+                  <th className="py-1 pr-3 font-normal">版・状態</th>
+                  <th className="py-1 font-normal">最後の結果</th>
                 </tr>
               </thead>
               <tbody>
@@ -52,10 +56,11 @@ function DefinitionList() {
                     <td className="py-2 pr-3">
                       {d.measures.length}・{d.procedures.length}
                     </td>
-                    <td className="py-2">
+                    <td className="py-2 pr-3">
                       v{d.rev}
                       {d.ended ? "・終了" : ""}
                     </td>
+                    <td className="py-2">{summaries.kind === "ok" ? <SummaryCell s={summaries.value.summaries[d.id]} /> : summaries.kind === "error" ? "読めません" : "…"}</td>
                   </tr>
                 ))}
               </tbody>
