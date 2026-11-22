@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InvalidCandidates, parseCandidates, type CandidateMaterial } from "../packages/observer/src/shared/candidates.ts";
+import { CANDIDATE_INSTRUCTIONS, CANDIDATE_LIMITS, candidateObservations, candidatePrompt, InvalidCandidates, parseCandidates, type CandidateJob, type CandidateMaterial } from "../packages/observer/src/shared/candidates.ts";
 import { CandidateService } from "../packages/observer/src/core/candidates.ts";
 import { WorkStore } from "../packages/observer/src/core/workStore.ts";
 import { DefinitionStore } from "../packages/observer/src/core/definitionStore.ts";
@@ -53,6 +53,43 @@ describe("応答の読み方", () => {
     expect(failed).toMatchObject({ status: "failed", failure: "unavailable" });
     expect((await work.listCandidates()).map((j) => j.status)).toEqual(["failed", "completed"]);
     expect((await new DefinitionStore(dataDir).list()).definitions).toEqual([]);
+  });
+});
+
+describe("材料と依頼文", () => {
+  const ai = (target: string, steps: string[], judge: string) => ({ kind: "ai-instruction" as const, target, steps, judge, record: "記録の本文は写さない" });
+  it("今ある観測の説明と今の手順の要点を、期待の有無を分けて依頼に入れる。指示は利用者の振る舞い・除くもの・CI への出口・要望ごとに作らないことを書く", () => {
+    const [o] = candidateObservations([{ id: "obs-1", title: "ヘッダーの遷移", description: "各タブを押して画面が出る", expected: " ", procedures: [{ title: "5つのリンク", run: ai("http://localhost/", ["観測を押す", "設定を押す"], "見出しが出る") }, { title: "CLI", run: { kind: "command", command: "p3", args: ["ls"] } }] }]);
+    expect(o).toEqual({ id: "obs-1", title: "ヘッダーの遷移", description: "各タブを押して画面が出る", procedures: "5つのリンク: 対象 http://localhost/ / 操作 観測を押す → 設定を押す / 判定 見出しが出る; CLI: コマンド p3 ls" });
+    const prompt = candidatePrompt({ ...M, observations: [o, { id: "obs-2", title: "期待あり", expected: "16px 以上" }] }, ["p3"]);
+    expect(prompt).toContain("obs-1 ヘッダーの遷移: 期待「未記入（確定した期待として扱わない）」\n  説明: 各タブを押して画面が出る\n  手順: 5つのリンク: 対象");
+    expect(prompt).toContain("obs-2 期待あり: 期待「16px 以上」");
+    expect(prompt).not.toContain("記録の本文は写さない");
+    expect(prompt).toContain("最近変わった期待の手がかり。要望ごとに候補を作らない");
+    for (const t of ["利用者から見える振る舞い", "外部の CI に移して観測を終えます", "終わった要望の受け入れの確かめ直し", "candidates を空にする", "README と使い方の文書", "実行しない"]) expect(CANDIDATE_INSTRUCTIONS).toContain(t);
+  });
+
+  it("長い説明・手順は1つの上限で切り、観測が多いと欄の合計の上限を超えた分は ID・タイトル・期待だけにする", () => {
+    const long = "あ".repeat(1000);
+    const defs = Array.from({ length: 150 }, (_, i) => ({ id: `obs-${i}`, title: `観測 ${i}`, description: long, expected: long, procedures: [{ title: "手順", run: ai("画面", [long], "判定") }] }));
+    const obs = candidateObservations(defs);
+    const L = CANDIDATE_LIMITS;
+    expect(obs).toHaveLength(L.observations);
+    expect(obs[0].description).toHaveLength(L.observationText);
+    expect(obs[0].description?.endsWith("…")).toBe(true);
+    expect(obs[0].expected).toHaveLength(L.observationText);
+    const chars = obs.reduce((n, o) => n + (o.description?.length ?? 0) + (o.procedures?.length ?? 0), 0);
+    expect(chars).toBeLessThanOrEqual(L.observationChars);
+    expect(obs.at(-1)).toEqual({ id: "obs-99", title: "観測 99", expected: obs[0].expected });
+  });
+
+  it("説明・手順の要点の無い以前の候補の依頼の記録も読めて、依頼文を作れる", async () => {
+    const work = new WorkStore(tempDir("p3-cand-old-"));
+    const old: CandidateJob = { id: "cd-000000000001", status: "completed", engine: "codex", startedAt: "2026-11-22T07:05:42.985Z", material: { quality: [], criteria: [], requests: [], observations: [{ id: "obs-261120-jhydt", title: "p3画面上の遷移確認" }] }, candidates: [] };
+    await work.saveCandidates(old);
+    const read = await work.getCandidates(old.id);
+    expect(read).toMatchObject(old);
+    expect(candidatePrompt(read!.material, [])).toContain("obs-261120-jhydt p3画面上の遷移確認: 期待「未記入（確定した期待として扱わない）」");
   });
 });
 
