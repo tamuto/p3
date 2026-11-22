@@ -1,6 +1,6 @@
 {
   "name": "p3-workspace",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "infodb p3 の開発用のリポジトリ（pnpm workspace）。配布するのは packages/p3（@infodb/p3）",
   "license": "MIT",

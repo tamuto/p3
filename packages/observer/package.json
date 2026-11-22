@@ -1,6 +1,6 @@
 {
   "name": "@infodb/p3-observer",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "p3-observer: 観測基盤（準備中。今は起動の確認だけ。配布は @infodb/p3 に同梱）",
   "license": "MIT",

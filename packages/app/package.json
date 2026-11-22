@@ -1,6 +1,6 @@
 {
   "name": "@infodb/p3-app",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "p3 のアプリ: serve の組み立てと画面の外枠（tasks・observer を載せる。配布は @infodb/p3 に同梱）",
   "license": "MIT",
