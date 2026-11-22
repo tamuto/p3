@@ -9,14 +9,14 @@ import { Badge, Button } from "@infodb/p3-shared/web/ui.tsx";
 export function PreflightNotice({ run, fresh, onOpen }: { run: RunPulse; fresh: boolean; onOpen: () => void }) {
   const state = runStateLabel(run);
   return (
-    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-sky-50 p-4 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:ring-sky-900">
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-info-soft p-4 ring-1 ring-info-line">
       <div className="min-w-0 flex-1 basis-64 space-y-1">
         <p className="font-medium">{fresh ? "新しい Preflight があります" : "表示中の評価は最新ではありません"}</p>
         <p className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm break-all">{run.id}</span>
           <Badge tone={state.tone}>{state.label}</Badge>
         </p>
-        <p className="text-base text-slate-500">今の評価を表示したままです。入力中の内容も残っています。</p>
+        <p className="text-base text-fg-4">今の評価を表示したままです。入力中の内容も残っています。</p>
       </div>
       <Button variant="primary" onClick={onOpen}>
         {fresh ? "新しい run を開く" : "最新の run を開く"}

@@ -264,7 +264,14 @@ URL と検索の値の宣言だけを置き、中身を機能の `web/` に書�
 ### 画面の共通部品
 
 tasks・observer・アプリの画面は、`packages/shared/src/web/ui.tsx` の部品（`Button`・`buttonCls`・`Field`・`inputCls`・`Section`・`Alert`・`Loading`・
-`Empty`・`Badge`・`linkCls` など）で描く。機能ごとに色やボタンのスタイルを書かない（足りなければここに足す）。表の列・入力値・検証・遷移は機能側に置く。
+`Empty`・`Badge`・`linkCls`・`Tabs` など）で描く。機能ごとに色やボタンのスタイルを書かない（足りなければここに足す）。表の列・入力値・検証・遷移は機能側に置く。
+
+- 色は `packages/shared/src/web/colors.css` の意味の色だけを使い、パレットの色名（`slate-500`・`amber-50` など）と `dark:` の書き分けは書かない
+  （明・暗は意味の色が持つ）。文字 `fg-strong`〜`fg-5`、面 `page`・`surface`・`surface-2`・`surface-3`、境界 `line-soft`・`line`・`line-strong`、
+  意味 `accent`（操作・選択）・`danger`（失敗・消す）・`warn`（注意）・`ok`（済み）・`info`・`special`（アーカイブなど）に、それぞれ
+  `-strong`（強い文字）・`-soft`（面）・`-muted`（濃い面）・`-line`（境界）・`-solid`（塗り・印）。テーマで変えない暗い面は `inverse`
+- 素の `<button>` は書かない。普通のボタンは `Button`、小さな記号のボタン（外す ×・開閉 ▸）は `IconButton`、中身で見せる押せる領域（行・印・
+  サムネイル・メニューの項目）は `PlainButton`、1つを選ぶ切り替えの並びは `Segmented`、タブは `Tabs`・`TabPanel`。押せる部品はフォーカスの枠（`FOCUS`）を持つ
 
 | ボタン（`variant`） | 使うところ |
 | --- | --- |

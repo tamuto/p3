@@ -4,9 +4,8 @@ import type { ProjectConfig } from "../../shared/types.ts";
 import { ChatGptPanel } from "../components/ChatGptPanel.tsx";
 import { ReposPanel } from "../../features/settings/web/ReposPanel.tsx";
 import { QualityPanel } from "../../features/quality/web/QualityPanel.tsx";
-import { TabPanel, Tabs } from "../components/Tabs.tsx";
 import { ThemePanel } from "../../features/settings/web/ThemePanel.tsx";
-import { Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, cx, Field, inputCls, Section, TabPanel, Tabs } from "@infodb/p3-shared/web/ui.tsx";
 import { api, saveErrorText } from "../lib/api.ts";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { useUnsaved } from "../lib/unsaved.ts";
@@ -99,7 +98,7 @@ function SettingsPage() {
       </TabPanel>
 
       <TabPanel id="project" tab={tab} prefix="settings" className="space-y-10">
-        <p className="min-w-0 truncate font-mono text-sm text-slate-500 dark:text-slate-400" title={`${ctx.info.dataDir}/project.yaml`}>
+        <p className="min-w-0 truncate font-mono text-sm text-fg-4" title={`${ctx.info.dataDir}/project.yaml`}>
           {ctx.info.dataDir}/project.yaml
         </p>
 
@@ -114,7 +113,7 @@ function SettingsPage() {
           </div>
         </Section>
 
-        <p className="text-slate-500 dark:text-slate-400">
+        <p className="text-fg-4">
           マイルストーン（リリース）は、
           <Link to="/release-notes" search={{ tab: "milestones" }} className="underline">
             リリースノートの「マイルストーン」タブ
@@ -143,7 +142,7 @@ function SettingsPage() {
       </TabPanel>
 
       {tab === "project" && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+        <div className="fixed inset-x-0 bottom-0 border-t border-line bg-surface/90 backdrop-blur">
           <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
               保存
@@ -151,10 +150,10 @@ function SettingsPage() {
             <Button variant="cancel" disabled={!dirty} onClick={() => (setDraft(basicOf(ctx.info.project)), setDirty(false), setMsg(null))}>
               元に戻す
             </Button>
-            {msg && <span className={cx(msg.ok ? "text-emerald-600" : "text-rose-600")}>{msg.text}</span>}
-            {dirty && !msg && !changedElsewhere && <span className="text-slate-500">未保存の変更があります</span>}
+            {msg && <span className={cx(msg.ok ? "text-ok" : "text-danger")}>{msg.text}</span>}
+            {dirty && !msg && !changedElsewhere && <span className="text-fg-4">未保存の変更があります</span>}
             {changedElsewhere && !msg && (
-              <span role="status" className="text-amber-700 dark:text-amber-300">
+              <span role="status" className="text-warn">
                 編集中に設定が他で変わりました。保存するとこの画面の内容で上書きします（最新を見るには「元に戻す」）
               </span>
             )}

@@ -5,8 +5,7 @@ import { MilestoneEditor } from "../components/releaseNotes/MilestoneEditor.tsx"
 import { MilestoneReviewPanel } from "../../features/milestoneReview/web/MilestoneReview.tsx";
 import { useServerEvents } from "../lib/live.ts";
 import { ReleaseNotePanel } from "../../features/releaseNotes/web/ReleaseNotePanel.tsx";
-import { TabPanel, Tabs } from "../components/Tabs.tsx";
-import { Button, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, cx, Empty, TabPanel, Tabs } from "@infodb/p3-shared/web/ui.tsx";
 import { api } from "../lib/api.ts";
 import { useAppData } from "../lib/appData.tsx";
 import { latestOnly, STALE } from "../lib/latest.ts";
@@ -84,7 +83,7 @@ function ReleaseNotesPage() {
     <div className="w-full space-y-6 px-4 pt-6 pb-10 sm:px-6 lg:px-8 lg:pt-8">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">リリースノート</h1>
-        <p className="text-slate-500 dark:text-slate-400">
+        <p className="text-fg-4">
           マイルストーンごとに、対応済・完了済の要望のタスクの変更の記録から機能の要約をまとめます。生成した案は確かめてから保存します。
         </p>
       </header>
@@ -102,7 +101,7 @@ function ReleaseNotesPage() {
       <TabPanel id="review" tab={tab} prefix="rn">
         {/* 書きかけの入力を持たないので、選んでいるときだけ描く（履歴の読み込みもそのときだけ） */}
         {tab !== "review" ? null : !list ? (
-          !error && <p className="text-slate-500">Loading…</p>
+          !error && <p className="text-fg-4">Loading…</p>
         ) : !reviewItems.length ? (
           <Empty>
             マイルストーンがありません。
@@ -128,15 +127,15 @@ function ReleaseNotesPage() {
       </TabPanel>
       <TabPanel id="notes" tab={tab} prefix="rn" className="space-y-6">
         {error && (
-          <p role="alert" className="text-rose-600">
+          <Alert>
             一覧を読み込めませんでした: {error}{" "}
             <Button variant="link" onClick={() => void load()}>
               もう一度
             </Button>
-          </p>
+          </Alert>
         )}
         {!list ? (
-          !error && <p className="text-slate-500">Loading…</p>
+          !error && <p className="text-fg-4">Loading…</p>
         ) : !list.milestones.length ? (
           <Empty>
             マイルストーンがありません。
@@ -172,7 +171,7 @@ function MilestoneList({
 }) {
   return (
     <nav aria-label={label} className="space-y-2">
-      <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">マイルストーン</h2>
+      <h2 className="text-lg font-semibold text-fg">マイルストーン</h2>
       <ul className="space-y-1">
         {items.map((m) => (
           <li key={m.milestone}>
@@ -181,23 +180,23 @@ function MilestoneList({
               search={{ m: m.milestone, tab }}
               aria-current={m.milestone === selected ? "page" : undefined}
               className={cx(
-                "block rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none",
-                m.milestone === selected ? "bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200" : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                "block rounded-md px-3 py-2 focus-visible:ring-2 focus-visible:ring-accent-solid focus-visible:outline-none",
+                m.milestone === selected ? "bg-accent-soft text-accent-strong" : "hover:bg-surface-2",
               )}
             >
               <span className="block font-medium break-words">
-                {m.title} <span className="font-mono text-sm text-slate-500">{m.milestone}</span>
+                {m.title} <span className="font-mono text-sm text-fg-4">{m.milestone}</span>
               </span>
-              <span className="block text-base text-slate-500 dark:text-slate-400">
+              <span className="block text-base text-fg-4">
                 {tab === "review" ? "" : `${noteLabel(m)}・`}要望 {m.requests} 件{m.done ? "・リリース済み" : ""}
               </span>
-              {!m.known && <span className="block text-base text-amber-700 dark:text-amber-300">⚠ project.yaml にありません</span>}
+              {!m.known && <span className="block text-base text-warn">⚠ project.yaml にありません</span>}
             </Link>
           </li>
         ))}
       </ul>
       {warnings.map((w) => (
-        <p key={`${w.code}:${w.target}`} className="text-base text-amber-700 dark:text-amber-300">
+        <p key={`${w.code}:${w.target}`} className="text-base text-warn">
           ⚠ {w.message}
         </p>
       ))}

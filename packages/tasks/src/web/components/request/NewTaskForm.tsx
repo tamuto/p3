@@ -105,14 +105,14 @@ export function NewTaskForm({
       // 保存中は Escape で閉じない（閉じても保存は進むので、結果が見えなくなる）
       onCancel={(e) => busyRef.current && e.preventDefault()}
       aria-labelledby="new-task-title"
-      className="m-auto max-h-[90vh] w-[min(calc(100vw-1rem),720px)] max-w-none rounded-lg bg-white p-0 text-slate-900 backdrop:bg-black/60 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto max-h-[90vh] w-[min(calc(100vw-1rem),720px)] max-w-none rounded-lg bg-surface p-0 text-fg-strong backdrop:bg-black/60"
     >
       <form onSubmit={(e) => void submit(e)} className="flex max-h-[90vh] flex-col">
-        <div className="border-b border-slate-200 p-3 sm:p-4 dark:border-slate-800">
+        <div className="border-b border-line p-3 sm:p-4">
           <h2 id="new-task-title" className="font-semibold">
             タスクを追加（Preflight を通さない）
           </h2>
-          <p className="mt-1 text-base text-slate-500">{DIRECT_TASK_NOTE}</p>
+          <p className="mt-1 text-base text-fg-4">{DIRECT_TASK_NOTE}</p>
         </div>
         <div className="min-h-0 space-y-3 overflow-y-auto p-3 sm:p-4">
           <Field label="題">
@@ -133,9 +133,9 @@ export function NewTaskForm({
             </Field>
           )}
           <fieldset className="space-y-2">
-            <legend className="text-base font-medium text-slate-700 dark:text-slate-300">受け入れ基準（任意）</legend>
+            <legend className="text-base font-medium text-fg-2">受け入れ基準（任意）</legend>
             <CriteriaRowsEditor rows={criteria} disabled={busy} idPrefix="new-task-criterion" onChange={setCriteria} />
-            <p className="text-base text-slate-500 dark:text-slate-400">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
+            <p className="text-base text-fg-4">基準なしでも作成できます。ID（A1, A2, ...）は作成するときに振り、並べ替えても変わりません。</p>
           </fieldset>
           {project.quality?.state === "set" && (() => {
             const target = project.repos.length ? (repo === NO_REPO ? null : repo) : null;
@@ -146,18 +146,18 @@ export function NewTaskForm({
                 作業先 {target} に当てはまる品質基準を受け入れ基準に取り込む（{n} 件）
               </label>
             ) : (
-              <p className="text-base text-slate-500 dark:text-slate-400">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
+              <p className="text-base text-fg-4">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
             );
           })()}
           {BEFORE_ACTIVE.includes(request.status) && (
-            <p className="text-base text-slate-500">
+            <p className="text-base text-fg-4">
               タスクを足しても要望のステータスは変わりません。作業を始めるときは、概要のタブでステータスを「進行中」にしてください。
             </p>
           )}
-          {request.status === "resolved" && <p className="text-base text-slate-500">対応済の要望に未着手のタスクを足すと、要望は進行中に戻ります。</p>}
+          {request.status === "resolved" && <p className="text-base text-fg-4">対応済の要望に未着手のタスクを足すと、要望は進行中に戻ります。</p>}
           {error && <Alert>{error}</Alert>}
         </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 p-3 sm:p-4 dark:border-slate-800">
+        <div className="flex flex-wrap justify-end gap-2 border-t border-line p-3 sm:p-4">
           <Button onClick={() => dialog.current?.close()} disabled={busy}>
             取消
           </Button>

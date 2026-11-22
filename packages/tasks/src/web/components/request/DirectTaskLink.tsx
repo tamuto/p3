@@ -7,7 +7,7 @@ import { buttonCls } from "@infodb/p3-shared/web/ui.tsx";
  */
 export function DirectTaskLink({ requestId }: { requestId: string }) {
   return (
-    <p className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-base text-slate-600 dark:text-slate-400">
+    <p className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-base text-fg-3">
       <span>
         Preflight を使えない間も、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
       </span>

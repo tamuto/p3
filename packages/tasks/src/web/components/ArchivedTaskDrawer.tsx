@@ -76,15 +76,15 @@ export function ArchivedTaskDrawer({ ctx, rid, id: rawId, onClose }: { ctx: AppC
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-inverse/20" onClick={onClose}>
       <aside
         role="dialog"
         aria-modal="true"
         aria-label={`アーカイブしたタスク ${tid}（閲覧専用）`}
         onClick={(e) => e.stopPropagation()}
-        className="flex h-full w-full max-w-2xl flex-col bg-white shadow-xl dark:bg-slate-900"
+        className="flex h-full w-full max-w-2xl flex-col bg-surface shadow-xl"
       >
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
           <Id id={tid} />
           <Badge tone="violet">アーカイブ</Badge>
           <Badge>閲覧専用</Badge>
@@ -95,7 +95,7 @@ export function ArchivedTaskDrawer({ ctx, rid, id: rawId, onClose }: { ctx: AppC
           </div>
         </div>
         {problem && (
-          <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-warn-soft px-5 py-2 text-warn-strong">
             <span className="min-w-0 break-words">
               {problem.message}
               {task ? "（表示は最後に読めた内容です）" : ""}
@@ -107,7 +107,7 @@ export function ArchivedTaskDrawer({ ctx, rid, id: rawId, onClose }: { ctx: AppC
         )}
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           {!task ? (
-            loading ? <p className="text-slate-500">読み込み中…</p> : !problem && <Empty>表示できる内容がありません</Empty>
+            loading ? <p className="text-fg-4">読み込み中…</p> : !problem && <Empty>表示できる内容がありません</Empty>
           ) : (
             <Body ctx={ctx} task={task} rid={rid} />
           )}
@@ -121,7 +121,7 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
   return (
     <>
       <h2 className="text-lg font-semibold break-words">{task.title}</h2>
-      <p className="text-base text-slate-500">
+      <p className="text-base text-fg-4">
         このタスクはアーカイブされています。進捗・対応済の判定・新しいレビューとリリースノートの材料には入りません。下の状態と最終更新はアーカイブする前の最後の値で、アーカイブした日時ではありません。
       </p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-base sm:grid-cols-3">
@@ -135,8 +135,8 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         {task.labels.length > 0 && <Item label="ラベル">{task.labels.join(", ")}</Item>}
         {task.areas.length > 0 && <Item label="影響領域">{task.areas.join(", ")}</Item>}
       </dl>
-      <Section title="本文">{task.body.trim() ? <Markdown text={task.body} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}</Section>
-      <Section title="変更の記録">{task.record?.trim() ? <Markdown text={task.record} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}</Section>
+      <Section title="本文">{task.body.trim() ? <Markdown text={task.body} /> : <p className="text-base text-fg-4">ありません</p>}</Section>
+      <Section title="変更の記録">{task.record?.trim() ? <Markdown text={task.record} /> : <p className="text-base text-fg-4">ありません</p>}</Section>
       {(task.block || task.blockHistory?.length || task.blockProblems?.length) && (
         <Section title="止まっている理由（アーカイブしたときのまま）">
           <TaskBlockPanel task={task} readOnly />
@@ -151,23 +151,23 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         <TaskReviewPanel task={task} archived />
       </Section>
       <Section title="成果物">
-        {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>}
+        {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-base text-fg-4">ありません</p>}
       </Section>
       <Section title="保存された関係（アーカイブしたときのまま）">
         {task.relations.length === 0 ? (
-          <p className="text-base text-slate-500 dark:text-slate-400">ありません</p>
+          <p className="text-base text-fg-4">ありません</p>
         ) : (
           <ul className="space-y-1">
             {task.relations.map((r) => (
               <li key={`${r.type}-${r.target}`} className="flex items-center gap-2">
-                <span className="w-14 shrink-0 text-base text-slate-500">{relationRole(r.type, "out")}</span>
+                <span className="w-14 shrink-0 text-base text-fg-4">{relationRole(r.type, "out")}</span>
                 <span className="font-mono text-sm">{r.target}</span>
               </li>
             ))}
           </ul>
         )}
       </Section>
-      <p className="font-mono text-sm break-all text-slate-500 dark:text-slate-400">
+      <p className="font-mono text-sm break-all text-fg-4">
         {ctx.info.dataDir}/requests/{rid}/tasks/.archive/{task.id}.md
       </p>
     </>
@@ -177,7 +177,7 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
 function Item({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-slate-500">{label}</dt>
+      <dt className="text-fg-4">{label}</dt>
       <dd className="break-words">{children}</dd>
     </div>
   );

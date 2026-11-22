@@ -216,29 +216,29 @@ export function Drafts({
   return (
     <Section
       title={`タスク案 (${included.length}/${run.drafts.length} 件を採用)`}
-      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-500 dark:text-slate-400">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
+      aside={<span className="min-w-0 font-mono text-sm break-all text-fg-4">requests/{request.id}/preflight/{run.id}/drafts/*.md</span>}
     >
       {/* 段（依存の深さ）ごとの列。広い画面では列を広げ（最大 28rem）、入りきらなければこの中だけ横にスクロールする */}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {levels(run.drafts).map((lv, i) => (
           <div key={i} className="flex max-w-md min-w-72 flex-1 shrink-0 flex-col gap-2">
-            <span className="text-base text-slate-500">段階 {i + 1}</span>
+            <span className="text-base text-fg-4">段階 {i + 1}</span>
             {lv.map((d) => (
               <div
                 key={d.key}
                 id={draftAnchor(d.key)}
                 className={cx(
-                  "scroll-mt-4 space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 target:ring-2 target:ring-indigo-500 dark:bg-slate-900 dark:ring-slate-800",
+                  "scroll-mt-4 space-y-2 rounded-lg bg-surface p-3 ring-1 ring-line target:ring-2 target:ring-accent-solid",
                   !d.include && "opacity-50",
                 )}
               >
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={d.include} disabled={done} onChange={(e) => void patch(d, { include: e.target.checked })} />
-                  <span className="font-mono text-sm text-slate-500">{d.key}</span>
-                  {d.dependsOn.length > 0 && <span className="text-base text-slate-500 dark:text-slate-400">← {d.dependsOn.join(", ")}</span>}
+                  <span className="font-mono text-sm text-fg-4">{d.key}</span>
+                  {d.dependsOn.length > 0 && <span className="text-base text-fg-4">← {d.dependsOn.join(", ")}</span>}
                 </div>
                 {multi && (
-                  <label className="flex items-center gap-2 text-base text-slate-500">
+                  <label className="flex items-center gap-2 text-base text-fg-4">
                     作業先
                     <select
                       className={`${inputCls} !w-auto min-w-0 flex-1 py-0.5 text-base`}
@@ -273,10 +273,10 @@ export function Drafts({
                   内容を見る
                 </Button>
                 {(d.acceptanceCriteria?.length || d.acceptanceProblems?.length) && (
-                  <p className="text-base text-slate-500">
+                  <p className="text-base text-fg-4">
                     受け入れ基準 {d.acceptanceCriteria?.length ?? 0} 件
-                    {d.acceptanceProblems?.length ? <span className="ml-1 text-rose-600">（読めない値あり）</span> : null}
-                    {criteriaEditDirty(criteriaEdits[titleKey(request.id, run.id, d.key)]) && <span className="ml-1 text-amber-700 dark:text-amber-400">（保存していない変更）</span>}
+                    {d.acceptanceProblems?.length ? <span className="ml-1 text-danger">（読めない値あり）</span> : null}
+                    {criteriaEditDirty(criteriaEdits[titleKey(request.id, run.id, d.key)]) && <span className="ml-1 text-warn">（保存していない変更）</span>}
                   </p>
                 )}
                 <div className="flex flex-wrap gap-1">
@@ -292,13 +292,13 @@ export function Drafts({
         ))}
       </div>
       {!done && uiShortage(run) && (
-        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900">
+        <p role="status" className="rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong ring-1 ring-warn-line">
           {uiShortage(run)}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3 pt-2">
         {done ? (
-          <p className="flex flex-wrap items-center gap-2 text-emerald-700 dark:text-emerald-400">
+          <p className="flex flex-wrap items-center gap-2 text-ok">
             ✓ この評価から {run.materialized!.join(", ")} をタスク化しました
             <Link to="/requests/$requestId/board" params={{ requestId: request.id }} className={buttonCls("link", "underline")}>
               タスクボードで見る
@@ -309,12 +309,12 @@ export function Drafts({
             <Button variant="primary" disabled={busy || !included.length || !!stopped} onClick={() => void materialize()}>
               {included.length} 件をタスク化
             </Button>
-            <span className={stopped ? "text-amber-700 dark:text-amber-400" : "text-slate-500"}>
+            <span className={stopped ? "text-warn" : "text-fg-4"}>
               {stopped ?? "依存関係・影響関係も一緒に登録され、作業ツリー（ブランチ）が割り当てられます。"}
             </span>
           </>
         )}
-        {error && <span className="text-rose-600">{error}</span>}
+        {error && <span className="text-danger">{error}</span>}
       </div>
       <DraftDetail
         dialog={dialog}
@@ -380,10 +380,10 @@ function TitleField({
         value={done ? title : draft.value}
         onChange={(e) => onEdit(e.target.value)}
         onBlur={onSave}
-        className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:hover:ring-slate-700"
+        className="w-full resize-none rounded bg-transparent px-1 leading-snug font-medium hover:ring-1 hover:ring-line focus:ring-2 focus:ring-accent-solid focus:outline-none"
       />
       {!done && conflict && (
-        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-2 py-1.5 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div role="status" className="space-y-1 rounded-md bg-warn-soft px-2 py-1.5 text-base text-warn-strong">
           <p>編集中に題が他で変わりました。入力はそのままです（このままでは保存しません）。</p>
           <p className="break-words">
             最新の題: <span className="font-medium">{draft.external}</span>
@@ -393,9 +393,9 @@ function TitleField({
           </Button>
         </div>
       )}
-      {!done && !conflict && draft.saving !== null && <p className="text-base text-slate-500">保存中…</p>}
+      {!done && !conflict && draft.saving !== null && <p className="text-base text-fg-4">保存中…</p>}
       {!done && !conflict && draft.error && (
-        <p role="status" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
+        <p role="status" className="flex flex-wrap items-center gap-2 text-base text-danger">
           {draft.error}
           <Button className="text-base" onClick={onSave}>
             もう一度保存

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { copyNotice, copyText, type ClipboardLike, type CopyState } from "../lib/copy.ts";
-import { buttonCls, cx } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 要望 ID の表示とコピー（要望の枠の見出しのタイトルの上。どのタブでも同じ1組）。
@@ -26,18 +26,12 @@ export function RequestIdCopy({ id, clipboard }: { id: string; clipboard?: Clipb
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="font-mono text-sm text-slate-500 select-all dark:text-slate-400">{id}</span>
-      <button
-        type="button"
-        aria-label="要望 ID をコピー"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => void copy()}
-        className={buttonCls("secondary", "px-2 py-0.5 text-base focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none")}
-      >
+      <span className="font-mono text-sm text-fg-4 select-all">{id}</span>
+      <Button aria-label="要望 ID をコピー" onMouseDown={(e) => e.preventDefault()} onClick={() => void copy()} className="px-2 py-0.5">
         {notice?.ok ? <CheckIcon /> : <CopyIcon />}
         コピー
-      </button>
-      <span role="status" className={cx("min-w-0 text-base break-words", notice?.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+      </Button>
+      <span role="status" className={cx("min-w-0 text-base break-words", notice?.ok ? "text-ok" : "text-danger")}>
         {notice?.text ?? ""}
       </span>
     </div>
@@ -67,7 +61,7 @@ function CopyIcon() {
 
 function CheckIcon() {
   return (
-    <svg {...iconProps} className="size-3.5 text-emerald-600 dark:text-emerald-400">
+    <svg {...iconProps} className="size-3.5 text-ok">
       <path d="M3 8.5l3 3 7-7" />
     </svg>
   );

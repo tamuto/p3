@@ -45,13 +45,13 @@ export function RequestDataProvider({ requestId, children, fallback }: { request
   if (data === undefined)
     return error ? (
       <div className="space-y-2 p-8">
-        <p className="text-rose-600">読み込めませんでした: {error}</p>
+        <p className="text-danger">読み込めませんでした: {error}</p>
         <Button variant="link" onClick={() => void reload()}>
           もう一度読み込む
         </Button>
       </div>
     ) : (
-      <div className="p-8 text-slate-500">Loading…</div>
+      <div className="p-8 text-fg-4">Loading…</div>
     );
   if (data === null) return <>{fallback}</>;
   return <Ctx.Provider value={{ ...data, reload: reloadNow, gone, loadError: error }}>{children}</Ctx.Provider>;

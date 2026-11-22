@@ -69,27 +69,27 @@ export function RunView({
               className={cx(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
                 st.state === "done"
-                  ? "bg-emerald-500 text-white"
+                  ? "bg-ok-solid text-white"
                   : st.state === "failed"
-                    ? "bg-rose-500 text-white"
+                    ? "bg-danger-solid text-white"
                     : st.state === "current"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-200 text-slate-500 dark:bg-slate-800",
+                      ? "bg-accent-solid text-white"
+                      : "bg-surface-3 text-fg-4",
               )}
             >
               {i + 1}
             </span>
             {/* 狭い画面では今の工程の名前だけを出す（4つの名前は入らない） */}
-            <span className={cx("whitespace-nowrap", st.current ? "font-semibold" : "hidden text-slate-500 md:inline")}>
+            <span className={cx("whitespace-nowrap", st.current ? "font-semibold" : "hidden text-fg-4 md:inline")}>
               {st.label}
             </span>
-            {i < steps.length - 1 && <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />}
+            {i < steps.length - 1 && <span className="h-px flex-1 bg-surface-3" />}
           </li>
         ))}
       </ol>
 
       {stale && (
-        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-4 py-3 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+        <div role="status" className="space-y-1 rounded-md bg-warn-soft px-4 py-3 text-warn-strong ring-1 ring-warn-line">
           <p className="font-semibold">{stale.title}</p>
           <p className="break-words">{stale.text}</p>
         </div>
@@ -104,7 +104,7 @@ export function RunView({
       )}
 
       {run.interrupted && (
-        <div role="status" className="space-y-1 rounded-md bg-slate-100 px-4 py-3 text-slate-800 ring-1 ring-slate-300 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700">
+        <div role="status" className="space-y-1 rounded-md bg-surface-2 px-4 py-3 text-fg ring-1 ring-line-strong">
           <p className="font-semibold">中断した run（{fmtTime(run.interrupted.at)}）</p>
           <p className="break-words">
             {run.interrupted.acknowledgedBy ? `止まっていることを ${run.interrupted.acknowledgedBy} が確かめて中断にしました` : "実行していたプロセスが終わっていたので中断にしました"}
@@ -113,7 +113,7 @@ export function RunView({
         </div>
       )}
 
-      <p className="text-base text-slate-600 dark:text-slate-400">
+      <p className="text-base text-fg-3">
         {run.previous ? (
           <>
             前回{" "}
@@ -132,8 +132,8 @@ export function RunView({
       <LogView log={run.log} running={run.status === "running"} />
 
       {run.status === "failed" && (
-        <div className="space-y-2 rounded-md bg-rose-50 p-4 dark:bg-rose-950">
-          <p className="text-rose-700 dark:text-rose-300">失敗: {run.error}</p>
+        <div className="space-y-2 rounded-md bg-danger-soft p-4">
+          <p className="text-danger">失敗: {run.error}</p>
           {/* 取り消しただけなら案内しない */}
           {preflightFailed(run) && <DirectTaskLink requestId={request.id} />}
         </div>
@@ -141,7 +141,7 @@ export function RunView({
 
       {a && (
           <Section title="評価">
-            <div className="space-y-4 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+            <div className="space-y-4 rounded-lg bg-surface p-5 ring-1 ring-line">
               <div className="flex flex-col items-start gap-2 sm:flex-row sm:gap-3">
                 <Badge tone={VERDICT[a.verdict].tone} className="text-base font-semibold">
                   {VERDICT[a.verdict].label}
@@ -161,7 +161,7 @@ export function RunView({
                       <span className="font-mono">{s.score}</span>
                     </div>
                     <Meter value={s.score} tone={scoreTone(s.score)} />
-                    <ul className="list-disc space-y-0.5 pl-5 break-words text-slate-600 dark:text-slate-400">
+                    <ul className="list-disc space-y-0.5 pl-5 break-words text-fg-3">
                       {s.reasons.map((r) => (
                         <li key={r}>{r}</li>
                       ))}
@@ -177,7 +177,7 @@ export function RunView({
                   tone="amber"
                   action={
                     a.questions.length > 0 ? (
-                      <a href={`#${NOTE_INPUT_ID}`} className="text-base text-indigo-600 underline" onClick={focusNoteInput}>
+                      <a href={`#${NOTE_INPUT_ID}`} className="text-base text-accent underline" onClick={focusNoteInput}>
                         メモ欄で答える ↓
                       </a>
                     ) : undefined
@@ -230,11 +230,11 @@ function ListBlock({ title, items, tone, action }: { title: string; items: strin
         {action}
       </div>
       {items.length === 0 ? (
-        <p className="text-slate-500 dark:text-slate-400">なし</p>
+        <p className="text-fg-4">なし</p>
       ) : (
         <ul className="mt-1 space-y-1">
           {items.map((r) => (
-            <li key={r} className={cx("rounded px-2 py-1 break-words", tone === "rose" ? "bg-rose-50 dark:bg-rose-950/50" : "bg-amber-50 dark:bg-amber-950/50")}>
+            <li key={r} className={cx("rounded px-2 py-1 break-words", tone === "rose" ? "bg-danger-soft" : "bg-warn-soft")}>
               {r}
             </li>
           ))}
@@ -249,13 +249,13 @@ function LogView({ log, running }: { log: PreflightLogEntry[]; running: boolean 
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [log.length]);
-  const color = { info: "text-slate-500 dark:text-slate-400", command: "text-sky-300", message: "text-slate-100", error: "text-rose-400" };
+  const color = { info: "text-inverse-fg-2", command: "text-inverse-info", message: "text-inverse-fg", error: "text-inverse-danger" };
   return (
-    <Section title="実行ログ" aside={running ? <span className="animate-pulse text-base text-indigo-500">● live</span> : null}>
-      <div ref={ref} className="h-72 overflow-y-auto rounded-lg bg-slate-900 p-3 font-mono text-sm leading-relaxed dark:ring-1 dark:ring-slate-800">
+    <Section title="実行ログ" aside={running ? <span className="animate-pulse text-base text-accent">● live</span> : null}>
+      <div ref={ref} className="h-72 overflow-y-auto rounded-lg bg-inverse p-3 font-mono text-sm leading-relaxed dark:ring-1 dark:ring-line">
         {log.map((l, i) => (
           <div key={i} className={cx("whitespace-pre-wrap break-words", color[l.kind])}>
-            <span className="mr-2 text-slate-600">{l.at.slice(11, 19)}</span>
+            <span className="mr-2 text-fg-3">{l.at.slice(11, 19)}</span>
             {l.text}
           </div>
         ))}

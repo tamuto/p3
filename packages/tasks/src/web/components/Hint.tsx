@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { PlainButton } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * ツールチップ。OS 標準の title はカーソルを大きくしていると隠れて読めないので、
@@ -35,7 +36,7 @@ function Floating({ anchor, children }: { anchor: DOMRect; children: ReactNode }
     <div
       ref={ref}
       role="tooltip"
-      className="pointer-events-none fixed z-[100] max-w-sm rounded-md bg-slate-900 px-3 py-2 text-base leading-snug whitespace-pre-line text-white shadow-lg dark:bg-slate-700"
+      className="pointer-events-none fixed z-[100] max-w-sm rounded-md bg-inverse px-3 py-2 text-base leading-snug whitespace-pre-line text-white shadow-lg dark:bg-surface-3"
       style={{ left: pos.left, top: pos.top, visibility: pos.visible ? "visible" : "hidden" }}
     >
       {children}
@@ -62,13 +63,13 @@ export function Picker({ anchor, items, onPick, onClose }: { anchor: DOMRect; it
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[100] max-h-72 w-80 overflow-y-auto rounded-lg bg-white py-1 shadow-xl ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700"
+      className="fixed z-[100] max-h-72 w-80 overflow-y-auto rounded-lg bg-surface py-1 shadow-xl ring-1 ring-line"
       style={{ left: Math.min(anchor.left, window.innerWidth - 328), top: Math.min(anchor.bottom + 6, window.innerHeight - 300) }}
     >
       {items.map((it) => (
-        <button key={it.key} onClick={() => onPick(it.key)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700">
+        <PlainButton key={it.key} onClick={() => onPick(it.key)} className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-surface-2">
           {it.label}
-        </button>
+        </PlainButton>
       ))}
     </div>,
     document.body,

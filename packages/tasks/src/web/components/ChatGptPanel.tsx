@@ -57,18 +57,18 @@ export function ChatGptPanel({ tick }: { tick: number }) {
   const view = s ? chatgptView(s) : undefined;
   return (
     <Section title="このマシンの接続（個人）">
-      <div className="space-y-3 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="space-y-3 rounded-lg bg-surface p-5 ring-1 ring-line">
         <div className="flex flex-wrap items-center gap-3">
           <h3 className="text-lg font-semibold">{CHATGPT_UI.heading}</h3>
           {view === "connected" && <Badge tone="emerald">{CHATGPT_UI.active}</Badge>}
         </div>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-3">
           Preflight の Codex を、あなたの ChatGPT プランに含まれる使用量で動かします（P3 の料金ではありません）。接続はこのマシンだけのもので、
           プロジェクトのデータには保存しません。
         </p>
 
         {notice && (
-          <div className="space-y-2 rounded-md bg-sky-50 p-3 dark:bg-sky-950">
+          <div className="space-y-2 rounded-md bg-info-soft p-3">
             <p className="font-medium">{CHATGPT_UI.firstTitle}</p>
             <p className="text-base">Preflight の評価はあなたの ChatGPT プランの使用量を使います。使用量は ChatGPT の設定で確かめられます。</p>
             <Button onClick={() => (markFirstNoticeSeen(), setNotice(false))}>{CHATGPT_UI.gotIt}</Button>
@@ -79,10 +79,10 @@ export function ChatGptPanel({ tick }: { tick: number }) {
           <div className="space-y-2">
             <p>
               <span className="font-medium">{s!.email ?? "サインイン済み"}</span>
-              <span className="ml-2 text-base text-slate-500">トークンは使うときに更新します</span>
+              <span className="ml-2 text-base text-fg-4">トークンは使うときに更新します</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              <a className="text-indigo-600 underline" href={CHATGPT_UI.usageUrl} target="_blank" rel="noreferrer">
+              <a className="text-accent underline" href={CHATGPT_UI.usageUrl} target="_blank" rel="noreferrer">
                 {CHATGPT_UI.manageUsage}
               </a>
               <Button disabled={busy} onClick={() => void act(() => api.chatgptLogout())}>
@@ -93,14 +93,14 @@ export function ChatGptPanel({ tick }: { tick: number }) {
         )}
 
         {view === "no_plan" && (
-          <p className="text-amber-700 dark:text-amber-400">
+          <p className="text-warn">
             {s!.email} でサインインしましたが、ChatGPT プランの利用が許可されていません。もう一度サインインして、プランの利用に同意してください。
           </p>
         )}
-        {view === "signin_again" && <p className="text-amber-700 dark:text-amber-400">接続が切れています。サインインし直してください。</p>}
+        {view === "signin_again" && <p className="text-warn">接続が切れています。サインインし直してください。</p>}
 
         {(view === "disconnected" || view === "no_plan" || view === "signin_again") && (
-          <Button variant="primary" disabled={busy} onClick={() => void signIn()} className="!bg-black !text-white dark:!bg-white dark:!text-black">
+          <Button variant="primary" disabled={busy} onClick={() => void signIn()} className="!bg-black !text-white dark:!bg-surface dark:!text-black">
             {CHATGPT_UI.button}
           </Button>
         )}
@@ -109,7 +109,7 @@ export function ChatGptPanel({ tick }: { tick: number }) {
           <div className="space-y-2">
             <p>
               ブラウザで ChatGPT にサインインし、プランの利用に同意してください。開かなければ{" "}
-              <a className="text-indigo-600 underline" href={s!.pending!.url} target="_blank" rel="noreferrer">
+              <a className="text-accent underline" href={s!.pending!.url} target="_blank" rel="noreferrer">
                 ここを開いてください
               </a>
               。（{new Date(s!.pending!.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} まで待ちます）
@@ -119,7 +119,7 @@ export function ChatGptPanel({ tick }: { tick: number }) {
                 取り消す
               </Button>
             </div>
-            <p className="text-base text-slate-500">
+            <p className="text-base text-fg-4">
               サインインの後に「接続できません」と表示されたら、そのページのアドレスバーの URL（{s!.pending!.redirectUri}?code=…）を貼ってください:
             </p>
             <div className="flex gap-2">
@@ -131,15 +131,15 @@ export function ChatGptPanel({ tick }: { tick: number }) {
           </div>
         )}
 
-        {s?.lastError && !s.pending && <p className="text-rose-600">直前のサインイン: {s.lastError}</p>}
-        {error && <p className="text-rose-600">{error}</p>}
+        {s?.lastError && !s.pending && <p className="text-danger">直前のサインイン: {s.lastError}</p>}
+        {error && <p className="text-danger">{error}</p>}
         {s?.engine && (
-          <p className="text-base text-slate-500">
+          <p className="text-base text-fg-4">
             Preflight: {s.engine.ok ? "●" : "✕"} {s.engine.detail}
           </p>
         )}
         {s?.engine && !s.engine.ok && (
-          <p className="text-base text-slate-500">
+          <p className="text-base text-fg-4">
             Preflight を使えない間も、要望を開いてタスクボードの「＋ タスクを追加」で、Preflight を通さずにタスクを作れます（評価・細分化・根拠の調査・画面イメージは付きません）。
           </p>
         )}

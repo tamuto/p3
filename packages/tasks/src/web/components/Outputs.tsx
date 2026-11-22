@@ -16,19 +16,19 @@ export function Outputs({ outputs, repoOutputs = [], compact = false }: { output
         return (
           // 同じ値が並んでもよい（そのまま並べる）
           <li key={`${i}:${repo ?? ""}:${o}`} className={cx("min-w-0 text-base", compact && "line-clamp-2")} title={compact ? `${repo ? `${repo}: ` : ""}${o}` : undefined}>
-            {repo && <span className="mr-1 rounded bg-slate-100 px-1 text-slate-600 dark:bg-slate-700 dark:text-slate-300">{repo}</span>}
+            {repo && <span className="mr-1 rounded bg-surface-2 px-1 text-fg-3">{repo}</span>}
             {href ? (
               <a
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="break-all text-indigo-600 hover:underline dark:text-indigo-400"
+                className="break-all text-accent hover:underline"
               >
                 ↗ {outputLabel(o.trim())}
               </a>
             ) : (
-              <span className="break-words whitespace-pre-wrap text-slate-600 dark:text-slate-300">{o}</span>
+              <span className="break-words whitespace-pre-wrap text-fg-3">{o}</span>
             )}
           </li>
         );

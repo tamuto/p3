@@ -2,7 +2,7 @@ import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-rout
 import { RequestIdCopy } from "../../components/RequestIdCopy.tsx";
 import { ArchivedTaskDrawer } from "../../components/ArchivedTaskDrawer.tsx";
 import { TaskDrawer } from "../../components/TaskDrawer.tsx";
-import { Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../../lib/requestData.tsx";
 import { optionalString } from "../../lib/search.ts";
@@ -52,13 +52,13 @@ function RequestFrame() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-6 pt-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="shrink-0 border-b border-line bg-surface px-6 pt-4">
         {/* 祖先（根から順）。長い題も折り返し、横にスクロールさせない */}
         {!!data.ancestors?.length && (
-          <nav aria-label="親の要望" className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-base text-slate-500">
+          <nav aria-label="親の要望" className="mb-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-base text-fg-4">
             {data.ancestors.map((a) => (
               <span key={a.id} className="flex min-w-0 items-center gap-1">
-                <Link to="/requests/$requestId" params={{ requestId: a.id }} className="min-w-0 break-all underline hover:text-slate-800 dark:hover:text-slate-200">
+                <Link to="/requests/$requestId" params={{ requestId: a.id }} className="min-w-0 break-all underline hover:text-fg">
                   {a.title}
                 </Link>
                 <span aria-hidden="true">›</span>
@@ -70,28 +70,28 @@ function RequestFrame() {
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="min-w-0 text-xl font-bold break-words">{request.title}</h1>
           {tasks.length > 0 && (
-            <span className="text-base whitespace-nowrap text-slate-500">
+            <span className="text-base whitespace-nowrap text-fg-4">
               タスク {finished}/{tasks.length} 完了
             </span>
           )}
         </div>
         {data.gone && (
-          <p role="alert" className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <Alert box className="mt-2">
             この要望は見つかりません（外で削除・アーカイブされました）。表示は最後に読み込めた内容で、保存はしません。
             入力中の内容は残っているので、必要なら写してから{" "}
             <Link to="/" className="underline">
               進捗へ戻って
             </Link>
             ください。
-          </p>
+          </Alert>
         )}
         {data.loadError && !data.gone && (
-          <p role="alert" className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <Alert box warn className="mt-2">
             最新の内容を読み込めませんでした（表示は前の内容のまま）: {data.loadError}{" "}
             <Button variant="link" onClick={() => data.reload()}>
               もう一度読み込む
             </Button>
-          </p>
+          </Alert>
         )}
         {/* 選択中のタブの下線を見出しの境界線に重ねる 1px は nav が持つ。リンクに持たせると nav からはみ出し、overflow-x-auto で
             縦も auto になる nav が 1px 縦に送れて、縦のスクロールバーが出る */}
@@ -104,8 +104,8 @@ function RequestFrame() {
               params={{ requestId: request.id }}
               activeOptions={{ exact: t.exact, includeSearch: false }}
               className="border-b-2 px-3 py-2 font-medium whitespace-nowrap"
-              activeProps={{ className: "border-indigo-600 text-indigo-700 dark:text-indigo-300" }}
-              inactiveProps={{ className: "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200" }}
+              activeProps={{ className: "border-accent-solid text-accent" }}
+              inactiveProps={{ className: "border-transparent text-fg-4 hover:text-fg" }}
             >
               {t.label}
             </Link>

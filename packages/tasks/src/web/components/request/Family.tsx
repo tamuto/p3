@@ -61,7 +61,7 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
 
   return (
     <Section title="親子">
-      <div className="space-y-4 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="space-y-4 rounded-lg bg-surface p-4 ring-1 ring-line">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="親の要望" hint="子にしても、期限・マイルストーン・タグは作るときに写すだけで、その後は別々に変えます">
             <select className={`${inputCls} !w-auto max-w-full min-w-0 sm:min-w-80`} value={parent} disabled={saving || data.gone} onChange={(e) => setParent(e.target.value)}>
@@ -88,17 +88,17 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
         </div>
         {error && <Alert>{error}</Alert>}
         {note && (
-          <p role="status" className="break-words text-base text-amber-700 dark:text-amber-400">
+          <p role="status" className="break-words text-base text-warn">
             {note}
           </p>
         )}
         {issues.map((i) => (
-          <p key={`${i.request}-${i.code}`} role="status" className="rounded-md bg-amber-50 px-3 py-2 break-words text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+          <p key={`${i.request}-${i.code}`} role="status" className="rounded-md bg-warn-soft px-3 py-2 break-words text-warn-strong ring-1 ring-warn-line">
             親子の問題: {i.message}（request.md の parent を直すか、親を選び直してください）
           </p>
         ))}
         {doneAncestors.map((a) => (
-          <p key={a.id} role="status" className="rounded-md bg-amber-50 px-3 py-2 break-words text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+          <p key={a.id} role="status" className="rounded-md bg-warn-soft px-3 py-2 break-words text-warn-strong ring-1 ring-warn-line">
             祖先の {a.title}（{a.id}）は完了済ですが、この要望はまだ終わっていません。再開するなら、その要望のステータスを「進行中」に戻してください。
           </p>
         ))}
@@ -118,24 +118,24 @@ export function Family({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           </div>
         )}
         {children.length > 0 && (
-          <p className="text-base text-slate-500">全体の集計では各タスクを1回だけ数えます。子のタスクは親のボードには出ません（子の画面で見ます）。</p>
+          <p className="text-base text-fg-4">全体の集計では各タスクを1回だけ数えます。子のタスクは親のボードには出ません（子の画面で見ます）。</p>
         )}
         {children.length > 0 && data.completion?.blocker && request.status !== "resolved" && request.status !== "done" && (
-          <p role="status" className="rounded-md bg-amber-50 px-3 py-2 break-words text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+          <p role="status" className="rounded-md bg-warn-soft px-3 py-2 break-words text-warn-strong ring-1 ring-warn-line">
             対応済にできません: {data.completion.blocker}
           </p>
         )}
         {!!data.completion?.excluded.length && (
-          <p className="text-base break-words text-slate-600 dark:text-slate-400">
+          <p className="text-base break-words text-fg-3">
             見送りの子は完了の判定の対象外です: {data.completion.excluded.join(", ")}
           </p>
         )}
         {structural && (
-          <p className="text-base text-slate-500">
+          <p className="text-base text-fg-4">
             自分のタスクが無い親です。リリースノートでは「構造の要望」として収録の判定に入り、変更の記録は各子の要望から入ります。
           </p>
         )}
-        {!children.length && !ancestors.length && !issues.length && <p className="text-base text-slate-500">親も子もありません。大きい要望は Preflight の分割の案から子に分けられます。</p>}
+        {!children.length && !ancestors.length && !issues.length && <p className="text-base text-fg-4">親も子もありません。大きい要望は Preflight の分割の案から子に分けられます。</p>}
       </div>
     </Section>
   );
@@ -214,19 +214,19 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
   return (
     <div className="space-y-2">
       <p className="font-medium">子の要望（{children.length} 件・表示順）</p>
-      <p className="text-base text-slate-500">表示順は着手可能かを判定しません。子の本文にある前提を確認してください。</p>
-      <ul className="divide-y divide-slate-200 dark:divide-slate-800" aria-label="子の要望（表示順）">
+      <p className="text-base text-fg-4">表示順は着手可能かを判定しません。子の本文にある前提を確認してください。</p>
+      <ul className="divide-y divide-line" aria-label="子の要望（表示順）">
         {shown.map((c, i) => (
           <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2">
-            <span className="w-6 shrink-0 text-right font-mono text-sm text-slate-500" aria-hidden="true">
+            <span className="w-6 shrink-0 text-right font-mono text-sm text-fg-4" aria-hidden="true">
               {i + 1}.
             </span>
             <RequestStatusBadge status={c.status} size="sm" />
             <Link to="/requests/$requestId" params={{ requestId: c.id }} className="min-w-0 flex-1 basis-48 font-medium break-words underline">
               {c.title}
             </Link>
-            <span className="font-mono text-sm text-slate-500">{c.id}</span>
-            <span className="text-base whitespace-nowrap text-slate-600 dark:text-slate-400">
+            <span className="font-mono text-sm text-fg-4">{c.id}</span>
+            <span className="text-base whitespace-nowrap text-fg-3">
               自分のタスク {c.tasks.done}/{c.tasks.total}
             </span>
             <Link to="/requests/$requestId/board" params={{ requestId: c.id }} className={buttonCls("link", "text-base underline")}>
@@ -265,7 +265,7 @@ function ChildList({ ctx, data }: { ctx: AppCtx; data: RequestData }) {
           <Button disabled={saving} onClick={() => (setDraft(null), setError(null), setMoved("並べ替えを取り消しました"))}>
             取消
           </Button>
-          <span className="text-base text-slate-500">保存していない並べ替えがあります</span>
+          <span className="text-base text-fg-4">保存していない並べ替えがあります</span>
         </div>
       )}
       {error && <Alert>{error}</Alert>}

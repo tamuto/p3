@@ -85,7 +85,7 @@ export function BodyEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+    <div className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {editing ? (
           <label htmlFor={id} className="font-semibold">
@@ -108,7 +108,7 @@ export function BodyEditor({
             onKeyDown={(e) => e.key === "Escape" && !dirty && cancel()}
           />
           <ExternalChange label="本文" draft={draft} eq={sameBody} show={(v) => excerpt(v)} onDiscard={() => (setDraft((d) => discardDraft(d)), setMessage(null))} />
-          <ul className="list-disc space-y-0.5 pl-5 text-base text-slate-600 dark:text-slate-400">
+          <ul className="list-disc space-y-0.5 pl-5 text-base text-fg-3">
             {closed ? (
               <li>
                 {closed}。本文の修正は要望の記録として残ります。{NEW_REQUEST_HINT}。
@@ -132,10 +132,10 @@ export function BodyEditor({
           </div>
         </>
       ) : (
-        <p className="break-words whitespace-pre-wrap">{request.body.trim() ? request.body : <span className="text-slate-500 dark:text-slate-400">（本文なし）</span>}</p>
+        <p className="break-words whitespace-pre-wrap">{request.body.trim() ? request.body : <span className="text-fg-4">（本文なし）</span>}</p>
       )}
       {message && (
-        <p role={message.error ? "alert" : "status"} className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>
+        <p role={message.error ? "alert" : "status"} className={message.error ? "text-danger" : "text-ok"}>
           {message.text}
         </p>
       )}

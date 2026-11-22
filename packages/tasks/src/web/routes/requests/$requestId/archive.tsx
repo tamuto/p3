@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { TASK_STATUS_LABEL, type ArchivedTaskList } from "../../../../shared/types.ts";
-import { Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, Empty, PlainButton } from "@infodb/p3-shared/web/ui.tsx";
 import { api } from "../../../lib/api.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
@@ -44,23 +44,23 @@ function ArchivePage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-8">
-      <p className="text-base text-slate-500">
+      <p className="text-base text-fg-4">
         アーカイブしたタスクを読むだけの一覧です。進捗・要望の対応済の判定・新しいレビューとリリースノートの材料には入りません。状態・最終更新はアーカイブする前の最後の値です。
       </p>
       {error && (
-        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <Alert box warn>
           アーカイブの一覧を読み込めませんでした{list ? "（表示は前の内容のまま）" : ""}: {error}{" "}
           <Button variant="link" onClick={() => void load()}>
             もう一度読み込む
           </Button>
-        </p>
+        </Alert>
       )}
       {!list ? (
-        !error && <p className="text-slate-500">読み込み中…</p>
+        !error && <p className="text-fg-4">読み込み中…</p>
       ) : (
         <>
           {list.errors.length > 0 && (
-            <div role="status" className="rounded-md bg-rose-50 px-3 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            <div role="status" className="rounded-md bg-danger-soft px-3 py-2 text-danger-strong">
               <p>読めないアーカイブのファイルが {list.errors.length} 件あります（一覧には出していません）:</p>
               <ul className="mt-1 space-y-0.5 text-base">
                 {list.errors.map((e) => (
@@ -74,20 +74,16 @@ function ArchivePage() {
           {list.tasks.length === 0 ? (
             <Empty>アーカイブしたタスクはありません</Empty>
           ) : (
-            <ul aria-label="アーカイブしたタスク" className="divide-y divide-slate-100 border-y border-slate-200 dark:divide-slate-800/60 dark:border-slate-800">
+            <ul aria-label="アーカイブしたタスク" className="divide-y divide-line-soft border-y border-line">
               {list.tasks.map((t) => (
                 <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => open(t.id)}
-                    className="flex w-full min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-left hover:text-indigo-600"
-                  >
-                    <span className="shrink-0 font-mono text-sm text-slate-500 dark:text-slate-400">{t.id}</span>
+                  <PlainButton onClick={() => open(t.id)} className="flex w-full min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 hover:text-accent">
+                    <span className="shrink-0 font-mono text-sm text-fg-4">{t.id}</span>
                     <span className="min-w-0 flex-1 break-words">{t.title}</span>
-                    <span className="text-base whitespace-nowrap text-slate-500">
+                    <span className="text-base whitespace-nowrap text-fg-4">
                       {TASK_STATUS_LABEL[t.status]} · 最終更新 {fmtTime(t.updatedAt)}
                     </span>
-                  </button>
+                  </PlainButton>
                 </li>
               ))}
             </ul>

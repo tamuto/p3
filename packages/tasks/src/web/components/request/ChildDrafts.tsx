@@ -156,24 +156,24 @@ export function ChildDrafts({
   return (
     <Section
       title={`子の要望への分割案 (${children.filter((c) => c.include).length}/${children.length} 件を採用)`}
-      aside={<span className="min-w-0 font-mono text-sm break-all text-slate-500 dark:text-slate-400">requests/{request.id}/preflight/{run.id}/children/*.md</span>}
+      aside={<span className="min-w-0 font-mono text-sm break-all text-fg-4">requests/{request.id}/preflight/{run.id}/children/*.md</span>}
     >
-      <div className="space-y-2 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="space-y-2 rounded-lg bg-surface p-4 ring-1 ring-line">
         <p className="font-medium break-words">
           {a?.split?.decision === "keep" ? "分けない判断です" : "子の要望に分けることを提案しています"}
           {a?.split?.estimatedTasks !== undefined && `（想定 ${a.split.estimatedTasks} タスク）`}
         </p>
         {!!a?.split?.reasons.length && (
-          <ul className="list-disc space-y-0.5 pl-5 break-words text-slate-600 dark:text-slate-400">
+          <ul className="list-disc space-y-0.5 pl-5 break-words text-fg-3">
             {a.split.reasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
         )}
-        <p className="text-base text-slate-500">
+        <p className="text-base text-fg-4">
           {SPLIT_HINT_TASKS} タスク以上は分けるかを検討する目安です。小さい変更ではフロントエンドとバックエンドを一緒に扱います。
         </p>
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+        <p className="rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong ring-1 ring-warn-line">
           親の既存のタスク・履歴・添付は親に残ります（重なりは各案に出ます）。子を作っても、子の Preflight はまだ実行されません。
         </p>
       </div>
@@ -184,7 +184,7 @@ export function ChildDrafts({
           const conflict = editConflict(e, c);
           const locked = !!run.adoption;
           return (
-            <li key={c.key} className={cx("min-w-0 space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800", !c.include && !locked && "opacity-60")}>
+            <li key={c.key} className={cx("min-w-0 space-y-2 rounded-lg bg-surface p-3 ring-1 ring-line", !c.include && !locked && "opacity-60")}>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2">
                   <input
@@ -194,7 +194,7 @@ export function ChildDrafts({
                     disabled={locked || busy}
                     onChange={(ev) => void patch(c, { include: ev.target.checked })}
                   />
-                  <span className="font-mono text-sm text-slate-500">{c.key}</span>
+                  <span className="font-mono text-sm text-fg-4">{c.key}</span>
                 </label>
                 {c.estimatedTasks !== undefined && <Badge>想定 {c.estimatedTasks} タスク</Badge>}
                 {c.requires.length > 0 && <Badge tone="indigo">前提 {c.requires.join(", ")}</Badge>}
@@ -208,11 +208,11 @@ export function ChildDrafts({
               {e ? (
                 <div className="space-y-2">
                   <label className="block space-y-1">
-                    <span className="text-base text-slate-500">題</span>
+                    <span className="text-base text-fg-4">題</span>
                     <input className={inputCls} aria-label={`${c.key} の題`} value={e.title} onChange={(ev) => setEdits({ ...edits, [c.key]: { ...e, title: ev.target.value } })} />
                   </label>
                   <label className="block space-y-1">
-                    <span className="text-base text-slate-500">目的・範囲・範囲外・完了条件・分割の理由・前提・出典</span>
+                    <span className="text-base text-fg-4">目的・範囲・範囲外・完了条件・分割の理由・前提・出典</span>
                     <textarea
                       rows={10}
                       className={`${inputCls} font-mono text-base`}
@@ -222,7 +222,7 @@ export function ChildDrafts({
                     />
                   </label>
                   {conflict && (
-                    <p role="status" className="rounded-md bg-amber-50 px-2 py-1.5 text-base break-words text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    <p role="status" className="rounded-md bg-warn-soft px-2 py-1.5 text-base break-words text-warn-strong">
                       編集中に題が他で変わりました（最新: {c.title}）。入力はそのままです。このままでは保存しません。
                     </p>
                   )}
@@ -237,7 +237,7 @@ export function ChildDrafts({
                 <>
                   <p className="font-medium break-words">{c.title}</p>
                   <details className="group">
-                    <summary className="cursor-pointer text-base text-indigo-600 underline">目的・範囲・完了条件・前提を見る</summary>
+                    <summary className="cursor-pointer text-base text-accent underline">目的・範囲・完了条件・前提を見る</summary>
                     <div className="mt-2 min-w-0 break-words">
                       <Markdown text={c.description} />
                     </div>
@@ -255,7 +255,7 @@ export function ChildDrafts({
       </ul>
 
       {!!preview?.problems?.length && (
-        <div role="status" className="space-y-1 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900">
+        <div role="status" className="space-y-1 rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong ring-1 ring-warn-line">
           <p className="font-medium">子の案に問題があります（採用しません）</p>
           <ul className="list-disc pl-5 break-words">
             {preview.problems.map((p) => (
@@ -266,13 +266,13 @@ export function ChildDrafts({
       )}
 
       {(result || created.length > 0) && (
-        <div role="status" className="space-y-2 rounded-md bg-emerald-50 px-3 py-2 dark:bg-emerald-950/40">
+        <div role="status" className="space-y-2 rounded-md bg-ok-soft px-3 py-2">
           {result && <p className="break-words">{adoptionSummary(result)}</p>}
           {!result && run.adoption?.done && <p>この評価から子の要望を作成しました。子ごとに Preflight を実行してください。</p>}
           <ul className="space-y-1">
             {(result?.created ?? created).map((c) => (
               <li key={c.key} className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="font-mono text-sm text-slate-500">{c.key}</span>
+                <span className="font-mono text-sm text-fg-4">{c.key}</span>
                 <Link to="/requests/$requestId" params={{ requestId: c.id }} className={buttonCls("link", "min-w-0 break-all underline")}>
                   {c.id}
                 </Link>
@@ -281,7 +281,7 @@ export function ChildDrafts({
             ))}
           </ul>
           {result?.failed.map((f) => (
-            <p key={f.key} className="break-words text-rose-700 dark:text-rose-300">
+            <p key={f.key} className="break-words text-danger">
               {f.key}: {f.error}
             </p>
           ))}
@@ -296,7 +296,7 @@ export function ChildDrafts({
               tabIndex={-1}
               role="group"
               aria-label="採用の確認"
-              className="space-y-2 rounded-lg bg-white p-4 ring-2 ring-indigo-500 focus:outline-none dark:bg-slate-900"
+              className="space-y-2 rounded-lg bg-surface p-4 ring-2 ring-accent-solid focus:outline-none"
               onKeyDown={(ev) => {
                 if (ev.key === "Escape") cancelConfirm();
               }}
@@ -305,12 +305,12 @@ export function ChildDrafts({
               <ul className="list-disc pl-5 break-words">
                 {selected.map((c) => (
                   <li key={c.key}>
-                    <span className="mr-1 font-mono text-sm text-slate-500">{c.key}</span>
+                    <span className="mr-1 font-mono text-sm text-fg-4">{c.key}</span>
                     {c.title}
                   </li>
                 ))}
               </ul>
-              <p className="text-base text-slate-600 dark:text-slate-400">
+              <p className="text-base text-fg-3">
                 親 {request.id} は残します（既存のタスク・履歴もそのまま）。子の要望だけを下書きで作り、期限・マイルストーン・タグを親から写します。子の
                 Preflight はまだ実行しません（子ごとに明示して実行します）。
               </p>
@@ -328,7 +328,7 @@ export function ChildDrafts({
               <Button ref={openerRef} variant="primary" disabled={!!stopped} onClick={() => setConfirming(true)}>
                 {resuming ? "続きを作る（確認）" : "採用内容を確認"}
               </Button>
-              <span className={cx("break-words", stopped ? "text-amber-700 dark:text-amber-400" : "text-slate-500")}>
+              <span className={cx("break-words", stopped ? "text-warn" : "text-fg-4")}>
                 {stopped ?? "確認の欄で作成する子と親の扱いを確かめてから作成します。取消では何も保存しません。"}
               </span>
             </div>

@@ -77,7 +77,7 @@ describe("読むだけの Markdown（タスク案の本文）", () => {
       ].join("\n\n"),
     );
     const links = h.match(/<a [^>]*>/g) ?? [];
-    expect(links).toEqual(['<a href="https://example.com/docs" target="_blank" rel="noopener noreferrer" class="break-all text-indigo-600 underline dark:text-indigo-400">']);
+    expect(links).toEqual(['<a href="https://example.com/docs" target="_blank" rel="noopener noreferrer" class="break-all text-accent underline">']);
     expect(h).not.toMatch(/href="(javascript|data|file):|href="docs\/|href="#top"/);
     expect(h).toContain('<span title="javascript:alert(1)">js</span>'); // 元の値は文字（title）で見せるだけ
     for (const label of ["js", "data", "file", "相対", "アンカー"]) expect(textOf(h)).toContain(label);
