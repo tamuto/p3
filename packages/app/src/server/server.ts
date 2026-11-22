@@ -14,6 +14,7 @@ import { resolveWork } from "../core/observerWork.ts";
 import { candidateMaterial, installObservationSource } from "../core/observerMaterial.ts";
 import { CandidateService } from "@infodb/p3-observer/core/candidates.ts";
 import { requestObservationsRoute } from "./api/requestObservations.ts";
+import { followUpAdapter } from "../core/observerFollowUp.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
 import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
 import { fileChecker } from "@infodb/p3-observer/core/files.ts";
@@ -86,7 +87,7 @@ export async function startServer(opts: ServeOptions): Promise<RunningServer> {
   } else {
     if (!opts.dataDir) throw new Error("serve: データのフォルダが決まっていません");
     ctx = await openProject(opts.dataDir, { repos: opts.repos, settings: opts.settings, projectName: opts.projectName });
-    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir, repoPath: readablePath(ctx) }, suggestions: track(new SuggestionService(observerAssistant(ctx), { store: new WorkStore(opts.dataDir), files: fileChecker(readablePath(ctx)) })), candidates: candidateService(ctx), resolveWork: (ref) => resolveWork(ctx!, ref) }));
+    app.route("/api/observer", observerRoutes({ products, target: { project: opts.projectName, dataDir: opts.dataDir, repoPath: readablePath(ctx), repoNames: () => ctx!.ws.refs().map((r) => r.name) }, suggestions: track(new SuggestionService(observerAssistant(ctx), { store: new WorkStore(opts.dataDir), files: fileChecker(readablePath(ctx)) })), candidates: candidateService(ctx), resolveWork: (ref) => resolveWork(ctx!, ref), followUp: followUpAdapter(ctx) }));
     ctx.ws.watch();
     // 落ちたプロセスが残した run（実行していたプロセスが終わっていると確かめられるもの）を中断にする。失敗しても serve は続ける
     void ctx.preflight.recover().catch((e: Error) => console.error(`[preflight] 残った run を確かめられません: ${e.message}`));

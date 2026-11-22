@@ -56,6 +56,8 @@ const OPTIONS = {
   "moved-to": { type: "string" },
   candidate: { type: "string" },
   origin: { type: "boolean" },
+  create: { type: "string" },
+  observation: { type: "string" },
   text: { type: "string" },
   command: { type: "string" },
   success: { type: "string" },
@@ -244,22 +246,26 @@ export function evidenceOps(o: { evidence?: string[]; "evidence-file"?: string; 
 }
 
 /**
- * evidence <タスク> <ID> <結果> の根拠（--basis 種類 と、read は --reference、machine は --command・--check-result・--target）。
+ * evidence <タスク> <ID> <結果> の根拠（--basis 種類 と、read は --reference、machine は --command・--check-result・--target、observation は --observation <観測ID>/<結果ID>）。
  * 省けば undefined（根拠を省いた扱い）。種類に合わない項目・種類なしの項目は断る（黙って捨てない）
  */
-export function basisFromOptions(o: { basis?: string; reference?: string; command?: string; "check-result"?: string; target?: string[] }): EvidenceBasis | undefined {
-  const given = { reference: o.reference, command: o.command, result: o["check-result"], target: o.target?.length ? o.target : undefined };
-  const names: Record<keyof typeof given, string> = { reference: "--reference", command: "--command", result: "--check-result", target: "--target" };
+export function basisFromOptions(o: { basis?: string; reference?: string; command?: string; "check-result"?: string; target?: string[]; observation?: string }): EvidenceBasis | undefined {
+  const given = { reference: o.reference, command: o.command, result: o["check-result"], target: o.target?.length ? o.target : undefined, observation: o.observation };
+  const names: Record<keyof typeof given, string> = { reference: "--reference", command: "--command", result: "--check-result", target: "--target", observation: "--observation" };
   const present = (Object.keys(given) as (keyof typeof given)[]).filter((k) => given[k] !== undefined);
   if (o.basis === undefined) {
     if (present.length) throw new UsageError(`${present.map((k) => names[k]).join("・")} を使うときは --basis（${EVIDENCE_BASIS_KINDS.join("|")}）も指定してください`);
     return undefined;
   }
   if (!isEvidenceBasisKind(o.basis)) throw new UsageError(`--basis は ${EVIDENCE_BASIS_KINDS.join(" / ")} のどれかです: ${o.basis}`);
-  const allowed: Record<string, (keyof typeof given)[]> = { unverified: [], declaration: [], read: ["reference"], machine: ["command", "result", "target"] };
+  const allowed: Record<string, (keyof typeof given)[]> = { unverified: [], declaration: [], read: ["reference"], machine: ["command", "result", "target"], observation: ["observation"] };
   const extra = present.filter((k) => !allowed[o.basis!].includes(k));
   if (extra.length) throw new UsageError(`--basis ${o.basis} には ${extra.map((k) => names[k]).join("・")} を使いません`);
   if ((given.target?.length ?? 0) > 1) throw new UsageError("--target は1つだけ指定できます");
+  if (o.basis === "observation") {
+    const [observation, result] = (given.observation ?? "").split("/");
+    return cleanBasis({ kind: "observation", observation, result });
+  }
   return cleanBasis({ kind: o.basis, reference: given.reference, command: given.command, result: given.result, target: given.target?.[0] });
 }
 

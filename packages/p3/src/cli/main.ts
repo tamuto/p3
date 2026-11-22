@@ -27,6 +27,7 @@ import { fileChecker } from "@infodb/p3-observer/core/files.ts";
 import { openProject } from "@infodb/p3-tasks/core/context.ts";
 import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
 import { resolveWork } from "@infodb/p3-app/core/observerWork.ts";
+import { followUpAdapter } from "@infodb/p3-app/core/observerFollowUp.ts";
 import { installObservationSource } from "@infodb/p3-app/core/observerMaterial.ts";
 import { readWorkSession } from "@infodb/p3-shared/node/workContext.ts";
 import type { WorkRef } from "@infodb/p3-observer/shared/definition.ts";
@@ -245,8 +246,10 @@ async function main(argv: string[]): Promise<number> {
       movedTo: o["moved-to"],
       candidate: o.candidate,
       origin: o.origin,
+      create: o.create,
+      followUp: async () => followUpAdapter(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
       candidates: async () => candidateService(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
-      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name] },
+      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name], repoNames: () => Object.keys(target.repos) },
       cwd,
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
       input: o.input,

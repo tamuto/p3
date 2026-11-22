@@ -7,9 +7,10 @@ import { useFileStates } from "../../../lib/files.ts";
 import { useLoad } from "../../../lib/useLoad.ts";
 import { ProcedureView } from "../../../components/ProcedureView.tsx";
 import { SwitchForm } from "../../../components/SwitchForm.tsx";
+import { ResultsSection } from "../../../components/Results.tsx";
 
 /**
- * /observer/<ID>: 観測の定義の詳細。観測内容・測定項目・確認の手順（今の実行方法・置き換え候補・ファイルの有無・切り替えの履歴）。
+ * /observer/<ID>: 観測の定義の詳細。観測内容・測定項目・確認の手順（今の実行方法・置き換え候補・ファイルの有無・切り替えの履歴）・結果（実行を記録する）。
  * 置き換え候補のスクリプトを用意して確かめたら、ここで切り替える（確かめた呼び出し方と結果を添える）
  */
 export const Route = createFileRoute("/observer/$id/")({ component: DefinitionDetail });
@@ -149,6 +150,7 @@ function Detail({ d, refs, drift, reload }: { d: ObservationDefinition; refs: Re
           </ProcedureView>
         ))}
       </section>
+      <ResultsSection id={d.id} rev={d.rev} ended={!!d.ended} />
       <section aria-labelledby="history-heading" className="space-y-2">
         <h2 id="history-heading" className="text-xl font-semibold">
           期待の履歴

@@ -1,7 +1,7 @@
 /**
  * 観測の定義（何を観測し、どう確かめ、何を測るか）の型と入力の検証。CLI（p3 observer add / update）・API（/api/observer/definitions）・
  * 画面（/observer）が同じ検証を使う（docs/architecture.md「p3-observer」の観測の定義）。
- * 観測の実行・結果の保存・要望やタスクとの関連付けはまだ無い（別の要望）。
+ * 観測の実行の結果は result.ts（定義とは別に保存し、定義は変えない）。
  */
 
 /**
