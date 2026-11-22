@@ -3,7 +3,6 @@
 //   FAKE_REPO     作業場所（コンテナの /workspace に当たる。受け取るが読み書きしない）
 //   FAKE_DATA     データディレクトリ（コンテナの /data に当たる）
 //   FAKE_LOG      受け取ったメッセージを1行1件で書く
-//   FAKE_SUPERSEDE 置き換えられるタスクの参照（<要望ID>/T001）。D2 の supersedes に書く
 //   FAKE_EVIDENCE  assessment.json の evidence（JSON の配列）
 //   FAKE_SCENARIO usage（上限に当たっている） / stray（run ディレクトリの外も変更する） / broken（壊れた JSON を書く） /
 //                 ui（画面イメージの原稿と一覧を書く。画像は書かない） / nonui（画面を伴わないと書く）
@@ -11,7 +10,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const { FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario, FAKE_SUPERSEDE: supersede = "" } = process.env;
+const { FAKE_DATA: data, FAKE_LOG: log, FAKE_SCENARIO: scenario } = process.env;
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 
@@ -43,7 +42,7 @@ function runTurn(id, text) {
   writeFileSync(join(abs, "drafts", "D1.md"), "---\nkey: D1\ntitle: 下準備\ndependsOn: []\n---\n\n準備する\n");
   writeFileSync(
     join(abs, "drafts", "D2.md"),
-    `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\n${supersede ? `supersedes: [${supersede.split("/").pop()}, T404]\n` : ""}---\n\n作る\n`,
+    `---\nkey: D2\ntitle: 本体\ndependsOn: [D1]\n---\n\n作る\n`,
   );
   const changes = [`${runDir}/assessment.json`, `${runDir}/drafts/D1.md`, `${runDir}/drafts/D2.md`];
   if (scenario === "ui" || scenario === "nonui") {

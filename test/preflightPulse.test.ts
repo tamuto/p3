@@ -13,7 +13,7 @@ async function twoSides() {
   const { dataDir } = await makeRepo();
   const viewer = await openTestProject(dataDir);
   const api = apiRoutes(viewer);
-  const req = await newRequest(viewer, { title: "CSV を書き出したい", body: "- 一覧から" });
+  const req = await newRequest(viewer, { status: "draft", title: "CSV を書き出したい", body: "- 一覧から" });
   // 外の CLI（別の Workspace）。実行中を見られるように少し待つ mock
   const cli = await openTestProject(dataDir, { mock: new MockEngine({ delay: 0.1 }) });
   const pulse = async (q = ""): Promise<PreflightPulse> => {

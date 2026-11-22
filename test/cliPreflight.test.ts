@@ -15,7 +15,7 @@ describe("p3 preflight / drafts / accept", () => {
     expect(p3(root, ["drafts", rid]).out).toContain("D3");
 
     const accepted = p3(root, ["accept", rid, "--skip", "d3", "--json"]).json();
-    expect(accepted).toMatchObject({ archived: [], kept: [] });
+    expect(Object.keys(accepted)).toEqual(["tasks"]);
     expect(accepted.tasks.map((t: any) => [t.id, t.title])).toEqual([
       ["T001", "送信基盤"],
       ["T002", "設定画面"],
@@ -73,67 +73,37 @@ describe("p3 preflight --note / notes", () => {
   });
 });
 
-describe("置き換えられたタスク", () => {
-  /** 初回のタスク化（T001〜T003）の後に再評価し、新しい案 D1 が T001・T002 を、D2 が T003 を置き換えると書かれた状態を作る */
-  async function reassessed() {
+describe("以前の置き換え（supersedes）の記録", () => {
+  it("--archive-superseded は何も変えずに断り、ファイルに残る置き換えの関係と案の項目は、表示せず、関係のない編集でも消えない", async () => {
     const { root, rid } = await initialized();
     p3(root, ["preflight", rid, "--engine", "mock"]);
-    p3(root, ["accept", rid]);
-    p3(root, ["move", "T002", "doing", "--req", rid]);
-    const run = p3(root, ["preflight", rid, "--engine", "mock", "--json"]).json();
-    expect(run, JSON.stringify({ status: run.status, error: run.error, log: run.log?.slice(-3) })).toMatchObject({ status: "completed" });
-    const dir = join(root, ".p3", "requests", rid, "preflight", run.id);
-    const d1 = join(dir, "drafts", "D1.md");
-    writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "supersedes: [T001, T002]\ninclude: true"));
-    const d2 = join(dir, "drafts", "D2.md");
-    writeFileSync(d2, readFileSync(d2, "utf8").replace("include: true", "supersedes: [T003]\ninclude: true"));
-    return { root, rid };
-  }
-
-  it("タスク化の前に候補を見せ、フラグが無ければ残して印を付け、着手すると警告する", async () => {
-    const { root, rid } = await reassessed();
-    expect(p3(root, ["drafts", rid, "--json"]).json().supersedes.map((c: any) => [c.id, c.status])).toEqual([
-      ["T001", "todo"],
-      ["T002", "doing"],
-      ["T003", "todo"],
-    ]);
-    // D2・D3 を外すと、D1 の置き換えだけが残る
-    const accepted = p3(root, ["accept", rid, "--only", "D1"]);
+    const run = p3(root, ["drafts", rid, "--json"]).json();
+    // 以前の版が書いた案の supersedes
+    const d1 = join(root, ".p3", "requests", rid, "preflight", run.id, "drafts", "D1.md");
+    writeFileSync(d1, readFileSync(d1, "utf8").replace("include: true", "supersedes: [T009]\ninclude: true"));
+    const refused = p3(root, ["accept", rid, "--archive-superseded"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("--archive-superseded はなくなりました");
+    expect(p3(root, ["ls", "--req", rid, "--json"]).json()).toEqual([]);
+    expect(p3(root, ["drafts", rid, "--json"]).json().drafts[0]).not.toHaveProperty("supersedes");
+    expect(p3(root, ["drafts", rid, "--json"]).json()).not.toHaveProperty("supersedes");
+    // 案を直しても、ファイルの supersedes は残る
+    expect(p3(root, ["criteria", "D1", "--req", rid, "--run", run.id, "add", "追加の基準"]).code).toBe(0);
+    expect(readFileSync(d1, "utf8")).toContain("supersedes:");
+    const accepted = p3(root, ["accept", rid, "--json"]);
     expect(accepted.code, accepted.err).toBe(0);
-    expect(accepted.out).toContain("置き換えられるタスクを残しました");
-    const ls = p3(root, ["ls", "--req", rid, "--json"]).json();
-    expect(ls.map((t: any) => [t.id, (t.superseded ?? []).map((m: any) => m.from)])).toEqual([
-      ["T001", [`${rid}/T004`]],
-      ["T002", [`${rid}/T004`]],
-      ["T003", []], // 不採用の D2 にだけあった
-      ["T004", []],
-    ]);
-    expect(p3(root, ["ls", "--req", rid]).out).toMatch(/T001 .*※置換 ← T004/);
-    expect(p3(root, ["ls", "--all"]).out).toContain("※置換");
-    expect(p3(root, ["show", "T003", "--req", rid]).out).not.toContain("※ 置き換えられています");
-    expect(p3(root, ["show", "T001", "--req", rid, "--json"]).json().superseded).toEqual([{ from: `${rid}/T004` }]);
+    expect(accepted.json()).not.toHaveProperty("archived");
+    expect(accepted.json().tasks[0].relations).toEqual([]);
 
-    // 着手は止めずに警告する。--json の stdout は JSON のまま、warnings で返す
-    const moved = p3(root, ["move", "T001", "doing", "--req", rid, "--json"]);
-    expect(moved.code).toBe(0);
-    expect(moved.err).toContain("警告: ");
-    expect(moved.json()).toMatchObject({ status: "doing", warnings: [{ code: "superseded", target: `${rid}/T001`, from: [`${rid}/T004`] }] });
-    // 作業中のままの再指定や、置き換えられていないタスクでは出さない
-    expect(p3(root, ["move", "T001", "doing", "--req", rid, "--json"]).json().warnings).toBeUndefined();
-    expect(p3(root, ["move", "T004", "doing", "--req", rid]).err).not.toContain("警告");
-    expect(p3(root, ["set", "T002", "status=todo", "--req", rid]).err).not.toContain("警告");
-    expect(p3(root, ["set", "T002", "status=doing", "--req", rid]).err).toContain("警告");
-  });
-
-  it("--archive-superseded で確定時点の候補をアーカイブする", async () => {
-    const { root, rid } = await reassessed();
-    const r = p3(root, ["accept", rid, "--only", "d1", "--archive-superseded", "--json"]);
-    expect(r.code, r.err).toBe(0);
-    expect(r.json()).toMatchObject({ tasks: [{ id: "T004" }], archived: ["T001", "T002"], kept: [] });
-    expect(p3(root, ["ls", "--req", rid, "--json"]).json().map((t: any) => t.id)).toEqual(["T003", "T004"]);
-    // 最大番号をアーカイブしても番号は再利用しない
-    p3(root, ["archive", "T004", "--req", rid]);
-    expect(p3(root, ["new", "次の作業", "--req", rid, "--json"]).json().id).toBe("T005");
+    // 以前の版が書いたタスクの置き換えの関係
+    const t2 = join(root, ".p3", "requests", rid, "tasks", "T002.md");
+    writeFileSync(t2, readFileSync(t2, "utf8").replace(/relations:[^\n]*\n(  - [^\n]*\n(    [^\n]*\n)*)*/, "relations:\n  - type: depends_on\n    target: T001\n    origin: preflight\n  - type: supersedes\n    target: T001\n    origin: preflight\n"));
+    const shown = p3(root, ["show", `${rid}/T002`, "--json"]).json();
+    expect(shown.item.relations).toEqual([{ type: "depends_on", target: "T001", origin: "preflight" }]);
+    expect(shown).not.toHaveProperty("superseded");
+    expect(p3(root, ["move", "T001", "doing", "--req", rid, "--json"]).json()).not.toHaveProperty("warnings");
+    expect(p3(root, ["move", "T002", "doing", "--req", rid]).code).toBe(0);
+    expect(readFileSync(t2, "utf8")).toContain("type: supersedes");
   });
 });
 

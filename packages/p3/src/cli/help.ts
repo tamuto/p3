@@ -187,6 +187,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                ack <P1> --target <ID> --condition 確かめた条件  変更を確かめたことを残す（過去の記録・状態は変えない）
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
+                               タスク化した後の要望（進行中・対応済・完了済、タスク化・分割の採用をした要望）は再評価しない。変えたいことは新しい要望に
                                前回の結果とまだ渡していないメモを引き継ぐ
                                --note 本文|-  メモ（確認事項への回答・方針の変更）を書き足してから実行  --note-only 書くだけ
   preflight [<要望>] --prepare  手元の対話エージェント（Claude Code など）で評価する準備。モデルは呼ばない。評価対象を固定し、
@@ -207,7 +208,6 @@ Preflight
   drafts [<要望>]               最新の評価とタスク案  --run PF-...（評価対象が今の要望と同じか: inputMatch）
   accept [<要望>]               タスク案をタスク化  --run PF-...  --only D1,D2  --skip D3
                                評価のあとでタイトル・本文が変わった run からはしない（code: stale_input。再評価する）
-                               置き換えられる既存タスクを表示して残す。--archive-superseded でアーカイブ
                                分割の run（子の要望の案 C1, C2 ...）は、選んだ案から下書きの子の要望を作る（親は残す。子の Preflight はまだ）。
                                途中で失敗したら同じ accept で続ける（作った子は作り直さない）
 

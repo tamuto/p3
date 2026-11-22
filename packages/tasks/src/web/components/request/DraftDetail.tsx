@@ -1,6 +1,6 @@
 import { type ReactNode, type RefObject } from "react";
 import type { AcceptanceCriterion } from "../../../features/requirements/shared/acceptance.ts";
-import { relationRole, type ProjectConfig, type ProposedTask } from "../../../shared/types.ts";
+import { type ProjectConfig, type ProposedTask } from "../../../shared/types.ts";
 import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
 import { CriteriaRowsEditor, rowsEqual, rowsInvalid, rowsOf, type CriterionRow } from "../../../features/requirements/web/Acceptance.tsx";
 import { Markdown } from "../Markdown.tsx";
@@ -84,10 +84,6 @@ export function DraftDetail({
             <div className="flex gap-1">
               <dt className="text-slate-500">依存先</dt>
               <dd className="font-mono">{draft.dependsOn.join(", ") || "なし"}</dd>
-            </div>
-            <div className="flex min-w-0 gap-1">
-              <dt className="shrink-0 text-slate-500">{relationRole("supersedes", "out")}</dt>
-              <dd className="min-w-0 font-mono break-all">{draft.supersedes.join(", ") || "なし"}</dd>
             </div>
             {draft.areas.length > 0 && (
               <div className="flex w-full min-w-0 flex-wrap gap-1">

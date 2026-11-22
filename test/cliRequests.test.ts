@@ -8,7 +8,7 @@ import { p3, initialized, relate } from "./cliHelpers.ts";
 describe("show --brief（作業に要る項目だけ）", () => {
   /**
    * T001 done・T002 doing（← T001）・T003 todo（← T002・別の要望のタスク・別の要望・アーカイブした T004）、
-   * T005 が T001 を置き換え、要望も T001 を置き換える
+   * T005 に以前の版が書いた置き換え（supersedes）の関係がある（今は使わない）
    */
   async function prepared() {
     const { root, rid } = await initialized();
@@ -24,13 +24,13 @@ describe("show --brief（作業に要る項目だけ）", () => {
     return { root, rid, other };
   }
 
-  it("タスク: 本文・依存とその状態（見つからないものは null）・置き換えの注意・成果物・rev を残し、ほかを省く", async () => {
+  it("タスク: 本文・依存とその状態（見つからないものは null）・成果物・rev を残し、ほかを省く", async () => {
     const { root, rid } = await prepared();
     const full = p3(root, ["show", "T003", "--req", rid, "--json"]).json();
     const brief = p3(root, ["show", "T003", "--req", rid, "--brief", "--json"]);
     expect(brief.code, brief.err).toBe(0);
     const b = brief.json();
-    expect(Object.keys(b)).toEqual(["item", "work", "superseded", "dependencies", "warnings"]);
+    expect(Object.keys(b)).toEqual(["item", "work", "dependencies"]);
     expect(b.work).toMatchObject({ repo: "app", registered: true }); // 作業先にできる参照先が1つなので、それ
     expect(Object.keys(b.item)).toEqual(["id", "ref", "request", "title", "status", "body", "rev", "outputs", "relations"]);
     for (const k of Object.keys(b.item)) if (k !== "relations") expect(b.item[k]).toEqual(full.item[k]);
@@ -64,18 +64,15 @@ describe("show --brief（作業に要る項目だけ）", () => {
     expect(done.dependencies).toEqual([]);
   });
 
-  it("置き換え: 印と警告を、通常・短い出力で同じ形で出す", async () => {
+  it("以前の置き換えの関係はファイルに残っても、通常・短い出力に出さない（印・警告も無い）", async () => {
     const { root, rid } = await prepared();
-    const superseded = [{ from: `${rid}/T005`, note: "新しい方式に替える" }];
-    const warnings = [{ code: "superseded", target: `${rid}/T001`, from: [`${rid}/T005`], message: expect.stringContaining("置き換えられています") }];
     for (const extra of [[], ["--brief"]]) {
       const j = p3(root, ["show", "T001", "--req", rid, ...extra, "--json"]).json();
-      expect(j.superseded).toEqual(superseded);
-      expect(j.warnings).toEqual(warnings);
+      expect(j).not.toHaveProperty("superseded");
+      expect(j).not.toHaveProperty("warnings");
     }
-    expect(p3(root, ["show", "T001", "--req", rid, "--brief"]).out).toContain("※ 261");
-    // 着手の警告（move）は今までどおり
-    expect(p3(root, ["move", "T002", "doing", "--req", rid, "--json"]).json().warnings).toBeUndefined();
+    expect(p3(root, ["show", "T005", "--req", rid, "--json"]).json().item.relations).toEqual([]);
+    expect(p3(root, ["show", "T001", "--req", rid, "--brief"]).out).not.toContain("置き換え");
   });
 
   it("要望: 本文・状態・ブランチ・タスクの一覧（id・ref・title・status）と issue。show <要望> と request show は同じ", async () => {

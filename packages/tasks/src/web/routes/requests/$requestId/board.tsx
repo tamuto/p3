@@ -7,10 +7,11 @@ import { Outputs } from "../../../components/Outputs.tsx";
 import { useAppData } from "../../../lib/appData.tsx";
 import { Badge, Button, cx, Empty, Id } from "@infodb/p3-shared/web/ui.tsx";
 import { api, failureOf } from "../../../lib/api.ts";
-import { markText, warningText } from "../../../lib/supersede.ts";
+import { warningText } from "../../../lib/warnings.ts";
 import { useAppCtx } from "../../../lib/appCtx.ts";
 import { fmtTime } from "../../../lib/format.ts";
 import { useRequestData } from "../../../lib/requestData.tsx";
+import { preflightClosedReason } from "../../../../shared/preflightClosed.ts";
 
 /**
  * 要望のタスクボード（V 字）。
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/requests/$requestId/board")({
 
 function BoardPage() {
   const ctx = useAppCtx();
-  const { request, tasks, reload, superseded } = useRequestData();
+  const { request, tasks, reload, runs } = useRequestData();
   const [dragId, setDragId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 直接作ったタスクの知らせ */
@@ -63,7 +64,7 @@ function BoardPage() {
   async function patch(t: Task, p: { status?: TaskStatus; checked?: boolean }) {
     try {
       const res = await api.patchTask(t.ref, { ...p, rev: t.rev });
-      // 置き換えられたタスクを作業中にしたときは、移したうえで知らせる
+      // 完了済の祖先の下に未完了ができたときなどは、移したうえで知らせる
       const w = warningText(res);
       setError(w ? `警告: ${w}` : null);
     } catch (e) {
@@ -123,7 +124,6 @@ function BoardPage() {
             done={s === "done"}
             tasks={tasks}
             doneIds={doneIds}
-            replaced={markText(superseded[t.id], request.id)}
             dragging={dragId === t.id}
             onDragStart={() => setDragId(t.id)}
             onOpen={() => ctx.open(t.ref)}
@@ -167,7 +167,9 @@ function BoardPage() {
       {!tasks.length ? (
         <div className="mx-auto w-full max-w-xl p-5 md:p-10">
           <Empty>
-            タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、「タスクを追加」で直接作ってください（CLI では `p3 new`）。
+            {preflightClosedReason(request.status, runs)
+              ? "タスクはありません。この要望はタスク化した後なので再評価しません。足りない作業は「タスクを追加」で足すか、新しい要望を登録してください。"
+              : "タスクはまだありません。概要のタブから Preflight を実行してタスク化するか、「タスクを追加」で直接作ってください（CLI では `p3 new`）。"}
           </Empty>
         </div>
       ) : (
@@ -245,7 +247,6 @@ function Card({
   done,
   tasks,
   doneIds,
-  replaced,
   dragging,
   onDragStart,
   onOpen,
@@ -255,8 +256,6 @@ function Card({
   done: boolean;
   tasks: Task[];
   doneIds: Set<string>;
-  /** 置き換えられていれば印の文言 */
-  replaced: string;
   dragging: boolean;
   onDragStart: () => void;
   onOpen: () => void;
@@ -299,13 +298,8 @@ function Card({
           {t.block.decision && <p className="line-clamp-2 wrap-anywhere">決めてほしいこと: {t.block.decision}</p>}
         </div>
       )}
-      {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0 || replaced) && (
+      {(blocking.length > 0 || deps > 0 || aiRels > 0 || t.labels.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {replaced && !done && (
-            <Badge tone="rose" title="新しいタスクに置き換えられています。着手する前に確かめてください">
-              {replaced}
-            </Badge>
-          )}
           {blocking.length > 0 && !done && (
             <Badge tone="slate" title={`依存先が未完了: ${blocking.map((b) => b.target).join(", ")}`}>
               依存待ち {blocking.length}

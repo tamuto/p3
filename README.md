@@ -39,7 +39,7 @@ Claude Code などの AI エージェントや人が行い、p3 はその前後�
 
 | 段階 | できるようになること | 文書 |
 | --- | --- | --- |
-| 1 | 要望をタスクにする前に、評価とタスク案を受け取る（Preflight。Codex か手元の AI エージェント） | [導入ガイド: 段階 1](docs/installation.md#段階-1-preflight-を足す) |
+| 1 | 要望をタスクにする前に、評価とタスク案を受け取る（Preflight。Codex か手元の AI エージェント。タスク化した後は再評価せず、新しい要望でやり直す） | [導入ガイド: 段階 1](docs/installation.md#段階-1-preflight-を足す) |
 | 2 | 品質基準・タスクやマイルストーンのレビューなど、要るものだけ足す | [導入ガイド: 段階 2](docs/installation.md#段階-2-必要になったら足す) |
 
 P3 を Docker のコンテナで動かすこともできる（[導入ガイド: Docker で動かす](docs/installation.md#docker-で動かすプロジェクトを跨ぐ-serve)）。

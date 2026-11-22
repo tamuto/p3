@@ -28,14 +28,12 @@ import type { RefScope, RepoRef } from "./repos.ts";
  * 例: T002 depends_on T001 → T002 に「依存先 T001」、T001 に「依存元 T002」
  */
 /**
- * タスクの関係は2つだけ（どちらも同じ要望の中のタスクを指す。target は "T003"）。
+ * タスクの関係は依存だけ（同じ要望の中のタスクを指す。target は "T003"）。
  *   depends_on: 順序（相手が先に終わっている必要がある）。Preflight の案の dependsOn から張る
- *   supersedes: 再評価で古いタスクを置き換える（相手は古い案）。Preflight の案の supersedes から張る
- * 手で張る機能は持たない
+ * 手で張る機能は持たない。以前の置き換え（supersedes）の関係はファイルに残り、読むときは数えるだけで使わない（Task.legacyRelations）
  */
 export const RELATION_TYPES = {
   depends_on: { label: "依存先", inverse: "依存元", verb: "依存する（相手が先に終わっている必要がある）" },
-  supersedes: { label: "旧案", inverse: "新案", verb: "置き換える（相手は古い案）" },
 } as const;
 
 /** 関係の向きに応じた相手の役割。out: 張った側から見た相手、in: 張られた側から見た相手（張った側） */
@@ -132,6 +130,8 @@ export interface Task {
   /** 直接編集で読めなかった手戻りの履歴の理由（ファイルには書かない） */
   reworkProblems?: string[];
   relations: Relation[];
+  /** ファイルに残る、今は使わない種類の関係の数（以前の置き換え supersedes など。関係のない更新ではファイルの元の値のまま書き戻す） */
+  legacyRelations?: number;
   /** 楽観ロック用リビジョン。同じマシンでの AI と人の同時編集を検出する */
   rev: number;
   createdAt: string;
@@ -320,8 +320,6 @@ export interface ProposedTask {
   areas: string[];
   /** 同じ run 内の他の key */
   dependsOn: string[];
-  /** 置き換える同じ要望の既存タスク（"T003"。再評価で古いタスクを置き換えるとき） */
-  supersedes: string[];
   /** 取り込み対象か（UI で切り替え） */
   include: boolean;
   /** 作業先（writable な参照先の名前。null / 無い → 作業先なし）。人がレビューで直せる */
@@ -519,13 +517,13 @@ export interface PreflightRun {
   /** タスク化済みなら作成されたタスク ID */
   materialized?: string[];
   /**
-   * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らず、同じタスクを二度アーカイブしないための記録。
-   *   created: 作った案とタスク（D1 → T004）、archive: アーカイブに選んだ置き換えられるタスク、archived: アーカイブ済み
+   * タスク化の途中経過。途中で失敗しても、再試行で同じ案を二度作らないための記録。created: 作った案とタスク（D1 → T004）。
+   * 以前の版が書いた archive・archived（置き換えられるタスクのアーカイブの指定と済み）は読むだけで使わない（残りをアーカイブしない）
    */
   materialization?: {
     created: Record<string, string>;
-    archive: string[];
-    archived: string[];
+    archive?: string[];
+    archived?: string[];
     done: boolean;
     /** 割り当てるブランチ（始めたときに決めたもの。やり直しでも同じ） */
     workstreams?: { add: Record<string, Workstream>; noGit: string[] };
@@ -611,32 +609,9 @@ export interface InputMatch {
   reason?: string;
 }
 
-/** タスクが置き換えられていることの印。from は置き換えた側のタスク（<要望ID>/T004） */
-export interface SupersededMark {
-  from: string;
-  note?: string;
-}
-
-/** タスク化のときに知らせる、置き換えられる既存タスク（同じ要望の未完了のもの） */
-export interface SupersedeCandidate {
-  /** T001 */
-  id: string;
-  /** <要望ID>/T001 */
-  ref: string;
-  title: string;
-  status: TaskStatus;
-  rev: number;
-  /** 置き換えを書いた採用したタスク案 */
-  reasons: { draft: string }[];
-}
-
 /** タスク化の結果 */
 export interface MaterializeResult {
   tasks: Task[];
-  /** アーカイブした置き換えられたタスク（T001） */
-  archived: string[];
-  /** 置き換えられるが残したタスク */
-  kept: SupersedeCandidate[];
   /** 対応済から進行中に戻した祖先（子の要望をタスク化した） */
   reopenedAncestors?: string[];
 }

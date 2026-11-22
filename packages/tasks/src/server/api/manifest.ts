@@ -14,7 +14,7 @@ export const AI_MANIFEST = {
     request: "<要望ID>（例: 261009-k7m3x）",
     task: "<要望ID>/T003。同じ要望の中なら T003",
   },
-  relationTypes: RELATION_TYPES, // タスクの関係は depends_on と supersedes だけ（Preflight のタスク化が張る。手で張る API は無い）
+  relationTypes: RELATION_TYPES, // タスクの関係は depends_on だけ（Preflight のタスク化が張る。手で張る API は無い。以前の supersedes はファイルに残っても出さない）
   endpoints: [
     { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects, products: この serve の製品（常に tasks・observer の両方）}" },
     { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。どの serve でも使える" },
@@ -93,7 +93,7 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/requests/:rid",
-      desc: "要望・タスク・Preflight・置き換えられたタスクの印（superseded）・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）・" +
+      desc: "要望・タスク・Preflight・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）・" +
         "要求の出典と確認（requirement: {state, sources, answers, problems}。state は unrecorded / unconfirmed / confirmed / reconfirm / unlinked。申告の記録で P3 の保証ではない）・" +
         "見直しが必要（候補）（review: {self?（対応済・完了済のときの要望自身の診断）, tasks（タスクごとの概要）, counts: {tasks, below}}）",
     },
@@ -160,7 +160,7 @@ export const AI_MANIFEST = {
         "表示の順で、実行の順・着手できるかは表さない",
     },
     { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
-    { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は置き換えの印 superseded と受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。置き換えられたタスクを作業中にすると warnings を添える。" +
+    { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。" +
         "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord|source, ...}] で順に当て（source は {op:\"source\", id: 基準の ID, source: 要求の根拠への操作}。POST sources と同じ操作で、from で要望の記録を写す）、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
         "record の basis は根拠 {kind: unverified|declaration} / {kind: read, reference} / {kind: machine, command, result, target}（作業した側の申告。P3 は検査を実行しない）。" +
         "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
@@ -177,7 +177,7 @@ export const AI_MANIFEST = {
         "アーカイブしたタスク（読むだけ。各タスクに archived: true）。一覧は {request, tasks, errors}（ID の数値順。壊れたファイルは errors）、" +
         "1件は {task}。無い → 404、読めない → 500 code: archive_unreadable。通常の tasks・進捗・対応済の判定には入らない。DELETE /tasks/:tid がアーカイブする",
     },
-    { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ" },
+    { method: "POST", path: "/api/requests/:rid/preflight", desc: "Preflight の実行 {engine?: codex|mock, note?: メモ}。前回の結果とまだ渡していないメモを引き継ぐ。タスク化した後の要望は 409 code: preflight_closed（メモも残さない。変えたいことは新しい要望に）" },
     { method: "GET|POST", path: "/api/requests/:rid/notes", desc: "Preflight へのメモ（GET は渡し済みか・次に引き継ぐ前回の run も返す。POST {body}）" },
     {
       method: "GET",
@@ -234,7 +234,7 @@ export const AI_MANIFEST = {
     {
       method: "GET",
       path: "/api/requests/:rid/preflight/:run/materialize",
-      desc: "タスク化の確認（mode: tasks。採用する案と、置き換えられる既存タスクの候補、inputMatch。何も変えない）。分割の run は mode: children で、採用する子の案・version（案の版）・problems・adoption（途中経過）",
+      desc: "タスク化の確認（mode: tasks。採用する案と inputMatch。何も変えない）。分割の run は mode: children で、採用する子の案・version（案の版）・problems・adoption（途中経過）",
     },
     {
       method: "POST",

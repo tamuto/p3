@@ -328,7 +328,6 @@ describe("関係の表示（相手の役割）", () => {
     // [種類, A から見た B, B から見た A]
     const table: [string, string, string][] = [
       ["depends_on", "依存先", "依存元"], // T002 は T001 に依存 → T002「依存先 T001」/ T001「依存元 T002」
-      ["supersedes", "旧案", "新案"], // T005 が T001 を置き換え → T005「旧案 T001」/ T001「新案 T005」
     ];
     expect(relationTypes).toEqual(table.map(([t]) => t));
     for (const [t, out, inn] of table) {

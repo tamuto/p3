@@ -108,7 +108,7 @@ export function RunView({
           <p className="font-semibold">中断した run（{fmtTime(run.interrupted.at)}）</p>
           <p className="break-words">
             {run.interrupted.acknowledgedBy ? `止まっていることを ${run.interrupted.acknowledgedBy} が確かめて中断にしました` : "実行していたプロセスが終わっていたので中断にしました"}
-            （{run.interrupted.reason}）。評価の結果はありません。もう一度 Preflight を実行できます
+            （{run.interrupted.reason}）。評価の結果はありません。{canRerun ? "もう一度 Preflight を実行できます" : ""}
           </p>
         </div>
       )}

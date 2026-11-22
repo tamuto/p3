@@ -11,6 +11,9 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeo
 const date = (v: unknown): string | undefined => (v instanceof Date ? v.toISOString().slice(0, 10) : str(v));
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : (str(v) ?? new Date(0).toISOString()));
 
+/** 今は使わない種類の関係（以前の置き換え supersedes など）の数。読むときは使わず、ファイルには残す（taskKeepRaw） */
+const legacyRelationCount = (v: unknown) => (Array.isArray(v) ? v.filter((r) => !!r && typeof r === "object" && !((r as { type?: unknown }).type as string in RELATION_TYPES)).length : 0);
+
 export function normalizeRelations(v: unknown): Relation[] {
   if (!Array.isArray(v)) return [];
   return v
@@ -47,6 +50,7 @@ export const normalizeTaskIn =
     // 受け入れ基準・停止・完了の記録・手戻り（fieldGroups.ts）
     ...readFieldGroups(TASK_FIELD_GROUPS, d),
     relations: normalizeRelations(d.relations),
+    ...(legacyRelationCount(d.relations) ? { legacyRelations: legacyRelationCount(d.relations) } : {}),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
@@ -55,10 +59,14 @@ export const normalizeTaskIn =
   });
 
 /** タスクのうちファイルに書かないキー（場所から決まるもの・読んだときの問題） */
-export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", ...problemKeysOf(TASK_FIELD_GROUPS)];
+export const TASK_DERIVED: (keyof Task)[] = ["request", "ref", "legacyRelations", ...problemKeysOf(TASK_FIELD_GROUPS)];
 
-/** 項目のまとまりが壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（fieldGroups.ts） */
-export const taskKeepRaw = keepRawOf(TASK_FIELD_GROUPS);
+/**
+ * 項目のまとまりが壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（fieldGroups.ts）。
+ * 今は使わない種類の関係があれば、関係（relations）も元の値のまま書き戻す（以前の置き換えの記録を消さない）
+ */
+const groupKeepRaw = keepRawOf(TASK_FIELD_GROUPS);
+export const taskKeepRaw = (t: Task): readonly string[] => (t.legacyRelations ? [...groupKeepRaw(t), "relations"] : groupKeepRaw(t));
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",

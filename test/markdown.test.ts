@@ -89,20 +89,19 @@ describe("読むだけの Markdown（タスク案の本文）", () => {
 });
 
 const draft = (p: Partial<ProposedTask> = {}): ProposedTask =>
-  ({ key: "D1", title: "詳細を読めるようにする", description: "## 作業内容\n\n- 全文", include: true, dependsOn: [], supersedes: [], areas: [], repo: null, ...p });
+  ({ key: "D1", title: "詳細を読めるようにする", description: "## 作業内容\n\n- 全文", include: true, dependsOn: [], areas: [], repo: null, ...p });
 
 describe("タスク案の詳細（ダイアログ）", () => {
   const render = (d: ProposedTask | null, repos: { name: string; writable?: boolean }[] = []) =>
     renderToStaticMarkup(createElement(DraftDetail, { dialog: { current: null }, draft: d, project: { repos } as never, onClose: () => {} }));
 
-  it("案のキー・題・採否・作業先・依存先・置き換え先・領域と、本文を全文描く。閉じるボタンがある", () => {
+  it("案のキー・題・採否・作業先・依存先・領域と、本文を全文描く。閉じるボタンがある", () => {
     const h = render(
       draft({
         include: false,
         repo: "app",
         dependsOn: ["D1"],
         key: "D2",
-        supersedes: ["T004"],
         areas: ["src/web/components/request/very/long/path/Drafts.tsx"],
         description: "## 判断の根拠\n\n- 根拠\n\n## 未確認\n\n- 未確認のこと",
       }),
@@ -114,7 +113,6 @@ describe("タスク案の詳細（ダイアログ）", () => {
     expect(textOf(h)).toContain("不採用");
     expect(textOf(h)).toContain("作業先app");
     expect(textOf(h)).toContain("依存先D1");
-    expect(textOf(h)).toContain("T004");
     expect(h).toContain("src/web/components/request/very/long/path/Drafts.tsx");
     expect(h).toMatch(/<h3[^>]*>判断の根拠<\/h3>/);
     expect(h).toMatch(/<h3[^>]*>未確認<\/h3>/);

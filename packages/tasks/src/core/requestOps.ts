@@ -28,13 +28,12 @@ import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp }
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
-import { startWarnings, type Warning } from "./supersede.ts";
 import { checkRepoTarget, ensureWorkstreams } from "./workTargets.ts";
 
 /**
  * 要望とタスクの変更の手順。CLI と API はここを呼び、引数の解釈と出力だけを持つ。
  * 規則（作業先・対応済・置き換えの警告・ブランチの割り当て・進行中に戻す・変更通知）を足すときは、ここだけを直す。
- * タスクの関係（depends_on・supersedes）は Preflight のタスク化だけが張る（手で張る操作は持たない）
+ * タスクの関係（depends_on）は Preflight のタスク化だけが張る（手で張る操作は持たない）
  *
  * 手順はどれも「確かめる（何も書かない）→ 保存 → 後始末（ブランチの割り当て・進行中に戻す）→ 変更通知」の順。
  */
@@ -50,11 +49,11 @@ export interface WriteOpts {
 
 /**
  * タスクを変えた結果。reopened: 対応済から進行中に戻した要望 / reopenedAncestors: 同じく戻した祖先（近い順）/
- * warnings: 置き換えられたタスクへの着手（superseded）・完了済の祖先の下に未完了ができた（ancestor_done）
+ * warnings: 完了済の祖先の下に未完了ができた（ancestor_done）
  */
 export interface TaskResult {
   task: Task;
-  warnings: (Warning | AncestorWarning)[];
+  warnings: AncestorWarning[];
   reopened?: string;
   reopenedAncestors?: string[];
   /** 済みのタスクの受け入れ基準・証拠の中身が変わったので、人の「済み」を外した（理由） */
@@ -247,7 +246,6 @@ export async function createTask(
  * タスクを変える。checked: 人の「済み」を付ける / 外す（付けられるのは完了したタスクだけ）。
  * acceptance: 受け入れ基準・証拠への操作（shared/acceptance.ts。書く直前に読み直した今の値に当て、規則に合わなければ何も書かない）。
  * 済みのタスクの基準・証拠の中身が変わったら済みを外し、checkCleared に理由を返す（同じ値の再保存・成果物だけの追加では外さない）。
- * 置き換えられたタスクを作業中にすると warnings を返す（変更はする）
  */
 export async function updateTask(
   ctx: P3Context,
@@ -272,7 +270,6 @@ export async function updateTask(
     if (checked && (next.status ?? cur.status) !== "done") throw new OpRuleError(`${cur.ref} はまだ完了していません（済みにできるのは完了したタスクだけ）`);
     next.checkedAt = checked ? new Date().toISOString() : undefined;
   }
-  const warnings = startWarnings(ctx.ws, cur.ref, cur.status, next.status);
   let checkCleared: string | undefined;
   let completionSkipped: string | undefined;
   let reworkSkipped: string | undefined;
@@ -337,9 +334,9 @@ export async function updateTask(
     if (e instanceof NoChange && unchanged) return unchanged;
     throw e;
   });
-  if (unchanged && task === unchanged) return { task, warnings };
+  if (unchanged && task === unchanged) return { task, warnings: [] };
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
-  return { task, warnings: [...warnings, ...ancestorWarnings], ...after, ...(checkCleared ? { checkCleared } : {}), ...(completionSkipped ? { completionSkipped } : {}), ...(reworkSkipped ? { reworkSkipped } : {}) };
+  return { task, warnings: ancestorWarnings, ...after, ...(checkCleared ? { checkCleared } : {}), ...(completionSkipped ? { completionSkipped } : {}), ...(reworkSkipped ? { reworkSkipped } : {}) };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */

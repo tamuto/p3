@@ -31,7 +31,6 @@ function draftOf(f: string, text: string): ProposedTask {
     description: body.trim(),
     areas: Array.isArray(data.areas) ? data.areas.map(String) : [],
     dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
-    supersedes: Array.isArray(data.supersedes) ? data.supersedes.map(String) : [],
     include: data.include !== false,
     ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
     ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources, data.acceptanceSourceSeq),

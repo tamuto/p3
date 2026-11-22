@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
-import { Badge, Button, cx } from "@infodb/p3-shared/web/ui.tsx";
+import { Badge, Button, cx, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { NEW_REQUEST_HINT, preflightClosedReason } from "../../../../shared/preflightClosed.ts";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
 import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
@@ -226,6 +227,8 @@ function RequestPanel({
   useUnsaved(!!draft.trim());
   // 一度でも実行したか（開始した直後、履歴を読み直す前も含める）
   const hasHistory = runs.length > 0 || !!run;
+  // タスク化した後の要望は再評価しない（開始・再評価・メモの再実行を出さず、新しい要望へ案内する。判定は CLI・API と同じ）
+  const closed = preflightClosedReason(request.status, runs);
   const notesState = notesPanelState({ hasHistory, running, engineOk: engine?.ok !== false, draft, busy: starting, pending: 0 });
   // 本文を保存したら、表示中の run の評価対象との比較も取り直す
   const refreshRun = () => runId && void api.run(request.id, runId).then(setRun, () => undefined);
@@ -244,6 +247,7 @@ function RequestPanel({
       startOnce={once.start}
       gone={data.gone}
       blocked={blocked}
+      closed={closed}
     />
   );
 
@@ -264,6 +268,7 @@ function RequestPanel({
           gone={data.gone}
           running={running}
           hasRuns={runs.length > 0}
+          closed={closed}
           onSaved={() => {
             data.reload();
             ctx.reload();
@@ -292,10 +297,26 @@ function RequestPanel({
       <RequestObservations requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
-        <Button variant="primary" onClick={start} disabled={starting || running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
-          {starting ? STARTING_LABEL : running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
-        </Button>
-        {engine && (
+        {closed ? (
+          <div className="w-full space-y-2">
+            <p>
+              {closed}。{NEW_REQUEST_HINT}。
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <Link to="/requests/new" className={linkCls}>
+                新しい要望を登録する
+              </Link>
+              <Link to="/requests/new" search={{ parent: request.id }} className={linkCls}>
+                この要望の子として登録する
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <Button variant="primary" onClick={start} disabled={starting || running || engine?.ok === false || notesState.blockPlainRun || !!blocked}>
+            {starting ? STARTING_LABEL : running ? "実行中…" : runs.length ? "▶ もう一度 Preflight" : "▶ Preflight を実行"}
+          </Button>
+        )}
+        {engine && !closed && (
           <span
             className={cx("text-base", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
             title={engine.name === "mock" ? "P3_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
@@ -362,7 +383,7 @@ function RequestPanel({
               // 表示中の run でなければ取り込まない（切り替えたあとに届いた応答）
               return next.id === runIdRef.current ? next : cur;
             })
-          } onOpenRun={setRunId} notes={notes} blocked={blocked} onAnswersDirty={setAnswersDirty} onRequestChanged={() => { data.reload(); refreshRun(); }} onRerun={start} canRerun={!starting && !running && engine?.ok !== false && !notesState.blockPlainRun && !blocked} />
+          } onOpenRun={setRunId} notes={notes} blocked={blocked} onAnswersDirty={setAnswersDirty} onRequestChanged={() => { data.reload(); refreshRun(); }} onRerun={closed ? undefined : start} canRerun={!closed && !starting && !running && engine?.ok !== false && !notesState.blockPlainRun && !blocked} />
       ) : (
         // まだ実行していない: 先に保存したメモがあるときだけ見せる（無ければ何も出さない）
         notes

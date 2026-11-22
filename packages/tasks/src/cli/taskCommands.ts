@@ -7,7 +7,6 @@ import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.
 import { listTasks, resolve, resolveRef, resolveRequestId } from "../core/ops.ts";
 import { archiveTask, createTask, importQuality, updateTask } from "../core/requestOps.ts";
 import { taskQualityDiff } from "../features/quality/shared/quality.ts";
-import { supersededMarks } from "../core/supersede.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
@@ -20,7 +19,7 @@ import { NotFoundError } from "../core/store/collection.ts";
 import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
 import { ACCEPTANCE_RESULTS, acceptanceStatus, applyAcceptanceOps, isAcceptanceResult, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
 import type { BlockOp } from "../shared/taskBlock.ts";
-import { dependentsOf, formatEntity, indent, ambiguous, replacedBy, reopenedNote, warn, deps, workHint } from "./output.ts";
+import { dependentsOf, formatEntity, indent, ambiguous, reopenedNote, warn, deps, workHint } from "./output.ts";
 import { requestCommand } from "./requestCommands.ts";
 import { pickRun } from "./preflightCommands.ts";
 
@@ -42,18 +41,16 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       }
       const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked, review: o.review };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
-      const marks = supersededMarks(ctx.ws);
-      const items = tasks.map((t) => (marks.has(t.ref) ? { ...t, superseded: marks.get(t.ref) } : t));
       // 共有の参照先があるときは作業先の列を出す
       const multi = ctx.ws.project.repos.length > 0;
-      return out.result(items, () =>
+      return out.result(tasks, () =>
         table(
           tasks.map((t) => [
             o.all ? t.ref : t.id,
             t.status,
             ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
             t.title,
-            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), replacedBy(t, marks), taskReview(ctx, t)?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  "),
+            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), taskReview(ctx, t)?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  "),
           ]),
         ) || (o.blocked ? "止まっているタスクはありません" : o.review ? "見直しが必要（候補）のタスクはありません" : "タスクはありません"),
       );
@@ -66,20 +63,18 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (!ref) return ambiguous(out, ctx, query, current);
       if (!ref.includes("/")) return requestCommand(ctx, out, ["show", ref], o, actor, requestArg, expectedRev);
       const item = ctx.ws.requireTask(ref);
-      const marks = supersededMarks(ctx.ws);
       const review = taskReview(ctx, item);
       if (o.brief) {
         // 見直しの概要は候補のときだけ（記録なし・差分なしは短い出力に出さない）
-        const view = { ...briefTask(ctx, item, marks), ...(review?.state === "candidate" ? { review: reviewSummary(review) } : {}) };
+        const view = { ...briefTask(ctx, item), ...(review?.state === "candidate" ? { review: reviewSummary(review) } : {}) };
         return out.result(view, () => [formatBriefTask(view), ...(review?.state === "candidate" ? ["", ...formatReview(review)] : [])].join("\n"));
       }
       const file = relative(cwd, split(ref).col.path(item.id));
-      const { superseded, dependencies, warnings } = taskExtras(ctx, item, marks);
+      const { dependencies } = taskExtras(ctx, item);
       const dependents = dependentsOf(ctx, item).map((t) => ({ ref: t.ref, title: t.title, status: t.status }));
       const acceptance = acceptanceStatus(item) ?? null;
-      return out.result({ item, file, superseded, dependencies, dependents, warnings, acceptance, review: review ?? null }, () =>
+      return out.result({ item, file, dependencies, dependents, acceptance, review: review ?? null }, () =>
         [
-          superseded.length ? `※ 置き換えられています: ${superseded.map((m) => `${m.from}${m.note ? `（${m.note}）` : ""}`).join(" / ")}\n` : "",
           formatEntity(ctx, item, file),
           review ? `\n\n${formatReview(review).join("\n")}` : "",
         ].join(""),

@@ -45,7 +45,7 @@ Preflight で扱う要望が、プロジェクトで行う作業の粒度にな�
 
 大きい要望を1回の Preflight でタスクにすると、フロントエンド・バックエンド・基盤のように別々に評価・レビュー・リリースしたい
 作業が1つのブランチと1つのタスクボードにまとまってしまう。そこで要望は **子の要望** を持てるようにし、子ごとに Preflight・
-タスク・ブランチを持たせる。タスクの関係（`depends_on`・`supersedes`）は増やさず、同じ要望の中のままにする
+タスク・ブランチを持たせる。タスクの関係（`depends_on`）は増やさず、同じ要望の中のままにする
 （261013-4j9wr で減らした要望をまたぐ関係を戻さない）。親子は要望の間の構造で、タスクの実行の順は表さない。
 
 ### 分割の基準
@@ -244,7 +244,7 @@ include: true
   失敗があれば 207。確認のあとで案が変わったら 409 `drafts_changed`）と `PATCH .../children/:key`（題・本文・採否）。分割の run から
   タスク化（materialize）はしない。Mock は箇条書きが 6 件以上なら3件ずつの子の案を書く
 - **既存のタスクのある親**: 作業中のタスクがあっても、残りの作業を子に分けてよい。既存のタスクは親に残り、重なりは `overlaps` で
-  レビューに出す。既存のタスクを置き換えたいときは、親の中で今までどおり再評価し `supersedes` で置き換える（子は親のタスクを置き換えない）
+  レビューに出す。子は親のタスクを置き換えない（タスク化した後の要望は再評価しないので、置き換えの仕組みは無い）
 
 ### 状態と完了の判定
 
@@ -840,7 +840,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | Preflight（開始・評価対象の固定・タスク化） | `core/preflight/service.ts`（`PreflightService`） |
 | 要望の親子（親にできるもの・関係の操作のロック・アーカイブの拒否・親子の問題・子の表示順の保存の検証） | `core/hierarchy.ts`（判定と兄弟の並び `orderSiblings` は `shared/hierarchy.ts`） |
 | Preflight の分割（子の案の検証・子の本文・案の版・採用） | `core/preflight/split.ts`・`core/preflight/service.ts` の `adopt` |
-| 個々の規則（対応済・置き換え・作業先とブランチ・評価対象の比べ方） | `core/requestStatus.ts`・`core/supersede.ts`・`core/workTargets.ts`・`shared/preflightInput.ts` |
+| 個々の規則（対応済・作業先とブランチ・評価対象の比べ方・タスク化した後の再評価） | `core/requestStatus.ts`・`core/workTargets.ts`・`shared/preflightInput.ts`・`shared/preflightClosed.ts` |
 | サーバと画面の両方で使う判定・表示名 | `shared/` |
 | エラーから CLI の終了コード・標準エラーと API の状態・code への対応 | `core/errorOutcome.ts` の `errorOutcome`（CLI は `cliExit`、API の各アプリは `apiError` で写す。契約は `test/errorContract.test.ts`） |
 | 画面の API の失敗の扱い（rev の競合・評価対象の変更・無い） | `web/lib/api.ts` の `failureOf` |
@@ -862,7 +862,7 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 完了の記録（契機・写す条件・ID の振り方・読み方・壊れた値）と参照先の取得 | `features/records/shared/completionRecord.ts`（保存は `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`、参照先のコミットの取得は `features/records/core/completionRefs.ts`） |
 | 見直しが必要（候補）の診断（基点・理由の種類・関係の範囲）と前提の変更の記録 | `features/records/shared/reviewCandidate.ts`（読み取り・集計は `features/records/core/reviewCandidates.ts`、前提の変更の保存は `core/requestOps.ts` の `recordPremise`） |
 | リリースノート（材料の規則・保存・出力・要約の生成・要望の一括完了） | `features/releaseNotes/core/`（`material.ts`・`store.ts`・`service.ts`・`generate.ts`・`completeRequests.ts`） |
-| タスクの関係（`depends_on`・`supersedes` だけ。同じ要望の中。Preflight のタスク化だけが張る） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
+| タスクの関係（`depends_on` だけ。同じ要望の中。Preflight のタスク化だけが張る。以前の `supersedes` は読み書きの互換だけ） | `shared/types.ts` の `RELATION_TYPES`・`core/preflight/service.ts` の `materialize` |
 | プロジェクトを跨ぐ serve（登録の一覧・登録世代・文脈の開閉） | `core/projectRegistry.ts`（API は `server/api/projectsRoutes.ts`） |
 | Preflight を通さずにタスクを作る道の案内（付かないものの言い方・失敗と取消の見分け。取消は `PREFLIGHT_CANCELLED` で残す） | `shared/directTask.ts`（CLI の案内文は `cli/output.ts` の `directTaskHint`） |
 | マイルストーンの表示の順（ID のバージョンの降順。CLI・API・画面の一覧と選ぶ欄。project.yaml の順は変えない） | `shared/milestoneOrder.ts` |
@@ -1208,7 +1208,7 @@ API（`server/api`）・ページ（`web`）は、どれも `packages/observer/s
   - 限界: `unknown` の run は自動では中断にしない（コンテナの起動し直しで残った run もこちら。名前空間が変わるので、前のプロセスが
     終わったと確かめられない）。動いていないことを人が確かめて中断にする操作が要る。Linux 以外は起動の時刻を見られないので、
     プロセスが無いときだけ `dead` になる
-- ファイル契約なので、Mock エンジンでも人手で書いても同じ取り込み処理になる。案の `supersedes` のうち同じ要望に無いタスクはタスク化のときに捨てる
+- ファイル契約なので、Mock エンジンでも人手で書いても同じ取り込み処理になる
 - テストは偽の app-server で、マウントの引数・指示文・記録・根拠の扱いを確かめる。本物の Codex が実際にどこまで読むか、
   読むだけのマウントへの書き込みが拒まれることは、偽の app-server では確かめられない
 
@@ -1233,7 +1233,12 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   `{ error, code, inputMatch }` を出して終了コード 1）。断るときはタスク・関係・アーカイブ・ブランチの割り当て・`materialization` を書かない。
   途中で失敗したタスク化のやり直しも同じ規則で、変わっていれば断る（評価した時点の内容に戻せば、作ったタスクを作り直さずに続ける。
   自動で巻き戻しはしない）。タスク化済みの run・過去の run・評価・案・画面資料はそのまま読める
-- **再評価**: いつもどおり前回の結果とメモを引き継ぎ、前回の評価のあとでタイトル・本文が変わっていれば、`carryover.md` に
+- **タスク化した後は再評価しない**（`shared/preflightClosed.ts` の `preflightClosedReason` の1か所。CLI・API・画面が同じ判定）: 進行中・対応済・完了済の
+  要望と、その要望自身をタスク化・分割の採用をした記録（run の `materialization.created`・以前の `materialized`・`adoption.created`。予約だけは数えない）が
+  ある要望では、通常の実行と手元の評価の準備を始めない（`PreflightClosedError`。API は 409 `code: "preflight_closed"`、CLI は終了コード 1。開始に付ける
+  メモも書く前に断る）。判定は Preflight の開始・タスク化・分割の採用が共有する要望ごとのロック（`.preflight-<要望ID>.lock`）の中でディスクの最新の値から
+  行うので、別のプロセスのタスク化と重ねて run を作らない（分割の採用は Preflight → 関係のロックの順に取る）。変えたいことは新しい要望（続きなら子）にする
+- **再評価**（タスク化の前だけ）: いつもどおり前回の結果とメモを引き継ぎ、前回の評価のあとでタイトル・本文が変わっていれば、`carryover.md` に
   「前回の評価のあとで変わった要望」として前回の時点の内容を書く。評価の基準は今の要望で、前回の評価・案・メモとの食い違いは
   確認事項に入れさせる。白紙の再評価や履歴の消去は作らない（前回を引き継がせたくなければ、メモでそう書く）
 - **要求の出典と確認**: 要望の根拠の記録（`requirementSources`）と確認事項への回答（`clarifyAnswers`）も `input.requirement` に固定し、
@@ -1292,31 +1297,21 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   タスクは受け入れ基準と同じ、タスク案は元の値を書き戻す）
 - **評価の資料**: 上の「評価対象の固定」。タスクの AI レビューの材料にも、基準ごとの記録と状態を入れる（材料の hash に入る）
 
-### 置き換えられたタスク
+### 以前の置き換え（supersedes）の記録
 
-再評価でタスク化すると、新しい案が同じ要望の古いタスクを置き換える（`supersedes`）ことがある。
-タスクの状態は 未着手 / 作業中 / 完了 の3つのままにし、置き換えは関係として扱う（`packages/tasks/src/core/supersede.ts`）。
+タスク化した後の要望は再評価しない（上の「Preflight」）ので、新しい案が古いタスクを置き換える仕組み（置き換えの候補・タスク化と一緒のアーカイブ・
+印・着手の警告）は持たない。以前の版が書いた記録は消さず、読み書きの互換を保存の層だけに置く。
 
-- **タスク化で知らせる候補**: **採用した** 案の `supersedes` のうち、同じ要望にある未完了（未着手・作業中）のタスク。
-  不採用の案だけにあるもの・完了したタスク・無いタスクは候補にしない。
-- **アーカイブは選んだものだけ**（既定はどれも残す）。確定の時点で候補を読み直し、候補でない・rev が変わった
-  ものがあれば何も変えずに失敗する（もう一度確認してもらう）。作業中のタスクをアーカイブしても、作業そのものは止まらない。
-- **順序と再試行**: 新しいタスクと関係を保存してからアーカイブする（古いタスクを先に外さない）。途中経過は
-  `run.json` の `materialization`（作った案とタスク、選んだもの、アーカイブ済み）に残し、途中で失敗したら同じ
-  タスク化をもう一度行えば、作った案は作り直さず、アーカイブも重ねずに続きから終える。
-- **印**: 保存済みのタスクの `relations` にある `supersedes` から導く。案に書かれた置き換えは、その案から作ったタスクの
-  関係として残る（今あるタスクを指すものだけ）。
-- **進捗**: 残したタスクは進捗に数える（完了しないと要望の全タスクは終わらない）。アーカイブしたものだけが外れる。
-- タスク化の結果は `{ tasks, archived, kept }`（作ったタスク、アーカイブしたもの、置き換えられるが残したもの）。
-  以前は作ったタスクの配列だった（CLI の `accept --json` と API の POST materialize。利用者は `.tasks` を読む）。
-- **着手の警告**: 置き換えられたタスクが作業中に変わったとき（CLI の `move` / `set`、API の PATCH、画面のボードと詳細）、
-  操作は行ったうえで `warnings`（code・対象・置き換えた側・文言）を返す。作業中のままの再指定では出さない。
-- API: `GET .../preflight/:run/materialize` で確認（何も変えない）、`POST` に `{archive: [{id, rev}]}`。
+- タスクの `relations` の `supersedes`: 読むときは数えるだけ（`Task.legacyRelations`）で、関係・表示・API に出さない。数えたタスクは、関係のない
+  更新ではファイルの `relations` を元の値のまま書き戻す（`core/store/normalize.ts` の `taskKeepRaw`）
+- 案の `supersedes`: 読まない。案を直しても、ファイルの値は元のまま残す（`updateDraft`）
+- `run.json` の `materialization.archive`・`archived`: 読めるが使わない。途中のタスク化のやり直しでは、作った案とタスクの対応と割り当てるブランチだけを
+  使い、アーカイブの指定の残りは実行しない
+- 以前のアーカイブの指定（CLI の `accept --archive-superseded`・API の POST materialize の `archive`）は、何も変える前に断る（終了コード 1・400 `archive_removed`）
 
 ### アーカイブしたタスク
 
-タスクは消さずにアーカイブする（`tasks/<ID>.md` を `tasks/.archive/<ID>.md` へ移す。`p3 archive`・API の DELETE・タスク化の
-`--archive-superseded`）。タスクの題・本文は今も `set`・画面で直せるが、要らなくなった・やり方を大きく変えるときは、アーカイブして
+タスクは消さずにアーカイブする（`tasks/<ID>.md` を `tasks/.archive/<ID>.md` へ移す。`p3 archive`・API の DELETE）。タスクの題・本文は今も `set`・画面で直せるが、要らなくなった・やり方を大きく変えるときは、アーカイブして
 新しいタスクを作る（経緯がファイルに残る）。新しいステータスは足さない（状態は 未着手 / 作業中 / 完了 のまま）。
 
 アーカイブは専用の読み取り（`core/store/archivedTasks.ts`）だけで見せ、通常のタスクのコレクション・索引・変更通知には入れない。
@@ -1335,7 +1330,6 @@ API の PATCH。`rev` で楽観ロック）。書き換えても状態・既存�
   「読めない」（500 `archive_unreadable`・終了コード 1）を分ける。読める範囲は明示した要望の中だけ（要望 ID・タスク ID の形を確かめる）
 - 状態・最終更新はアーカイブする前の最後の値。アーカイブした日時・理由は記録していないので作らない
 - 復元・編集・アーカイブした要望の中のタスクの閲覧はしない。過去に保存したレビュー・リリースノート・git の履歴は消さない
-  要望の詳細と タスクの GET は印 `superseded` を返す。
 
 ### 手戻りの履歴と保存のロック
 

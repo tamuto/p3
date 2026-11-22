@@ -81,7 +81,7 @@ describe("タスク案の題の下書き", () => {
 describe("タスク案の題の保存（期待値の比べ）", () => {
   async function setup() {
     const p = await makeProject();
-    const req = await newRequest(p.ctx, { title: "Add export", body: "- CSV を書き出す\n- 画面にボタンを置く" });
+    const req = await newRequest(p.ctx, { status: "draft", title: "Add export", body: "- CSV を書き出す\n- 画面にボタンを置く" });
     const { id } = await p.ctx.preflight.start(req.id, { engine: "mock" });
     await p.ctx.preflight.wait(req.id, id);
     const api = apiRoutes(p.ctx);
