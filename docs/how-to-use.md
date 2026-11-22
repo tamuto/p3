@@ -1299,7 +1299,7 @@ Clipboard API が無い）ときはそう出るので、ID をクリックして
 | observer | `p3 observer list / show / add / update`・`p3 observer prep …` | 観測の定義と準備。tasks と同じ方法で操作するプロジェクトを決め（`--project` / `--dir` も使える）、そのデータのフォルダの `observer/` だけを読み書きする |
 
 ```bash
-p3 observer status          # p3-observer 0.14.0 / state ready
+p3 observer status          # p3-observer 0.15.0 / state ready
 p3 whoami                   # 同じ p3 で tasks も使える
 ```
 
