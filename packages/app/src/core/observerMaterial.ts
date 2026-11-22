@@ -1,7 +1,7 @@
 import { setObservationResultSource, setObservationSource } from "@infodb/p3-tasks/core/preflight/observations.ts";
 import { DefinitionStore, PreparationStore } from "@infodb/p3-observer/core/definitionStore.ts";
 import { ResultStore } from "@infodb/p3-observer/core/resultStore.ts";
-import { CANDIDATE_LIMITS, type CandidateMaterial } from "@infodb/p3-observer/shared/candidates.ts";
+import { CANDIDATE_LIMITS, candidateObservations, type CandidateMaterial } from "@infodb/p3-observer/shared/candidates.ts";
 import type { P3Context } from "@infodb/p3-tasks/core/context.ts";
 import { acceptanceStatus, evidenceBasisOf } from "@infodb/p3-tasks/features/requirements/shared/acceptance.ts";
 
@@ -24,7 +24,7 @@ export function installObservationSource() {
 
 /**
  * 観測の候補の材料（docs/architecture.md「p3-observer」の観測の候補と表示の速さ）。tasks の記録から判断に要る項目だけを、上限まで抜き出す:
- * 人が確かめる品質基準・済みになったが証拠が申告のみか未検証の受け入れ基準・最近の完了・対応済の要望・今ある観測
+ * 人が確かめる品質基準・済みになったが証拠が申告のみか未検証の受け入れ基準・最近の完了・対応済の要望・今ある観測（説明と今の手順の要点も）
  */
 export async function candidateMaterial(ctx: P3Context): Promise<CandidateMaterial> {
   const q = ctx.ws.project.quality;
@@ -44,7 +44,6 @@ export async function candidateMaterial(ctx: P3Context): Promise<CandidateMateri
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .map((r) => ({ id: r.id, title: r.title, status: r.status, updatedAt: r.updatedAt }));
   const { definitions } = await new DefinitionStore(ctx.ws.dataDir).list();
-  const observations = definitions.filter((d) => !d.ended).map((d) => ({ id: d.id, title: d.title, ...(d.expected ? { expected: d.expected } : {}) }));
   const L = CANDIDATE_LIMITS;
-  return { quality: quality.slice(0, L.quality), criteria: criteria.slice(0, L.criteria), requests: requests.slice(0, L.requests), observations: observations.slice(0, L.observations) };
+  return { quality: quality.slice(0, L.quality), criteria: criteria.slice(0, L.criteria), requests: requests.slice(0, L.requests), observations: candidateObservations(definitions.filter((d) => !d.ended)) };
 }
