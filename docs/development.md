@@ -272,6 +272,9 @@ tasks・observer・アプリの画面は、`packages/shared/src/web/ui.tsx` の�
   `-strong`（強い文字）・`-soft`（面）・`-muted`（濃い面）・`-line`（境界）・`-solid`（塗り・印）。テーマで変えない暗い面は `inverse`
 - 素の `<button>` は書かない。普通のボタンは `Button`、小さな記号のボタン（外す ×・開閉 ▸）は `IconButton`、中身で見せる押せる領域（行・印・
   サムネイル・メニューの項目）は `PlainButton`、1つを選ぶ切り替えの並びは `Segmented`、タブは `Tabs`・`TabPanel`。押せる部品はフォーカスの枠（`FOCUS`）を持つ
+- `test/uiStyle.test.ts`（`pnpm -s check` の中）が、tasks・observer・アプリの `src` の ts・tsx・css で、素の `<button>`・パレットの色名（全ての接頭辞と `dark:`）・
+  色名を組み立てるクラス（`bg-${tone}-500`）・固定の色の値（`rgb()`・`"#fff"`・`bg-[#…]`）を見つけてファイルと行を出して落とす。shared の `web` と生成物は対象の外。
+  どうしても残すものは、そのファイルの `ALLOWED` に「ファイル・その行の文字列・理由」を足す（理由の無い項目と、もう当てはまらない項目も落ちる）
 
 | ボタン（`variant`） | 使うところ |
 | --- | --- |
