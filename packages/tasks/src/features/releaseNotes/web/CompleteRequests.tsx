@@ -50,12 +50,12 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
   }
 
   return (
-    <section aria-labelledby="rn-complete" className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+    <section aria-labelledby="rn-complete" className="space-y-3 rounded-lg border border-line p-3">
       <h4 id="rn-complete" className="font-semibold">
         要望の一括完了
       </h4>
       {!plan.ready ? (
-        <div className="space-y-1 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div className="space-y-1 rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong">
           <p>一括で完了済にできません。見送り以外の全要望が、全タスク完了の対応済か完了済になっている必要があります。</p>
           <ul className="space-y-0.5">
             {plan.blockers.map((b) => (
@@ -71,9 +71,9 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
           </ul>
         </div>
       ) : n === 0 ? (
-        <p className="text-base text-slate-500 dark:text-slate-400">完了済にする要望はありません</p>
+        <p className="text-base text-fg-4">完了済にする要望はありません</p>
       ) : (
-        <p className="text-base text-slate-600 dark:text-slate-300">対応済の要望 {n} 件を完了済にできます（タスクの「済み」は変えません）。</p>
+        <p className="text-base text-fg-3">対応済の要望 {n} 件を完了済にできます（タスクの「済み」は変えません）。</p>
       )}
 
       {/* 確かめている間も出しておく（キャンセルでフォーカスを戻す先） */}
@@ -92,14 +92,14 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
       </Button>
 
       {confirming && (
-        <div role="group" aria-labelledby="rn-complete-confirm" className="space-y-2 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-base dark:border-indigo-900 dark:bg-indigo-950/50">
+        <div role="group" aria-labelledby="rn-complete-confirm" className="space-y-2 rounded-md border border-accent-line bg-accent-soft p-3 text-base">
           <p id="rn-complete-confirm" className="font-semibold break-words">
             「{title}」の要望 {confirming.targets.length} 件を完了済にしますか？
           </p>
           <ul className="list-disc space-y-0.5 pl-5">
             {confirming.targets.map((t) => (
               <li key={t.id} className="break-words">
-                {t.title} <span className="font-mono text-slate-500">{t.id}</span>
+                {t.title} <span className="font-mono text-fg-4">{t.id}</span>
               </li>
             ))}
           </ul>
@@ -134,7 +134,7 @@ function OutcomeView({ outcome }: { outcome: Outcome }) {
       role={ok ? "status" : "alert"}
       className={cx(
         "space-y-1 rounded-md px-3 py-2 text-base break-words",
-        ok ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-rose-50 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
+        ok ? "bg-ok-soft text-ok-strong" : "bg-danger-soft text-danger-strong",
       )}
     >
       <p>{ok ? (r.completed.length ? `${r.completed.length} 件を完了済にしました` : "完了済にする要望はありませんでした（何も変えていません）") : "途中で止まりました（完了済にした分は戻していません）"}</p>

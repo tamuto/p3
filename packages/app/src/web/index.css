@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* 意味の色（機能はパレットの色名を書かない） */
+@import "../../../shared/src/web/colors.css";
 /* 機能（tasks・observer）のページと部品・共通の部品（shared）のクラスも拾う（画面のビルドはアプリのパッケージで行う） */
 @source "../../../tasks/src";
 @source "../../../observer/src";
@@ -14,11 +16,11 @@
 
 @layer base {
   html {
-    @apply bg-slate-50 text-base text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-200;
+    @apply bg-page text-base text-fg antialiased;
   }
 }
 
-/* 推定（日付未設定）のバー */
+/* 推定（日付未設定）のバー。塗りの色に重ねる半透明の白の斜線で、テーマで変えない（意味の色ではない） */
 .bar-inferred {
   background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 0.35) 6px 12px);
 }

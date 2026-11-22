@@ -76,5 +76,5 @@ export function Boot() {
         </Button>
       </div>
     );
-  return <div className="p-8 text-slate-500">Loading…</div>;
+  return <div className="p-8 text-fg-4">Loading…</div>;
 }

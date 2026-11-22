@@ -1,0 +1,76 @@
+/*
+ * 画面の意味の色（docs/development.md「画面の共通部品」）。パレットの色名を書くのは shared だけで、tasks・observer・アプリは
+ * ここの名前（text-fg-4・bg-surface・border-line・text-warn など）を使う。明・暗は light-dark() で1つに持つので dark: を書かない。
+ *   fg 文字（強い→淡い）/ page・surface 面 / line 境界・リング / accent 操作・選択 / danger 失敗・消す / warn 注意 / ok 済み・成功 /
+ *   info 情報 / special アーカイブなど別扱い。各意味は 文字・-strong 強い文字・-soft 面・-muted 濃い面・-line 境界・-solid 塗り
+ */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-fg-strong: light-dark(var(--color-slate-900), var(--color-slate-100));
+  --color-fg: light-dark(var(--color-slate-800), var(--color-slate-200));
+  --color-fg-2: light-dark(var(--color-slate-700), var(--color-slate-300));
+  --color-fg-3: light-dark(var(--color-slate-600), var(--color-slate-400));
+  --color-fg-4: light-dark(var(--color-slate-500), var(--color-slate-400));
+  --color-fg-5: light-dark(var(--color-slate-400), var(--color-slate-500));
+  --color-page: light-dark(var(--color-slate-50), var(--color-slate-950));
+  --color-surface: light-dark(var(--color-white), var(--color-slate-900));
+  --color-surface-2: light-dark(var(--color-slate-100), var(--color-slate-800));
+  --color-surface-3: light-dark(var(--color-slate-200), var(--color-slate-700));
+  --color-line-soft: light-dark(var(--color-slate-100), var(--color-slate-800));
+  --color-line: light-dark(var(--color-slate-200), var(--color-slate-800));
+  --color-line-strong: light-dark(var(--color-slate-300), var(--color-slate-700));
+  /* テーマで変えない暗い面（ツールチップ・実行ログ・幕）とその上の文字 */
+  --color-inverse: var(--color-slate-900);
+  --color-inverse-fg: var(--color-slate-100);
+  --color-inverse-fg-2: var(--color-slate-400);
+  --color-inverse-info: var(--color-sky-300);
+  --color-inverse-danger: var(--color-rose-400);
+
+  --color-accent: light-dark(var(--color-indigo-700), var(--color-indigo-300));
+  --color-accent-strong: light-dark(var(--color-indigo-800), var(--color-indigo-200));
+  --color-accent-soft: light-dark(var(--color-indigo-50), var(--color-indigo-950));
+  --color-accent-muted: light-dark(var(--color-indigo-100), var(--color-indigo-900));
+  --color-accent-line: light-dark(var(--color-indigo-200), var(--color-indigo-900));
+  --color-accent-solid: light-dark(var(--color-indigo-600), var(--color-indigo-500));
+
+  --color-danger: light-dark(var(--color-rose-700), var(--color-rose-300));
+  --color-danger-strong: light-dark(var(--color-rose-800), var(--color-rose-200));
+  --color-danger-soft: light-dark(var(--color-rose-50), var(--color-rose-950));
+  --color-danger-muted: light-dark(var(--color-rose-100), var(--color-rose-900));
+  --color-danger-line: light-dark(var(--color-rose-200), var(--color-rose-900));
+  --color-danger-solid: light-dark(var(--color-rose-600), var(--color-rose-500));
+
+  --color-warn: light-dark(var(--color-amber-700), var(--color-amber-300));
+  --color-warn-strong: light-dark(var(--color-amber-800), var(--color-amber-200));
+  --color-warn-soft: light-dark(var(--color-amber-50), var(--color-amber-950));
+  --color-warn-muted: light-dark(var(--color-amber-100), var(--color-amber-900));
+  --color-warn-line: light-dark(var(--color-amber-200), var(--color-amber-900));
+  --color-warn-solid: light-dark(var(--color-amber-500), var(--color-amber-500));
+
+  --color-ok: light-dark(var(--color-emerald-700), var(--color-emerald-300));
+  --color-ok-strong: light-dark(var(--color-emerald-800), var(--color-emerald-200));
+  --color-ok-soft: light-dark(var(--color-emerald-50), var(--color-emerald-950));
+  --color-ok-muted: light-dark(var(--color-emerald-100), var(--color-emerald-900));
+  --color-ok-line: light-dark(var(--color-emerald-200), var(--color-emerald-900));
+  --color-ok-solid: light-dark(var(--color-emerald-500), var(--color-emerald-500));
+
+  --color-info: light-dark(var(--color-sky-700), var(--color-sky-300));
+  --color-info-strong: light-dark(var(--color-sky-800), var(--color-sky-200));
+  --color-info-soft: light-dark(var(--color-sky-50), var(--color-sky-950));
+  --color-info-muted: light-dark(var(--color-sky-100), var(--color-sky-900));
+  --color-info-line: light-dark(var(--color-sky-200), var(--color-sky-900));
+  --color-info-solid: light-dark(var(--color-sky-500), var(--color-sky-500));
+
+  --color-special: light-dark(var(--color-violet-700), var(--color-violet-300));
+  --color-special-strong: light-dark(var(--color-violet-800), var(--color-violet-200));
+  --color-special-soft: light-dark(var(--color-violet-50), var(--color-violet-950));
+  --color-special-muted: light-dark(var(--color-violet-100), var(--color-violet-900));
+  --color-special-line: light-dark(var(--color-violet-200), var(--color-violet-900));
+  --color-special-solid: light-dark(var(--color-violet-500), var(--color-violet-500));
+}

@@ -38,7 +38,7 @@ export function ImprovementButton({ source, label = "改善要望の案を確認
           setOpen(false);
           opener.current?.focus();
         }}
-        className="m-auto max-h-[90vh] w-[min(calc(100vw-1rem),760px)] max-w-none rounded-lg bg-white p-0 text-slate-900 backdrop:bg-black/60 dark:bg-slate-900 dark:text-slate-100"
+        className="m-auto max-h-[90vh] w-[min(calc(100vw-1rem),760px)] max-w-none rounded-lg bg-surface p-0 text-fg-strong backdrop:bg-black/60"
       >
         {open && <ImprovementForm source={source} onClose={() => dialog.current?.close()} />}
       </dialog>
@@ -106,7 +106,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
   const closed = registered.filter(([, r]) => r.status === "done" || r.status === "rejected");
   return (
     <div className="flex max-h-[90vh] flex-col">
-      <div className="flex items-start gap-3 border-b border-slate-200 p-3 sm:p-4 dark:border-slate-800">
+      <div className="flex items-start gap-3 border-b border-line p-3 sm:p-4">
         <h2 id="improvement-title" className="min-w-0 flex-1 text-xl font-semibold">
           品質の診断 → 改善要望の原稿の確認・編集 → 明示の登録
         </h2>
@@ -116,12 +116,12 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
       </div>
       <div className="min-h-0 space-y-4 overflow-y-auto p-3 sm:p-4">
         {!p ? (
-          <p className="text-slate-500">診断しています…</p>
+          <p className="text-fg-4">診断しています…</p>
         ) : (
           <>
             <section aria-label="品質の不足" className="space-y-1">
               <p className="font-medium">不足（選んだものだけを原稿にします。除外は既定で選びません）</p>
-              {!p.findings.length && <p className="text-base text-slate-500">不足はありません。</p>}
+              {!p.findings.length && <p className="text-base text-fg-4">不足はありません。</p>}
               <ul className="space-y-1">
                 {p.findings.map((f) => (
                   <li key={f.key} className="flex min-w-0 items-start gap-2 text-base">
@@ -129,7 +129,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
                     <span className="min-w-0 break-words">
                       <span className="font-mono">{f.quality ?? "設定"}</span> {KIND[f.kind]}（{f.target}・版 {f.version || "なし"}）: {f.reason}
                       {p.registered[f.key] && (
-                        <span className="block text-slate-500">
+                        <span className="block text-fg-4">
                           登録済み: {p.registered[f.key].request}（{p.registered[f.key].title ?? ""}・{p.registered[f.key].status ?? "?"}）
                         </span>
                       )}
@@ -138,7 +138,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
                 ))}
               </ul>
               {p.notes.map((n) => (
-                <p key={n} className="text-base text-slate-500">
+                <p key={n} className="text-base text-fg-4">
                   ※ {n}
                 </p>
               ))}
@@ -151,7 +151,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
                 <Field label="要望の原稿">
                   <textarea rows={12} className={`${inputCls} font-mono text-base`} value={body} disabled={busy} onChange={(e) => (setBody(e.target.value), setEdited(true))} />
                 </Field>
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <p className="rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong">
                   表示・編集だけでは要望を作りません。登録の前に診断の版を照らし、変わっていれば確かめ直してもらいます。P3 は検査を実行していません。
                 </p>
                 {closed.length > 0 && (
@@ -165,7 +165,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
           </>
         )}
         {msg && (
-          <p role={msg.ok ? "status" : "alert"} className={cx("text-base break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
+          <p role={msg.ok ? "status" : "alert"} className={cx("text-base break-words", msg.ok ? "text-ok" : "text-danger")}>
             {msg.text}
             {msg.request && (
               <Link to="/requests/$requestId" params={{ requestId: msg.request }} className="ml-2 underline">
@@ -175,7 +175,7 @@ function ImprovementForm({ source, onClose }: { source: ImprovementSource; onClo
           </p>
         )}
       </div>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 p-3 sm:p-4 dark:border-slate-800">
+      <div className="flex flex-wrap justify-end gap-2 border-t border-line p-3 sm:p-4">
         <Button onClick={onClose}>閉じる（登録しない）</Button>
         <Button variant="primary" disabled={busy || !p || !picked.length || !title.trim()} onClick={() => void register()}>
           {busy ? "登録中…" : "要望を登録"}

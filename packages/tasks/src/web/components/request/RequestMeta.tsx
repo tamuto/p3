@@ -109,7 +109,7 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="request-tags" className="text-base font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="request-tags" className="text-base font-medium text-fg-2">
           タグ（外部 ID や分類。値ごとに Enter で足し、× で外す。すぐ保存）
         </label>
         <TagInput id="request-tags" tags={tagsD.value} onChange={(next) => void changeTags(next)} disabled={tagsBusy || data.gone} text={tagText} onText={setTagText} />
@@ -123,17 +123,17 @@ export function RequestMeta({ ctx, data, drafts }: { ctx: AppCtx; data: RequestD
         onDiscard={() => (setTagsD((d) => discardDraft(d)), setError(null))}
       />
       {data.issue && (
-        <p className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <p className="flex flex-wrap items-center gap-3 rounded-md bg-warn-soft px-3 py-2 text-warn-strong">
           {data.issue}
           <Button onClick={() => void save({ status: "active" })}>進行中に戻す</Button>
         </p>
       )}
       {request.status === "resolved" && !data.issue && (
-        <p className="text-base text-sky-700 dark:text-sky-300">
+        <p className="text-base text-info">
           作業は全部終わっています。成果物を確かめたら、ステータスを「完了済」にしてください。
         </p>
       )}
-      {error && <p className="text-rose-600">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
     </section>
   );
 }
@@ -144,12 +144,12 @@ function Branches({ request }: { request: Request }) {
   if (!branches.length) return null;
   return (
     <div className="space-y-1">
-      <p className="text-base font-medium text-slate-700 dark:text-slate-300">ブランチ（作業先ごと）</p>
+      <p className="text-base font-medium text-fg-2">ブランチ（作業先ごと）</p>
       <ul className="space-y-0.5 text-base">
         {branches.map(([name, w]) => (
           <li key={name} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium break-all">{name}</span>
-            <code className="font-mono break-all text-slate-600 dark:text-slate-300">{w.branch}</code>
+            <code className="font-mono break-all text-fg-3">{w.branch}</code>
           </li>
         ))}
       </ul>

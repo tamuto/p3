@@ -31,7 +31,7 @@ function PreparationList() {
             <Empty>まだ準備がありません。</Empty>
           ) : (
             <table className="w-full text-left">
-              <thead className="text-slate-600 dark:text-slate-400">
+              <thead className="text-fg-3">
                 <tr>
                   <th className="py-1 pr-3 font-normal">名前</th>
                   <th className="py-1 pr-3 font-normal">中身</th>
@@ -41,7 +41,7 @@ function PreparationList() {
               </thead>
               <tbody>
                 {load.value.items.map((p) => (
-                  <tr key={p.id} className="border-t border-slate-200 dark:border-slate-800">
+                  <tr key={p.id} className="border-t border-line">
                     <td className="py-2 pr-3">
                       <Link to="/observer/preparations/$pid" params={{ pid: p.id }} className={linkCls}>
                         {p.name}

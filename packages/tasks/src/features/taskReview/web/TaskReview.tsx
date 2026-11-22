@@ -174,19 +174,19 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
 
   return (
     <div className="space-y-4">
-      <p className="text-base text-slate-500">
+      <p className="text-base text-fg-4">
         要望・タスクの基準と成果物（固定したコミットの差分と前後のコード）を、作業したのとは別の Codex のスレッドが読むだけで照らし合わせます。
         作業した AI の能力や成績を採点するものではありません。結果でタスクの状態や「済み」は変わりません（済みは人が決めます）。
       </p>
-      {loadError && <p role="alert" className="text-base text-rose-600">履歴を読めません: {loadError}</p>}
+      {loadError && <Alert>履歴を読めません: {loadError}</Alert>}
       {msg && (
-        <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "text-base text-emerald-700 dark:text-emerald-400" : "text-base break-words text-rose-600"}>
+        <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "text-base text-ok" : "text-base break-words text-danger"}>
           {msg.text}
         </p>
       )}
 
       {/* 履歴 */}
-      {items && items.length === 0 && <p className="text-base text-slate-500 dark:text-slate-400">履歴: まだ実行していません</p>}
+      {items && items.length === 0 && <p className="text-base text-fg-4">履歴: まだ実行していません</p>}
       {items && items.length > 0 && (
         <Field label="レビューの履歴">
           <select className={inputCls} value={shownId ?? ""} onChange={(e) => setSelected(e.target.value)}>
@@ -206,7 +206,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
         </Field>
       )}
       {items?.some((x) => x.state === "broken") && (
-        <ul className="text-base text-rose-600">
+        <ul className="text-base text-danger">
           {items.filter((x): x is Extract<TaskReviewListItem, { state: "broken" }> => x.state === "broken").map((x) => (
             <li key={x.id} className="break-words">
               読めない記録 {x.id}: {x.error}
@@ -218,11 +218,11 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
 
       {/* 開始 */}
       {archived ? (
-        <p className="text-base text-slate-500">アーカイブしたタスクは新しいレビューを始められません（過去の履歴は読めます）。</p>
+        <p className="text-base text-fg-4">アーカイブしたタスクは新しいレビューを始められません（過去の履歴は読めます）。</p>
       ) : task.status !== "done" ? (
-        <p className="text-base text-slate-500">レビューは完了したタスクだけ始められます。</p>
+        <p className="text-base text-fg-4">レビューは完了したタスクだけ始められます。</p>
       ) : (
-        <section aria-label="レビューを始める" className="space-y-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-800/50">
+        <section aria-label="レビューを始める" className="space-y-3 rounded-lg bg-surface-2 p-3">
           <h4 className="text-lg font-semibold">新しいレビュー</h4>
           <Field label="比較する対象（1行に1つ。空なら成果物のコミット）" hint="<参照先>:<コミット>[,<コミット>] か <参照先>:<base>..<head>。PR の URL は中身を取りに行かないので、取得済みの base..head を書きます">
             <textarea rows={2} className={`${inputCls} font-mono`} value={targetsText} disabled={busy} onChange={(e) => touch(setTargetsText)(e.target.value)} />
@@ -249,7 +249,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
               <span>Codex で実行する（このプロジェクトの Preflight の担当は agent です。Codex を使うことを明示します。ChatGPT のプランを使います）</span>
             </label>
           )}
-          {unsaved && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存してから材料を確かめて始めてください（保存した内容でレビューします）</p>}
+          {unsaved && <p className="text-base text-warn-strong">保存していない入力があります。保存してから材料を確かめて始めてください（保存した内容でレビューします）</p>}
           <Button variant="primary" disabled={busy || !checked || unsaved || (checked.engineRequired && !consent)} onClick={() => void start()}>
             新しい Codex のスレッドでレビューを始める
           </Button>
@@ -262,13 +262,13 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
 function PreviewView({ p }: { p: TaskReviewPreview }) {
   return (
     <div className="space-y-2 text-base">
-      <p className="font-mono text-sm break-all text-slate-500">材料の hash {p.hash}</p>
+      <p className="font-mono text-sm break-all text-fg-4">材料の hash {p.hash}</p>
       <div>
         <p className="font-medium">比較項目</p>
         <ul className="space-y-0.5">
           {p.items.map((i) => (
             <li key={i.id} className="flex min-w-0 gap-2">
-              <span className="shrink-0 font-mono text-slate-500">{i.id}</span>
+              <span className="shrink-0 font-mono text-fg-4">{i.id}</span>
               <span className="min-w-0 break-words">
                 {i.text}
                 {i.kind === "body" ? "（本文から）" : ""}
@@ -283,7 +283,7 @@ function PreviewView({ p }: { p: TaskReviewPreview }) {
           {p.targets.map((t) => (
             <li key={`${t.repo}-${t.kind}`} className="min-w-0 break-words">
               <span className="font-mono">{t.repo}</span> {t.kind === "range" ? `${t.range!.baseSpec}..${t.range!.headSpec}（merge-base ${t.range!.mergeBase.slice(0, 12)} から ${t.range!.head.slice(0, 12)}）` : t.commits.map((c) => c.sha.slice(0, 12)).join(", ")}・変更 {t.changes} 件
-              {t.commits.some((c) => c.otherTasks.length) && <span className="text-amber-700 dark:text-amber-400">（ほかのタスクのコミットを含みます）</span>}
+              {t.commits.some((c) => c.otherTasks.length) && <span className="text-warn">（ほかのタスクのコミットを含みます）</span>}
             </li>
           ))}
         </ul>
@@ -297,7 +297,7 @@ function PreviewView({ p }: { p: TaskReviewPreview }) {
         観点: {p.viewpoint.source === "file" ? `${p.viewpoint.repo}@${p.viewpoint.sha?.slice(0, 12)}:${p.viewpoint.path}` : p.viewpoint.source === "project" ? "プロジェクトの設定" : "既定だけ"}
       </p>
       {p.notes.length > 0 && (
-        <ul className="list-disc space-y-0.5 pl-5 text-amber-800 dark:text-amber-300">
+        <ul className="list-disc space-y-0.5 pl-5 text-warn-strong">
           {p.notes.map((n) => (
             <li key={`${n.code}-${n.target}`} className="break-words">
               {n.message}
@@ -320,35 +320,35 @@ function QualityView({ input, result, run }: { input: TaskReviewDetailView["inpu
     <section aria-label="品質" className="space-y-2">
       <h4 className="text-lg font-semibold">品質（最新のプロジェクトの品質基準への適合）</h4>
       {!q ? (
-        <p className="text-base text-slate-500 dark:text-slate-400">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
+        <p className="text-base text-fg-4">品質は評価していません（品質基準を材料に入れる前の記録です）。</p>
       ) : q.latest.state !== "set" ? (
-        <p className="text-base text-slate-500 dark:text-slate-400">品質は評価していません（品質基準が{q.latest.state === "unset" ? "未設定" : "読めません"}）。</p>
+        <p className="text-base text-fg-4">品質は評価していません（品質基準が{q.latest.state === "unset" ? "未設定" : "読めません"}）。</p>
       ) : (
         <>
-          <p className="text-base text-slate-500">
+          <p className="text-base text-fg-4">
             評価した版 <span className="font-mono">{q.latest.version}</span>・タスクに取り込んだ版 {q.imported.length ? [...new Set(q.imported.map((x) => x.version))].join(", ") : "なし"}
           </p>
           {q.diff.filter((d) => d.kind !== "edited").length > 0 && (
-            <p className="text-base break-words text-amber-800 dark:text-amber-300">
+            <p className="text-base break-words text-warn-strong">
               タスクに取り込んだ品質基準と最新の差: {q.diff.filter((d) => d.kind !== "edited").map((d) => `${d.kind}:${d.quality}`).join(", ")}（基準の改定による不足とコードの逸脱は理由で分けています）
             </p>
           )}
           {(result.quality ?? []).some((r) => r.verdict === "violated") && <Alert box>品質の指摘: {(result.quality ?? []).filter((r) => r.verdict === "violated").map((r) => r.standard).join(", ")} に違反があります（作業した側の証拠とは別の判定です）</Alert>}
           <ul className="space-y-2">
             {(result.quality ?? []).map((r) => (
-              <li key={r.standard} aria-label={`品質 ${r.standard}`} className="min-w-0 space-y-1 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+              <li key={r.standard} aria-label={`品質 ${r.standard}`} className="min-w-0 space-y-1 rounded-lg bg-surface p-3 ring-1 ring-line">
                 <p className="flex flex-wrap items-center gap-2">
                   <span className="font-mono font-semibold">{r.standard}</span>
                   <Badge tone={QUALITY_TONE[r.verdict]}>{QUALITY_VERDICT_LABELS[r.verdict]}</Badge>
                   <span className="min-w-0 break-words">{q.applies.find((x) => x.id === r.standard)?.text}</span>
                 </p>
                 <p className="break-words">{r.reason}</p>
-                {r.evidence.length > 0 && <p className="font-mono text-sm break-all text-slate-500">根拠: {r.evidence.join(", ")}</p>}
-                {r.unread && <p className="text-base break-words text-slate-500">確かめられなかった範囲: {r.unread}</p>}
+                {r.evidence.length > 0 && <p className="font-mono text-sm break-all text-fg-4">根拠: {r.evidence.join(", ")}</p>}
+                {r.unread && <p className="text-base break-words text-fg-4">確かめられなかった範囲: {r.unread}</p>}
               </li>
             ))}
             {q.exempt.map((e) => (
-              <li key={e.id} className="text-base text-slate-500">
+              <li key={e.id} className="text-base text-fg-4">
                 <span className="font-mono">{e.id}</span> 除外（{e.exempt?.reason}）
               </li>
             ))}
@@ -382,8 +382,8 @@ function RunView({
     <article aria-label={`レビュー ${run.id}`} className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-base">
         <Badge tone={run.status === "completed" ? "emerald" : run.status === "running" ? "indigo" : "rose"}>{STATUS_LABEL[run.status]}</Badge>
-        <span className="font-mono text-slate-500">{run.id}</span>
-        <span className="text-slate-500">
+        <span className="font-mono text-fg-4">{run.id}</span>
+        <span className="text-fg-4">
           {fmtTime(run.startedAt)}
           {run.finishedAt ? ` 〜 ${fmtTime(run.finishedAt)}` : ""}・{run.engine}
           {run.model ? ` ${run.model}` : ""}
@@ -393,7 +393,7 @@ function RunView({
       {run.status === "running" && (
         <div className="space-y-2 text-base">
           {run.log.slice(-3).map((l, i) => (
-            <p key={`${l.at}-${i}`} className="break-words text-slate-500">
+            <p key={`${l.at}-${i}`} className="break-words text-fg-4">
               {l.text.split("\n")[0]}
             </p>
           ))}
@@ -407,12 +407,12 @@ function RunView({
               </Button>
             )}
           </div>
-          {unknownOwner && <p className="text-amber-800 dark:text-amber-300">実行しているプロセスを確かめられません（{"reason" in detail.owner! ? detail.owner.reason : ""}）。</p>}
+          {unknownOwner && <p className="text-warn-strong">実行しているプロセスを確かめられません（{"reason" in detail.owner! ? detail.owner.reason : ""}）。</p>}
         </div>
       )}
-      {run.error && run.status !== "running" && <p className="text-base break-words text-rose-600">{run.error}</p>}
+      {run.error && run.status !== "running" && <p className="text-base break-words text-danger">{run.error}</p>}
       {changed && (
-        <div role="status" className="space-y-2 rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div role="status" className="space-y-2 rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong">
           <p>材料が変わりました（本文・基準・証拠・比較対象・観点のどれか）。この結果は実行したときの材料に対するものです。</p>
           {onRerun && (
             <Button className="text-base" onClick={onRerun}>
@@ -421,23 +421,23 @@ function RunView({
           )}
         </div>
       )}
-      {currentError && <p className="text-base break-words text-slate-500">今の材料を取り出せません: {currentError}</p>}
+      {currentError && <p className="text-base break-words text-fg-4">今の材料を取り出せません: {currentError}</p>}
       <details className="text-base">
-        <summary className="cursor-pointer text-slate-600 dark:text-slate-300">実行したときの固定した材料・観点・差分の範囲</summary>
+        <summary className="cursor-pointer text-fg-3">実行したときの固定した材料・観点・差分の範囲</summary>
         <div className="mt-2 space-y-1">
           {input.targets.map((t) => (
             <p key={`${t.repo}-${t.kind}`} className="font-mono break-all">
               {t.repo}: {t.kind === "range" ? `${t.range!.base}..${t.range!.head}（${t.range!.baseSpec}..${t.range!.headSpec}）` : t.commits.map((c) => c.sha).join(", ")}
             </p>
           ))}
-          {ranged && <p className="text-slate-500">範囲は実行したときの SHA に固定した評価です（ブランチがその後に進んでも、この結果は変わりません）。</p>}
+          {ranged && <p className="text-fg-4">範囲は実行したときの SHA に固定した評価です（ブランチがその後に進んでも、この結果は変わりません）。</p>}
           <p>
             観点: {input.viewpoint.source}
             {input.viewpoint.path ? `（${input.viewpoint.repo}@${input.viewpoint.sha}:${input.viewpoint.path}）` : ""}
           </p>
           <p>比較項目 {input.items.length} 件・ファイル {input.files.length} 件</p>
           {input.notes.map((n) => (
-            <p key={`${n.code}-${n.target}`} className="break-words text-amber-800 dark:text-amber-300">
+            <p key={`${n.code}-${n.target}`} className="break-words text-warn-strong">
               {n.message}
             </p>
           ))}
@@ -448,16 +448,16 @@ function RunView({
           <p className="break-words">{result.overall}</p>
           <ul className="space-y-2">
             {result.items.map((i) => (
-              <li key={i.item} aria-label={`判定 ${i.item}`} className="min-w-0 space-y-1 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+              <li key={i.item} aria-label={`判定 ${i.item}`} className="min-w-0 space-y-1 rounded-lg bg-surface p-3 ring-1 ring-line">
                 <p className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="font-mono font-semibold">{i.item}</span>
                   <Badge tone={VERDICT_TONE[i.verdict]}>{TASK_REVIEW_VERDICT_LABELS[i.verdict]}</Badge>
                   <span className="min-w-0 break-words">{text.get(i.item)}</span>
                 </p>
                 <p className="break-words">{i.reason}</p>
-                {i.evidence.length > 0 && <p className="font-mono text-sm break-all text-slate-500">根拠: {i.evidence.join(", ")}</p>}
+                {i.evidence.length > 0 && <p className="font-mono text-sm break-all text-fg-4">根拠: {i.evidence.join(", ")}</p>}
                 {i.gaps.map((g) => (
-                  <p key={g} className="text-base break-words text-rose-700 dark:text-rose-400">
+                  <p key={g} className="text-base break-words text-danger">
                     不足: {g}
                   </p>
                 ))}
@@ -471,12 +471,12 @@ function RunView({
                 {result.unplanned.map((u) => (
                   <li key={u.text} className="break-words">
                     {u.text}
-                    {u.evidence.length ? <span className="font-mono text-sm break-all text-slate-500">（{u.evidence.join(", ")}）</span> : null}
+                    {u.evidence.length ? <span className="font-mono text-sm break-all text-fg-4">（{u.evidence.join(", ")}）</span> : null}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-base text-slate-500 dark:text-slate-400">見つかっていません</p>
+              <p className="text-base text-fg-4">見つかっていません</p>
             )}
           </section>
           {result.checks.length > 0 && (
@@ -492,9 +492,9 @@ function RunView({
             </section>
           )}
           <QualityView input={input} result={result} run={run} />
-          <p className="text-base break-words text-slate-500">読めた範囲: {result.coverage.read}</p>
-          <p className="text-base break-words text-slate-500">読めなかった範囲: {result.coverage.unread || "なし"}</p>
-          <p className="text-base text-slate-500 dark:text-slate-400">{TASK_REVIEW_SCOPE}</p>
+          <p className="text-base break-words text-fg-4">読めた範囲: {result.coverage.read}</p>
+          <p className="text-base break-words text-fg-4">読めなかった範囲: {result.coverage.unread || "なし"}</p>
+          <p className="text-base text-fg-4">{TASK_REVIEW_SCOPE}</p>
         </div>
       )}
     </article>

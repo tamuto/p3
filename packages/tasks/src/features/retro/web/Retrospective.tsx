@@ -62,43 +62,43 @@ export function RetrospectivePanel({ ctx, data }: { ctx: AppCtx; data: RequestDa
 
   const target = view?.target;
   return (
-    <section aria-label="リスクの振り返り" className="min-w-0 space-y-3 rounded-lg p-4 ring-1 ring-slate-200 dark:ring-slate-800">
+    <section aria-label="リスクの振り返り" className="min-w-0 space-y-3 rounded-lg p-4 ring-1 ring-line">
       <div className="flex min-w-0 flex-wrap items-baseline gap-2">
         <h3 className="text-lg font-semibold">リスクの振り返り</h3>
         {view && target && (
-          <span className="text-base text-slate-600 dark:text-slate-400">
+          <span className="text-base text-fg-3">
             起きた {view.counts.occurred}件・起きなかった {view.counts.not_occurred}件・未確認 {view.counts.unchecked}件
           </span>
         )}
       </div>
-      <p className="text-base text-slate-600 dark:text-slate-400">
+      <p className="text-base text-fg-3">
         Preflight で心配したリスクが、実装の後に起きたかを人が確かめて残します。振り返る評価は上の Preflight の履歴で別の評価を開いても変わりません。
         {data.request.milestone ? ` マイルストーン ${data.request.milestone} のレビューの所見も根拠にできます。` : " マイルストーン未設定でも、タスクのレビューと手戻りを根拠にできます。"}
       </p>
       {error && (
-        <p role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
+        <Alert className="flex flex-wrap items-center gap-2">
           {error}
           <Button variant="secondary" onClick={() => void load()}>
             再読み込み
           </Button>
-        </p>
+        </Alert>
       )}
       {!view ? null : !target ? (
         view.candidates.length ? (
           <CandidatePicker rid={rid} data={data} view={view} onSaved={setView} onReload={load} />
         ) : (
-          <p className="text-base text-slate-600 dark:text-slate-400">振り返れる評価はありません: {view.none}</p>
+          <p className="text-base text-fg-3">振り返れる評価はありません: {view.none}</p>
         )
       ) : (
         <>
           <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-base">
-            <dt className="text-slate-500">確定した評価</dt>
+            <dt className="text-fg-4">確定した評価</dt>
             <dd className="min-w-0 break-all">
               <span className="font-mono">{target.run}</span>（{ADOPTION_KIND_LABEL[target.kind]}）
             </dd>
-            <dt className="text-slate-500">採用の根拠</dt>
+            <dt className="text-fg-4">採用の根拠</dt>
             <dd className="min-w-0 break-words">{basisText(target.basis, data)}</dd>
-            <dt className="text-slate-500">確定</dt>
+            <dt className="text-fg-4">確定</dt>
             <dd className="min-w-0 break-words">
               {target.by ?? "（主体なし）"}・{fmtTime(target.at)}
               {target.replaces ? `（${target.replaces} を訂正: ${target.reason ?? ""}）` : ""}
@@ -111,10 +111,10 @@ export function RetrospectivePanel({ ctx, data }: { ctx: AppCtx; data: RequestDa
               ))}
             </ul>
           ) : (
-            <p className="text-base text-slate-600 dark:text-slate-400">リスクなし（確定した評価にリスクがありませんでした）</p>
+            <p className="text-base text-fg-3">リスクなし（確定した評価にリスクがありませんでした）</p>
           )}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {view.candidates.filter((c) => c.run !== target.run).length > 0 && <span className="text-base text-slate-600 dark:text-slate-400">選択外の採用済み評価 {view.candidates.filter((c) => c.run !== target.run).length} 件</span>}
+            {view.candidates.filter((c) => c.run !== target.run).length > 0 && <span className="text-base text-fg-3">選択外の採用済み評価 {view.candidates.filter((c) => c.run !== target.run).length} 件</span>}
             <Button variant="secondary" onClick={() => setCorrecting((v) => !v)} aria-expanded={correcting}>
               対象を訂正する
             </Button>
@@ -183,14 +183,14 @@ function CandidatePicker({ rid, data, view, correcting, onSaved, onReload }: { r
       <fieldset className="min-w-0 space-y-2">
         <legend className="sr-only">振り返る評価</legend>
         {view.candidates.map((c) => (
-          <label key={c.run} className="block min-w-0 cursor-pointer rounded-md p-3 ring-1 ring-slate-200 dark:ring-slate-700">
+          <label key={c.run} className="block min-w-0 cursor-pointer rounded-md p-3 ring-1 ring-line">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
               <input type="radio" name={name} value={c.run} checked={run === c.run} onChange={() => setRun(c.run)} />
               <span className="font-mono break-all">{c.run}</span>
               {c.latest && <Badge tone="indigo">最新の採用済み</Badge>}
               {view.target?.run === c.run && <Badge>今の対象</Badge>}
             </span>
-            <span className="mt-1 block min-w-0 text-base break-words text-slate-600 dark:text-slate-400">
+            <span className="mt-1 block min-w-0 text-base break-words text-fg-3">
               {ADOPTION_KIND_LABEL[c.kind]}・{basisText(c.basis, data)}・リスク {c.risks}件
             </span>
           </label>
@@ -234,25 +234,25 @@ function EvidenceItem({ e, check }: { e: RetroEvidence; check?: EvidenceCheck })
         <span className="min-w-0 font-mono text-sm break-all">{evidenceWhere(e)}</span>
         {check && <Badge tone={CHECK_TONE[check]}>{EVIDENCE_CHECK_LABEL[check]}</Badge>}
       </p>
-      {e.kind !== "manual" && <p className="text-base break-words text-slate-600 dark:text-slate-400">当時の抜粋: {e.excerpt}</p>}
-      {e.kind === "manual" && e.note && <p className="text-base break-words text-slate-600 dark:text-slate-400">{e.note}</p>}
+      {e.kind !== "manual" && <p className="text-base break-words text-fg-3">当時の抜粋: {e.excerpt}</p>}
+      {e.kind === "manual" && e.note && <p className="text-base break-words text-fg-3">{e.note}</p>}
       {e.kind === "milestone_review" && (
-        <p className="text-sm break-words text-slate-500">
+        <p className="text-sm break-words text-fg-4">
           記録のみ（参考のレビュー）{e.inputChanged ? "。実行中に材料が変わった" : ""}
           {e.reason ? `。結び付く理由: ${e.reason}` : ""}
         </p>
       )}
-      {e.kind === "task_review" && <p className="text-sm text-slate-500">記録のみ（参考のレビュー。テストやアプリは動かしていません）</p>}
+      {e.kind === "task_review" && <p className="text-sm text-fg-4">記録のみ（参考のレビュー。テストやアプリは動かしていません）</p>}
     </li>
   );
 }
 
 function JudgmentItem({ j, checks }: { j: RiskJudgment; checks?: EvidenceCheck[] }) {
   return (
-    <li className="min-w-0 space-y-1 border-l-2 border-slate-200 pl-3 dark:border-slate-700">
+    <li className="min-w-0 space-y-1 border-l-2 border-line pl-3">
       <p className="flex min-w-0 flex-wrap items-center gap-2 text-base">
         <Badge tone={STATE_TONE[j.state]}>{RISK_STATE_LABEL[j.state]}</Badge>
-        <span className="text-slate-600 dark:text-slate-400">
+        <span className="text-fg-3">
           {j.id}・{j.by ?? "（主体なし）"}・{fmtTime(j.at)}
         </span>
       </p>
@@ -273,7 +273,7 @@ function JudgmentItem({ j, checks }: { j: RiskJudgment; checks?: EvidenceCheck[]
 function RiskRow({ rid, data, view, risk, onSaved, onReload }: { rid: string; data: RequestData; view: RetrospectiveView; risk: RetroRiskView; onSaved: (v: RetrospectiveView) => void; onReload: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   return (
-    <li className="min-w-0 space-y-2 rounded-md p-3 ring-1 ring-slate-200 dark:ring-slate-700" data-testid={`risk-${risk.index + 1}`}>
+    <li className="min-w-0 space-y-2 rounded-md p-3 ring-1 ring-line" data-testid={`risk-${risk.index + 1}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Badge tone={STATE_TONE[risk.state]}>{RISK_STATE_LABEL[risk.state]}</Badge>
         <span className="min-w-0 flex-1 break-words">
@@ -339,8 +339,8 @@ function JudgeForm({ rid, data, view, risk, onSaved, onReload, onCancel }: { rid
     }
   };
   return (
-    <div className="min-w-0 space-y-2 rounded-md bg-slate-50 p-3 dark:bg-slate-800/50" role="group" aria-label={`リスク ${risk.index + 1} の確認結果`}>
-      <p className="text-sm text-slate-500">確認は人の判断です。根拠を結び付けるだけでは未確認のままです。</p>
+    <div className="min-w-0 space-y-2 rounded-md bg-surface-2 p-3" role="group" aria-label={`リスク ${risk.index + 1} の確認結果`}>
+      <p className="text-sm text-fg-4">確認は人の判断です。根拠を結び付けるだけでは未確認のままです。</p>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <label htmlFor={stateId} className="text-base">
           確認結果
@@ -370,7 +370,7 @@ function JudgeForm({ rid, data, view, risk, onSaved, onReload, onCancel }: { rid
         </ul>
       )}
       <EvidenceAdder rid={rid} data={data} disabled={busy} onAdd={(e) => setEvidence([...evidence, e])} />
-      {missing && <p className="text-base text-amber-700 dark:text-amber-400">{missing}</p>}
+      {missing && <p className="text-base text-warn">{missing}</p>}
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy || !!missing} onClick={() => void save()}>
@@ -441,11 +441,11 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
             : undefined;
   const sel = `${inputCls} !w-auto max-w-full`;
   return (
-    <fieldset className="min-w-0 space-y-2 rounded-md p-2 ring-1 ring-slate-200 dark:ring-slate-700">
+    <fieldset className="min-w-0 space-y-2 rounded-md p-2 ring-1 ring-line">
       <legend className="px-1 text-base">根拠を追加する</legend>
       <div className="flex min-w-0 flex-wrap items-end gap-2">
         <div className="min-w-0">
-          <label htmlFor={ids.kind} className="block text-sm text-slate-600 dark:text-slate-400">
+          <label htmlFor={ids.kind} className="block text-sm text-fg-3">
             種類
           </label>
           <select id={ids.kind} className={sel} value={kind} disabled={disabled} onChange={(e) => (setKind(e.target.value as EvidenceRef["kind"]), setSection("overall"))}>
@@ -458,7 +458,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
         </div>
         {(kind === "task_review" || kind === "rework") && (
           <div className="min-w-0">
-            <label htmlFor={ids.task} className="block text-sm text-slate-600 dark:text-slate-400">
+            <label htmlFor={ids.task} className="block text-sm text-fg-3">
               タスク
             </label>
             <select id={ids.task} className={sel} value={task} disabled={disabled} onChange={(e) => setTask(e.target.value)}>
@@ -472,7 +472,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
         )}
         {kind === "milestone_review" && (
           <div className="min-w-0">
-            <label htmlFor={ids.ms} className="block text-sm text-slate-600 dark:text-slate-400">
+            <label htmlFor={ids.ms} className="block text-sm text-fg-3">
               マイルストーン
             </label>
             <input id={ids.ms} className={`${inputCls} !w-32`} value={milestone} disabled={disabled} onChange={(e) => setMilestone(e.target.value.trim())} />
@@ -481,7 +481,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
         {(kind === "task_review" || kind === "milestone_review") && (
           <>
             <div className="min-w-0">
-              <label htmlFor={ids.run} className="block text-sm text-slate-600 dark:text-slate-400">
+              <label htmlFor={ids.run} className="block text-sm text-fg-3">
                 レビュー
               </label>
               {runs?.length ? (
@@ -497,7 +497,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
               )}
             </div>
             <div className="min-w-0">
-              <label htmlFor={ids.section} className="block text-sm text-slate-600 dark:text-slate-400">
+              <label htmlFor={ids.section} className="block text-sm text-fg-3">
                 所見
               </label>
               <select id={ids.section} className={sel} value={section} disabled={disabled} onChange={(e) => setSection(e.target.value)}>
@@ -510,7 +510,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
             </div>
             {section !== "overall" && (
               <div className="min-w-0">
-                <label htmlFor={ids.index} className="block text-sm text-slate-600 dark:text-slate-400">
+                <label htmlFor={ids.index} className="block text-sm text-fg-3">
                   何番目
                 </label>
                 <input id={ids.index} type="number" min={1} className={`${inputCls} !w-20`} value={index} disabled={disabled} onChange={(e) => setIndex(e.target.value)} />
@@ -520,7 +520,7 @@ function EvidenceAdder({ rid, data, disabled, onAdd }: { rid: string; data: Requ
         )}
         {kind === "rework" && (
           <div className="min-w-0">
-            <label htmlFor={ids.history} className="block text-sm text-slate-600 dark:text-slate-400">
+            <label htmlFor={ids.history} className="block text-sm text-fg-3">
               手戻りの履歴
             </label>
             <select id={ids.history} className={sel} value={history} disabled={disabled || !reworks.length} onChange={(e) => setHistory(e.target.value)}>
@@ -563,7 +563,7 @@ function PastTargets({ view }: { view: RetrospectiveView }) {
       {past.map((t) => {
         const js = view.judgments.filter((j) => j.target === t.id);
         return (
-          <div key={t.id} className="min-w-0 space-y-1 rounded-md p-3 ring-1 ring-slate-200 dark:ring-slate-700">
+          <div key={t.id} className="min-w-0 space-y-1 rounded-md p-3 ring-1 ring-line">
             <p className="text-base break-all">
               {t.id} <span className="font-mono">{t.run}</span>（{ADOPTION_KIND_LABEL[t.kind]}）・{t.by ?? ""}・{fmtTime(t.at)}
             </p>
@@ -581,7 +581,7 @@ function PastTargets({ view }: { view: RetrospectiveView }) {
                 ))}
               </ul>
             ) : (
-              <p className="text-base text-slate-500">確認の記録なし</p>
+              <p className="text-base text-fg-4">確認の記録なし</p>
             )}
           </div>
         );

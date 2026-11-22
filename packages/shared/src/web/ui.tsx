@@ -1,6 +1,9 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from "react";
+import { useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref } from "react";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+
+/** キーボードで移ったときのフォーカスの枠（押せる部品が共通に持つ） */
+export const FOCUS = "focus-visible:ring-2 focus-visible:ring-accent-solid focus-visible:outline-none";
 
 /**
  * ボタンの種類（docs/development.md「画面の共通部品」）。どれも塗りで示し、枠だけのボタンは作らない。
@@ -9,17 +12,18 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
  */
 type Variant = "primary" | "secondary" | "cancel" | "danger" | "link";
 const variants: Record<Variant, string> = {
-  primary: "bg-indigo-600 text-white hover:bg-indigo-500 disabled:bg-indigo-300 dark:disabled:bg-indigo-900",
-  secondary: "bg-indigo-100 text-indigo-800 hover:bg-indigo-200 dark:bg-indigo-950 dark:text-indigo-200 dark:hover:bg-indigo-900",
-  cancel: "bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
-  danger: "bg-rose-600 text-white hover:bg-rose-500",
-  link: "px-1! text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100",
+  primary: "bg-accent-solid text-white hover:bg-accent-solid/85 disabled:bg-accent-muted",
+  secondary: "bg-accent-muted text-accent-strong hover:bg-accent-line",
+  cancel: "bg-surface-3 text-fg hover:bg-line-strong",
+  danger: "bg-danger-solid text-white hover:bg-danger-solid/85",
+  link: "px-1! text-accent underline hover:text-accent-strong",
 };
 
 /** ボタンの見た目（リンクをボタンとして見せるときにも使う） */
 export const buttonCls = (variant: Variant = "secondary", className?: string) =>
   cx(
     "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-base font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-50",
+    FOCUS,
     variants[variant],
     className,
   );
@@ -46,7 +50,7 @@ export function FilePicker({
       <label
         className={buttonCls(
           "secondary",
-          "relative cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
+          "relative cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-solid has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
         )}
       >
         <input ref={inputRef} type="file" className="sr-only" {...p} />
@@ -55,18 +59,18 @@ export function FilePicker({
         </svg>
         {label}
       </label>
-      {chosen !== undefined && <span className="min-w-0 break-all text-base text-slate-500">{chosen || "選ばれていません"}</span>}
+      {chosen !== undefined && <span className="min-w-0 break-all text-base text-fg-4">{chosen || "選ばれていません"}</span>}
     </span>
   );
 }
 
 const tones = {
-  slate: "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
-  indigo: "bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:ring-indigo-900",
-  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-900",
-  amber: "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900",
-  rose: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-900",
-  violet: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:ring-violet-900",
+  slate: "bg-surface-2 text-fg-2 ring-line-strong",
+  indigo: "bg-accent-soft text-accent ring-accent-line",
+  emerald: "bg-ok-soft text-ok ring-ok-line",
+  amber: "bg-warn-soft text-warn-strong ring-warn-line",
+  rose: "bg-danger-soft text-danger ring-danger-line",
+  violet: "bg-special-soft text-special ring-special-line",
 };
 export type Tone = keyof typeof tones;
 
@@ -84,7 +88,7 @@ export function Id({ id, onClick }: { id: string; onClick?: () => void }) {
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="shrink-0 font-mono text-sm whitespace-nowrap text-slate-500 enabled:hover:text-indigo-600 enabled:hover:underline dark:text-slate-400"
+      className={cx("shrink-0 font-mono text-sm whitespace-nowrap text-fg-4 enabled:hover:text-accent enabled:hover:underline", FOCUS)}
     >
       {id}
     </button>
@@ -96,11 +100,11 @@ export function Field({ label, children, hint, error }: { label: string; childre
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <label className="flex min-w-0 flex-col gap-1">
-        <span className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</span>
+        <span className="text-base font-medium text-fg-2">{label}</span>
         {children}
       </label>
-      {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
-      {error && <span className="text-rose-600">{error}</span>}
+      {hint && <span data-aux className="text-sm text-fg-3">{hint}</span>}
+      {error && <span className="text-danger">{error}</span>}
     </div>
   );
 }
@@ -109,8 +113,8 @@ export function Field({ label, children, hint, error }: { label: string; childre
 export function CheckGroup({ label, options, value, onChange, hint, error, empty }: { label: string; options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void; hint?: ReactNode; error?: ReactNode; empty?: ReactNode }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-1">
-      <legend className="text-base font-medium text-slate-700 dark:text-slate-300">{label}</legend>
-      {options.length === 0 && <span className="text-slate-500 dark:text-slate-400">{empty ?? "選べるものがありません。"}</span>}
+      <legend className="text-base font-medium text-fg-2">{label}</legend>
+      {options.length === 0 && <span className="text-fg-4">{empty ?? "選べるものがありません。"}</span>}
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {options.map((o) => (
           <label key={o.value} className="flex min-w-0 items-center gap-1 break-words">
@@ -119,20 +123,20 @@ export function CheckGroup({ label, options, value, onChange, hint, error, empty
           </label>
         ))}
       </div>
-      {hint && <span data-aux className="text-sm text-slate-600 dark:text-slate-400">{hint}</span>}
-      {error && <span className="text-rose-600">{error}</span>}
+      {hint && <span data-aux className="text-sm text-fg-3">{hint}</span>}
+      {error && <span className="text-danger">{error}</span>}
     </fieldset>
   );
 }
 
 export const inputCls =
-  "w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-base ring-1 ring-slate-300 ring-inset focus:ring-2 focus:ring-indigo-500 focus:outline-none aria-[invalid=true]:ring-rose-500 disabled:opacity-50 dark:bg-slate-900 dark:ring-slate-700";
+  "w-full rounded-md border-0 bg-surface px-2.5 py-1.5 text-base ring-1 ring-line-strong ring-inset focus:ring-2 focus:ring-accent-solid focus:outline-none aria-[invalid=true]:ring-danger-solid disabled:opacity-50";
 
 export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h3>
+        <h3 className="text-lg font-semibold text-fg">{title}</h3>
         {aside}
       </div>
       {children}
@@ -141,9 +145,9 @@ export function Section({ title, children, aside }: { title: string; children: R
 }
 
 export function Meter({ value, tone }: { value: number; tone: "emerald" | "amber" | "rose" }) {
-  const color = { emerald: "bg-emerald-500", amber: "bg-amber-500", rose: "bg-rose-500" }[tone];
+  const color = { emerald: "bg-ok-solid", amber: "bg-warn-solid", rose: "bg-danger-solid" }[tone];
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+    <div className="h-2 w-full overflow-hidden rounded-full bg-surface-3">
       <div className={cx("h-full rounded-full", color)} style={{ width: `${value}%` }} />
     </div>
   );
@@ -152,13 +156,13 @@ export function Meter({ value, tone }: { value: number; tone: "emerald" | "amber
 export const scoreTone = (v: number) => (v >= 70 ? "emerald" : v >= 45 ? "amber" : "rose");
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-slate-500 dark:border-slate-700">{children}</p>;
+  return <p className="rounded-md border border-dashed border-line-strong p-4 text-center text-fg-4">{children}</p>;
 }
 
 /** 失敗・注意の知らせ（支援技術にも伝える）。box は枠の中に、warn は注意の色で出す。中に一覧なども置ける */
 export function Alert({ children, box, warn, className }: { children: ReactNode; box?: boolean; warn?: boolean; className?: string }) {
-  const tone = warn ? "text-amber-800 dark:text-amber-300" : box ? "text-rose-800 dark:text-rose-300" : "text-rose-600";
-  const frame = box && (warn ? "rounded-md bg-amber-50 px-3 py-2 dark:bg-amber-950" : "rounded-md bg-rose-50 px-3 py-2 dark:bg-rose-950");
+  const tone = warn ? "text-warn-strong" : box ? "text-danger-strong" : "text-danger";
+  const frame = box && cx("rounded-md px-3 py-2", warn ? "bg-warn-soft" : "bg-danger-soft");
   return (
     <div role="alert" className={cx("text-base break-words whitespace-pre-wrap", tone, frame, className)}>
       {children}
@@ -167,7 +171,100 @@ export function Alert({ children, box, warn, className }: { children: ReactNode;
 }
 
 /** 読み込み中の表示 */
-export const Loading = ({ children = "読み込み中…" }: { children?: ReactNode }) => <p className="text-slate-500 dark:text-slate-400">{children}</p>;
+export const Loading = ({ children = "読み込み中…" }: { children?: ReactNode }) => <p className="text-fg-4">{children}</p>;
 
 /** 文中のリンクの見た目（a・Link に付ける） */
-export const linkCls = "text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100";
+export const linkCls = "text-accent underline hover:text-accent-strong";
+
+/** 小さな記号のボタン（タグを外す ×・子の開閉 ▸ など）。読み上げの名前（aria-label）を必ず渡す */
+export function IconButton({ className, type = "button", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { "aria-label": string }) {
+  return <button type={type} {...p} className={cx("shrink-0 rounded px-1 text-fg-4 hover:bg-surface-3 hover:text-fg disabled:opacity-50", FOCUS, className)} />;
+}
+
+/**
+ * 中身で見せる押せる領域（一覧の行・印・サムネイル・メニューの項目など）。箱の形や色を持たず、type=button・フォーカスの枠・左寄せだけを持つ。
+ * 色は意味の色（hover:text-accent など）を className で足す
+ */
+export function PlainButton({ className, type = "button", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement> }) {
+  return <button type={type} {...p} className={cx("text-left disabled:cursor-not-allowed", FOCUS, className)} />;
+}
+
+/** 1つを選ぶ切り替えの並び（表示の幅など）。選んだものは aria-pressed */
+export function Segmented<T extends string>({ options, value, onChange, label }: { options: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="flex gap-1 rounded-lg bg-surface-2 p-1">
+      {options.map((o) => (
+        <button key={o.value} type="button" onClick={() => onChange(o.value)} aria-pressed={value === o.value} className={cx("min-w-9 rounded-md px-1 py-0.5", FOCUS, value === o.value ? "bg-surface shadow-sm" : "text-fg-4 hover:text-fg")}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export interface TabDef<T extends string> {
+  id: T;
+  label: string;
+  hint?: string;
+}
+
+/**
+ * タブの並び（設定・リリースノート）。矢印キー・Home・End で移る（選んだタブだけがフォーカスの順に入る）。
+ * 保存していない変更があるタブには印（●・読み上げは「未保存」）を付ける。prefix はタブとパネルの id の頭
+ */
+export function Tabs<T extends string>({ tabs, tab, unsaved, onSelect, label, prefix }: { tabs: readonly TabDef<T>[]; tab: T; unsaved?: Partial<Record<T, boolean>>; onSelect: (t: T) => void; label: string; prefix: string }) {
+  const refs = useRef<Partial<Record<T, HTMLButtonElement | null>>>({});
+  const onKey = (e: KeyboardEvent) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    const next = e.key === "ArrowRight" ? (i + 1) % tabs.length : e.key === "ArrowLeft" ? (i - 1 + tabs.length) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    const id = tabs[next].id;
+    onSelect(id);
+    refs.current[id]?.focus();
+  };
+  // 境界線は外の枠が持ち、選んだタブの下線を重ねる 1px は tablist が持つ。境界線を tablist（overflow-x-auto で縦も auto）に付けて
+  // タブに -mb-px を付けると、タブが境界線に食い込んで tablist が 1px 縦に送れ、縦のスクロールバーが出る（要望のタブも同じ）
+  return (
+    <div className="border-b border-line">
+      <div role="tablist" aria-label={label} className="-mb-px flex gap-1 overflow-x-auto" onKeyDown={onKey}>
+        {tabs.map((t) => {
+          const on = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              ref={(el) => {
+                refs.current[t.id] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`${prefix}-tab-${t.id}`}
+              aria-selected={on}
+              aria-controls={`${prefix}-panel-${t.id}`}
+              tabIndex={on ? 0 : -1}
+              title={t.hint}
+              onClick={() => onSelect(t.id)}
+              className={cx("flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 font-medium whitespace-nowrap transition", FOCUS, on ? "border-accent-solid text-accent" : "border-transparent text-fg-4 hover:text-fg")}
+            >
+              {t.label}
+              {unsaved?.[t.id] && (
+                <span data-aux className="text-sm text-warn" title="保存していない変更があります">
+                  ●<span className="sr-only">（未保存）</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 選んでいないタブは隠すだけ（書きかけの入力を残す） */
+export function TabPanel<T extends string>({ id, tab, prefix, className, children }: { id: T; tab: T; prefix: string; className?: string; children: ReactNode }) {
+  return (
+    <div role="tabpanel" id={`${prefix}-panel-${id}`} aria-labelledby={`${prefix}-tab-${id}`} hidden={id !== tab} className={className}>
+      {children}
+    </div>
+  );
+}

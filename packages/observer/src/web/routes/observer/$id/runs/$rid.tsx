@@ -33,7 +33,7 @@ function RunPage() {
             <h1 className="text-2xl font-bold">
               実行の記録: {r.snapshot.title} <ResultBadge r={r} />
             </h1>
-            <p className="text-slate-600 dark:text-slate-400">
+            <p className="text-fg-3">
               版 {r.rev} で開始・<span data-aux>{r.id}</span>・期待: {r.snapshot.expected ?? "（未記入。判定は未確認になります）"}
             </p>
           </header>
@@ -67,7 +67,7 @@ function Recording({ r, update }: { r: RunningResult; update: (next: RunningResu
     <>
       <p>P3 は手順を実行しません。指示の順にあなたか担当の AI が実行し、段ごとに記録してから完了してください。</p>
       {r.instructions && (
-        <details open className="rounded border border-slate-200 p-3 dark:border-slate-800">
+        <details open className="rounded border border-line p-3">
           <summary className="cursor-pointer font-semibold">実行の指示</summary>
           <pre className="mt-2 whitespace-pre-wrap break-all">{r.instructions}</pre>
         </details>
@@ -137,7 +137,7 @@ function StepForm({ r, onDone, onError }: { r: RunningResult; onDone: (next: Run
   return (
     <form
       aria-label="段を記録する"
-      className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-800"
+      className="space-y-3 rounded border border-line p-4"
       onSubmit={(e) => {
         e.preventDefault();
         submit();

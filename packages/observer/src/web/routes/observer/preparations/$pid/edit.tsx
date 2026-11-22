@@ -21,7 +21,7 @@ function EditPreparation() {
       {load.kind === "error" && <Alert>準備を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (
         <>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-fg-3">
             {pid}・保存済みの版 v{load.value.preparation.rev}
           </p>
           <PreparationForm

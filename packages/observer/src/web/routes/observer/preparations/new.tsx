@@ -34,7 +34,7 @@ function NewPreparation() {
         </Link>
       )}
       <h1 className="text-2xl font-bold">準備を登録</h1>
-      {from && <p className="text-slate-600 dark:text-slate-400">AI の提案の新しい準備の案を入れています。確かめて直してから保存すると、観測の編集に戻り、使う準備に足します（観測の保存は編集の画面で行います）。</p>}
+      {from && <p className="text-fg-3">AI の提案の新しい準備の案を入れています。確かめて直してから保存すると、観測の編集に戻り、使う準備に足します（観測の保存は編集の画面で行います）。</p>}
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>提案を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (

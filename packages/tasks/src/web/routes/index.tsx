@@ -7,7 +7,7 @@ import { BlockedMark, DoingMark, DoneMark, Flag, TodoMark } from "../components/
 import { TagFilter } from "../components/TagFilter.tsx";
 import { RequestStatusBadge } from "../components/RequestStatus.tsx";
 import { TaskDrawer } from "../components/TaskDrawer.tsx";
-import { buttonCls, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, buttonCls, cx, Empty, IconButton, PlainButton, Segmented } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "../lib/appCtx.ts";
 import { RequestDataProvider, useRequestData } from "../lib/requestData.tsx";
 import { CLOSED_STATUSES, filterRequests, parseShow, parseTagsSearch, SHOW_OPTIONS, type Show } from "../lib/requestFilter.ts";
@@ -200,18 +200,18 @@ function ProgressPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface px-5 py-2.5">
         <h1 className="text-lg font-bold">進捗</h1>
-        <span className="text-base text-slate-500" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
+        <span className="text-base text-fg-4" title="絞り込みに合う要望の数（位置を示すために出す親は数えない）">
           {matched.length} 件
         </span>
-        <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+        <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-surface-2 p-1">
           {SHOW_OPTIONS.map(([v, label]) => (
             <Link
               key={v}
               to="/"
               search={(prev) => ({ ...prev, show: v === "open" ? undefined : v })}
-              className={cx("rounded-md px-3 py-0.5 whitespace-nowrap", show === v ? "bg-white shadow-sm dark:bg-slate-700" : "text-slate-500")}
+              className={cx("rounded-md px-3 py-0.5 whitespace-nowrap", show === v ? "bg-surface shadow-sm" : "text-fg-4")}
             >
               {label}
             </Link>
@@ -222,7 +222,7 @@ function ProgressPage() {
           停止中のみ
         </label>
         {onlyBlocked && (
-          <span className="text-base text-slate-500" title="止まっている自分のタスクの合計（配下を二重に数えない）">
+          <span className="text-base text-fg-4" title="止まっている自分のタスクの合計（配下を二重に数えない）">
             停止中 {blockedTotal} 件・{matched.length} 要望
           </span>
         )}
@@ -231,7 +231,7 @@ function ProgressPage() {
           見直し候補のみ
         </label>
         {onlyReview && (
-          <span className="text-base text-slate-500" title="要望自身と自分のタスクの候補の合計（配下を二重に数えない）。完了済みも含む">
+          <span className="text-base text-fg-4" title="要望自身と自分のタスクの候補の合計（配下を二重に数えない）。完了済みも含む">
             見直し候補 {reviewTotal} 件・{matched.length} 要望
           </span>
         )}
@@ -242,21 +242,10 @@ function ProgressPage() {
           onChange={(next) => void navigate({ search: (prev) => ({ ...withoutLegacyTag(prev), tags: next.length ? next : undefined }) })}
         />
         <div className="flex items-center gap-2">
-          <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" aria-label="ズーム">
-            {ZOOMS.map((z) => (
-              <button
-                key={z}
-                onClick={() => changeZoom(z)}
-                aria-pressed={zoom === z}
-                className={cx("w-9 rounded-md py-0.5", zoom === z ? "bg-white shadow-sm dark:bg-slate-700" : "text-slate-500")}
-              >
-                {ZOOM_LABEL[z]}
-              </button>
-            ))}
-          </nav>
-          <button onClick={() => scrollToDate(today)} className={buttonCls("secondary", "py-1")}>
+          <Segmented label="ズーム" options={ZOOMS.map((z) => ({ value: z, label: ZOOM_LABEL[z] }))} value={zoom} onChange={changeZoom} />
+          <Button onClick={() => scrollToDate(today)} className="py-1">
             今日
-          </button>
+          </Button>
         </div>
         <Legend />
       </div>
@@ -265,18 +254,18 @@ function ProgressPage() {
         <div className="p-10">
           <Empty>
             見直しが必要（候補）の要望はありません（完了済みも含めて探しました）。
-            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className={buttonCls("link", "ml-2 underline")}>
+            <Button variant="link" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className="ml-2">
               絞り込みを解除
-            </button>
+            </Button>
           </Empty>
         </div>
       ) : !hasRows && onlyBlocked ? (
         <div className="p-10">
           <Empty>
             停止中のタスクはありません。
-            <button type="button" onClick={() => void navigate({ search: (prev) => ({ ...prev, blocked: undefined }), replace: true })} className={buttonCls("link", "ml-2 underline")}>
+            <Button variant="link" onClick={() => void navigate({ search: (prev) => ({ ...prev, blocked: undefined }), replace: true })} className="ml-2">
               絞り込みを解除
-            </button>
+            </Button>
           </Empty>
         </div>
       ) : !hasRows ? (
@@ -292,8 +281,8 @@ function ProgressPage() {
         <div ref={scroller} className="min-h-0 flex-1 overflow-auto" data-testid="schedule">
           <div className="flex" style={{ width: leftW + width, height }}>
             {/* 左: 要望（見えている行だけ） */}
-            <div className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ width: leftW }}>
-              <div className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }} />
+            <div className="sticky left-0 z-30 shrink-0 border-r border-line bg-surface" style={{ width: leftW }}>
+              <div className="sticky top-0 z-10 border-b border-line bg-surface" style={{ height: HEAD_H }} />
               {tree.slice(first, last).map((t, k) => (
                 <RequestCell key={t.p.request.id} t={t} top={HEAD_H + (first + k) * ROW_H} narrow={narrow} onToggle={toggle} />
               ))}
@@ -301,23 +290,23 @@ function ProgressPage() {
 
             {/* 右: スケジュール（見えている範囲だけ） */}
             <div className="relative" style={{ width, height }}>
-              <div className="sticky top-0 z-20 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ height: HEAD_H }}>
+              <div className="sticky top-0 z-20 border-b border-line bg-surface" style={{ height: HEAD_H }}>
                 {milestones
                   .filter((m) => m.due && inView(x(m.due)))
                   .map((m) => (
                     <span key={m.id} className="absolute top-1 -translate-x-1/2" style={{ left: x(m.due!) + px / 2 }}>
                       <Hint content={`${m.title}\n${m.due}${m.done ? "（リリース済み）" : ""}`}>
-                        <span className={cx("text-base whitespace-nowrap", m.done ? "text-slate-500" : "font-medium text-violet-600 dark:text-violet-400")}>◆ {m.id}</span>
+                        <span className={cx("text-base whitespace-nowrap", m.done ? "text-fg-4" : "font-medium text-special")}>◆ {m.id}</span>
                       </Hint>
                     </span>
                   ))}
                 {visibleTicks.map((k) => (
                   <div key={k.start} className="absolute bottom-0 flex flex-col items-center pb-1 text-base" style={{ left: k.x, width: k.width }}>
-                    <span className="h-4 text-sm whitespace-nowrap text-slate-500 dark:text-slate-400">{k.group ?? ""}</span>
+                    <span className="h-4 text-sm whitespace-nowrap text-fg-4">{k.group ?? ""}</span>
                     <span
                       className={cx(
                         "flex h-6 min-w-6 items-center justify-center rounded-full px-1 whitespace-nowrap",
-                        k.today ? "bg-indigo-600 font-bold text-white" : k.weekend ? "text-slate-500" : "text-slate-600 dark:text-slate-300",
+                        k.today ? "bg-accent-solid font-bold text-white" : k.weekend ? "text-fg-4" : "text-fg-3",
                       )}
                     >
                       {k.label}
@@ -328,22 +317,22 @@ function ProgressPage() {
               {visibleTicks
                 .filter((k) => k.weekend)
                 .map((k) => (
-                  <div key={k.start} className="absolute bg-slate-100/70 dark:bg-slate-800/40" style={{ left: k.x, width: k.width, top: HEAD_H, bottom: 0 }} />
+                  <div key={k.start} className="absolute bg-surface-2/50" style={{ left: k.x, width: k.width, top: HEAD_H, bottom: 0 }} />
                 ))}
               {zoom !== "day" &&
                 visibleTicks.map((k) => (
-                  <div key={`l${k.start}`} className="absolute border-l border-slate-100 dark:border-slate-800" style={{ left: k.x, top: HEAD_H, bottom: 0 }} />
+                  <div key={`l${k.start}`} className="absolute border-l border-line-soft" style={{ left: k.x, top: HEAD_H, bottom: 0 }} />
                 ))}
               {milestones
                 .filter((m) => m.due && inView(x(m.due)))
                 .map((m) => (
                   <div
                     key={m.id}
-                    className={cx("absolute z-[1] border-l-2 border-dashed", m.done ? "border-slate-300 dark:border-slate-600" : "border-violet-400")}
+                    className={cx("absolute z-[1] border-l-2 border-dashed", m.done ? "border-line-strong" : "border-special-solid")}
                     style={{ left: x(m.due!) + px / 2 - 1, top: HEAD_H, bottom: 0 }}
                   />
                 ))}
-              <div className="absolute z-[2] w-0.5 bg-indigo-500" style={{ left: x(today) + px / 2 - 1, top: 0, bottom: 0 }} />
+              <div className="absolute z-[2] w-0.5 bg-accent-solid" style={{ left: x(today) + px / 2 - 1, top: 0, bottom: 0 }} />
               {rows.slice(first, last).map((p, k) => (
                 <RequestLane
                   key={p.request.id}
@@ -403,16 +392,16 @@ function Legend() {
     </span>
   );
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-3 text-base text-slate-500">
+    <div className="ml-auto flex flex-wrap items-center gap-3 text-base text-fg-4">
       {item(<DoneMark checked={false} />, "完了")}
       {item(<DoneMark checked />, "済み")}
       {item(<DoingMark />, "作業中")}
       {item(<BlockedMark />, "停止中")}
       {item(<TodoMark />, "未着手")}
-      {item(<span className="rounded px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:text-amber-200 dark:ring-amber-700">申告のみ</span>, "申告だけの達成があるタスク")}
-      {item(<span className="text-violet-500">◆</span>, "マイルストーン")}
+      {item(<span className="rounded px-1 text-sm whitespace-nowrap text-warn-strong ring-1 ring-warn-line">申告のみ</span>, "申告だけの達成があるタスク")}
+      {item(<span className="text-special">◆</span>, "マイルストーン")}
       {item(<Flag overdue={false} />, "期限")}
-      {item(<span className="inline-block h-3.5 w-0.5 bg-indigo-500" />, "今日")}
+      {item(<span className="inline-block h-3.5 w-0.5 bg-accent-solid" />, "今日")}
     </div>
   );
 }
@@ -427,17 +416,11 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
   const r = p.request;
   const indent = Math.min(t.depth, 4) * (narrow ? 8 : 16);
   return (
-    <div className={cx("absolute inset-x-0 flex border-b border-slate-200 dark:border-slate-700", t.context && "opacity-60")} style={{ top, height: ROW_H, paddingLeft: indent }}>
+    <div className={cx("absolute inset-x-0 flex border-b border-line", t.context && "opacity-60")} style={{ top, height: ROW_H, paddingLeft: indent }}>
       {t.hasChildren ? (
-        <button
-          type="button"
-          onClick={() => onToggle(r.id)}
-          aria-expanded={!t.collapsed}
-          aria-label={`${r.title} の子を${t.collapsed ? "開く" : "畳む"}`}
-          className={cx("shrink-0 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200", narrow ? "w-5" : "w-6")}
-        >
+        <IconButton onClick={() => onToggle(r.id)} aria-expanded={!t.collapsed} aria-label={`${r.title} の子を${t.collapsed ? "開く" : "畳む"}`} className={narrow ? "w-5" : "w-6"}>
           {t.collapsed ? "▸" : "▾"}
-        </button>
+        </IconButton>
       ) : (
         // 開閉の印の無い行も同じ幅を空けて、同じ深さの題をそろえる
         <span className={cx("shrink-0", narrow ? "w-5" : "w-6")} />
@@ -445,44 +428,44 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
       <Link
         to="/requests/$requestId"
         params={{ requestId: r.id }}
-        className={cx("flex min-w-0 flex-1 hover:bg-slate-50 dark:hover:bg-slate-800", narrow ? "flex-col justify-center gap-0.5 pr-2" : "items-center gap-2 pr-4")}
+        className={cx("flex min-w-0 flex-1 hover:bg-surface-2", narrow ? "flex-col justify-center gap-0.5 pr-2" : "items-center gap-2 pr-4")}
       >
         {/* 広い画面では印を縮めず、題のほうを切る（重ならないように） */}
         <span className={cx("flex items-center gap-1", narrow ? "min-w-0" : "shrink-0")}>
           <RequestStatusBadge status={r.status} size={narrow ? "sm" : "md"} />
-          {t.context && <span className="shrink-0 text-sm text-slate-500">文脈</span>}
+          {t.context && <span className="shrink-0 text-sm text-fg-4">文脈</span>}
           {!narrow && p.children.length > 0 && (
-            <span className="shrink-0 text-sm whitespace-nowrap text-slate-500" title="配下全体（自身を含む）の完了したタスク / 全部">
+            <span className="shrink-0 text-sm whitespace-nowrap text-fg-4" title="配下全体（自身を含む）の完了したタスク / 全部">
               配下 {p.subtree.done}/{p.subtree.total}
             </span>
           )}
           {p.blocked > 0 && (
-            <span className="shrink-0 rounded bg-amber-100 px-1 text-sm whitespace-nowrap text-amber-900 dark:bg-amber-900 dark:text-amber-100" title="止まっている自分のタスクの数">
+            <span className="shrink-0 rounded bg-warn-muted px-1 text-sm whitespace-nowrap text-warn-strong" title="止まっている自分のタスクの数">
               ⏸停止 {p.blocked}
             </span>
           )}
           {p.subtree.blocked > p.blocked && (
-            <span className="shrink-0 text-sm whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望で止まっているタスクの数">
+            <span className="shrink-0 text-sm whitespace-nowrap text-warn" title="子孫の要望で止まっているタスクの数">
               配下の停止 {p.subtree.blocked - p.blocked}
             </span>
           )}
           {declarationTasks(p.tasks) > 0 && (
-            <span className="shrink-0 rounded bg-amber-50 px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-700" title="満たしたと申告しただけ（確かめた方法の記録なし）の基準があるタスクの数（自分のタスク。印から詳細を開けます）">
+            <span className="shrink-0 rounded bg-warn-soft px-1 text-sm whitespace-nowrap text-warn-strong ring-1 ring-warn-line" title="満たしたと申告しただけ（確かめた方法の記録なし）の基準があるタスクの数（自分のタスク。印から詳細を開けます）">
               申告のみ {declarationTasks(p.tasks)}
             </span>
           )}
           {ownReview(p) > 0 && (
-            <span className="shrink-0 rounded bg-amber-50 px-1 text-sm whitespace-nowrap text-amber-800 ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-700" title={reviewTitle(p)}>
+            <span className="shrink-0 rounded bg-warn-soft px-1 text-sm whitespace-nowrap text-warn-strong ring-1 ring-warn-line" title={reviewTitle(p)}>
               見直し {ownReview(p)}
             </span>
           )}
           {!narrow && (p.review?.below ?? 0) > 0 && (
-            <span className="shrink-0 text-sm whitespace-nowrap text-amber-700 dark:text-amber-400" title="子孫の要望自身とそのタスクの見直し候補の数（この要望自身の候補ではありません）">
+            <span className="shrink-0 text-sm whitespace-nowrap text-warn" title="子孫の要望自身とそのタスクの見直し候補の数（この要望自身の候補ではありません）">
               配下の見直し {p.review!.below}
             </span>
           )}
           {p.hierarchyIssues.length > 0 && (
-            <span className="shrink-0 text-sm text-amber-700 dark:text-amber-400" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
+            <span className="shrink-0 text-sm text-warn" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
               ※親子
             </span>
           )}
@@ -549,7 +532,7 @@ function RequestLane({
   return (
     <>
       {/* 行の区切り（左の一覧の線とそろえる） */}
-      <div className="absolute inset-x-0 border-b border-slate-200 dark:border-slate-700" style={{ top, height: ROW_H }} />
+      <div className="absolute inset-x-0 border-b border-line" style={{ top, height: ROW_H }} />
       {r.due && inView(x(r.due)) && (
         <span className="absolute z-[4]" style={{ left: x(r.due) + px / 2 - 2, top: cy - 20 }}>
           <Hint content={`期限 ${r.due}${overdue ? "（過ぎています）" : ""}`}>
@@ -562,7 +545,7 @@ function RequestLane({
         return (
           <span key={`${g.start}|${g.kind}`} className="absolute z-[5]" style={{ left, top: cy - 7 }}>
             <Hint content={g.items.map((m) => [`${m.id} ${m.title}`, ...markNote(m)].join("\n")).join("\n")}>
-              <button
+              <PlainButton
                 aria-label={g.items.map((m) => [m.id, m.block ? "停止中" : "", m.evidence?.declarationOnly ? `申告のみ ${m.evidence.declarationOnly}` : ""].filter(Boolean).join(" ")).join("、")}
                 className="relative block transition hover:scale-125"
                 onClick={(e) =>
@@ -573,9 +556,9 @@ function RequestLane({
               >
                 {icon(g.kind)}
                 {g.items.length > 1 && (
-                  <span className="absolute -top-2 -right-2.5 rounded-full bg-slate-700 px-1 text-sm leading-4 text-white">{g.items.length}</span>
+                  <span className="absolute -top-2 -right-2.5 rounded-full bg-inverse px-1 text-sm leading-4 text-white">{g.items.length}</span>
                 )}
-              </button>
+              </PlainButton>
             </Hint>
           </span>
         );
@@ -587,9 +570,9 @@ function RequestLane({
         >
           {todo.map((m) => (
             <Hint key={m.ref} content={`${m.id} ${m.title}`}>
-              <button onClick={() => onOpen(m.ref)} className="block transition hover:scale-125">
+              <PlainButton onClick={() => onOpen(m.ref)} className="block transition hover:scale-125">
                 <TodoMark />
-              </button>
+              </PlainButton>
             </Hint>
           ))}
         </div>
@@ -602,9 +585,9 @@ function RequestLane({
             label: (
               <>
                 {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : m.block ? "blocked" : "doing")}
-                <span className="font-mono text-sm text-slate-500">{m.id}</span>
+                <span className="font-mono text-sm text-fg-4">{m.id}</span>
                 <span className="truncate">{m.title}</span>
-                {!!m.evidence?.declarationOnly && <span className="shrink-0 text-sm text-amber-800 dark:text-amber-300">申告のみ {m.evidence.declarationOnly}</span>}
+                {!!m.evidence?.declarationOnly && <span className="shrink-0 text-sm text-warn-strong">申告のみ {m.evidence.declarationOnly}</span>}
               </>
             ),
           }))}

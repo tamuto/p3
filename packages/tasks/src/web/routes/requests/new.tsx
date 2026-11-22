@@ -65,7 +65,7 @@ function NewRequest() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-8">
       <h2 className="text-xl font-bold">新しい要望</h2>
-      <p className="text-slate-500">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
+      <p className="text-fg-4">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
       <Field label="タイトル">
         <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
@@ -103,13 +103,13 @@ function NewRequest() {
         </Field>
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="new-request-tags" className="text-base font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="new-request-tags" className="text-base font-medium text-fg-2">
           タグ（任意。外部 ID や分類。値ごとに Enter で足す）
         </label>
         <TagInput id="new-request-tags" tags={tags} onChange={setTags} text={tagText} onText={setTagText} />
       </div>
       <NewAttachments items={files} onChange={setFiles} check={check} disabled={!!busy} />
-      {error && <p className="text-rose-600">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
       <Button
         variant="primary"
         disabled={!title.trim() || blocked || !!busy}

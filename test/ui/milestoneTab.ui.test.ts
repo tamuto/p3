@@ -88,6 +88,12 @@ describe.skipIf(!inject("chromium").available)("リリースノートのマイ�
       await page.keyboard.press("ArrowLeft");
       await until.url(page, /tab=notes/);
       expect(new URL(page.url()).searchParams.get("m")).toBe("v1");
+      // Home・End で端のタブへ移り、フォーカスも移る
+      await page.keyboard.press("End");
+      await expect.poll(() => tab(page, "マイルストーン").getAttribute("aria-selected")).toBe("true");
+      await expect.poll(() => page.evaluate(() => document.activeElement?.textContent ?? "")).toMatch(/^マイルストーン/);
+      await page.keyboard.press("Home");
+      await expect.poll(() => page.getByRole("tab", { name: /^レビュー/ }).getAttribute("aria-selected")).toBe("true");
     });
   });
 

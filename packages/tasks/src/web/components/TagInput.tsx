@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { addTag, cleanTag } from "../../shared/tags.ts";
-import { Button, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, cx, IconButton, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * タグ（外部 ID・分類）の入力。値ごとに足す・外す（カンマで分けない。shared/tags.ts）。
@@ -43,19 +43,12 @@ export function TagInput({
           {tags.map((t) => (
             <li
               key={t}
-              className="inline-flex max-w-full items-start gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-base ring-1 ring-slate-200 ring-inset dark:bg-slate-800 dark:ring-slate-700"
+              className="inline-flex max-w-full items-start gap-1 rounded bg-surface-2 py-0.5 pr-0.5 pl-2 text-base ring-1 ring-line ring-inset"
             >
               <span className="min-w-0 break-all whitespace-pre-wrap">{t}</span>
-              <button
-                type="button"
-                disabled={disabled}
-                aria-label={`タグ「${t}」を外す`}
-                title="外す"
-                onClick={() => onChange(tags.filter((x) => x !== t))}
-                className="shrink-0 rounded px-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-              >
+              <IconButton disabled={disabled} aria-label={`タグ「${t}」を外す`} title="外す" onClick={() => onChange(tags.filter((x) => x !== t))}>
                 ×
-              </button>
+              </IconButton>
             </li>
           ))}
         </ul>
@@ -80,7 +73,7 @@ export function TagInput({
         </Button>
       </div>
       {hint && (
-        <p role="status" className="text-base text-slate-500">
+        <p role="status" className="text-base text-fg-4">
           {hint}
         </p>
       )}

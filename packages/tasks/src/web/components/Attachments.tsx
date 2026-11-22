@@ -81,18 +81,18 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
   const items = list?.items ?? [];
   return (
     <Section title={`添付（次の Preflight に渡す）${items.length ? ` ${items.length}` : ""}`}>
-      <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-        <p className="text-base text-slate-600 dark:text-slate-400">
+      <div className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
+        <p className="text-base text-fg-3">
           Preflight を始めるときに、その時点の添付を run に固定して Codex に渡します。実行済みの run の資料は変わりません。
           今の画面が要るときは、撮った画像を添付してください。PNG / JPEG / xlsx{list ? `（${list.limits.count} 件・合計 ${formatBytes(list.limits.totalBytes)} まで）` : ""}
         </p>
         {items.length > 0 && (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-line-soft">
             {items.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-2 py-2">
                 <Badge>{formatLabel(a)}</Badge>
                 <span className="min-w-0 break-all font-medium">{a.name}</span>
-                <span className="min-w-0 break-words text-base text-slate-500">
+                <span className="min-w-0 break-words text-base text-fg-4">
                   {[a.description, a.source && `出典: ${a.source}`, formatBytes(a.bytes), a.createdBy].filter(Boolean).join(" · ")}
                 </span>
                 <span className="ml-auto flex gap-2">
@@ -108,7 +108,7 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
           </ul>
         )}
         {unsent.length > 0 && (
-          <div role="alert" className="space-y-2 rounded-md bg-amber-50 p-3 text-base text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <Alert box warn className="space-y-2">
             <p className="font-medium">作成時に添付できなかったファイルがあります（要望は作成済みです）</p>
             <ul className="space-y-1.5">
               {unsent.map((p) => (
@@ -126,17 +126,17 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
                 </li>
               ))}
             </ul>
-            <p className="text-amber-800 dark:text-amber-300">この一覧はページを再読み込みすると消えます。そのときは下の欄から選び直してください</p>
-          </div>
+            <p className="text-warn-strong">この一覧はページを再読み込みすると消えます。そのときは下の欄から選び直してください</p>
+          </Alert>
         )}
         {list?.invalid.map((i) => (
-          <p key={i.id} className="text-base text-rose-600">
+          <p key={i.id} className="text-base text-danger">
             読めない添付: {i.id}（{i.error}）
           </p>
         ))}
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex w-full min-w-0 flex-col gap-1 text-base sm:w-auto">
-            <span className="text-slate-500">ファイル</span>
+            <span className="text-fg-4">ファイル</span>
             <FilePicker
               inputRef={fileInput}
               accept={ATTACH_ACCEPT}
@@ -146,11 +146,11 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
             />
           </div>
           <label className="flex min-w-40 flex-1 flex-col gap-1 text-base sm:max-w-xs">
-            <span className="text-slate-500">説明</span>
+            <span className="text-fg-4">説明</span>
             <input className={inputCls} value={form.description} placeholder="例: 今の一覧画面" onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           </label>
           <label className="flex min-w-40 flex-1 flex-col gap-1 text-base sm:max-w-xs">
-            <span className="text-slate-500">出典</span>
+            <span className="text-fg-4">出典</span>
             <input className={inputCls} value={form.source} placeholder="例: 本番の画面" onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} />
           </label>
           <Button variant="primary" disabled={!form.file || form.busy} onClick={() => void send()}>
@@ -158,7 +158,7 @@ export function AttachmentsPanel({ requestId, tick }: { requestId: string; tick:
           </Button>
         </div>
         {form.error && <Alert>添付できませんでした: {form.error}（入力は残しています。直してもう一度押してください）</Alert>}
-        {loadError && <p className="text-base text-rose-600">{loadError}</p>}
+        {loadError && <p className="text-base text-danger">{loadError}</p>}
       </div>
     </Section>
   );
@@ -182,19 +182,19 @@ export function NewAttachments({
   const update = (key: string, patch: Partial<PendingAttach>) => onChange(items.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   return (
     <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="text-base font-medium text-slate-700 dark:text-slate-300">添付（任意。PNG / JPEG / xlsx。今の画面のスクリーンショットや仕様書など。Preflight に渡します）</legend>
+      <legend className="text-base font-medium text-fg-2">添付（任意。PNG / JPEG / xlsx。今の画面のスクリーンショットや仕様書など。Preflight に渡します）</legend>
       {items.length > 0 && (
-        <ul className="divide-y divide-slate-100 rounded-lg bg-white px-3 ring-1 ring-slate-200 dark:divide-slate-800 dark:bg-slate-900 dark:ring-slate-800">
+        <ul className="divide-y divide-line-soft rounded-lg bg-surface px-3 ring-1 ring-line">
           {items.map((p, i) => (
             <li key={p.key} className="space-y-2 py-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 break-all font-medium">{p.file.name}</span>
-                <span className="text-base text-slate-500">{formatBytes(p.file.size)}</span>
+                <span className="text-base text-fg-4">{formatBytes(p.file.size)}</span>
                 <Button variant="secondary" className="ml-auto" onClick={() => onChange(items.filter((x) => x.key !== p.key))}>
                   外す
                 </Button>
               </div>
-              {check.items[i] && <p className="text-base text-rose-600">{check.items[i]}</p>}
+              {check.items[i] && <p className="text-base text-danger">{check.items[i]}</p>}
               <div className="flex flex-wrap gap-2">
                 <input className={`${inputCls} min-w-0 flex-1`} aria-label={`${p.file.name} の説明`} placeholder="説明（例: 今の一覧画面）" value={p.description} onChange={(e) => update(p.key, { description: e.target.value })} />
                 <input className={`${inputCls} min-w-0 flex-1`} aria-label={`${p.file.name} の出典`} placeholder="出典（例: 本番の画面）" value={p.source} onChange={(e) => update(p.key, { source: e.target.value })} />
@@ -203,7 +203,7 @@ export function NewAttachments({
           ))}
         </ul>
       )}
-      {check.total && <p className="text-base text-rose-600">{check.total}</p>}
+      {check.total && <p className="text-base text-danger">{check.total}</p>}
       <FilePicker
         label={items.length ? "ファイルを追加" : "ファイルを選ぶ（複数可）"}
         multiple

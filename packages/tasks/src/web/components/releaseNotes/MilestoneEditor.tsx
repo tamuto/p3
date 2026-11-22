@@ -5,7 +5,7 @@ import type { Milestone, MilestoneGoal } from "../../../shared/types.ts";
 import { api, saveErrorText } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
-import { Button, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, cx, inputCls, PlainButton } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 編集中の1行。orig は取り込んだときの ID（足した行には無い）。使用中・ノートありの判定は orig で見る */
 interface Row {
@@ -149,11 +149,11 @@ export function MilestoneEditor({
 
   return (
     <div className="min-w-0 space-y-4">
-      <p className="text-slate-500 dark:text-slate-400">
+      <p className="text-fg-4">
         複数の要望をまとめてリリースする単位です。要望の概要でマイルストーンを選ぶと、進捗画面でまとめて表示されます。リリースが終わったら「リリース済み」に
         チェックを付けて保存します（ノートの本文や要望の状態は変わりません）。
       </p>
-      {!rows.length && <p className="rounded-md bg-slate-50 p-3 dark:bg-slate-900">マイルストーンがありません。「＋ マイルストーンを追加」で最初の1件を作れます。</p>}
+      {!rows.length && <p className="rounded-md bg-page p-3">マイルストーンがありません。「＋ マイルストーンを追加」で最初の1件を作れます。</p>}
       <ul className="space-y-3" aria-label="マイルストーンの一覧">
         {order.map((key) => {
           const r = byKey.get(key);
@@ -161,11 +161,11 @@ export function MilestoneEditor({
           const lock = lockOf(r);
           const count = inMilestone(r.orig ?? r.m.id);
           return (
-            <li key={key} className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+            <li key={key} className="flex flex-wrap items-center gap-2 border-b border-line-soft pb-3">
               <input
                 ref={r.orig === undefined && key === order[order.length - 1] ? added : undefined}
                 aria-label="ID"
-                className={cx(inputCls, "!w-32 font-mono", lock && "bg-slate-50 text-slate-500 dark:bg-slate-800")}
+                className={cx(inputCls, "!w-32 font-mono", lock && "bg-surface-2 text-fg-4")}
                 value={r.m.id}
                 placeholder="v0.2"
                 readOnly={!!lock}
@@ -178,22 +178,16 @@ export function MilestoneEditor({
                 <input type="checkbox" checked={!!r.m.done} onChange={(e) => update(key, { done: e.target.checked || undefined })} />
                 リリース済み
               </label>
-              <span className="w-16 shrink-0 text-right text-base text-slate-500 dark:text-slate-400">要望 {count}</span>
+              <span className="w-16 shrink-0 text-right text-base text-fg-4">要望 {count}</span>
               <Button variant="danger" disabled={!!lock} title={lock ?? undefined} onClick={() => remove(key)}>
                 削除
               </Button>
-              {lock && <p className="w-full text-base text-slate-500 dark:text-slate-400">{lock}</p>}
+              {lock && <p className="w-full text-base text-fg-4">{lock}</p>}
               <div className="w-full">
-                <button
-                  type="button"
-                  className="text-base text-slate-600 underline-offset-2 hover:underline dark:text-slate-300"
-                  aria-expanded={open.has(key)}
-                  aria-controls={`ms-goals-${key}`}
-                  onClick={() => toggle(key)}
-                >
+                <PlainButton className="text-base text-fg-3 underline-offset-2 hover:underline" aria-expanded={open.has(key)} aria-controls={`ms-goals-${key}`} onClick={() => toggle(key)}>
                   {open.has(key) ? "▾" : "▸"} 目的・予定機能
-                  <span className="ml-2 text-slate-500 dark:text-slate-400">{goalSummary(r.m)}</span>
-                </button>
+                  <span className="ml-2 text-fg-4">{goalSummary(r.m)}</span>
+                </PlainButton>
                 {open.has(key) && (
                   <GoalsEditor
                     id={`ms-goals-${key}`}
@@ -209,11 +203,11 @@ export function MilestoneEditor({
       </ul>
       <Button onClick={add}>＋ マイルストーンを追加</Button>
       {unknownNotes.length > 0 && (
-        <p className="text-base text-amber-700 dark:text-amber-300">
+        <p className="text-base text-warn">
           ⚠ project.yaml に無いマイルストーンのノート: {unknownNotes.join(", ")}（「リリースノート」タブで読めます。同じ ID のマイルストーンを足すと定義に戻ります）
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+      <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
         <Button variant="primary" disabled={!dirty || busy} onClick={() => void save()}>
           保存
         </Button>
@@ -221,14 +215,14 @@ export function MilestoneEditor({
           元に戻す
         </Button>
         {msg && (
-          <span role={msg.ok ? "status" : "alert"} className={cx(msg.ok ? "text-emerald-600" : "text-rose-600")}>
+          <span role={msg.ok ? "status" : "alert"} className={cx(msg.ok ? "text-ok" : "text-danger")}>
             {msg.ok ? msg.text : `保存できませんでした: ${msg.text}`}
           </span>
         )}
-        {dirty && !msg && !changedElsewhere && <span className="text-slate-500">未保存の変更があります</span>}
+        {dirty && !msg && !changedElsewhere && <span className="text-fg-4">未保存の変更があります</span>}
       </div>
       {changedElsewhere && (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-md bg-warn-soft p-3 text-warn-strong">
           編集中にマイルストーンが他で変わりました。このまま保存すると断られます（入力は残ります）。必要な入力を控えてから、最新を読み直してください。
           <Button variant="cancel" onClick={() => (reset(), setMsg(null))}>
             入力を捨てて最新を読み直す
@@ -261,7 +255,7 @@ function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used
   }, [goals.length]);
   const full = goals.length >= MILESTONE_GOAL_LIMITS.goals;
   return (
-    <div id={id} className="mt-2 space-y-3 rounded-md bg-slate-50 p-3 dark:bg-slate-900">
+    <div id={id} className="mt-2 space-y-3 rounded-md bg-page p-3">
       <label className="block">
         <span className="text-base font-medium">目的</span>
         <textarea
@@ -275,11 +269,11 @@ function GoalsEditor({ id, m, used, onChange }: { id: string; m: Milestone; used
       </label>
       <div role="group" aria-label="予定している機能・目標">
         <p className="text-base font-medium">予定している機能・目標</p>
-        {!goals.length && <p className="mt-1 text-base text-slate-500 dark:text-slate-400">まだありません。</p>}
+        {!goals.length && <p className="mt-1 text-base text-fg-4">まだありません。</p>}
         <div className="mt-1 space-y-2">
           {goals.map((g, i) => (
             <div key={g.id} className="flex items-center gap-2">
-              <span className="w-10 shrink-0 font-mono text-sm text-slate-500">{g.id}</span>
+              <span className="w-10 shrink-0 font-mono text-sm text-fg-4">{g.id}</span>
               <input
                 ref={i === goals.length - 1 ? addRef : undefined}
                 aria-label={`予定機能 ${g.id}`}

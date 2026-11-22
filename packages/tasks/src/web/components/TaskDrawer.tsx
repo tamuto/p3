@@ -16,7 +16,7 @@ import { fmtTime } from "../lib/format.ts";
 import type { RequestData } from "../lib/requestData.tsx";
 import { DoneMark } from "./Marks.tsx";
 import { Outputs } from "./Outputs.tsx";
-import { Badge, Button, buttonCls, Empty, Field, Id, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Badge, Button, buttonCls, Empty, Field, IconButton, Id, inputCls, PlainButton, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { Link } from "@tanstack/react-router";
 import { NO_REPO, repoChoices, requestWorkstreams } from "../../shared/workTarget.ts";
 import { discardDraft, draftOf, editDraft, isDirty, shallowEqual, syncDraft, type Draft as DraftState } from "../lib/draft.ts";
@@ -184,14 +184,14 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-inverse/20" onClick={onClose}>
       <aside
         onClick={(e) => e.stopPropagation()}
-        className="flex h-full w-full max-w-2xl flex-col bg-white shadow-xl dark:bg-slate-900"
+        className="flex h-full w-full max-w-2xl flex-col bg-surface shadow-xl"
       >
-        <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+        <div className="flex items-center gap-3 border-b border-line px-5 py-3">
           <Id id={task.id} />
-          <span className="text-base text-slate-500 dark:text-slate-400">
+          <span className="text-base text-fg-4">
             rev {task.rev} · {task.updatedBy ?? "?"}
           </span>
           <div className="ml-auto flex gap-2">
@@ -209,16 +209,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </div>
         </div>
         {gone && (
-          <div role="alert" className="bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <div role="alert" className="bg-danger-soft px-5 py-2 text-danger-strong">
             このタスクは見つかりません（外で削除・アーカイブされました）。保存はしません。入力は残っているので、必要なら写してから閉じてください。
           </div>
         )}
         {dirty && draft.external && (
-          <div role="status" className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <div role="status" className="bg-warn-soft px-5 py-2 text-warn-strong">
             編集中に他で更新されました（rev {draft.external.rev}）。このまま保存すると競合になります。入力を捨てて最新にするには「破棄」。
           </div>
         )}
-        {msg && <div className="bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{msg}</div>}
+        {msg && <div className="bg-warn-soft px-5 py-2 text-warn-strong">{msg}</div>}
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
           <input className={`${inputCls} text-lg font-semibold`} value={fields.title} onChange={(e) => set("title", e.target.value)} />
 
@@ -246,15 +246,15 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </Field>
             <dl className="grid grid-cols-3 gap-2 pb-1.5 text-base" title="ステータスを変えたときに p3 が記録する日時">
               <div>
-                <dt className="text-slate-500">作成</dt>
+                <dt className="text-fg-4">作成</dt>
                 <dd>{fmtTime(task.createdAt)}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">作業中にした</dt>
+                <dt className="text-fg-4">作業中にした</dt>
                 <dd>{fmtTime(task.startedAt) || "—"}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">完了にした</dt>
+                <dt className="text-fg-4">完了にした</dt>
                 <dd>{fmtTime(task.doneAt) || "—"}</dd>
               </div>
             </dl>
@@ -268,7 +268,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             </Field>
           </div>
           {task.doneAt && (
-            <div className="space-y-2 rounded-lg bg-emerald-50 px-4 py-2.5 dark:bg-emerald-950/40">
+            <div className="space-y-2 rounded-lg bg-ok-soft px-4 py-2.5">
               <div className="flex flex-wrap items-center gap-3">
                 <DoneMark checked={!!task.checkedAt} />
                 {/* 人の済みは証拠の根拠とは別の、タスクごとの最終確認。済みの後も未達・申告のみは下に出したまま */}
@@ -280,13 +280,13 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                 </Button>
               </div>
               {acc ? (
-                <p className={acc.shortfalls.length ? "text-base text-amber-800 dark:text-amber-300" : "text-base text-emerald-800 dark:text-emerald-300"}>
+                <p className={acc.shortfalls.length ? "text-base text-warn-strong" : "text-base text-ok-strong"}>
                   受け入れ基準: {metSummary(acc)}。{shortfallSummary(acc)}
                 </p>
               ) : (
-                <p className="text-base text-slate-500">受け入れ基準なし</p>
+                <p className="text-base text-fg-4">受け入れ基準なし</p>
               )}
-              {(dirty || accDirty || blockDirty || srcDirty) && <p className="text-base text-amber-800 dark:text-amber-300">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
+              {(dirty || accDirty || blockDirty || srcDirty) && <p className="text-base text-warn-strong">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
           {/* 見直しが必要（候補）: 人の済みとは別の注意。表示しただけでは済み・状態は変わらない */}
@@ -333,7 +333,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
 
           {task.status === "doing" && (
             <Section title="観測（この作業として）">
-              <p className="text-base text-slate-600 dark:text-slate-400">この作業で観測を作る・期待を変える・終えると、観測の履歴にこのタスクが残ります。</p>
+              <p className="text-base text-fg-3">この作業で観測を作る・期待を変える・終えると、観測の履歴にこのタスクが残ります。</p>
               <Link to="/observer" search={{ work: task.ref }} className={buttonCls()}>
                 この作業として観測を開く
               </Link>
@@ -348,7 +348,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               // 保存済みのもの（URL はリンク。編集中の内容は下の欄で、保存するとここに出る）
               <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} />
             ) : (
-              <p className="text-base text-slate-500 dark:text-slate-400">まだありません</p>
+              <p className="text-base text-fg-4">まだありません</p>
             )}
             {multi && <RepoOutputsEditor ctx={ctx} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           </Section>
@@ -378,16 +378,16 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
                   const archived = !live && !!archivedIds?.has(r.target);
                   return (
                     <li key={r.key} className="flex min-w-0 items-center gap-2">
-                      <span className="w-14 shrink-0 text-base text-slate-500">{r.role}</span>
+                      <span className="w-14 shrink-0 text-base text-fg-4">{r.role}</span>
                       <Id id={r.target} onClick={() => (archived ? ctx.openArchived(`${rid}/${r.target}`) : open(`${rid}/${r.target}`))} />
                       {live ? (
                         <span className="min-w-0 truncate">{title(r.target)}</span>
                       ) : archived ? (
-                        <button type="button" className="min-w-0 truncate text-left text-base text-slate-500 hover:text-indigo-600" onClick={() => ctx.openArchived(`${rid}/${r.target}`)}>
+                        <PlainButton className="min-w-0 truncate text-base text-fg-4 hover:text-accent" onClick={() => ctx.openArchived(`${rid}/${r.target}`)}>
                           <Badge tone="violet">アーカイブ</Badge> 閲覧専用の詳細を開く
-                        </button>
+                        </PlainButton>
                       ) : (
-                        <span className="min-w-0 truncate text-base text-slate-500 dark:text-slate-400">{archivedIds ? "（通常のタスクにもアーカイブにも見つかりません）" : "（通常のタスクにありません）"}</span>
+                        <span className="min-w-0 truncate text-base text-fg-4">{archivedIds ? "（通常のタスクにもアーカイブにも見つかりません）" : "（通常のタスクにありません）"}</span>
                       )}
                     </li>
                   );
@@ -396,7 +396,7 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             )}
           </Section>
 
-          <p className="font-mono text-sm text-slate-500 dark:text-slate-400">
+          <p className="font-mono text-sm text-fg-4">
             {ctx.info.dataDir}/requests/{rid}/tasks/{task.id}.md
           </p>
         </div>
@@ -442,7 +442,7 @@ function WorkTarget({
           ))}
         </select>
       </Field>
-      <p className="pb-2 text-base text-slate-500">
+      <p className="pb-2 text-base text-fg-4">
         {current ? (branch ? <>ブランチ <code className="font-mono break-all">{branch.branch}</code></> : "ブランチなし（git でないフォルダ・まだ割り当てていない）") : "作業先なし（調査・人の判断など）"}
       </p>
     </div>
@@ -469,19 +469,13 @@ function RepoOutputsEditor({ ctx, task, disabled, onSaved, onError }: { ctx: App
       {list.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label="リポジトリごとの成果物">
           {list.map((o, i) => (
-            <li key={`${i}:${o.repo}:${o.output}`} className="inline-flex max-w-full items-center gap-1 rounded bg-slate-100 py-0.5 pr-0.5 pl-2 text-base dark:bg-slate-800">
+            <li key={`${i}:${o.repo}:${o.output}`} className="inline-flex max-w-full items-center gap-1 rounded bg-surface-2 py-0.5 pr-0.5 pl-2 text-base">
               <span className="min-w-0 break-all">
                 {o.repo}: {o.output}
               </span>
-              <button
-                type="button"
-                disabled={disabled}
-                aria-label={`${o.repo} の成果物「${o.output}」を外す`}
-                onClick={() => void save(list.filter((_, j) => j !== i))}
-                className="shrink-0 rounded px-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
-              >
+              <IconButton disabled={disabled} aria-label={`${o.repo} の成果物「${o.output}」を外す`} onClick={() => void save(list.filter((_, j) => j !== i))}>
                 ×
-              </button>
+              </IconButton>
             </li>
           ))}
         </ul>

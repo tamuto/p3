@@ -35,7 +35,7 @@ function DefinitionList() {
             <Empty>まだ観測の定義がありません。</Empty>
           ) : (
             <table className="w-full text-left">
-              <thead className="text-slate-600 dark:text-slate-400">
+              <thead className="text-fg-3">
                 <tr>
                   <th className="py-1 pr-3 font-normal">タイトル</th>
                   <th className="py-1 pr-3 font-normal">カテゴリ</th>
@@ -46,7 +46,7 @@ function DefinitionList() {
               </thead>
               <tbody>
                 {load.value.definitions.map((d) => (
-                  <tr key={d.id} className="border-t border-slate-200 dark:border-slate-800">
+                  <tr key={d.id} className="border-t border-line">
                     <td className="py-2 pr-3">
                       <Link to="/observer/$id" params={{ id: d.id }} className={linkCls}>
                         {d.title}
@@ -68,7 +68,7 @@ function DefinitionList() {
           )}
         </>
       )}
-      <p className="pt-2 text-slate-600 dark:text-slate-400">観測は、今の期待（仕様）が実際の環境・データ・使い方で成り立っているかを確かめる記録です。テストを流す仕組み（CI）ではありません。</p>
+      <p className="pt-2 text-fg-3">観測は、今の期待（仕様）が実際の環境・データ・使い方で成り立っているかを確かめる記録です。テストを流す仕組み（CI）ではありません。</p>
     </div>
   );
 }

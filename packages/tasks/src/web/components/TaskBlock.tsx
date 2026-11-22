@@ -3,7 +3,7 @@ import { BLOCK_LIMITS, blockWarnings, type BlockHistoryEntry, type BlockOp } fro
 import type { Task } from "../../shared/types.ts";
 import { api, failureOf } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
-import { Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * タスク詳細の上部の「止まっている理由」（shared/taskBlock.ts の規則）。作業中なら付ける・直す・解除でき、作業中でなければ付けられない
@@ -89,7 +89,7 @@ export function TaskBlockPanel({
   return (
     <div className="space-y-2">
       {b && (
-        <div role="status" aria-label="止まっています" className="space-y-1 rounded-lg bg-amber-50 px-4 py-3 text-amber-950 ring-1 ring-amber-300 dark:bg-amber-950/60 dark:text-amber-100 dark:ring-amber-800">
+        <div role="status" aria-label="止まっています" className="space-y-1 rounded-lg bg-warn-soft px-4 py-3 text-warn-strong ring-1 ring-warn-line">
           <p className="font-semibold">⏸ 停止中</p>
           <p className="break-words whitespace-pre-wrap">
             <span className="font-medium">理由: </span>
@@ -109,9 +109,9 @@ export function TaskBlockPanel({
         </div>
       )}
       {warnings.map((w) => (
-        <p key={w} role="alert" className="rounded-md bg-rose-50 px-3 py-2 text-base break-words text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+        <Alert key={w} box>
           {w}
-        </p>
+        </Alert>
       ))}
       {!readOnly && !form && (
         <div className="flex flex-wrap items-center gap-2">
@@ -135,11 +135,11 @@ export function TaskBlockPanel({
               停止を解除
             </Button>
           )}
-          {task.status !== "doing" && !b && <p className="text-base text-slate-500 dark:text-slate-400">停止理由は作業中のタスクだけに付けられます。</p>}
+          {task.status !== "doing" && !b && <p className="text-base text-fg-4">停止理由は作業中のタスクだけに付けられます。</p>}
         </div>
       )}
       {form && (
-        <section aria-label={form.kind === "set" ? "停止理由" : "停止の解除"} className="space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+        <section aria-label={form.kind === "set" ? "停止理由" : "停止の解除"} className="space-y-2 rounded-lg bg-surface p-3 ring-1 ring-line">
           {form.kind === "set" ? (
             <>
               <Field label="止まっている理由（必須）" hint={`何で進められないか。${BLOCK_LIMITS.reason} 文字まで（止まった時刻は直しても変わりません）`}>
@@ -154,19 +154,19 @@ export function TaskBlockPanel({
               <Field label="回答・解決の内容（必須）" hint={`${BLOCK_LIMITS.resolution} 文字まで`}>
                 <textarea ref={first} rows={3} className={inputCls} value={form.resolution} disabled={busy} onChange={(e) => setForm({ ...form, resolution: e.target.value })} />
               </Field>
-              <p className="text-base text-slate-500">停止を解除しても状態は作業中のままです。作業は自動で再開しません（AI には再開を頼んでください）。</p>
+              <p className="text-base text-fg-4">停止を解除しても状態は作業中のままです。作業は自動で再開しません（AI には再開を頼んでください）。</p>
             </>
           )}
-          {external && !conflict && <p role="status" className="text-base text-amber-700 dark:text-amber-400">編集中に他で更新されました（rev {task.rev}）。このまま保存すると競合になります。</p>}
+          {external && !conflict && <p role="status" className="text-base text-warn">編集中に他で更新されました（rev {task.rev}）。このまま保存すると競合になります。</p>}
           {error && (
-            <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-rose-600">
+            <Alert className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 break-words">{error}</span>
               {conflict && (
                 <Button className="text-base" onClick={() => (setForm({ ...form, baseRev: task.rev }), setConflict(false), setError(null))}>
                   最新に合わせる
                 </Button>
               )}
-            </div>
+            </Alert>
           )}
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" disabled={busy || invalid || conflict || (form.kind === "set" && !dirty)} onClick={() => void save()}>
@@ -188,15 +188,15 @@ const ACTION = { set: "付けた", update: "直した", clear: "解除した" } 
 function BlockHistory({ history }: { history: BlockHistoryEntry[] }) {
   return (
     <details className="text-base">
-      <summary className="cursor-pointer text-slate-600 dark:text-slate-300">停止の履歴（{history.length} 件）</summary>
-      <ol className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3 dark:border-slate-700">
+      <summary className="cursor-pointer text-fg-3">停止の履歴（{history.length} 件）</summary>
+      <ol className="mt-2 space-y-2 border-l-2 border-line pl-3">
         {[...history].reverse().map((h, i) => (
           <li key={`${h.at}-${i}`} className="space-y-0.5">
             <p className="font-medium">
               {fmtTime(h.at)} {ACTION[h.action]}
               {h.by ? `・${h.by}` : ""}
             </p>
-            {h.action === "update" && h.before && <p className="break-words text-slate-500">前の理由: {h.before.reason}</p>}
+            {h.action === "update" && h.before && <p className="break-words text-fg-4">前の理由: {h.before.reason}</p>}
             {(h.after ?? h.before) && <p className="break-words whitespace-pre-wrap">理由: {(h.after ?? h.before)!.reason}</p>}
             {h.after?.decision && <p className="break-words whitespace-pre-wrap">決めてほしいこと: {h.after.decision}</p>}
             {h.resolution && <p className="break-words whitespace-pre-wrap">回答・解決: {h.resolution}</p>}

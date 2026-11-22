@@ -10,7 +10,7 @@ import {
   sortMaterials,
   uiStatusView,
 } from "../lib/uiMaterials.ts";
-import { Badge, Button, buttonCls, Empty, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Badge, Button, buttonCls, Empty, PlainButton, Section } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 画面資料（その run の ui/）。提案・現状（添付）・仕様書から を分けて見せ、対象のタスク案へ移れる。
@@ -28,35 +28,30 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
   return (
     <Section title="画面資料" aside={<Badge tone={view.tone}>{view.label}</Badge>}>
       <div className="space-y-3">
-        {view.message && <p className="break-words text-base text-slate-600 dark:text-slate-400">{view.message}</p>}
+        {view.message && <p className="break-words text-base text-fg-3">{view.message}</p>}
         {run.ui?.verdictAdjusted && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-base text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <p className="rounded-md bg-warn-soft px-3 py-2 text-base text-warn-strong">
             必要な画面イメージが足りないので、判定を go から clarify にしました
           </p>
         )}
         {items.length > 0 ? (
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((m) => (
-              <li key={m.id} className="flex min-w-0 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
-                <button
-                  type="button"
-                  className="block h-44 w-full overflow-hidden border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
-                  onClick={() => show(m)}
-                  aria-label={`${m.title} を拡大`}
-                >
+              <li key={m.id} className="flex min-w-0 flex-col overflow-hidden rounded-lg bg-surface ring-1 ring-line">
+                <PlainButton className="block h-44 w-full overflow-hidden border-b border-line bg-page" onClick={() => show(m)} aria-label={`${m.title} を拡大`}>
                   <img src={materialUrl(requestId, run.id, m.id)} alt={m.title} loading="lazy" className="h-full w-full object-contain object-top" />
-                </button>
+                </PlainButton>
                 <div className="flex flex-1 flex-col gap-1.5 p-3 text-base">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={KIND_TONE[m.kind]}>{kindLabel(m.kind)}</Badge>
                     <span className="min-w-0 break-words font-medium">{m.title}</span>
                   </div>
-                  <p className="text-slate-500">
+                  <p className="text-fg-4">
                     {m.drafts.length > 0 && (
                       <>
                         対象{" "}
                         {m.drafts.map((k) => (
-                          <a key={k} href={`#${draftAnchor(k)}`} className="mr-1 font-mono text-indigo-600 underline dark:text-indigo-400">
+                          <a key={k} href={`#${draftAnchor(k)}`} className="mr-1 font-mono text-accent underline">
                             {k}
                           </a>
                         ))}
@@ -66,15 +61,15 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
                     {m.viewport ? `幅 ${m.viewport} · ` : ""}
                     {m.width}x{m.height} · {formatBytes(m.bytes)}
                   </p>
-                  {m.source && <p className="break-words text-slate-500">出典: {m.source}</p>}
-                  {m.assumptions.length > 0 && <p className="break-words text-slate-500">前提: {m.assumptions.join(" / ")}</p>}
+                  {m.source && <p className="break-words text-fg-4">出典: {m.source}</p>}
+                  {m.assumptions.length > 0 && <p className="break-words text-fg-4">前提: {m.assumptions.join(" / ")}</p>}
                   {m.rendered && (
-                    <p className="text-amber-700 dark:text-amber-400">
+                    <p className="text-warn">
                       P3 が原稿から描いた画像です（Codex は画像を見ていません。読めるかを確かめてください）
                       {m.rendered.clipped ? "。縦に長いので上から切っています" : ""}
                     </p>
                   )}
-                  {m.kind === "proposal" && <p className="text-slate-500 dark:text-slate-400">提案のイメージです（今の画面ではありません）</p>}
+                  {m.kind === "proposal" && <p className="text-fg-4">提案のイメージです（今の画面ではありません）</p>}
                   <div className="mt-auto flex flex-wrap gap-2 pt-1">
                     <Button onClick={() => show(m)}>拡大</Button>
                     <a href={materialUrl(requestId, run.id, m.id)} target="_blank" rel="noreferrer" className={buttonCls("secondary")}>
@@ -90,8 +85,8 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
         )}
         {run.ui && run.ui.problems.length > 0 && (
           <details className="text-base">
-            <summary className="cursor-pointer text-slate-500">取り込めなかった資料 {run.ui.problems.length} 件</summary>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 break-words text-slate-600 dark:text-slate-400">
+            <summary className="cursor-pointer text-fg-4">取り込めなかった資料 {run.ui.problems.length} 件</summary>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 break-words text-fg-3">
               {run.ui.problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -103,12 +98,12 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
       <dialog
         ref={dialog}
         onClose={() => setOpen(null)}
-        className="m-auto max-h-[95vh] w-[min(96vw,1400px)] max-w-none rounded-lg bg-white p-0 text-slate-900 backdrop:bg-black/60 dark:bg-slate-900 dark:text-slate-100"
+        className="m-auto max-h-[95vh] w-[min(96vw,1400px)] max-w-none rounded-lg bg-surface p-0 text-fg-strong backdrop:bg-black/60"
         aria-label={open?.title ?? "画像"}
       >
         {open && (
           <div className="flex max-h-[95vh] flex-col">
-            <div className="flex items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+            <div className="flex items-center gap-2 border-b border-line p-3">
               <Badge tone={KIND_TONE[open.kind]}>{kindLabel(open.kind)}</Badge>
               <span className="min-w-0 flex-1 truncate font-medium">{open.title}</span>
               <a href={materialUrl(requestId, run.id, open.id)} target="_blank" rel="noreferrer" className={buttonCls("secondary")}>
@@ -118,7 +113,7 @@ export function UiMaterialsPanel({ requestId, run }: { requestId: string; run: P
                 閉じる
               </Button>
             </div>
-            <div className="overflow-auto bg-slate-50 p-3 dark:bg-slate-950">
+            <div className="overflow-auto bg-page p-3">
               <img src={materialUrl(requestId, run.id, open.id)} alt={open.title} className="mx-auto max-w-full" />
             </div>
           </div>
@@ -133,20 +128,20 @@ function FixedAttachments({ requestId, run }: { requestId: string; run: Prefligh
   const list = run.attachments ?? [];
   if (!list.length) return null;
   return (
-    <div className="space-y-1 rounded-md bg-slate-50 p-3 text-base dark:bg-slate-950">
+    <div className="space-y-1 rounded-md bg-page p-3 text-base">
       <p className="font-medium">この run に固定した添付（Codex に渡したもの）</p>
       <ul className="space-y-1.5">
         {list.map((a) => {
           const x = a.extract;
           return (
             <li key={a.id} className="break-words">
-              <span className="text-slate-500">{ATTACHMENT_FORMATS[a.format]}</span> {a.name}
+              <span className="text-fg-4">{ATTACHMENT_FORMATS[a.format]}</span> {a.name}
               {a.description ? ` — ${a.description}` : ""}{" "}
-              <a href={fixedAttachmentUrl(requestId, run.id, a.id)} className="text-indigo-600 underline dark:text-indigo-400">
+              <a href={fixedAttachmentUrl(requestId, run.id, a.id)} className="text-accent underline">
                 原本
               </a>
               {a.format === "xlsx" && (
-                <span className="block text-slate-500">
+                <span className="block text-fg-4">
                   {!x
                     ? "まだ取り出していません"
                     : x.error
@@ -158,7 +153,7 @@ function FixedAttachments({ requestId, run }: { requestId: string; run: Prefligh
                   {x?.text && (
                     <>
                       {" "}
-                      <a href={fixedAttachmentUrl(requestId, run.id, a.id, true)} target="_blank" rel="noreferrer" className="text-indigo-600 underline dark:text-indigo-400">
+                      <a href={fixedAttachmentUrl(requestId, run.id, a.id, true)} target="_blank" rel="noreferrer" className="text-accent underline">
                         取り出した内容
                       </a>
                     </>

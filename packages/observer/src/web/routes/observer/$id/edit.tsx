@@ -35,7 +35,7 @@ function EditDefinition() {
         if (d.ended) return <Alert box warn>この観測は終了しているので直せません（{d.ended.reason}）。</Alert>;
         return (
           <>
-            <p className="text-slate-600 dark:text-slate-400">
+            <p className="text-fg-3">
               {id}・保存済みの版 v{d.rev}
             </p>
             {old && !useOld && (

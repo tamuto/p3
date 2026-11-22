@@ -45,39 +45,39 @@ function fieldsOf(s?: RequirementSource): Fields {
 /** 記録1件の表示（長い出典・根拠は折り返す） */
 function SourceItem({ s, children }: { s: SourceView; children?: React.ReactNode }) {
   return (
-    <li className="min-w-0 space-y-1 rounded-md bg-slate-50 p-3 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800" data-testid={`source-${s.id}`}>
+    <li className="min-w-0 space-y-1 rounded-md bg-page p-3 ring-1 ring-line" data-testid={`source-${s.id}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="font-mono text-sm text-slate-500">{s.id}</span>
+        <span className="font-mono text-sm text-fg-4">{s.id}</span>
         <SourceStateBadge state={s.state} />
         {s.confirmed && (
-          <span className="text-base text-slate-600 dark:text-slate-400">
+          <span className="text-base text-fg-3">
             確かめた人 {s.confirmed.by}・{s.confirmed.on}
           </span>
         )}
-        {s.from && <span data-aux className="text-sm text-slate-500">要望の {s.from} を写したもの</span>}
+        {s.from && <span data-aux className="text-sm text-fg-4">要望の {s.from} を写したもの</span>}
       </div>
       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-base">
         {s.target && (
           <>
-            <dt className="text-slate-500">対象</dt>
+            <dt className="text-fg-4">対象</dt>
             <dd className="min-w-0 break-words whitespace-pre-wrap">{s.target}</dd>
           </>
         )}
         {s.source && (
           <>
-            <dt className="text-slate-500">出典</dt>
+            <dt className="text-fg-4">出典</dt>
             <dd className="min-w-0 break-all whitespace-pre-wrap">{s.source}</dd>
           </>
         )}
         {s.basis && (
           <>
-            <dt className="text-slate-500">根拠</dt>
+            <dt className="text-fg-4">根拠</dt>
             <dd className="min-w-0 break-words whitespace-pre-wrap">{s.basis}</dd>
           </>
         )}
       </dl>
       {!!s.history?.length && (
-        <p data-aux className="text-sm text-slate-500">
+        <p data-aux className="text-sm text-fg-4">
           前の確認: {s.history.map((h) => `${h.by}・${h.on}${h.lapsedAt ? `（${h.lapsedAt.slice(0, 10)} に効かなくなった）` : ""}`).join(" / ")}
         </p>
       )}
@@ -162,7 +162,7 @@ export function SourceList({
   const fid = (k: string) => `${id}-${k}`;
   const editor = form && (
     <div
-      className="min-w-0 space-y-2 rounded-md p-3 ring-1 ring-indigo-200 dark:ring-indigo-900"
+      className="min-w-0 space-y-2 rounded-md p-3 ring-1 ring-accent-line"
       role="group"
       aria-label={`${label} の出典と確認の${form.mode === "add" ? "追加" : form.mode === "edit" ? "編集" : "確認の記録"}`}
       onKeyDown={(e) => {
@@ -212,7 +212,7 @@ export function SourceList({
         </>
       )}
       <fieldset className="grid min-w-0 gap-2 sm:grid-cols-2">
-        <legend className="text-base text-slate-600 dark:text-slate-400">
+        <legend className="text-base text-fg-3">
           {form.mode === "confirm" ? "確かめた人と日（出典と根拠がそろっていること）" : "確かめたなら（任意。出典・根拠・人・日がそろうと確認記録あり）"}
         </legend>
         <div className="min-w-0">
@@ -228,7 +228,7 @@ export function SourceList({
           <input id={fid("on")} type="date" className={inputCls} value={f.on} disabled={busy} onChange={(e) => setF({ ...f, on: e.target.value })} />
         </div>
       </fieldset>
-      {dirty && <p className="text-base text-amber-700 dark:text-amber-400">未保存の変更があります</p>}
+      {dirty && <p className="text-base text-warn">未保存の変更があります</p>}
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy || disabled} onClick={() => void save()}>
@@ -264,7 +264,7 @@ export function SourceList({
           ))}
         </ul>
       ) : (
-        <p className="text-base text-slate-500">記録なし（未記録）</p>
+        <p className="text-base text-fg-4">記録なし（未記録）</p>
       )}
       {form?.mode === "add" && editor}
       {onSave && !form && (
@@ -308,16 +308,16 @@ export function CriteriaSources({
       <details className="min-w-0 space-y-2" open={recorded || undefined}>
       <summary className="cursor-pointer">
         <h3 className="inline font-semibold">受け入れ基準の出典と確認（任意）</h3>
-        {!recorded && <span className="ml-2 text-base text-slate-500">記録なし（未記録）</span>}
+        {!recorded && <span className="ml-2 text-base text-fg-4">記録なし（未記録）</span>}
       </summary>
-      <p className="text-base text-slate-600 dark:text-slate-400">
+      <p className="text-base text-fg-3">
         要求そのものの根拠（誰の要求か・承認された例など）の記録です。実装後の証拠や人の済みとは別で、確認記録ありも申告です（P3 の保証ではありません）。
       </p>
       <ul className="min-w-0 space-y-3">
         {view.items.map((i) => (
           <li key={i.id} className="min-w-0 space-y-1" data-testid={`criterion-sources-${i.id}`}>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="font-mono text-sm text-slate-500">{i.id}</span>
+              <span className="font-mono text-sm text-fg-4">{i.id}</span>
               <SourceStateBadge state={i.state} />
               <span className="min-w-0 break-words">{i.text}</span>
             </div>
@@ -335,11 +335,11 @@ export function CriteriaSources({
       </ul>
       {view.orphans.length > 0 && (
         <div className="min-w-0 space-y-1">
-          <p className="text-base text-rose-700 dark:text-rose-400">対応先不明の記録（基準を消した・写した元の記録が無い）</p>
+          <p className="text-base text-danger">対応先不明の記録（基準を消した・写した元の記録が無い）</p>
           <ul className={cx("min-w-0 space-y-2")}>
             {view.orphans.map((s) => (
               <SourceItem key={s.id} s={s}>
-                <p data-aux className="text-sm text-slate-500">基準 {s.criterionId}</p>
+                <p data-aux className="text-sm text-fg-4">基準 {s.criterionId}</p>
               </SourceItem>
             ))}
           </ul>

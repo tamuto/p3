@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { type PreflightRun, type RunPulse } from "../../../../shared/types.ts";
-import { Badge, Button, cx, linkCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Badge, Button, cx, inputCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { NEW_REQUEST_HINT, preflightClosedReason } from "../../../../shared/preflightClosed.ts";
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
@@ -296,7 +296,7 @@ function RequestPanel({
 
       <RequestObservations requestId={request.id} tick={ctx.tick} />
 
-      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50 p-4 dark:bg-indigo-950/40">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-accent-soft p-4">
         {closed ? (
           <div className="w-full space-y-2">
             <p>
@@ -318,7 +318,7 @@ function RequestPanel({
         )}
         {engine && !closed && (
           <span
-            className={cx("text-base", !engine.ok ? "text-rose-600" : engine.name === "mock" ? "text-amber-700 dark:text-amber-400" : "text-slate-600 dark:text-slate-400")}
+            className={cx("text-base", !engine.ok ? "text-danger" : engine.name === "mock" ? "text-warn" : "text-fg-3")}
             title={engine.name === "mock" ? "P3_PREFLIGHT_ENGINE=mock のときだけ Mock で評価します" : undefined}
           >
             {engine.ok ? "●" : "✕"} {engine.detail}
@@ -335,18 +335,18 @@ function RequestPanel({
           </Button>
         )}
         {selectedRunning && run && (run.cancelRequested || cancelNote?.runId === run.id) && (
-          <p role="status" className="w-full text-base text-amber-700 dark:text-amber-400">
+          <p role="status" className="w-full text-base text-warn">
             {cancelNote?.runId === run.id ? cancelNote.text : `中断を頼んでいます（${run.cancelRequested!.at}）。実行しているプロセスが止めるまで実行中のままです`}
           </p>
         )}
         {selectedRunning && run?.liveness && (run.liveness.state === "unknown" || run.liveness.state === "dead") && (
-          <p role="status" className="w-full text-base text-slate-600 dark:text-slate-400">
+          <p role="status" className="w-full text-base text-fg-3">
             この run を実行しているプロセスを確かめられません（{run.liveness.reason}）
           </p>
         )}
         {runs.length > 0 && (
           <select
-            className="ml-auto max-w-full min-w-0 rounded-md bg-white px-2 py-1.5 ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-700"
+            className={cx(inputCls, "ml-auto w-auto! max-w-full min-w-0")}
             value={runId ?? ""}
             onChange={(e) => setRunId(e.target.value)}
           >
@@ -361,16 +361,16 @@ function RequestPanel({
         {/* 使えないと分かったときだけ（状態を取れなかったときは、使えるとも使えないとも言わない） */}
         {engine && !engine.ok && !engine.unknown && <DirectTaskLink requestId={request.id} />}
         {pulseError && (
-          <p role="status" className="flex w-full flex-wrap items-center gap-2 text-base text-amber-700 dark:text-amber-400">
+          <p role="status" className="flex w-full flex-wrap items-center gap-2 text-base text-warn">
             最新の Preflight を確かめられませんでした（{pulseError}）。表示と入力はそのままです
             <Button variant="secondary" className="text-base" onClick={() => poller.current?.now()}>
               もう一度確かめる
             </Button>
           </p>
         )}
-        {blocked && <p className="w-full text-base text-amber-700 dark:text-amber-400">{blocked}</p>}
-        {notesState.blockPlainRun && <p className="w-full text-base text-amber-700 dark:text-amber-400">{PLAIN_RUN_BLOCKED}</p>}
-        {error && <p className="w-full text-rose-600">{error}</p>}
+        {blocked && <p className="w-full text-base text-warn">{blocked}</p>}
+        {notesState.blockPlainRun && <p className="w-full text-base text-warn">{PLAIN_RUN_BLOCKED}</p>}
+        {error && <p className="w-full text-danger">{error}</p>}
       </div>
 
       {notice && <PreflightNotice run={notice.run} fresh={notice.fresh} onOpen={() => setRunId(notice.run.id)} />}

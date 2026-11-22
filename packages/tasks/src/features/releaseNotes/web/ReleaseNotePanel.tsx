@@ -84,11 +84,11 @@ export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: stri
   if (!detail || !draft)
     return loadError ? (
       <div className="space-y-2">
-        <p className="text-rose-600">読み込めませんでした: {loadError}</p>
+        <p className="text-danger">読み込めませんでした: {loadError}</p>
         <Button onClick={() => void load()}>もう一度読み込む</Button>
       </div>
     ) : (
-      <p className="text-slate-500">Loading…</p>
+      <p className="text-fg-4">Loading…</p>
     );
 
   const m = detail.material.milestone;
@@ -134,19 +134,19 @@ export function ReleaseNotePanel({ milestone, onDirtyChange }: { milestone: stri
     <div className="min-w-0 space-y-6">
       <header className="space-y-1">
         <h2 className="text-xl font-semibold break-words">
-          {m.title} <span className="font-mono text-base text-slate-500">{m.id}</span>
+          {m.title} <span className="font-mono text-base text-fg-4">{m.id}</span>
         </h2>
-        <p className="text-slate-500 dark:text-slate-400">
+        <p className="text-fg-4">
           {m.due ? `期限 ${m.due}・` : ""}
           {m.done ? "リリース済み" : "未リリース"}・
           {detail.note ? `保存済み（${fmtTime(detail.note.updatedAt)}${detail.note.updatedBy ? ` · ${detail.note.updatedBy}` : ""}）` : detail.noteError ? "ノートを読めません" : "ノートなし"}
         </p>
         {detail.materialChanged && (
-          <p role="status" className="text-base text-amber-700 dark:text-amber-300">
+          <p role="status" className="text-base text-warn">
             ⚠ 保存のあとで要望・タスクが変わっています。本文は自動では変えていません。必要なら生成し直して確かめてから保存してください。
           </p>
         )}
-        {loadError && <p className="text-base text-rose-600">取り直せませんでした（表示は前の内容のまま）: {loadError}</p>}
+        {loadError && <p className="text-base text-danger">取り直せませんでした（表示は前の内容のまま）: {loadError}</p>}
       </header>
 
       <div className="space-y-3">
@@ -207,36 +207,36 @@ function GenerationView({
   // 生成のあとで（生成中も）材料が変わったか。終わったときの判定（materialChanged）に加えて、今の材料と比べる
   const stale = !!gen && gen.materialHash !== currentHash;
   return (
-    <section aria-labelledby="rn-gen" className="min-w-0 space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+    <section aria-labelledby="rn-gen" className="min-w-0 space-y-3 rounded-lg border border-line p-4">
       <h3 id="rn-gen" className="text-lg font-semibold">
         機能の要約（案）
       </h3>
-      <p className="text-base text-slate-500 dark:text-slate-400">
+      <p className="text-base text-fg-4">
         収録する要望のタスクの変更の記録から Codex が要約します。保存はされず、編集欄にも勝手には入りません。
         生成せずに、本文を手で書いて保存することもできます（Docker や ChatGPT の接続は要りません）。
       </p>
-      {!hasSources && !gen && <p className="rounded-md bg-slate-50 p-3 text-base dark:bg-slate-900">要約の材料（変更の記録のある完了したタスク）がありません。本文を手で書いて保存してください。</p>}
+      {!hasSources && !gen && <p className="rounded-md bg-page p-3 text-base">要約の材料（変更の記録のある完了したタスク）がありません。本文を手で書いて保存してください。</p>}
 
       {gen && (
         <div className="space-y-2" aria-live="polite">
           {running && (
             <p className="flex items-center gap-2">
-              <span aria-hidden className="size-3 animate-pulse rounded-full bg-indigo-500" />
+              <span aria-hidden className="size-3 animate-pulse rounded-full bg-accent-solid" />
               生成しています…（編集欄の入力はそのままです）
             </p>
           )}
           {gen.status === "failed" && <Alert box>生成できませんでした（{FAILURE_LABEL[gen.failure ?? "error"]}）: {gen.error}</Alert>}
           {gen.status === "failed" && (
-            <p className="flex flex-wrap items-center gap-x-2 text-base text-slate-600 dark:text-slate-400">
+            <p className="flex flex-wrap items-center gap-x-2 text-base text-fg-3">
               {MANUAL_NOTE}
               <Button variant="link" onClick={() => document.getElementById(BODY_ID)?.focus()}>
                 本文を手で書く
               </Button>
             </p>
           )}
-          {gen.status === "cancelled" && <p className="text-base text-slate-500">取り消しました。</p>}
+          {gen.status === "cancelled" && <p className="text-base text-fg-4">取り消しました。</p>}
           {stale && (
-            <p role="status" className="text-base text-amber-700 dark:text-amber-300">
+            <p role="status" className="text-base text-warn">
               ⚠ {running ? "生成中に" : "生成のあとで"}要望・タスクが変わりました。この案は古い材料からのものです。
             </p>
           )}
@@ -246,12 +246,12 @@ function GenerationView({
                 {gen.items.map((x, i) => (
                   <li key={i}>
                     <span className="break-words">{x.text}</span>
-                    <span className="block font-mono text-sm break-all text-slate-500">出典: {x.sources.join(", ")}</span>
+                    <span className="block font-mono text-sm break-all text-fg-4">出典: {x.sources.join(", ")}</span>
                   </li>
                 ))}
               </ul>
               <Warnings items={gen.warnings.filter((w) => w.code !== "material_changed")} />
-              <p data-aux className="text-sm text-slate-500">
+              <p data-aux className="text-sm text-fg-4">
                 {gen.engine === "mock" ? "Mock（要約していません）・" : ""}
                 {fmtTime(gen.finishedAt ?? gen.startedAt)} に生成・出典は公開する本文には入りません
               </p>
@@ -316,20 +316,20 @@ function NoteEditor({
   const blocked = ext?.kind === "invalid";
   const copy = async () => setCopied(COPY_MESSAGE[await copyText(draft.value, navigator.clipboard)].replace("ID", "本文"));
   return (
-    <section aria-labelledby="rn-edit" className="min-w-0 space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+    <section aria-labelledby="rn-edit" className="min-w-0 space-y-3 rounded-lg border border-line p-4">
       <h3 id="rn-edit" className="text-lg font-semibold">
         本文（公開する Markdown）
       </h3>
 
       {ext && (
-        <div role="alert" className="space-y-2 rounded-md bg-rose-50 p-3 text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <Alert box className="space-y-2">
           {ext.kind === "changed" && (
             <>
               <p className="font-medium">
                 {dirty ? "編集中に" : ""}別の操作でノートが保存されました（{fmtTime(ext.note.updatedAt)}
                 {ext.note.updatedBy ? ` · ${ext.note.updatedBy}` : ""}）。あなたの入力は残っています。見比べてから選んでください。
               </p>
-              <details className="rounded bg-white p-2 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+              <details className="rounded bg-surface p-2 text-fg">
                 <summary className="cursor-pointer text-base font-medium">外で保存された本文を見る</summary>
                 <pre className="mt-2 max-h-72 overflow-auto text-base break-words whitespace-pre-wrap">{ext.note.body || "（本文なし）"}</pre>
               </details>
@@ -352,7 +352,7 @@ function NoteEditor({
             </Button>
           </div>
           {copied && <p className="text-base">{copied}</p>}
-        </div>
+        </Alert>
       )}
 
       <label className="block space-y-1">
@@ -366,13 +366,13 @@ function NoteEditor({
           className={cx(inputCls, "font-mono text-base")}
         />
       </label>
-      <p className="text-base text-slate-500 dark:text-slate-400">
+      <p className="text-base text-fg-4">
         {dirty ? "保存していない変更があります。対象の要望と内容を確かめてから保存してください。" : detail.note ? "保存されている本文です。" : "まだ保存されていません。"}
       </p>
 
       {msg && (
         <div className="space-y-1">
-          <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}>
+          <p role={msg.ok ? "status" : "alert"} className={msg.ok ? "text-ok" : "text-danger"}>
             {msg.text}
           </p>
           {msg.warnings && <Warnings items={msg.warnings} />}
@@ -402,8 +402,8 @@ function NoteEditor({
           </span>
         )}
       </div>
-      {!ext && copied && <p className="text-base text-slate-500">{copied}</p>}
-      <p className="text-base text-slate-500">ダウンロードは保存した本文だけです（保存していない変更・出典は含みません）。保存しても要望やマイルストーンの状態は変わりません。</p>
+      {!ext && copied && <p className="text-base text-fg-4">{copied}</p>}
+      <p className="text-base text-fg-4">ダウンロードは保存した本文だけです（保存していない変更・出典は含みません）。保存しても要望やマイルストーンの状態は変わりません。</p>
     </section>
   );
 }

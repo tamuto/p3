@@ -102,15 +102,15 @@ export function Notes({
   if (st.mode === "intro" && !info?.notes.length && !info?.invalid.length) return null;
 
   return (
-    <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-slate-500 dark:text-slate-400">requests/{request.id}/notes/*.md</span>}>
-      <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+    <Section title="メモ（確認事項への回答・方針の変更）" aside={<span className="font-mono text-sm text-fg-4">requests/{request.id}/notes/*.md</span>}>
+      <div className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
         {info && (
           <>
             {info.notes.length > 0 && (
               <ul className="space-y-2">
                 {info.notes.map((n) => (
                   <li key={n.id} className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-base text-slate-500">
+                    <div className="flex flex-wrap items-center gap-2 text-base text-fg-4">
                       <Badge tone={n.pending ? "amber" : "slate"}>{n.pending ? "次に渡す" : "渡し済み"}</Badge>
                       <span className="font-mono">{n.id}</span>
                       <span>{n.createdBy ?? "不明"}</span>
@@ -122,15 +122,15 @@ export function Notes({
               </ul>
             )}
             {info.invalid.map((i) => (
-              <p key={i.file} className="text-base text-rose-600">
+              <p key={i.file} className="text-base text-danger">
                 読めないメモ（渡しません）: {i.file} — {i.error}
               </p>
             ))}
-            {st.mode === "input" && !closed && <p className="text-base text-slate-600 dark:text-slate-400">{nextRunLabel(info)}</p>}
+            {st.mode === "input" && !closed && <p className="text-base text-fg-3">{nextRunLabel(info)}</p>}
           </>
         )}
-        {st.hint && !closed && <p className="text-base text-slate-600 dark:text-slate-400">{st.hint}</p>}
-        {closed && <p className="text-base text-slate-600 dark:text-slate-400">{closed}。メモは次の Preflight に渡すものなので、ここでは書き足しません。</p>}
+        {st.hint && !closed && <p className="text-base text-fg-3">{st.hint}</p>}
+        {closed && <p className="text-base text-fg-3">{closed}。メモは次の Preflight に渡すものなので、ここでは書き足しません。</p>}
         {st.mode === "input" && !closed && (
           <>
             <textarea
@@ -152,7 +152,7 @@ export function Notes({
             </div>
           </>
         )}
-        {message && <p className={message.error ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400"}>{message.text}</p>}
+        {message && <p className={message.error ? "text-danger" : "text-ok"}>{message.text}</p>}
       </div>
     </Section>
   );

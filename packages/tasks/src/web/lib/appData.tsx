@@ -80,7 +80,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         )}
       </div>
     ) : (
-      <div className="p-8 text-slate-500">Loading…</div>
+      <div className="p-8 text-fg-4">Loading…</div>
     );
   return <Ctx.Provider value={{ info, requests, reload, refresh, refreshing, tick }}>{children}</Ctx.Provider>;
 }
