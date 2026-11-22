@@ -34,7 +34,7 @@ export function ThemePanel({ tick }: { tick: number }) {
 
   return (
     <Section title="画面のテーマ（個人）">
-      <div className="space-y-3 rounded-lg bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="space-y-3 rounded-lg bg-surface p-5 ring-1 ring-line">
         <fieldset>
           <legend className="sr-only">画面のテーマ</legend>
           <div className="flex flex-wrap gap-2">
@@ -44,8 +44,8 @@ export function ThemePanel({ tick }: { tick: number }) {
                 className={cx(
                   "flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 ring-1",
                   state.selected === t
-                    ? "bg-indigo-50 ring-indigo-400 dark:bg-indigo-950 dark:ring-indigo-500"
-                    : "ring-slate-200 hover:bg-slate-50 dark:ring-slate-700 dark:hover:bg-slate-800",
+                    ? "bg-accent-soft ring-accent-solid"
+                    : "ring-line hover:bg-surface-2",
                 )}
               >
                 <input type="radio" name="ui-theme" value={t} checked={state.selected === t} onChange={() => void saver.select(t)} />
@@ -54,14 +54,14 @@ export function ThemePanel({ tick }: { tick: number }) {
             ))}
           </div>
         </fieldset>
-        <p className="text-base text-slate-600 dark:text-slate-400">
+        <p className="text-base text-fg-3">
           このマシンの個人設定（<code className="font-mono">ui.theme</code>）に保存し、すべてのプロジェクトの画面で使います。
           CLI では <code className="font-mono">p3 user-config set ui.theme=dark</code>。
         </p>
         <div aria-live="polite" className="text-base empty:hidden">
-          {state.saving && <span className="text-slate-500">保存しています…</span>}
+          {state.saving && <span className="text-fg-4">保存しています…</span>}
           {state.error && (
-            <span className="flex flex-wrap items-center gap-2 text-rose-600 dark:text-rose-400">
+            <span className="flex flex-wrap items-center gap-2 text-danger">
               テーマを保存できませんでした: {state.error}
               {state.failed && (
                 <Button variant="secondary" onClick={() => void saver.retry()}>

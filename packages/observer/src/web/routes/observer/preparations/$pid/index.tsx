@@ -44,7 +44,7 @@ function Detail({ v: { preparation: p, usedBy }, reload }: { v: PreparationDetai
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold">{p.name}</h1>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-fg-3">
             版 v{p.rev}・<span data-aux>{p.id}</span>
           </p>
         </div>
@@ -75,7 +75,7 @@ function Detail({ v: { preparation: p, usedBy }, reload }: { v: PreparationDetai
           <h2 id={`prep-${s}`} className="text-xl font-semibold">
             {SLOT_LABEL[s]}
           </h2>
-          <p className="text-slate-600 dark:text-slate-400">{SLOT_HINT[s]}</p>
+          <p className="text-fg-3">{SLOT_HINT[s]}</p>
           {p[s] ? (
             <ExecutableView e={p[s]} label={SLOT_LABEL[s]} files={files}>
               {p[s].replacement && <SwitchForm label={SLOT_LABEL[s]} replacement={p[s].replacement} files={files} onSwitch={(invoke, evidence) => switchSlot(p.id, s, p.rev, invoke, evidence)} onDone={reload} />}
@@ -103,11 +103,11 @@ function Detail({ v: { preparation: p, usedBy }, reload }: { v: PreparationDetai
                 </li>
               ))}
             </ul>
-            <p className="text-slate-600 dark:text-slate-400">使っている観測から外すまで、この準備は消せません。</p>
+            <p className="text-fg-3">使っている観測から外すまで、この準備は消せません。</p>
           </>
         )}
       </section>
-      <p className="text-slate-600 dark:text-slate-400" data-aux>
+      <p className="text-fg-3" data-aux>
         作成 {new Date(p.createdAt).toLocaleString()} {p.createdBy}／更新 {new Date(p.updatedAt).toLocaleString()} {p.updatedBy}
       </p>
     </>

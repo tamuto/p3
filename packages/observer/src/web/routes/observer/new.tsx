@@ -60,9 +60,9 @@ function NewDefinition() {
         ← 観測の一覧
       </Link>
       <h1 className="text-2xl font-bold">観測を登録</h1>
-      <p className="text-slate-600 dark:text-slate-400">まずタイトルと観測内容で保存します。測定項目・確認の手順・AI への提案の依頼は、保存したあとの編集の画面で行います。</p>
+      <p className="text-fg-3">まずタイトルと観測内容で保存します。測定項目・確認の手順・AI への提案の依頼は、保存したあとの編集の画面で行います。</p>
       {cand && (
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-3">
           AI の観測の候補を入れています（理由: {cand.reason}・根拠: {cand.evidence.join("・")}）。確かめて直してから保存してください。
         </p>
       )}

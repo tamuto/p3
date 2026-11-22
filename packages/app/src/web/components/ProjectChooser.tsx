@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { projectPath } from "@infodb/p3-tasks/web/lib/scope.ts";
 import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
-import { Badge, Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Badge, Button, Empty } from "@infodb/p3-shared/web/ui.tsx";
 
 /** GET /api/projects の応答（プロジェクトを跨ぐ serve） */
 export interface ProjectListing {
@@ -49,40 +49,40 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-2.5 dark:border-slate-800">
+    <div className="min-h-screen bg-surface text-fg-strong">
+      <header className="flex items-center gap-3 border-b border-line px-5 py-2.5">
         <Logo />
         <span className="font-medium">プロジェクトを選ぶ</span>
       </header>
       <main className="mx-auto max-w-2xl space-y-4 p-5 sm:p-8">
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-3">
           個人設定に登録したプロジェクトを跨いで開いています（p3 serve --all-projects）。選んだプロジェクトで、要望・タスク・Preflight をいつもどおり扱えます。
         </p>
         {problem && (
-          <div role="alert" className="space-y-1 rounded-md bg-rose-50 p-3 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <Alert box className="space-y-1">
             <p className="font-medium break-words">{requested ? `「${requested}」を開けません。` : ""}{problem}</p>
             <p className="text-base">ほかのプロジェクトは選べます。登録は CLI で確かめて直します（p3 project ls / p3 project add &lt;名前&gt; &lt;フォルダ&gt;）。直したら一覧を読み直してください。</p>
-          </div>
+          </Alert>
         )}
         {listing.configError && (
-          <p role="alert" className="rounded-md bg-rose-50 p-3 break-words text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          <Alert box>
             {listing.configError}
-          </p>
+          </Alert>
         )}
-        {error && <p className="text-base text-rose-600">{error}</p>}
+        {error && <p className="text-base text-danger">{error}</p>}
 
         {listing.projects.length ? (
-          <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:divide-slate-800 dark:ring-slate-800">
+          <ul className="divide-y divide-line overflow-hidden rounded-lg ring-1 ring-line">
             {listing.projects.map((p) => (
               <li key={p.name}>
                 {p.state === "ok" ? (
                   // 行全体（余白を含む）を1つのリンクにする。名前の文字だけを狙わなくてよい
                   <a
                     href={`${projectPath(p.name)}/`}
-                    className="flex items-center gap-3 p-4 font-medium text-indigo-700 transition hover:bg-indigo-50 focus-visible:bg-indigo-50 focus-visible:outline-none dark:text-indigo-300 dark:hover:bg-indigo-950 dark:focus-visible:bg-indigo-950"
+                    className="flex items-center gap-3 p-4 font-medium text-accent transition hover:bg-accent-soft focus-visible:bg-accent-soft focus-visible:outline-none"
                   >
                     <span className="min-w-0 flex-1 break-words">{p.name}</span>
-                    <span aria-hidden className="text-slate-500 dark:text-slate-400">
+                    <span aria-hidden className="text-fg-4">
                       →
                     </span>
                   </a>
@@ -90,7 +90,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4">
                     <span className="font-medium">{p.name}</span>
                     <Badge tone="rose">開けません</Badge>
-                    {p.error && <p className="w-full text-base break-words text-rose-700 dark:text-rose-300">{p.error}</p>}
+                    {p.error && <p className="w-full text-base break-words text-danger">{p.error}</p>}
                   </div>
                 )}
               </li>
@@ -104,7 +104,7 @@ export function ProjectChooser({ initial, requested, problem }: { initial: Proje
 
         {listing.invalid.length > 0 && (
           <div className="space-y-1 text-base">
-            <p className="font-medium text-amber-700 dark:text-amber-400">個人設定にあるが使えない登録:</p>
+            <p className="font-medium text-warn">個人設定にあるが使えない登録:</p>
             <ul className="list-disc pl-5">
               {listing.invalid.map((i) => (
                 <li key={i.name} className="break-words">

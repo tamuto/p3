@@ -4,7 +4,7 @@ import { COMPLETION_TRIGGER_LABEL, REF_CAPTURE_LABEL, type CompletionRecord, typ
 import { REVIEW_CODE_LABEL, REVIEW_STATE_HINT, REVIEW_STATE_LABEL, type ReviewDiagnosis, type ReviewState } from "../shared/reviewCandidate.ts";
 import type { RequestReviewCounts } from "../../../shared/types.ts";
 import { fmtTime } from "../../../web/lib/format.ts";
-import { Badge, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Badge, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * 完了時の条件（完了の記録）と、見直しが必要（候補）の表示。判定はしない（API の共通の診断 shared/reviewCandidate.ts をそのまま見せる）。
@@ -26,10 +26,10 @@ export function ReviewBadge({ state, count, title }: { state: ReviewState; count
 export function ReviewPanel({ review, kind = "task" }: { review: ReviewDiagnosis; kind?: "task" | "request" }) {
   const candidate = review.state === "candidate";
   return (
-    <section aria-label="見直し" className={candidate ? "min-w-0 space-y-3 rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-900" : "min-w-0 space-y-1"}>
+    <section aria-label="見直し" className={candidate ? "min-w-0 space-y-3 rounded-lg bg-warn-soft p-4 ring-1 ring-warn-line" : "min-w-0 space-y-1"}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ReviewBadge state={review.state} count={review.reasons.length} />
-        {review.record && <span className="text-base text-slate-500">基点: 完了の記録 {review.record}</span>}
+        {review.record && <span className="text-base text-fg-4">基点: 完了の記録 {review.record}</span>}
       </div>
       {candidate ? (
         <>
@@ -37,21 +37,21 @@ export function ReviewPanel({ review, kind = "task" }: { review: ReviewDiagnosis
             {kind === "task" ? "完了した後に条件が変わっています。当時の完了・人の確認の記録は残っています。" : "対応済・完了済にした後に条件が変わっています。当時の記録は残っています。"}
             下の差を見て、今の条件でもよいか確かめてください。
           </p>
-          <p className="text-base text-slate-600 dark:text-slate-400">候補を表示しただけでは状態・人の済みは変わりません。今の実装が不適合だと判定したものではありません。確かめたら、もう一度済みにすると新しい記録が基点になります。</p>
+          <p className="text-base text-fg-3">候補を表示しただけでは状態・人の済みは変わりません。今の実装が不適合だと判定したものではありません。確かめたら、もう一度済みにすると新しい記録が基点になります。</p>
           <ul className="min-w-0 space-y-3">
             {review.reasons.map((r) => (
               <li key={`${r.code}:${r.target}`} className="min-w-0 space-y-1.5">
                 <p className="font-medium break-words">
                   <span className="font-mono">{r.target}</span> {REVIEW_CODE_LABEL[r.code]}
-                  {r.related?.length ? <span className="text-base font-normal text-slate-500">（関係: {r.related.join(", ")}）</span> : null}
+                  {r.related?.length ? <span className="text-base font-normal text-fg-4">（関係: {r.related.join(", ")}）</span> : null}
                 </p>
                 <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-                  <div className="min-w-0 rounded-md bg-white p-2.5 dark:bg-slate-900">
-                    <p className="text-sm text-slate-500">当時{review.record ? `（${review.record}）` : ""}</p>
+                  <div className="min-w-0 rounded-md bg-surface p-2.5">
+                    <p className="text-sm text-fg-4">当時{review.record ? `（${review.record}）` : ""}</p>
                     <p className="text-base break-words whitespace-pre-wrap">{r.was ?? "（なし）"}</p>
                   </div>
-                  <div className="min-w-0 rounded-md bg-white p-2.5 dark:bg-slate-900">
-                    <p className="text-sm text-slate-500">現在</p>
+                  <div className="min-w-0 rounded-md bg-surface p-2.5">
+                    <p className="text-sm text-fg-4">現在</p>
                     <p className="text-base break-words whitespace-pre-wrap">{r.now ?? "（なし）"}</p>
                   </div>
                 </div>
@@ -60,10 +60,10 @@ export function ReviewPanel({ review, kind = "task" }: { review: ReviewDiagnosis
           </ul>
         </>
       ) : (
-        <p className="text-base text-slate-600 dark:text-slate-400">{REVIEW_STATE_HINT[review.state]}</p>
+        <p className="text-base text-fg-3">{REVIEW_STATE_HINT[review.state]}</p>
       )}
       {review.unreadable?.map((u) => (
-        <p key={u} className="text-base break-words text-rose-700 dark:text-rose-400">
+        <p key={u} className="text-base break-words text-danger">
           比べられない部分: {u}
         </p>
       ))}
@@ -86,17 +86,17 @@ export function CompletionRecords({ records, problems }: { records?: CompletionR
   const selectId = useId();
   const rec = list.find((r) => r.id === picked) ?? list.at(-1);
   return (
-    <details className="group min-w-0 rounded-lg ring-1 ring-slate-200 dark:ring-slate-800">
+    <details className="group min-w-0 rounded-lg ring-1 ring-line">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-3 font-semibold">
         完了時の条件
-        <span className="text-base font-normal text-slate-500">{list.length ? `記録 ${list.length} 件・最新 ${list.at(-1)!.id}` : problems?.length ? "記録が読めません" : "記録なし"}</span>
+        <span className="text-base font-normal text-fg-4">{list.length ? `記録 ${list.length} 件・最新 ${list.at(-1)!.id}` : problems?.length ? "記録が読めません" : "記録なし"}</span>
       </summary>
       <div className="min-w-0 space-y-3 px-4 pb-4">
-        <p className="text-base text-slate-600 dark:text-slate-400">完了・人の済みにしたときの条件の写しです（今の値とは別）。再開しても記録は残ります。参照先のコミットは完了・確認の操作のときに取ったもので、評価のときのものではありません。</p>
+        <p className="text-base text-fg-3">完了・人の済みにしたときの条件の写しです（今の値とは別）。再開しても記録は残ります。参照先のコミットは完了・確認の操作のときに取ったもので、評価のときのものではありません。</p>
         {problems?.map((p) => (
-          <p key={p} role="alert" className="text-base break-words text-rose-600">
+          <Alert key={p}>
             読めない記録: {p}（ファイルの completionRecords を直すまで新しい記録は足しません）
-          </p>
+          </Alert>
         ))}
         {list.length > 1 && (
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -121,37 +121,37 @@ export function CompletionRecords({ records, problems }: { records?: CompletionR
 function RecordDetail({ rec }: { rec: CompletionRecord }) {
   return (
     <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-base" aria-label={`完了の記録 ${rec.id}`}>
-      <dt className="text-slate-500">契機</dt>
+      <dt className="text-fg-4">契機</dt>
       <dd className="min-w-0 break-words">
         {rec.id} {rec.trigger === "task_checked" ? "人の済み（人の最終確認。AI の承認ではありません）" : COMPLETION_TRIGGER_LABEL[rec.trigger]}
       </dd>
-      <dt className="text-slate-500">日時・主体</dt>
+      <dt className="text-fg-4">日時・主体</dt>
       <dd className="min-w-0 break-words">
         {fmtTime(rec.at)}・{rec.by ?? "（主体なし）"}・rev {rec.rev}・{rec.status}
         {rec.checked ? "・済み" : ""}
       </dd>
-      <dt className="text-slate-500">品質</dt>
+      <dt className="text-fg-4">品質</dt>
       <dd className="min-w-0 break-words">
         {qualityLine(rec.quality)}
-        {rec.quality.standards && <span className="block text-slate-600 dark:text-slate-400">項目: {rec.quality.standards.map((s) => `${s.id}${s.exempt ? "（除外）" : ""}`).join(", ") || "なし"}</span>}
+        {rec.quality.standards && <span className="block text-fg-3">項目: {rec.quality.standards.map((s) => `${s.id}${s.exempt ? "（除外）" : ""}`).join(", ") || "なし"}</span>}
         {rec.quality.problems?.map((p) => (
-          <span key={p} className="block text-rose-700 dark:text-rose-400">
+          <span key={p} className="block text-danger">
             読めない: {p}
           </span>
         ))}
       </dd>
       {rec.title !== undefined && (
         <>
-          <dt className="text-slate-500">題</dt>
+          <dt className="text-fg-4">題</dt>
           <dd className="min-w-0 break-words">{rec.title}</dd>
         </>
       )}
       {rec.acceptance && (
         <>
-          <dt className="text-slate-500">受け入れ基準</dt>
+          <dt className="text-fg-4">受け入れ基準</dt>
           <dd className="min-w-0 space-y-1">
             {rec.acceptance.problems?.map((p) => (
-              <span key={p} className="block break-words text-rose-700 dark:text-rose-400">
+              <span key={p} className="block break-words text-danger">
                 読めない: {p}
               </span>
             ))}
@@ -160,7 +160,7 @@ function RecordDetail({ rec }: { rec: CompletionRecord }) {
               return (
                 <span key={c.id} className="block min-w-0 break-words">
                   <span className="font-mono">{c.id}</span> {c.text}
-                  <span className="block text-slate-600 dark:text-slate-400">{e ? `当時の証拠: ${ACCEPTANCE_RESULT_LABEL[e.result]}・${basisLabel(e)}（作業した側の申告）` : "当時の証拠: なし"}</span>
+                  <span className="block text-fg-3">{e ? `当時の証拠: ${ACCEPTANCE_RESULT_LABEL[e.result]}・${basisLabel(e)}（作業した側の申告）` : "当時の証拠: なし"}</span>
                 </span>
               );
             })}
@@ -169,22 +169,22 @@ function RecordDetail({ rec }: { rec: CompletionRecord }) {
       )}
       {(rec.requirement || rec.acceptance?.sources?.length) && (
         <>
-          <dt className="text-slate-500">要求の根拠</dt>
+          <dt className="text-fg-4">要求の根拠</dt>
           <dd className="min-w-0 break-words">
             {rec.requirement?.problems ? `読めない（${rec.requirement.problems.join(" / ")}）` : (rec.requirement?.sources ?? []).map((s) => `${s.id}${s.source ? ` ${s.source}` : ""}${s.confirmed ? `（確認: ${s.confirmed.by}・${s.confirmed.on}）` : ""}`).join(" / ") || "要望の記録なし"}
-            {!!rec.acceptance?.sources?.length && <span className="block text-slate-600 dark:text-slate-400">基準ごと: {rec.acceptance.sources.map((s) => `${s.criterionId}/${s.id}${s.from ? `（${s.from} を写したもの）` : ""}`).join(", ")}</span>}
+            {!!rec.acceptance?.sources?.length && <span className="block text-fg-3">基準ごと: {rec.acceptance.sources.map((s) => `${s.criterionId}/${s.id}${s.from ? `（${s.from} を写したもの）` : ""}`).join(", ")}</span>}
           </dd>
         </>
       )}
       {(rec.tasks || rec.children?.length) && (
         <>
-          <dt className="text-slate-500">判定に使った配下</dt>
+          <dt className="text-fg-4">判定に使った配下</dt>
           <dd className="min-w-0 break-words">
             {[...(rec.tasks ?? []).map((t) => `${t.id} rev ${t.rev} ${t.status}${t.record ? ` ${t.record}` : "（記録なし）"}`), ...(rec.children ?? []).map((t) => `子 ${t.id} rev ${t.rev} ${t.status}${t.record ? ` ${t.record}` : "（記録なし）"}`)].join(" / ") || "なし"}
           </dd>
         </>
       )}
-      <dt className="text-slate-500">参照先</dt>
+      <dt className="text-fg-4">参照先</dt>
       <dd className="min-w-0">
         {rec.refs ? (
           rec.refs.length ? (

@@ -102,16 +102,16 @@ export function SuggestPanel({
 
   const running = job?.status === "running";
   return (
-    <section aria-labelledby="suggest-heading" className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+    <section aria-labelledby="suggest-heading" className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
       <h2 id="suggest-heading" className="text-xl font-semibold">
         AI に手順を提案してもらう
       </h2>
-      <p className="text-slate-600 dark:text-slate-400">
+      <p className="text-fg-3">
         入力中の観測の項目・測定項目・手順と、プロジェクトの参照先（読むだけ）を材料に、確認の手順と測定項目の候補を提案します。提案は観測に残り、定義には取り込んで保存したときだけ入ります。
       </p>
       {ctxError && <Alert>提案の材料を読めません: {ctxError}</Alert>}
       {ctx && (
-        <p data-aux className={ctx.engine.ok ? "text-sm text-slate-600 dark:text-slate-400" : "text-sm text-amber-700 dark:text-amber-400"} data-testid="suggest-engine">
+        <p data-aux className={ctx.engine.ok ? "text-sm text-fg-3" : "text-sm text-warn"} data-testid="suggest-engine">
           頼む先: {ctx.engine.name}（{ctx.engine.detail}）
         </p>
       )}
@@ -130,7 +130,7 @@ export function SuggestPanel({
       </div>
       {error && <Alert>提案を頼めませんでした: {error}</Alert>}
       {job?.status === "failed" && <Alert>{`${FAILURE_LABEL[job.failure ?? "error"]}: ${job.error}（入力中の定義はそのままです）`}</Alert>}
-      {job?.status === "cancelled" && <p className="text-slate-600">取り消しました（入力中の定義はそのままです）。</p>}
+      {job?.status === "cancelled" && <p className="text-fg-3">取り消しました（入力中の定義はそのままです）。</p>}
       {job?.status === "interrupted" && job.request && (
         <Alert box warn>
           {job.error}{" "}
@@ -144,7 +144,7 @@ export function SuggestPanel({
         <div className="space-y-3" data-testid="suggestion">
           <p>
             <span className="font-semibold">操作面: {SURFACE_LABEL[job.result.surface]}</span>
-            <span className="ml-2 text-slate-600 dark:text-slate-400">（{job.engine}）</span>
+            <span className="ml-2 text-fg-3">（{job.engine}）</span>
           </p>
           <p>根拠: {job.result.rationale}</p>
           {job.result.measures.length > 0 && (
@@ -185,7 +185,7 @@ export function SuggestPanel({
           ))}
           <RefSuggestions id={id} job={job} refs={refs} onAdopt={onAdoptRef} />
           {job.result.missing.length > 0 && (
-            <div className="rounded-md bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="suggestion-missing">
+            <div className="rounded-md bg-warn-soft p-3 text-warn-strong" data-testid="suggestion-missing">
               <p className="font-medium">判断に足りない材料（補足に書くか、観測内容に足して頼み直す）</p>
               <ul className="list-disc pl-5">
                 {job.result.missing.map((m, i) => (

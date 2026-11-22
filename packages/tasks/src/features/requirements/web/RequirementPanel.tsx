@@ -1,3 +1,4 @@
+import { Alert } from "@infodb/p3-shared/web/ui.tsx";
 import { requestRequirementView } from "../shared/requirementSource.ts";
 import { api } from "../../../web/lib/api.ts";
 import type { RequestData } from "../../../web/lib/requestData.tsx";
@@ -13,21 +14,21 @@ export function RequirementPanel({ data, onDirty, disabled }: { data: RequestDat
   const view = requestRequirementView(request);
   const count = view.sources.length;
   return (
-    <details className="group min-w-0 rounded-lg ring-1 ring-slate-200 dark:ring-slate-800" open={count > 0 || view.problems.length > 0 || undefined}>
+    <details className="group min-w-0 rounded-lg ring-1 ring-line" open={count > 0 || view.problems.length > 0 || undefined}>
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-3 font-semibold">
         要求の出典と確認（任意）
         <SourceStateBadge state={view.state} />
-        <span className="text-base font-normal text-slate-500">{count ? `記録 ${count} 件` : "誰の要求か・承認された例などを残せます"}</span>
+        <span className="text-base font-normal text-fg-4">{count ? `記録 ${count} 件` : "誰の要求か・承認された例などを残せます"}</span>
       </summary>
       <div className="min-w-0 space-y-3 px-4 pb-4">
-        <p className="text-base text-slate-600 dark:text-slate-400">
+        <p className="text-base text-fg-3">
           要求そのものが正しいか（計算式・規則・契約など）の根拠です。確かめた人は役割名で書きます。「確認記録あり」は申告で、P3 の保証ではありません。
           題・本文・記録を変えると「再確認が必要」になります。記録と回答は Preflight の評価対象に入ります。
         </p>
         {view.problems.map((p) => (
-          <p key={p} role="alert" className="text-base break-words text-rose-600">
+          <Alert key={p}>
             読めない記録: {p}（request.md を直すまで、ここからは変えられません）
-          </p>
+          </Alert>
         ))}
         <SourceList
           label="要望"

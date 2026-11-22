@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { QUALITY_LIMITS, type QualityCheck, type QualityStandard, type QualityTemplate } from "../shared/quality.ts";
 import { api, ApiError, saveErrorText, type QualityViewData } from "../../../web/lib/api.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
-import { Badge, Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Badge, Button, cx, Field, inputCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { ImprovementButton } from "./ImprovementDialog.tsx";
 
 /**
@@ -172,19 +172,19 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
     <Section title="品質基準">
       <div className="space-y-5">
         <p>プロジェクトで守る条件と、その確かめ方を記録します。タスクの受け入れ基準とレビューで参照します。P3 は検査のコマンドを実行しません。</p>
-        <details className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+        <details className="rounded-md bg-surface px-3 py-2 ring-1 ring-line">
           <summary className="cursor-pointer font-medium">品質基準について</summary>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-300">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-fg-3">
             <li>規約・構成・検証・文書など、プロジェクトとして守る最低限の水準を書きます。CI や特定の製品・フォルダを必須にはしません</li>
             <li>確認の方法は、機械の検査（作業する側が実行するコマンドと成功の条件）か、人の確認（確かめ方・参照の資料）です</li>
             <li>テンプレートは版つきの例で、業界の標準への認証ではありません。採用すると写した基準を自由に直せます</li>
             <li>CLI でも同じ操作ができます（p3 quality。複数の参照先は --repo を繰り返す）</li>
           </ul>
         </details>
-        {loadError && <p role="alert" className="text-rose-600">読み込めません: {loadError}</p>}
+        {loadError && <Alert>読み込めません: {loadError}</Alert>}
 
         {q?.state === "invalid" && (
-          <div role="alert" className="space-y-2 rounded-lg bg-rose-50 p-4 text-rose-800 ring-1 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-900">
+          <div role="alert" className="space-y-2 rounded-lg bg-danger-soft p-4 text-danger-strong ring-1 ring-danger-line">
             <p className="text-lg font-semibold">品質基準が読めません</p>
             <p>project.yaml の quality を直してください。読めるまでは未設定として扱い、ここから保存しても消しません。</p>
             <ul className="list-disc pl-5">
@@ -200,12 +200,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
 
         {q?.state === "unset" && !draft && (
           <>
-            <div role="status" className="space-y-3 rounded-lg bg-indigo-50 p-4 ring-1 ring-indigo-200 dark:bg-indigo-950/60 dark:ring-indigo-900">
+            <div role="status" className="space-y-3 rounded-lg bg-accent-soft p-4 ring-1 ring-accent-line">
               <p className="text-lg font-semibold">品質基準は未設定です</p>
               <p>未設定のまま作業を続けられます。必要な基準を自分で追加するか、テンプレートの例から選べます。P3 は検査のコマンドを実行しません。</p>
               {startButtons}
             </div>
-            <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+            <div className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
               <p className="text-lg font-semibold">基準を設けないと決めた場合</p>
               <p>「空のまま設定する」は、意図して基準を設けないことを記録する操作です。追加・採用の前に行う必要はありません。</p>
               <Button disabled={busy || !view} onClick={() => view && void send([{ op: "init" }], view.version, "品質基準を空のまま設定しました")}>
@@ -215,7 +215,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
             <details>
               <summary className="cursor-pointer font-medium">品質基準を決めるための要望を作る</summary>
               <div className="mt-2 space-y-2">
-                <p className="text-slate-600 dark:text-slate-300">決めること自体を要望にするなら、改善要望の案を確かめて登録できます。</p>
+                <p className="text-fg-3">決めること自体を要望にするなら、改善要望の案を確かめて登録できます。</p>
                 <ImprovementButton source={{ type: "project" }} />
               </div>
             </details>
@@ -223,12 +223,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
         )}
 
         {q?.state === "set" && q.warnings?.map((w) => (
-          <p key={w} className="text-amber-700 dark:text-amber-400">
+          <p key={w} className="text-warn">
             ⚠ {w}
           </p>
         ))}
         {view?.diffs.map((d) => (
-          <div key={d.template} className="flex flex-wrap items-center gap-2 rounded-md bg-sky-50 px-3 py-2 dark:bg-sky-950">
+          <div key={d.template} className="flex flex-wrap items-center gap-2 rounded-md bg-info-soft px-3 py-2">
             テンプレート {templateTitle(d.template)}（{d.template}）に新しい版があります（{d.from} → {d.to}。足す {d.added.length}・変わる {d.changed.length}・消える {d.removed.length}）。
             <Button disabled={busy || dirty} onClick={() => void send([{ op: "upgrade", template: d.template }], view.version, `テンプレート ${d.template} の差分を当てました`)}>
               差分を当てる
@@ -239,7 +239,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
         {/* 保存済みの一覧（意図して空を含む） */}
         {q?.state === "set" && !draft && (
           <div className="space-y-4">
-            <p className="text-slate-600 dark:text-slate-300">
+            <p className="text-fg-3">
               保存済み: {saved.length} 件{saved.length ? "。Q1 などの番号は基準の履歴を追う ID で、点数や順位ではありません（消した番号は使い直しません）" : ""}
             </p>
             {!saved.length && <p>品質基準を意図して空にしています。必要になったら基準を追加するか、テンプレートから選べます。</p>}
@@ -258,12 +258,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
             )}
             <ul className="space-y-3" aria-label="保存済みの品質基準">
               {saved.map((s) => (
-                <li key={s.id} className="min-w-0 space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                <li key={s.id} className="min-w-0 space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
                   <div className="flex flex-wrap items-start gap-2">
                     <h4 className="min-w-0 flex-1 text-lg font-semibold break-words">{s.text}</h4>
                     {s.exempt && <Badge tone="amber">除外</Badge>}
                   </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400" data-aux>
+                  <p className="text-sm text-fg-3" data-aux>
                     ID: <span className="font-mono">{s.id}</span>
                   </p>
                   <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[8rem_minmax(0,1fr)]">
@@ -284,7 +284,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                         </>
                       )}
                     </Item>
-                    <Item label="適用">{s.exempt ? <span className="text-amber-800 dark:text-amber-300">除外（理由: {s.exempt.reason}）</span> : "適用する"}</Item>
+                    <Item label="適用">{s.exempt ? <span className="text-warn-strong">除外（理由: {s.exempt.reason}）</span> : "適用する"}</Item>
                     <Item label="出典">{s.source ? `テンプレート ${templateTitle(s.source.template)}（${s.source.template}@${s.source.version}）` : "独自に追加した基準"}</Item>
                   </dl>
                 </li>
@@ -295,14 +295,14 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
 
         {/* テンプレート（開いたときだけ。中身を確かめてから編集中の一覧へ足す） */}
         {view && q?.state !== "invalid" && showTemplates && (
-          <section aria-label="テンプレート" className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+          <section aria-label="テンプレート" className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
             <p className="text-lg font-semibold">テンプレート</p>
-            <p className="text-slate-600 dark:text-slate-300">版つきの例です。中身を確かめて編集中の一覧へ足し、保存すると採用になります。</p>
+            <p className="text-fg-3">版つきの例です。中身を確かめて編集中の一覧へ足し、保存すると採用になります。</p>
             <ul className="space-y-2">
               {view.templates.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-medium">{t.title}</span>
-                  <span data-aux className="text-sm text-slate-600 dark:text-slate-400">
+                  <span data-aux className="text-sm text-fg-3">
                     {t.id}@{t.version}・{t.items} 件
                   </span>
                   {adopted.has(t.id) ? <Badge tone="emerald">採用済み</Badge> : <Button onClick={() => void showTemplate(t.id)}>採用する前に中身を確かめる</Button>}
@@ -310,16 +310,16 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
               ))}
             </ul>
             {preview && (
-              <section aria-label={`テンプレート ${preview.title}`} className="space-y-2 rounded-md bg-slate-50 p-3 dark:bg-slate-800/50">
+              <section aria-label={`テンプレート ${preview.title}`} className="space-y-2 rounded-md bg-surface-2 p-3">
                 <p className="font-semibold">
                   {preview.title}（{preview.id}@{preview.version}）
                 </p>
-                <p className="text-slate-600 dark:text-slate-300">{preview.description}</p>
+                <p className="text-fg-3">{preview.description}</p>
                 <ul className="list-disc space-y-1 pl-5">
                   {preview.items.map((i) => (
                     <li key={i.key} className="break-words">
                       {i.text}
-                      <span className="block text-slate-600 dark:text-slate-300">
+                      <span className="block text-fg-3">
                         {i.check.kind === "machine" ? `機械の検査: ${i.check.command}（${i.check.success}）` : `人の確認: ${i.check.reference}`}
                       </span>
                     </li>
@@ -341,10 +341,10 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
           <div className="space-y-4">
             <p className="text-lg font-semibold">品質基準を編集</p>
             {draft.rows.map((r, i) => (
-              <fieldset key={r.key} aria-label={rowName(r, i)} className="min-w-0 space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+              <fieldset key={r.key} aria-label={rowName(r, i)} className="min-w-0 space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
                 <legend className="sr-only">{rowName(r, i)}</legend>
                 <p className="text-lg font-semibold break-words">{r.text.trim() || "新しい基準"}</p>
-                <p data-aux className="text-sm text-slate-600 dark:text-slate-400">
+                <p data-aux className="text-sm text-fg-3">
                   {r.id ? (
                     <>
                       ID: <span className="font-mono">{r.id}</span>（保存しても変わりません）
@@ -358,7 +358,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                   <textarea rows={2} className={inputCls} maxLength={QUALITY_LIMITS.text} value={r.text} aria-label={`${rowName(r, i)} の文`} onChange={(e) => setRow(r.key, { text: e.target.value })} />
                 </Field>
                 <fieldset className="min-w-0 space-y-2">
-                  <legend className="font-medium text-slate-700 dark:text-slate-300">対象</legend>
+                  <legend className="font-medium text-fg-2">対象</legend>
                   <label className="flex items-center gap-2">
                     <input type="radio" name={`${r.key}-scope`} checked={r.scope === "all"} onChange={() => setRow(r.key, { scope: "all" })} />
                     全参照先
@@ -425,7 +425,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
               {!showTemplates && <Button onClick={() => setShowTemplates(true)}>テンプレートを見る</Button>}
             </div>
             {changedElsewhere && (
-              <p role="status" className="text-amber-700 dark:text-amber-400">
+              <p role="status" className="text-warn">
                 編集中に品質基準が他で変わりました。入力は残してあります。このままでは保存できません（「元に戻す」で最新を読み直せます）。
               </p>
             )}
@@ -436,12 +436,12 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
               <Button disabled={busy} onClick={() => (setDraft(null), setPreview(null), setMsg(null))}>
                 元に戻す
               </Button>
-              {dirty && <span className="text-slate-600 dark:text-slate-300">保存していない変更があります</span>}
+              {dirty && <span className="text-fg-3">保存していない変更があります</span>}
             </div>
           </div>
         )}
         {msg && (
-          <p role={msg.ok ? "status" : "alert"} className={cx("break-words", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600")}>
+          <p role={msg.ok ? "status" : "alert"} className={cx("break-words", msg.ok ? "text-ok" : "text-danger")}>
             {msg.text}
           </p>
         )}
@@ -455,7 +455,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
                 <span className="font-mono text-sm" data-aux>
                   {view.version}
                 </span>
-                <span className="block text-slate-600 dark:text-slate-300">保存のたびに変わります（CLI の --version に渡すと、他で変わっていれば保存しません）</span>
+                <span className="block text-fg-3">保存のたびに変わります（CLI の --version に渡すと、他で変わっていれば保存しません）</span>
               </Item>
               <Item label="採用したテンプレート">
                 {q.config.templates?.length ? q.config.templates.map((t) => `${templateTitle(t.id)}（${t.id}@${t.version}）`).join("、") : "なし"}
@@ -471,7 +471,7 @@ export function QualityPanel({ tick, repoNames, onDirtyChange }: { tick: number;
 function Item({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <dt className="font-semibold text-slate-700 dark:text-slate-300">{label}</dt>
+      <dt className="font-semibold text-fg-2">{label}</dt>
       <dd className="min-w-0 break-words">{children}</dd>
     </>
   );

@@ -49,17 +49,17 @@ export function Clarifications({
     <section className="min-w-0 space-y-3" aria-label="確認事項と回答">
       <div className="flex min-w-0 flex-wrap items-baseline gap-2">
         <h3 className="font-semibold">確認事項と回答</h3>
-        <span className="text-base text-slate-500">
+        <span className="text-base text-fg-4">
           {run.id} の確認事項{latest ? "" : "（過去の評価の質問です。回答は今の要望に残ります）"}
         </span>
       </div>
-      <p className="text-base text-slate-600 dark:text-slate-400">
+      <p className="text-base text-fg-3">
         回答は要望に残し、過去の評価は書き換えません。回答を保存しても評価は自動で始まりません。保存した後に「保存した内容で再評価」してください。
       </p>
       {problems.map((p) => (
-        <p key={p} role="alert" className="text-base break-words text-rose-600">
+        <Alert key={p}>
           読めない確認事項: {p}
-        </p>
+        </Alert>
       ))}
       <ul className="grid min-w-0 gap-3 lg:grid-cols-2">
         {items.map((i) => (
@@ -83,7 +83,7 @@ export function Clarifications({
           <Button variant="primary" disabled={!canRerun || anyDirty} onClick={onRerun}>
             保存した内容で再評価
           </Button>
-          {anyDirty && <span className="text-base text-amber-700 dark:text-amber-400">未保存の回答があります。保存するか取消してから再評価してください</span>}
+          {anyDirty && <span className="text-base text-warn">未保存の回答があります。保存するか取消してから再評価してください</span>}
         </div>
       )}
     </section>
@@ -139,40 +139,40 @@ function ClarificationCard({
   const fid = (k: string) => `${id}-${k}`;
   const sources = request.requirementSources ?? [];
   return (
-    <li className="min-w-0 space-y-2 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800" data-testid={`clarification-${q.id}`}>
+    <li className="min-w-0 space-y-2 rounded-lg bg-surface p-4 ring-1 ring-line" data-testid={`clarification-${q.id}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="font-mono text-sm text-slate-500">
+        <span className="font-mono text-sm text-fg-4">
           {runId}/{q.id}
         </span>
         <Badge tone={STATE_TONE[state]}>{ANSWER_STATE_LABEL[state]}</Badge>
       </div>
       <p className="font-medium break-words">{q.question}</p>
       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-base">
-        <dt className="text-slate-500">確認先</dt>
+        <dt className="text-fg-4">確認先</dt>
         <dd className="min-w-0 break-words">{q.ask}</dd>
-        <dt className="text-slate-500">対象</dt>
+        <dt className="text-fg-4">対象</dt>
         <dd className="min-w-0 break-words">{q.target}</dd>
         {q.needed && (
           <>
-            <dt className="text-slate-500">必要な根拠</dt>
+            <dt className="text-fg-4">必要な根拠</dt>
             <dd className="min-w-0 break-words">{q.needed}</dd>
           </>
         )}
         {q.impact && (
           <>
-            <dt className="text-slate-500">判断への影響</dt>
+            <dt className="text-fg-4">判断への影響</dt>
             <dd className="min-w-0 break-words">{q.impact}</dd>
           </>
         )}
       </dl>
       {answer && !open && (
-        <div className="min-w-0 rounded-md bg-emerald-50 p-2 text-base dark:bg-emerald-950/40">
-          <p data-aux className="text-sm text-slate-600 dark:text-slate-400">
+        <div className="min-w-0 rounded-md bg-ok-soft p-2 text-base">
+          <p data-aux className="text-sm text-fg-3">
             回答{answer.by || answer.on ? `（${[answer.by, answer.on].filter(Boolean).join("・")}）` : ""}
           </p>
           <p className="break-words whitespace-pre-wrap">{answer.answer}</p>
-          {answer.source && <p data-aux className="text-sm break-all text-slate-600 dark:text-slate-400">出典: {answer.source}</p>}
-          {!!answer.links?.length && <p data-aux className="text-sm text-slate-600 dark:text-slate-400">対応する記録: {answer.links.map((l) => l.id).join(", ")}</p>}
+          {answer.source && <p data-aux className="text-sm break-all text-fg-3">出典: {answer.source}</p>}
+          {!!answer.links?.length && <p data-aux className="text-sm text-fg-3">対応する記録: {answer.links.map((l) => l.id).join(", ")}</p>}
         </div>
       )}
       {open ? (
@@ -221,7 +221,7 @@ function ClarificationCard({
           </div>
           {sources.length > 0 && (
             <fieldset className="min-w-0">
-              <legend className="text-base text-slate-600 dark:text-slate-400">対応する要望の記録（任意。回答しても確認記録ありにはなりません）</legend>
+              <legend className="text-base text-fg-3">対応する要望の記録（任意。回答しても確認記録ありにはなりません）</legend>
               <div className="flex flex-wrap gap-3">
                 {sources.map((s) => (
                   <label key={s.id} className="flex items-center gap-1 text-base">
@@ -237,7 +237,7 @@ function ClarificationCard({
               </div>
             </fieldset>
           )}
-          {dirty && <p className="text-base text-amber-700 dark:text-amber-400">未保存の回答があります</p>}
+          {dirty && <p className="text-base text-warn">未保存の回答があります</p>}
           {error && <Alert>{error}</Alert>}
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" disabled={busy || !f.answer.trim()} onClick={() => void save()}>

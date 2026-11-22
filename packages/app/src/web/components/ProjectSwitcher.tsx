@@ -72,7 +72,7 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
         onChange={(e) => choose(e.target.value)}
         disabled={waiting}
         title={`${current}（切り替えても、実行中の Preflight・生成は元のプロジェクトで続きます。戻ると状態を読み直します）`}
-        className="max-w-36 min-w-0 truncate rounded-md bg-white px-2 py-1 font-medium ring-1 ring-slate-300 sm:max-w-64 dark:bg-slate-900 dark:ring-slate-700"
+        className="max-w-36 min-w-0 truncate rounded-md bg-surface px-2 py-1 font-medium ring-1 ring-line-strong sm:max-w-64"
       >
         {(names.includes(current) ? names : [current, ...names]).map((n) => (
           <option key={n} value={n} disabled={listing?.projects.find((p) => p.name === n)?.state === "error"}>
@@ -93,7 +93,7 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
           if (select.current) select.current.value = current;
           select.current?.focus();
         }}
-        className="m-auto w-[min(calc(100vw-1rem),480px)] max-w-none rounded-lg bg-white p-0 text-slate-900 backdrop:bg-black/60 dark:bg-slate-900 dark:text-slate-100"
+        className="m-auto w-[min(calc(100vw-1rem),480px)] max-w-none rounded-lg bg-surface p-0 text-fg-strong backdrop:bg-black/60"
       >
         <div className="space-y-3 p-4">
           <h2 id="switch-title" className="font-semibold">
@@ -126,12 +126,12 @@ export function useProjectSwitcher(): { picker: ReactNode; notices: ReactNode } 
   const notices = (
     <>
       {waiting && (
-        <div role="status" className="bg-slate-50 px-5 py-1.5 text-base text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+        <div role="status" className="bg-page px-5 py-1.5 text-base text-fg-2">
           保存の完了を待っています…（終わったら切り替えます）
         </div>
       )}
       {changed && (
-        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-danger-soft px-5 py-2 text-danger-strong">
           <span className="min-w-0 break-words">
             プロジェクト「{current}」の登録が変わりました（外した・付け直した・データのフォルダを変えた）。この画面からは保存しません（入力は送っていません）。一覧から選び直してください。
           </span>

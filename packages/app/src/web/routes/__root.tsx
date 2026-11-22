@@ -1,6 +1,6 @@
 import { createRootRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { Logo } from "@infodb/p3-tasks/web/components/Logo.tsx";
-import { buttonCls, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, buttonCls, cx, Empty } from "@infodb/p3-shared/web/ui.tsx";
 import { useAppCtx } from "@infodb/p3-tasks/web/lib/appCtx.ts";
 import { useProjectSwitcher } from "../components/ProjectSwitcher.tsx";
 
@@ -37,8 +37,8 @@ const NAV = [
 ] as const;
 
 const navCls = "rounded-md px-3 py-1.5 font-medium whitespace-nowrap transition";
-const navActive = "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300";
-const navIdle = "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800";
+const navActive = "bg-accent-soft text-accent";
+const navIdle = "text-fg-3 hover:bg-surface-2";
 
 function Layout() {
   const ctx = useAppCtx();
@@ -51,7 +51,7 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <header
-        className="flex flex-wrap items-center gap-3 gap-y-2 border-b sm:gap-6 sm:gap-y-2 border-slate-200 bg-white px-5 py-2.5 dark:border-slate-800 dark:bg-slate-900"
+        className="flex flex-wrap items-center gap-3 gap-y-2 border-b sm:gap-6 sm:gap-y-2 border-line bg-surface px-5 py-2.5"
       >
         {/* 狭い画面ではプロジェクト名を出さず（ロゴの title にある）、見出しが画面の幅に収まるようにする。
             プロジェクトを跨ぐ serve では、名前の代わりに切り替えの欄をロゴの横（リンクの外）に置き、狭い画面でも隠さない */}
@@ -91,7 +91,7 @@ function Layout() {
           </Link>
         </div>
         {errors.length > 0 && (
-          <span className="text-base text-rose-600" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>
+          <span className="text-base text-danger" title={errors.map((f) => `${f}: ${ctx.info.errors[f]}`).join("\n")}>
             ⚠ 読めないファイル {errors.length} 件
           </span>
         )}
@@ -99,16 +99,16 @@ function Layout() {
       {switcher.notices}
 
       {ctx.refreshing.error && (
-        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-rose-50 px-5 py-2 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-danger-soft px-5 py-2 text-danger-strong">
           <span className="min-w-0 break-words">再読み込みできませんでした（表示は前の内容のまま）: {ctx.refreshing.error}</span>
-          <button type="button" className={buttonCls("link", "underline")} onClick={() => void ctx.refresh()}>
+          <Button variant="link" onClick={() => void ctx.refresh()}>
             もう一度
-          </button>
+          </Button>
         </div>
       )}
 
       {!ctx.info.project.description && !pathname.startsWith("/settings") && (
-        <div className="flex items-center gap-3 bg-amber-50 px-5 py-2 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div className="flex items-center gap-3 bg-warn-soft px-5 py-2 text-warn-strong">
           プロジェクトの説明がまだありません。Preflight の前提になるので設定してください。
           <Link to="/settings" search={{ tab: "project" }} className={buttonCls("link", "underline")}>
             設定を開く
@@ -131,18 +131,12 @@ function Layout() {
  */
 function RefreshButton({ running, onClick }: { running: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-busy={running}
-      title="データのフォルダを読み直して、外（CLI など）での変更を取り込みます"
-      className={buttonCls("secondary", "ml-auto px-2 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none sm:px-3")}
-    >
+    <Button onClick={onClick} aria-busy={running} title="データのフォルダを読み直して、外（CLI など）での変更を取り込みます" className="ml-auto px-2 sm:px-3">
       <svg aria-hidden viewBox="0 0 16 16" className={cx("size-4", running && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
         <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
         <path d="M13.5 2.5v3h-3" />
       </svg>
       <span className="sr-only sm:not-sr-only">{running ? "読み込み中…" : "再読み込み"}</span>
-    </button>
+    </Button>
   );
 }

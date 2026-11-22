@@ -5,7 +5,7 @@ import type { Milestone, MilestoneGoal } from "../../../shared/types.ts";
 import { api, saveErrorText } from "../../lib/api.ts";
 import { useAppCtx } from "../../lib/appCtx.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
-import { Button, cx, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Button, cx, inputCls, PlainButton } from "@infodb/p3-shared/web/ui.tsx";
 
 /** 編集中の1行。orig は取り込んだときの ID（足した行には無い）。使用中・ノートありの判定は orig で見る */
 interface Row {
@@ -184,16 +184,10 @@ export function MilestoneEditor({
               </Button>
               {lock && <p className="w-full text-base text-fg-4">{lock}</p>}
               <div className="w-full">
-                <button
-                  type="button"
-                  className="text-base text-fg-3 underline-offset-2 hover:underline"
-                  aria-expanded={open.has(key)}
-                  aria-controls={`ms-goals-${key}`}
-                  onClick={() => toggle(key)}
-                >
+                <PlainButton className="text-base text-fg-3 underline-offset-2 hover:underline" aria-expanded={open.has(key)} aria-controls={`ms-goals-${key}`} onClick={() => toggle(key)}>
                   {open.has(key) ? "▾" : "▸"} 目的・予定機能
                   <span className="ml-2 text-fg-4">{goalSummary(r.m)}</span>
-                </button>
+                </PlainButton>
                 {open.has(key) && (
                   <GoalsEditor
                     id={`ms-goals-${key}`}

@@ -38,7 +38,7 @@ function Detail({ d, refs, drift, reload }: { d: ObservationDefinition; refs: Re
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold">{d.title}</h1>
-          <p className="text-slate-600 dark:text-slate-400">
+          <p className="text-fg-3">
             {d.category || "カテゴリ未設定"}・版 v{d.rev}・<span data-aux>{d.id}</span>
           </p>
         </div>
@@ -65,7 +65,7 @@ function Detail({ d, refs, drift, reload }: { d: ObservationDefinition; refs: Re
           期待する結果
         </h2>
         {d.expected ? <p className="whitespace-pre-wrap">{d.expected}</p> : <Empty>まだ書かれていません（編集で書ける）。</Empty>}
-        {drift.state === "changed" ? <Alert box warn>{driftText(drift)}</Alert> : <p className="text-slate-600 dark:text-slate-400">{driftText(drift)}</p>}
+        {drift.state === "changed" ? <Alert box warn>{driftText(drift)}</Alert> : <p className="text-fg-3">{driftText(drift)}</p>}
         {drift.files.length > 0 && (
           <ul aria-label="期待を確定した後の参照ファイルの変化" className="list-disc space-y-1 pl-6">
             {drift.files.map((f) => (
@@ -172,7 +172,7 @@ function Detail({ d, refs, drift, reload }: { d: ObservationDefinition; refs: Re
         )}
       </section>
       {!d.ended && <EndForm d={d} onDone={reload} />}
-      <p className="text-slate-600 dark:text-slate-400" data-aux>
+      <p className="text-fg-3" data-aux>
         作成 {new Date(d.createdAt).toLocaleString()} {d.createdBy}／更新 {new Date(d.updatedAt).toLocaleString()} {d.updatedBy}
       </p>
     </>

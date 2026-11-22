@@ -119,7 +119,7 @@ export function DefinitionForm({
       }}
     >
       <div className="space-y-3 lg:col-span-2">
-        <p role="status" className="text-slate-600 dark:text-slate-400">
+        <p role="status" className="text-fg-3">
           {status.text}
         </p>
         <SaveProblems problems={problems} error={error} />
@@ -170,9 +170,9 @@ export function DefinitionForm({
           </Button>
         </div>
         {err("measures") && <Alert>{err("measures")}</Alert>}
-        {draft.measures.length === 0 && <p className="text-slate-500">まだありません。</p>}
+        {draft.measures.length === 0 && <p className="text-fg-4">まだありません。</p>}
         {draft.measures.map((m, i) => (
-          <fieldset key={i} aria-label={`測定項目 ${i + 1}`} className="grid gap-3 rounded border border-slate-200 p-3 sm:grid-cols-[1fr_9rem_8rem_auto] dark:border-slate-800">
+          <fieldset key={i} aria-label={`測定項目 ${i + 1}`} className="grid gap-3 rounded border border-line p-3 sm:grid-cols-[1fr_9rem_8rem_auto]">
             <Field label="名前" error={err(`measures[${i}].name`)}>
               <input className={inputCls} value={m.name} aria-invalid={!!err(`measures[${i}].name`)} onChange={(e) => setMeasure(i, { name: e.target.value })} />
             </Field>
@@ -211,12 +211,12 @@ export function DefinitionForm({
             ＋ 手順を足す
           </Button>
         </div>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-fg-3">
           スクリプト等が無いあいだは「AI への指示」で、AI か人がそのまま実行できる具体的なやることを書く。毎回同じ動作で結果を機械的に処理できるようになったら、
           置き換え候補にスクリプトの案を書き、用意して確かめたら観測の詳細の画面で切り替える。
         </p>
         {err("procedures") && <Alert>{err("procedures")}</Alert>}
-        {draft.procedures.length === 0 && <p className="text-slate-500">まだありません。</p>}
+        {draft.procedures.length === 0 && <p className="text-fg-4">まだありません。</p>}
         {draft.procedures.map((p, i) => (
           <ProcedureEditor
             key={i}

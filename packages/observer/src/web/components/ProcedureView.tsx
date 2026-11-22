@@ -34,21 +34,21 @@ export function ExecutableView({ e: p, label, files, rows = [], children }: { e:
         <code className="break-all">
           {repo}:{path}
         </code>
-        <span className="ml-2 text-slate-600 dark:text-slate-400">［{f ? `${FILE_STATE_LABEL[f.state]}・${new Date(f.checkedAt).toLocaleString()} に確認` : "確認中"}］</span>
+        <span className="ml-2 text-fg-3">［{f ? `${FILE_STATE_LABEL[f.state]}・${new Date(f.checkedAt).toLocaleString()} に確認` : "確認中"}］</span>
       </>
     );
   };
   const row = (term: string, value: ReactNode) => (
     <>
-      <dt className="font-medium text-slate-600 dark:text-slate-400">{term}</dt>
+      <dt className="font-medium text-fg-3">{term}</dt>
       <dd className="min-w-0 break-words">{value}</dd>
     </>
   );
   return (
-    <article aria-label={label} className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+    <article aria-label={label} className="space-y-3 rounded-lg bg-surface p-4 ring-1 ring-line">
       <h3 className="text-lg font-semibold">
         {label}
-        <span className="ml-2 font-normal text-slate-600 dark:text-slate-400">（今の実行方法: {RUN_KIND_LABEL[r.kind]}）</span>
+        <span className="ml-2 font-normal text-fg-3">（今の実行方法: {RUN_KIND_LABEL[r.kind]}）</span>
       </h3>
       <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
         {r.kind === "ai-instruction" && (
@@ -84,7 +84,7 @@ export function ExecutableView({ e: p, label, files, rows = [], children }: { e:
         ))}
       </dl>
       {p.replacement && (
-        <section aria-label={`${label} の置き換え候補`} className="space-y-1 rounded-md bg-indigo-50 p-3 dark:bg-indigo-950/40">
+        <section aria-label={`${label} の置き換え候補`} className="space-y-1 rounded-md bg-accent-soft p-3">
           <h4 className="font-semibold">置き換え候補（{RUN_KIND_LABEL[p.replacement.kind]}）</h4>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
             {row("用意するファイル", file(p.replacement.repo, p.replacement.path))}

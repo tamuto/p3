@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { TaskQualityDiffItem } from "../shared/quality.ts";
 import type { Task } from "../../../shared/types.ts";
 import { api, failureOf } from "../../../web/lib/api.ts";
-import { Button } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button } from "@infodb/p3-shared/web/ui.tsx";
 
 const LABEL: Record<TaskQualityDiffItem["kind"], string> = { add: "足す", change: "品質基準が変わった", remove: "消す", exempt: "除外になった", edited: "タスクで文を直した" };
 
@@ -47,7 +47,7 @@ export function QualityDiffPanel({ task, disabled, onSaved }: { task: Task; disa
   }
 
   return (
-    <section aria-label="品質基準との差分" className="space-y-2 rounded-lg bg-sky-50 p-3 text-base dark:bg-sky-950/50">
+    <section aria-label="品質基準との差分" className="space-y-2 rounded-lg bg-info-soft p-3 text-base">
       <p className="font-medium">品質基準との差分（プロジェクトの品質基準を変えても、タスクは自動では変わりません）</p>
       <ul className="space-y-1">
         {diff.map((d) => {
@@ -69,22 +69,22 @@ export function QualityDiffPanel({ task, disabled, onSaved }: { task: Task; disa
                 <span className="font-mono">{d.quality}</span> {LABEL[d.kind]}
                 {d.criterion ? `（${d.criterion}）` : ""}
                 {d.text ? `: ${d.text}` : ""}
-                {d.reason ? <span className="block text-slate-500">{d.reason}</span> : null}
+                {d.reason ? <span className="block text-fg-4">{d.reason}</span> : null}
               </span>
             </li>
           );
         })}
       </ul>
-      {!task.repo && <p className="text-slate-500">作業先なしのタスクには、足す案を出しません。</p>}
+      {!task.repo && <p className="text-fg-4">作業先なしのタスクには、足す案を出しません。</p>}
       {importable.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Button className="text-base" disabled={busy || disabled || !picked.size} onClick={() => void apply()}>
             選んだ差分を取り込む
           </Button>
-          <span className="text-slate-500">変わった条件の証拠は「再確認が必要」になります。済みの後なら済みが外れます。</span>
+          <span className="text-fg-4">変わった条件の証拠は「再確認が必要」になります。済みの後なら済みが外れます。</span>
         </div>
       )}
-      {msg && <p role="alert" className="break-words text-rose-600">{msg}</p>}
+      {msg && <Alert>{msg}</Alert>}
     </section>
   );
 }

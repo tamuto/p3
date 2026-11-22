@@ -95,9 +95,9 @@ export function PreparationForm({ initial, submitLabel, onSave, onSaved }: { ini
               </h2>
               <Button onClick={() => setSlot(s, e ? undefined : emptyExec())}>{e ? `${SLOT_LABEL[s]}を外す` : `＋ ${SLOT_LABEL[s]}を書く`}</Button>
             </div>
-            <p className="text-slate-600 dark:text-slate-400">{SLOT_HINT[s]}</p>
+            <p className="text-fg-3">{SLOT_HINT[s]}</p>
             {e && (
-              <fieldset aria-label={SLOT_LABEL[s]} className="space-y-4 rounded-lg bg-white p-4 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+              <fieldset aria-label={SLOT_LABEL[s]} className="space-y-4 rounded-lg bg-surface p-4 ring-1 ring-line">
                 <ExecutableEditor e={e} at={s} err={err} files={files} onChange={(x) => setSlot(s, x)} />
               </fieldset>
             )}

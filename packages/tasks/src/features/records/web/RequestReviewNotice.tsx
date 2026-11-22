@@ -22,9 +22,9 @@ export function RequestReviewNotice({ ctx, data }: { ctx: AppCtx; data: RequestD
     <section aria-label="要望の見直し" className="min-w-0 space-y-3">
       {showSelf && <ReviewPanel review={self} kind="request" />}
       {counts && (
-        <div className="min-w-0 space-y-2 rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-900">
+        <div className="min-w-0 space-y-2 rounded-lg bg-warn-soft p-4 ring-1 ring-warn-line">
           <p className="font-medium">見直しが必要（候補）: {counts}</p>
-          <p className="text-base text-slate-600 dark:text-slate-400">完了済みのタスクの状態と人の済みはそのままです。タスクを開いて当時と今の条件を比べてください。配下の件数は子の要望で開けます。</p>
+          <p className="text-base text-fg-3">完了済みのタスクの状態と人の済みはそのままです。タスクを開いて当時と今の条件を比べてください。配下の件数は子の要望で開けます。</p>
           {candidates.length > 0 && (
             <ul className="min-w-0 space-y-1">
               {candidates.map((t) => (

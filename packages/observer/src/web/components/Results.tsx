@@ -15,7 +15,7 @@ export function ResultBadge({ r }: { r: Pick<ObservationResult, "status" | "verd
 
 /** 一覧の「最後の結果」: 判定・日時・古い版での実行・不安定 */
 export function SummaryCell({ s }: { s?: ResultSummary }) {
-  if (!s?.latest) return <span className="text-slate-600 dark:text-slate-400">未実行</span>;
+  if (!s?.latest) return <span className="text-fg-3">未実行</span>;
   const l = s.latest;
   return (
     <span className="flex flex-wrap items-center gap-1">
@@ -38,7 +38,7 @@ export function StepList({ steps, label }: { steps: StepRecord[]; label: string 
         <li key={i}>
           {PHASE_LABEL[st.phase]} {st.ref}: {STEP_RESULT_LABEL[st.result]}
           {st.measures && `　${Object.entries(st.measures).map(([k, v]) => `${k}=${String(v)}`).join("・")}`}
-          <span className="block text-slate-600 dark:text-slate-400">
+          <span className="block text-fg-3">
             根拠（{BASIS_LABEL[st.basis.kind]}）: {basisText(st)}
             {st.evidence ? `／証跡: ${st.evidence}` : ""}
             {st.note ? `／${st.note}` : ""}（{st.by}）
@@ -96,7 +96,7 @@ export function ResultsSection({ id, rev, ended }: { id: string; rev: number; en
       <h2 id="results-heading" className="text-xl font-semibold">
         結果
       </h2>
-      <p className="text-slate-600 dark:text-slate-400">P3 は手順を実行しません。あなたか担当の AI が手順に従って実行し、段ごとに記録します。</p>
+      <p className="text-fg-3">P3 は手順を実行しません。あなたか担当の AI が手順に従って実行し、段ごとに記録します。</p>
       {load.kind === "loading" && <Loading />}
       {load.kind === "error" && <Alert>結果を読めませんでした: {load.message}</Alert>}
       {load.kind === "ok" && (
@@ -133,7 +133,7 @@ export function ResultsSection({ id, rev, ended }: { id: string; rev: number; en
             <ul className="space-y-2">
               {load.value.results.map((r) => (
                 <li key={r.id}>
-                  <details className="rounded border border-slate-200 p-3 dark:border-slate-800">
+                  <details className="rounded border border-line p-3">
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                       <ResultBadge r={r} />
                       {r.rev !== rev && <Badge tone="amber">古い（版 {r.rev} で実行）</Badge>}
@@ -176,7 +176,7 @@ export function FollowUpPanel({ r }: { r: ObservationResult }) {
     );
   if (!drafts) return null;
   return (
-    <section aria-labelledby="followup-heading" className="space-y-3 rounded border border-slate-200 p-4 dark:border-slate-800">
+    <section aria-labelledby="followup-heading" className="space-y-3 rounded border border-line p-4">
       <h2 id="followup-heading" className="text-xl font-semibold">
         要望を作る
       </h2>

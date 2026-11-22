@@ -18,7 +18,7 @@ export function SwitchForm({ label, replacement, files, onSwitch, onDone }: { la
         <Button onClick={() => setOpen(true)} disabled={!ready}>
           スクリプトに切り替える
         </Button>
-        {!ready && <span className="text-slate-600 dark:text-slate-400">用意するファイルが参照先の中に有ることを確かめられるまで切り替えられません</span>}
+        {!ready && <span className="text-fg-3">用意するファイルが参照先の中に有ることを確かめられるまで切り替えられません</span>}
       </div>
     );
   return (
