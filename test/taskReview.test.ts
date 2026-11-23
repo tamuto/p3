@@ -1,6 +1,6 @@
 // タスクの AI レビューの実行（core/taskReview/service.ts・review.ts）と CLI・API: 新しいスレッド・固定した材料だけを読むだけでマウント、
 // 結果の確かめ（欠落・重複・未知の項目・偽の根拠・記録だけの「満たしている」・削除したファイル）、失敗・時間切れ・取消、
-// Preflight の担当が agent のときの無断の起動の防止、材料が変わったときの確かめ直し、タスクの状態・済み・証拠を変えないこと。
+// 材料が変わったときの確かめ直し、タスクの状態・済み・証拠を変えないこと。
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,8 +46,8 @@ const commit = (root: string, msg: string, files: Record<string, string | null>)
   return git(root, "rev-parse", "HEAD");
 };
 
-async function setup(reviewer?: Summarizer, opts: { timeoutMs?: number; runner?: "agent" } = {}) {
-  const p = await makeProject(opts.runner ? { preflight: { instructions: "", runner: opts.runner } } : {});
+async function setup(reviewer?: Summarizer, opts: { timeoutMs?: number } = {}) {
+  const p = await makeProject();
   commit(p.root, "最初", { ".gitignore": ".p3/\n", "src/old.ts": "old\n", "src/a.ts": "a1\n" });
   const req = await newRequest(p.ctx, { title: "通知を足す", body: "通知を送る" });
   const sha = commit(p.root, "通知を送る", { "src/a.ts": "a2\n", "src/notify.ts": "export const send = () => true;\n", "src/old.ts": null });
@@ -159,13 +159,16 @@ describe("実行（偽の app-server）", () => {
     expect(await p2.ctx.taskReview.list(p2.rid, p2.tid)).toEqual([]);
   });
 
-  it("Preflight の担当が agent なら、engine を明示しない Codex の実行は始めない（Codex は呼ばない）", async () => {
+  it("以前の project.yaml に preflight.runner: agent が残っていても、明示の開始で Codex のレビューを始める", async () => {
     const calls: string[] = [];
-    const spy: Summarizer = { ask: async () => (calls.push("ask"), Promise.reject(new Error("呼ばれた"))) };
-    const { ctx, rid, tid } = await setup(spy, { runner: "agent" });
-    await expect(ctx.taskReview.start(rid, tid)).rejects.toMatchObject({ code: "engine_required" });
-    expect(calls).toEqual([]);
-    expect((await ctx.taskReview.preview(rid, tid)).engineRequired).toBe(true);
+    const spy: Summarizer = { ask: async () => (calls.push("ask"), Promise.reject(new Error("止める"))) };
+    const { ctx, rid, tid, dataDir } = await setup(spy);
+    writeFileSync(join(dataDir, "project.yaml"), `${readFileSync(join(dataDir, "project.yaml"), "utf8")}preflight:\n  runner: agent\n`);
+    await ctx.ws.load();
+    expect(await ctx.taskReview.preview(rid, tid)).not.toHaveProperty("engineRequired");
+    const r = await ctx.taskReview.start(rid, tid);
+    await ctx.taskReview.wait(rid, tid, r.id);
+    expect(calls).toEqual(["ask"]);
   });
 
   it("過去の run と同じ指定（固定した SHA・範囲の指定・観点）で今の材料を取り出せ、変わらなければ同じ hash", async () => {
@@ -200,7 +203,7 @@ describe("API と CLI", () => {
     const base = `/requests/${rid}/tasks/${tid}`;
     const pv = await call("POST", `${base}/review-preview`, {});
     expect(pv.status).toBe(200);
-    expect(pv.body).toMatchObject({ items: [{ id: "A1" }, { id: "A2" }], files: expect.any(Number), engineRequired: false });
+    expect(pv.body).toMatchObject({ items: [{ id: "A1" }, { id: "A2" }], files: expect.any(Number) });
     const started = await call("POST", `${base}/reviews`, { expectedHash: pv.body.hash });
     expect(started.status).toBe(202);
     const run = started.body.id as string;

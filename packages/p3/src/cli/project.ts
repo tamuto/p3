@@ -8,7 +8,6 @@ import type { ProjectConfig } from "@infodb/p3-tasks/shared/types.ts";
 import { writeProjectFile, writeRepoEntry } from "@infodb/p3-tasks/core/store/projectFile.ts";
 import { normalizeProject } from "@infodb/p3-tasks/core/store/normalize.ts";
 import { repoNameProblem } from "@infodb/p3-tasks/shared/repos.ts";
-import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, type PreflightRunner } from "@infodb/p3-tasks/shared/preflightRunner.ts";
 import { DATA_DIR_NAME } from "@infodb/p3-tasks/core/store/locate.ts";
 import { ENTRY_VERSION } from "./guide.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "@infodb/p3-tasks/core/userConfig.ts";
@@ -171,8 +170,6 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
-  /** Preflight の担当（未指定なら、対話では聞き（Enter は codex）、非対話では codex） */
-  runner?: PreflightRunner;
   /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
   agents?: AgentChoice;
   yes?: boolean;
@@ -253,11 +250,6 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
-    // 担当: codex は人が p3 から実行する（Codex と ChatGPT のプランが要る）。agent は Codex を使えない環境で、手元の AI エージェントに頼む
-    const runnerAnswer =
-      o.runner ?? (await ask("Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）", DEFAULT_PREFLIGHT_RUNNER));
-    if (!isPreflightRunner(runnerAnswer)) throw new UsageError(`Preflight の担当は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runnerAnswer}`);
-    const runner: PreflightRunner = runnerAnswer;
     // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
     let agents = o.agents;
     if (agents === undefined && interactive) {
@@ -275,7 +267,7 @@ export async function init(o: InitOptions): Promise<string> {
       repos: [{ name: refName, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
-      preflight: { instructions, runner },
+      preflight: { instructions },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
@@ -288,12 +280,9 @@ export async function init(o: InitOptions): Promise<string> {
       `  参照先        ${refName}（本体） → ${root}`,
       `  主なフォルダ  ${map.map((m) => m.path).join(", ") || "（なし。設定画面で足せます）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
-      `  Preflight     ${runner}（${RUNNER_LABEL[runner]}。変える: p3 config set preflight.runner=${runner === "codex" ? "agent" : "codex"}）`,
       ...agentLines,
       "",
-      runner === "agent"
-        ? "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve"
-        : "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
+      "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>（Codex にサインインしたマシン。p3 whoami で分かる）か、手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve",
       cfg.description ? "" : "※ description が空です。p3 config set description=\"...\" で設定してください（Preflight の精度に効きます）",
     ]
       .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))

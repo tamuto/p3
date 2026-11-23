@@ -44,7 +44,6 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
   const [targetsText, setTargetsText] = useState("");
   const [viewpoint, setViewpoint] = useState("builtin");
   const [viewpointFile, setViewpointFile] = useState("");
-  const [consent, setConsent] = useState(false);
   const [checked, setChecked] = useState<TaskReviewPreview>();
   const latest = useRef(latestOnly());
 
@@ -131,7 +130,7 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
     setBusy(true);
     setMsg(null);
     try {
-      const run = await api.startTaskReview(rid, tid, { ...spec(), expectedHash: checked.hash, ...(checked.engineRequired ? { engine: "codex" as const } : {}) });
+      const run = await api.startTaskReview(rid, tid, { ...spec(), expectedHash: checked.hash });
       setSelected(run.id);
       setChecked(undefined);
       setMsg({ ok: true, text: "レビューを始めました（新しい Codex のスレッド）" });
@@ -243,14 +242,8 @@ export function TaskReviewPanel({ task, archived = false, unsaved = false }: { t
             材料を確かめる
           </Button>
           {checked && <PreviewView p={checked} />}
-          {checked?.engineRequired && (
-            <label className="flex items-start gap-2 text-base">
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-              <span>Codex で実行する（このプロジェクトの Preflight の担当は agent です。Codex を使うことを明示します。ChatGPT のプランを使います）</span>
-            </label>
-          )}
           {unsaved && <p className="text-base text-warn-strong">保存していない入力があります。保存してから材料を確かめて始めてください（保存した内容でレビューします）</p>}
-          <Button variant="primary" disabled={busy || !checked || unsaved || (checked.engineRequired && !consent)} onClick={() => void start()}>
+          <Button variant="primary" disabled={busy || !checked || unsaved} onClick={() => void start()}>
             新しい Codex のスレッドでレビューを始める
           </Button>
         </section>

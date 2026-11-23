@@ -170,7 +170,7 @@ npx @infodb/p3 config set preflight.runner=agent     # codex に戻すなら pre
 npx @infodb/p3 whoami                                 # Preflight の行に今の担当が出る
 ```
 
-担当の細かい決まりは [使い方ガイド: Preflight の担当](how-to-use.md#preflight-の担当)。作るときに `description`（何のプロジェクトか）を
+担当の細かい決まりは [使い方ガイド: Preflight の担当](how-to-use.md#preflight-を誰がするか)。作るときに `description`（何のプロジェクトか）を
 省いたなら、ここで書いておくと評価の精度が上がる: `npx @infodb/p3 config set description="社内向けの経費精算アプリ"`。
 
 ### 手元の AI エージェントで評価する

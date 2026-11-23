@@ -322,10 +322,7 @@ export class Workspace {
    */
   async saveProject(patch: ProjectPatch, opts: MilestoneSaveOpts = {}): Promise<ProjectConfig> {
     return this.writeProject((cur) => {
-      // preflight は項目ごとに重ねる（観点だけ・担当だけの更新で、もう片方を消さない。以前の API の形 { instructions } も同じ）。
-      // 担当を設定したら、読めなかった値は消す
-      const pf = patch.preflight;
-      const preflight = pf ? { ...cur.preflight, ...pf, ...(pf.runner ? { invalidRunner: undefined } : {}) } : cur.preflight;
+      const preflight = patch.preflight ? { ...cur.preflight, ...patch.preflight } : cur.preflight;
       const milestones = patch.milestones ? keepGoals(patch.milestones, cur.milestones) : cur.milestones;
       return { ...cur, ...patch, milestones, preflight };
     }, opts);

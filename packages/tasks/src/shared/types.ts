@@ -1,7 +1,6 @@
 import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "../features/requirements/shared/acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
 import type { QualitySnapshot, QualityState } from "../features/quality/shared/quality.ts";
-import type { PreflightRunner } from "./preflightRunner.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
  * p3 のドメイン型。サーバ・CLI・Web で共有する。
@@ -939,10 +938,6 @@ export interface ProjectConfig {
   preflight: {
     /** プロジェクト固有の評価の観点・制約（例: 「外部 API の追加は要相談」） */
     instructions: string;
-    /** Preflight の担当（shared/preflightRunner.ts）。未設定は codex として扱う */
-    runner?: PreflightRunner;
-    /** preflight.runner に読めない値が書いてあるとき、その値（担当は決めない。保存しても消さない） */
-    invalidRunner?: string;
   };
   /**
    * 品質基準（project.yaml の quality。読むときに決まる。設定の保存では書かず、core/quality.ts の操作だけが書く）。

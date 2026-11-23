@@ -7,7 +7,6 @@ import { repoNameProblem } from "../../../shared/repos.ts";
 import { addRepo, checkFolder, RepoAdminError, removeRepo, setLocalRepoPath, updateRepo, type RepoPatch } from "../core/repoAdmin.ts";
 import { requestWorkstreams } from "../../../shared/workTarget.ts";
 import type { ProjectPatch, Workspace } from "../../../core/store/workspace.ts";
-import { isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, runnerView, type RunnerView } from "../../../shared/preflightRunner.ts";
 import { sortMilestones } from "../../../shared/milestoneOrder.ts";
 import { git, resolvePath, UsageError } from "@infodb/p3-shared/node/usage.ts";
 
@@ -83,7 +82,7 @@ export function currentRequest(ctx: P3Context, explicit: string | undefined, cwd
 }
 
 
-const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions", "preflight.runner"] as const;
+const CONFIG_KEYS = ["name", "description", "branchPattern", "instructions"] as const;
 
 /** p3 config [set key=value ...] */
 export async function config(ws: Workspace, args: string[]): Promise<{ data: unknown; text: string }> {
@@ -93,12 +92,11 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
       const eq = pair.indexOf("=");
       const key = pair.slice(0, eq) as (typeof CONFIG_KEYS)[number];
       const value = pair.slice(eq + 1).trim();
+      if ((key as string) === "preflight.runner") {
+        throw new UsageError("preflight.runner（Preflight の担当）はなくなりました。Codex にサインインしたマシンでは p3 preflight で、そうでなければ手元の AI エージェントに頼んで評価します（p3 whoami の Preflight の行）");
+      }
       if (eq < 1 || !CONFIG_KEYS.includes(key)) throw new UsageError(`設定できるキー: ${CONFIG_KEYS.join(", ")}`);
       if (key === "instructions") patch.preflight = { ...patch.preflight, instructions: value };
-      else if (key === "preflight.runner") {
-        if (!isPreflightRunner(value)) throw new UsageError(`preflight.runner は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${value || "（空）"}`);
-        patch.preflight = { ...patch.preflight, runner: value };
-      }
       else if (key === "branchPattern" && !value.includes("{id}")) throw new UsageError("branchPattern には {id} を含めてください");
       else if (key === "name" && !value) throw new UsageError(`${key} は空にできません`);
       else patch[key] = value;
@@ -116,17 +114,10 @@ export async function config(ws: Workspace, args: string[]): Promise<{ data: unk
     `milestones     ${sortMilestones(p.milestones).map((m) => `${m.id}${m.due ? `(${m.due})` : ""}${m.done ? "[済]" : ""}`).join(", ") || "（なし）"}`,
     `branchPattern  ${p.branchPattern}`,
     `instructions   ${p.preflight.instructions || "（なし）"}`,
-    `preflight.runner  ${runnerText(runnerView(p.preflight))}`,
     "",
     `ファイル: ${join(ws.dataDir, "project.yaml")}`,
   ].join("\n");
-  return { data: { ...p, preflightRunner: runnerView(p.preflight) }, text };
-}
-
-/** 担当の表示（config・whoami）。読めない値は理由を出す */
-export function runnerText(v: RunnerView): string {
-  if (!v.runner) return `（読めません）${v.problem}`;
-  return `${v.runner}（${RUNNER_LABEL[v.runner]}${v.source === "default" ? "。未設定なので既定" : ""}）`;
+  return { data: p, text };
 }
 
 export function splitList(s: string): string[] {

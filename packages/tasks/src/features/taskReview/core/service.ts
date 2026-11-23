@@ -40,8 +40,6 @@ export interface TaskReviewDetail extends TaskReviewRecord {
 /** プレビュー（今の材料の要約と hash。何も書かない） */
 export interface TaskReviewPreview {
   input: TaskReviewInput;
-  /** Codex で実行するには engine の明示が要る（Preflight の担当が agent） */
-  engineRequired: boolean;
 }
 
 export class TaskReviewService {
@@ -70,27 +68,17 @@ export class TaskReviewService {
     this.ws.emit({ type: "task-review", id: r.id, request: r.request, task: r.task, status: r.status });
   }
 
-  private engineRequired(): boolean {
-    return this.ws.project.preflight.runner === "agent";
-  }
-
   /** 今の材料（何も書かない）。始めるときと同じ規則で断る */
   async preview(rid: string, tid: string, opts: ExtractOptions = {}): Promise<TaskReviewPreview> {
     const { tid: t } = parseTaskReviewKey(this.key(rid, tid));
     const { input } = await extractTaskReview(this.ws.dataDir, rid, t, this.ws.refs(), opts);
-    return { input, engineRequired: this.engineRequired() };
+    return { input };
   }
 
   /** 始める（終わるのは wait で待つ）。材料はここで固定する */
   async start(rid: string, tid: string, actor?: string, opts: TaskReviewStartOptions = {}): Promise<TaskReviewRun> {
     const key = this.key(rid, tid);
     const t = parseTaskReviewKey(key).tid;
-    if (this.engineRequired() && !opts.engine) {
-      throw new TaskReviewRejected(
-        "engine_required",
-        `このプロジェクトの Preflight の担当は agent です。タスクのレビューを Codex で実行するなら、明示してください（p3 review ${key} --engine codex、画面では「Codex で実行する」を選ぶ）`,
-      );
-    }
     const refs = this.ws.refs();
     const { input, files } = await extractTaskReview(this.ws.dataDir, rid, t, refs, opts);
     if (opts.expectedHash !== undefined && opts.expectedHash !== input.hash) {

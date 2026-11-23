@@ -29,7 +29,6 @@ import { releaseNoteRoutes } from "../../features/releaseNotes/server/releaseNot
 import { milestoneReviewRoutes } from "../../features/milestoneReview/server/milestoneReviewRoutes.ts";
 import { taskReviewRoutes } from "../../features/taskReview/server/taskReviewRoutes.ts";
 import { archiveTask, checkMilestoneRemoval, createRequest, createTask, orderChildren, updateRequest, updateTask, importQuality, saveClarifyAnswer, updateRequirement, recordPremise } from "../../core/requestOps.ts";
-import { PREFLIGHT_RUNNERS, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { CancelRefusedError, PulseInputError } from "../../core/preflight/service.ts";
 
 /**
@@ -139,8 +138,7 @@ const projectPatch = z
       }),
     ),
     branchPattern: z.string().includes("{id}"),
-    // 担当（runner）は省ける（以前の形 { instructions } の更新でも、保存は項目ごとに重ねるので担当は残る）
-    preflight: z.object({ instructions: z.string().optional(), runner: z.enum(PREFLIGHT_RUNNERS as [PreflightRunner, ...PreflightRunner[]]).optional() }),
+    preflight: z.object({ instructions: z.string().optional() }),
     /** 編集を始めたときのマイルストーンの版（GET /api/project の milestonesVersion）。違えば 409 milestones_conflict */
     milestonesVersion: z.string(),
   })

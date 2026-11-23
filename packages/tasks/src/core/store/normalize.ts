@@ -1,7 +1,6 @@
 import { qualityVersion, readQuality } from "../../features/quality/shared/quality.ts";
 import { keepRawOf, problemKeysOf, readFieldGroups, REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS } from "./fieldGroups.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
-import { isPreflightRunner, type PreflightRunner } from "../../shared/preflightRunner.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
 
 const str = (v: unknown): string | undefined => (v === undefined || v === null || v === "" ? undefined : String(v));
@@ -111,13 +110,6 @@ export const REQUEST_DERIVED: (keyof Request)[] = problemKeysOf(REQUEST_FIELD_GR
 /** 項目のまとまりが壊れていたら、関係のない更新ではファイルの元の値のまま書き戻す（fieldGroups.ts） */
 export const requestKeepRaw = keepRawOf(REQUEST_FIELD_GROUPS);
 
-/** preflight.runner（未設定は書かない。読めない値は invalidRunner に残し、担当を推測しない） */
-function runnerOf(v: unknown): { runner?: PreflightRunner; invalidRunner?: string } {
-  const raw = str(v)?.trim();
-  if (raw === undefined || raw === "") return {};
-  return isPreflightRunner(raw) ? { runner: raw } : { invalidRunner: raw };
-}
-
 /**
  * マイルストーンの目的と予定機能（無い古いファイルは空として読む）。予定機能は id と text のある項目だけを読み、重複した id は
  * 最初のものを残す（読めない項目は画面・CLI に出ず、次の保存で消える）
@@ -155,7 +147,7 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
           }))
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
-    preflight: { instructions: str(preflight.instructions) ?? "", ...runnerOf(preflight.runner) },
+    preflight: { instructions: str(preflight.instructions) ?? "" },
     ...qualityOf(d.quality, normalizeRepos(d.repos).map((r) => r.name)),
   };
 }

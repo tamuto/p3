@@ -312,12 +312,12 @@ describe("CLI（別のプロセス）での手元のエージェントの Prefli
     expect(acc.json().tasks).toHaveLength(2);
     expect(p3(root, configHome, ["preflight", rid, "--complete", "--run", p.run, "--json"]).json().already).toBe(true);
   });
-  it("担当が agent のプロジェクトで、親と子のどちらも prepare → 成果物 → complete → drafts を Codex・Docker 無しで通せ、タスク化・着手には進まない", () => {
+  it("Codex にサインインしていなくても、親と子のどちらも prepare → 成果物 → complete → drafts を Codex・Docker 無しで通せ、タスク化・着手には進まない", () => {
     const root = tempDir("p3-local-agent-");
     gitInit(root);
     const configHome = tempDir("p3-config-");
-    expect(p3(root, configHome, ["init", "--yes", "--description", "在庫", "--dir", ".p3", "--repo-name", "main", "--preflight-runner", "agent"]).code).toBe(0);
-    expect(p3(root, configHome, ["whoami", "--json"]).json().preflight).toEqual({ runner: "agent", source: "project" });
+    expect(p3(root, configHome, ["init", "--yes", "--description", "在庫", "--dir", ".p3", "--repo-name", "main"]).code).toBe(0);
+    expect(p3(root, configHome, ["whoami", "--json"]).json().preflight).toMatchObject({ codex: false });
     const parent = p3(root, configHome, ["request", "new", "通知", "--body", "通知を送る", "--json"]).json().id as string;
     const child = p3(root, configHome, ["request", "new", "メールの通知", "--body", "メールで送る", "--json"]).json().id as string;
     expect(p3(root, configHome, ["request", "set", child, `parent=${parent}`, "--json"]).code).toBe(0);

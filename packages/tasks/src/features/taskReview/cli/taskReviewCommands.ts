@@ -71,7 +71,7 @@ export async function taskReviewCommand(cmd: string, env: CommandEnv): Promise<n
   const opts = { targets: o.target, viewpoint: o.viewpoint };
   if (o.preview) {
     const p = await svc.preview(rid, tid, opts);
-    const view = { ...previewOf(p.input), engineRequired: p.engineRequired };
+    const view = previewOf(p.input);
     return out.result(view, () => formatPreview(view));
   }
   const started = await svc.start(rid, tid, actor, { ...opts, engine: o.engine });
@@ -102,7 +102,7 @@ function verdictSummary(v: Partial<Record<TaskReviewVerdict, number>> | undefine
   return TASK_REVIEW_VERDICTS.filter((k) => v[k]).map((k) => `${TASK_REVIEW_VERDICT_LABELS[k]} ${v[k]}`).join(" · ");
 }
 
-function formatPreview(p: ReturnType<typeof previewOf> & { engineRequired: boolean }): string {
+function formatPreview(p: ReturnType<typeof previewOf>): string {
   const lines = [`${p.task.ref}  ${p.task.title}`, `材料の hash: ${p.hash}`, "", "比較項目:"];
   for (const i of p.items) lines.push(`  ${i.id}  ${i.text.split("\n")[0]}${i.kind === "body" ? "（本文から）" : ""}`);
   lines.push("", "比較対象:");
@@ -113,7 +113,6 @@ function formatPreview(p: ReturnType<typeof previewOf> & { engineRequired: boole
   if (p.quality) lines.push("", `品質基準: ${p.quality.state === "set" ? `版 ${p.quality.version}・判定する ${p.quality.applies.map((q) => q.id).join(", ") || "なし"}${p.quality.exempt.length ? `・除外 ${p.quality.exempt.map((q) => q.id).join(", ")}` : ""}` : p.quality.state === "unset" ? "未設定" : "読めません"}`);
   lines.push("", `観点: ${p.viewpoint.source}${p.viewpoint.repo ? `（${p.viewpoint.repo}@${p.viewpoint.sha?.slice(0, 12)}:${p.viewpoint.path}）` : ""}`);
   for (const n of p.notes) lines.push(`  ⚠ ${n.message}`);
-  if (p.engineRequired) lines.push("", "※ Preflight の担当が agent なので、Codex で実行するなら --engine codex を付けてください");
   return lines.join("\n");
 }
 
