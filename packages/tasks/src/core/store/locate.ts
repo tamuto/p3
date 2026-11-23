@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import YAML from "yaml";
 import type { UserConfig } from "../userConfig.ts";
+import { normalizeRepos } from "./normalize.ts";
 
 /** p3 init がデータを置く既定のフォルダ名（リポジトリのルートの直下） */
 export const DATA_DIR_NAME = ".p3";
@@ -15,6 +17,8 @@ export interface ResolvedProject {
   repos: Record<string, string>;
   /** どうやって決まったか */
   via: "dir" | "project" | "cwd" | "legacy" | "only";
+  /** 今いる場所を参照先として登録している、ほかのプロジェクトの名前（whoami が --project での切り替えを案内する） */
+  alsoReferencedBy?: string[];
 }
 
 /** プロジェクトの決まり方の説明（whoami の表）。cwd 以外は今いる場所で決まっていない */
@@ -92,18 +96,22 @@ export function onlyRegistrationNotice(p: ResolvedProject, write: boolean): stri
  *
  *   1. --dir <フォルダ>          データのフォルダを直接指す
  *   2. --project <名前>          個人設定に登録したプロジェクト
- *   3. 今いる場所                 登録したプロジェクトのデータのフォルダか、そのリポジトリ（作業ツリーを含む）の中
+ *   3. 今いる場所                 登録したプロジェクトのデータのフォルダか、そのリポジトリ（作業ツリーを含む）の中。
+ *      複数に当たれば、データのフォルダ → 本体（共有の定義の参照先の role: 本体）の参照先 → ほかの参照先の順で、
+ *      最初に当たった順位の候補が1つなら選ぶ（推測では選ばない。決まらなければ止める）
  *   4. リポジトリの中の .p3/   個人設定に登録していないとき（git のメインの作業ツリー → 上へ辿る。デモ・登録前の clone など）
  *   5. 登録が1つだけ              それを使う
  */
 export function resolveProject(o: { cwd: string; dir?: string; project?: string; user: UserConfig }): ResolvedProject {
   const entries = Object.entries(o.user.projects);
-  const named = ([name, p]: (typeof entries)[number], via: ResolvedProject["via"]): ResolvedProject => ({
-    name,
-    dataDir: p.dir,
-    repos: { ...p.repos },
-    via,
-  });
+  const places = [...new Set([resolve(o.cwd), mainWorktree(o.cwd)].filter((x): x is string => !!x))];
+  const isHere = (path: string) => places.some((pl) => inside(pl, path));
+  /** 今いる場所を参照先にしているプロジェクトの、参照先の名前 */
+  const refsHere = (p: (typeof entries)[number][1]) => Object.entries(p.repos).filter(([, path]) => isHere(path)).map(([name]) => name);
+  const named = ([name, p]: (typeof entries)[number], via: ResolvedProject["via"]): ResolvedProject => {
+    const others = entries.filter(([n, q]) => n !== name && refsHere(q).length).map(([n]) => n);
+    return { name, dataDir: p.dir, repos: { ...p.repos }, via, ...(others.length ? { alsoReferencedBy: others } : {}) };
+  };
 
   if (o.dir) {
     const dataDir = resolve(o.cwd, o.dir);
@@ -116,13 +124,27 @@ export function resolveProject(o: { cwd: string; dir?: string; project?: string;
     return named(hit, "project");
   }
 
-  const places = [...new Set([resolve(o.cwd), mainWorktree(o.cwd)].filter((x): x is string => !!x))];
-  const hits = entries.filter(([, p]) => places.some((pl) => inside(pl, p.dir) || Object.values(p.repos).some((r) => inside(pl, r))));
+  const hits = entries.filter(([, p]) => isHere(p.dir) || refsHere(p).length);
   if (hits.length === 1) return named(hits[0], "cwd");
   if (hits.length > 1) {
-    throw new ProjectNotResolvedError(
-      `この場所は複数のプロジェクトに登録されています: ${hits.map(([n]) => n).join(", ")}\n  → p3 --project <名前> <コマンド> で選んでください`,
-    );
+    const ambiguous = (among: typeof hits, note?: string) =>
+      new ProjectNotResolvedError(
+        [`この場所は複数のプロジェクトに登録されています: ${among.map(([n]) => n).join(", ")}`, ...(note ? [`  （${note}）`] : []), "  → p3 --project <名前> <コマンド> で選んでください"].join("\n"),
+      );
+    // 1. データのフォルダの中
+    const data = hits.filter(([, p]) => isHere(p.dir));
+    if (data.length === 1) return named(data[0], "cwd");
+    if (data.length > 1) throw ambiguous(data);
+    // 2. 今いる場所のリポジトリを本体にしているプロジェクト（共有の定義を読む。読めなければ決めない）
+    const unreadable: string[] = [];
+    const main = hits.filter(([name, p]) => {
+      const roles = sharedRoles(p.dir);
+      if (!roles) unreadable.push(name);
+      return !!roles && refsHere(p).some((r) => roles.get(r) === "本体");
+    });
+    if (unreadable.length) throw ambiguous(hits, `本体かを確かめられません: ${unreadable.map((n) => `${n} の project.yaml`).join("、")}を読めません`);
+    if (main.length === 1) return named(main[0], "cwd");
+    throw ambiguous(main.length ? main : hits);
   }
 
   const legacy = findDataDir(o.cwd);
@@ -148,6 +170,16 @@ function listing(user: UserConfig): string {
     ...entries.map(([n, p]) => `    ${n.padEnd(w)}  ${p.dir}`),
     "  → p3 --project <名前> <コマンド>、またはプロジェクトのリポジトリの中で実行してください",
   ].join("\n");
+}
+
+/** 共有の定義（project.yaml）の参照先の名前 → 役割。読めない・壊れていれば undefined */
+function sharedRoles(dataDir: string): Map<string, string> | undefined {
+  try {
+    const doc = YAML.parse(readFileSync(join(dataDir, "project.yaml"), "utf8")) as Record<string, unknown> | null;
+    return new Map(normalizeRepos(doc?.repos).map((r) => [r.name, r.role]));
+  } catch {
+    return undefined;
+  }
 }
 
 const inside = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep);

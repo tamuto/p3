@@ -48,6 +48,71 @@ describe("resolveProject（操作するプロジェクトを決める）", () =>
   });
 });
 
+describe("resolveProject: 同じ場所が複数のプロジェクトに当たったとき（データのフォルダ → 本体 → ほかの参照先）", () => {
+  /** 共有の定義（project.yaml）の参照先と役割を書いたデータのフォルダ */
+  async function dataWith(repos: Record<string, string>, dir = tempDir()) {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "project.yaml"), `name: x\nrepos:\n${Object.entries(repos).map(([n, r]) => `  ${n}:\n    role: ${r}\n`).join("")}`);
+    return dir;
+  }
+
+  it("A を本体にする PA を、A を参照先にする PB より優先する（ルート・サブフォルダ・外の作業ツリー）。PB は alsoReferencedBy に出る", async () => {
+    const { root } = await makeRepo();
+    git(root, "add", "-A");
+    git(root, "commit", "-qm", "init");
+    const wt = join(tempDir(), "wt");
+    git(root, "worktree", "add", "-q", wt, "-b", "req/x");
+    await mkdir(join(root, "src"), { recursive: true });
+    await mkdir(join(wt, "src"), { recursive: true });
+    const u = user({
+      pb: { dir: await dataWith({ b: "本体", a: "使う側" }), repos: { b: tempDir(), a: root } },
+      pa: { dir: await dataWith({ a: "本体" }), repos: { a: root } },
+    });
+    for (const cwd of [root, join(root, "src"), wt, join(wt, "src")]) {
+      expect(resolveProject({ cwd, user: u }), cwd).toMatchObject({ name: "pa", via: "cwd", alsoReferencedBy: ["pb"] });
+    }
+    // 明示したときも、ほかの登録を添える
+    expect(resolveProject({ cwd: root, project: "pb", user: u })).toMatchObject({ name: "pb", via: "project", alsoReferencedBy: ["pa"] });
+  });
+
+  it("データのフォルダの中なら、ほかのプロジェクトの本体・参照先と重なってもそのプロジェクト", async () => {
+    const repo = tempDir();
+    const pbData = await dataWith({ b: "本体" }, join(repo, ".pb"));
+    const u = user({ pa: { dir: await dataWith({ a: "本体" }), repos: { a: repo } }, pb: { dir: pbData, repos: { b: tempDir() } } });
+    expect(resolveProject({ cwd: pbData, user: u })).toMatchObject({ name: "pb", via: "cwd", alsoReferencedBy: ["pa"] });
+  });
+
+  it("決まらなければ止める: データのフォルダが複数・本体が複数・本体が無く参照先が複数・共有の定義が無い・壊れている", async () => {
+    const repo = tempDir();
+    const outer = await dataWith({}, join(repo, "d"));
+    const nested = await dataWith({}, join(outer, "e"));
+    expect(() => resolveProject({ cwd: nested, user: user({ x: { dir: outer }, y: { dir: nested } }) })).toThrow(/複数のプロジェクトに登録されています: x, y[\s\S]*--project/);
+
+    const twoMains = user({ x: { dir: await dataWith({ a: "本体" }), repos: { a: repo } }, y: { dir: await dataWith({ m: "本体" }), repos: { m: repo } } });
+    expect(() => resolveProject({ cwd: repo, user: twoMains })).toThrow(/x, y/);
+
+    const noMain = user({ x: { dir: await dataWith({ a: "使う側" }), repos: { a: repo } }, y: { dir: await dataWith({ a: "参考" }), repos: { a: repo } } });
+    expect(() => resolveProject({ cwd: repo, user: noMain })).toThrow(/x, y/);
+
+    // 「本体」に完全一致しない役割は本体と扱わない
+    const near = user({ x: { dir: await dataWith({ a: "本体のドキュメント" }), repos: { a: repo } }, y: { dir: await dataWith({ a: "使う側" }), repos: { a: repo } } });
+    expect(() => resolveProject({ cwd: repo, user: near })).toThrow(/x, y/);
+
+    const broken = tempDir();
+    await writeFile(join(broken, "project.yaml"), "repos: [\n");
+    for (const dir of [tempDir(), broken]) {
+      const u = user({ x: { dir: await dataWith({ a: "本体" }), repos: { a: repo } }, y: { dir, repos: { a: repo } } });
+      expect(() => resolveProject({ cwd: repo, user: u })).toThrow(/x, y[\s\S]*本体かを確かめられません: y の project.yaml/);
+    }
+  });
+
+  it("参照先として1つだけに当たるなら、共有の定義を読まずにそれ（今までどおり）", () => {
+    const repo = tempDir();
+    const u = user({ x: { dir: "/no/such", repos: { a: repo } }, y: { dir: "/other", repos: { b: tempDir() } } });
+    expect(resolveProject({ cwd: repo, user: u })).toEqual({ name: "x", dataDir: "/no/such", repos: { a: repo }, via: "cwd" });
+  });
+});
+
 describe("findDataDir（個人設定に登録していないリポジトリの中の .p3/）", () => {
   it("要望ごとの作業ツリーの中でも、メインの作業ツリーの .p3/ を使う（状態をブランチごとに分岐させない）", async () => {
     const { root, dataDir } = await makeRepo();

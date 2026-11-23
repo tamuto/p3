@@ -104,10 +104,12 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
       const preflight = await codexAvailability(ctx);
       // 置いた AI 向けの入口の状態（読むだけ。古くても操作は断らない）
       const { status: agents, lines: agentLines } = r.agents();
-      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight, agents }, () =>
+      const others = target.alsoReferencedBy ?? [];
+      return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, alsoReferencedBy: others, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight, agents }, () =>
         [
           `プロジェクト  ${target.name ?? "（未登録）"}  ${target.dataDir}`,
           `決まり方      ${target.via}（${VIA_LABEL[target.via]}）`,
+          ...(others.length ? [`ほかの登録    ${others.join(", ")} もここを参照先にしています（そちらを操作するなら p3 --project ${others[0]} <コマンド>）`] : []),
           `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,

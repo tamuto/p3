@@ -323,3 +323,26 @@ describe("データのフォルダが無い・project.yaml が無い", () => {
     expect(p3(app, ["request", "new", "最初", "--json"]).code).toBe(0);
   });
 });
+
+describe("参照先として複数のプロジェクトに登録したリポジトリ", () => {
+  it("本体にしているプロジェクトに決まり（via: cwd）、要望はそのデータだけに作る。whoami はほかの登録と --project を案内する", async () => {
+    const a = await repo();
+    const b = await repo();
+    const aData = join(tempDir("p3-assets-"), "pa");
+    const bData = join(tempDir("p3-assets-"), "pb");
+    expect(p3(a, ["init", "--yes", "--project", "pa", "--dir", aData]).code).toBe(0);
+    expect(p3(b, ["init", "--yes", "--project", "pb", "--dir", bData]).code).toBe(0);
+    expect(p3(b, ["repo", "add", "a", a, "role=使う側"]).code).toBe(0);
+
+    const who = p3(a, ["whoami", "--json"]);
+    expect(who.code, who.err).toBe(0);
+    expect(who.json()).toMatchObject({ project: "pa", via: "cwd", alsoReferencedBy: ["pb"] });
+    expect(p3(a, ["whoami"]).out).toContain("ほかの登録    pb もここを参照先にしています（そちらを操作するなら p3 --project pb <コマンド>）");
+    expect(p3(b, ["whoami", "--json"]).json()).toMatchObject({ project: "pb", via: "cwd", alsoReferencedBy: [] });
+
+    const before = snapshot(bData);
+    const rid = p3(a, ["request", "new", "通知", "--json"]).json().id as string;
+    expect(existsSync(join(aData, "requests", rid))).toBe(true);
+    expect(snapshot(bData)).toEqual(before);
+  });
+});
