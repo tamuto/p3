@@ -7,7 +7,7 @@ import { AGENT_TARGETS, AGENTS_MARK, agentsSnippet, findSections, KINDS, SKILL_S
 import { repoRoot } from "@infodb/p3-shared/node/usage.ts";
 
 /**
- * 置いた AI 向けの入口（スキルと AGENTS.md / CLAUDE.md の p3 の節）の診断（whoami と guide が同じものを返す）。
+ * 置いた AI 向けの入口（スキルと AGENTS.md の p3 の節。CLAUDE.md に残った以前の節も見る）の診断（whoami と guide が同じものを返す）。
  * 読むだけで、古くても操作を断らず、書き換えもしない。対象は今いる git の作業ツリーのルート（git 管理外は今いる場所）だけで、
  * ほかのリポジトリや個人のスキルの場所は見ない。置き先を覚える共有の設定は持たないので、欠けた片方は、節の参照と既にある入口から
  * 足りないかを判断する（選ばなかった先を必須にしない）
@@ -20,6 +20,7 @@ export type EntryStatus =
   | "missing" // 置くはずなのに無い
   | "modified" // 版は同じだが中身が違う（手で直した など）
   | "newer" // この CLI より新しい入口の版
+  | "misplaced" // CLAUDE.md に残った以前の p3 の節（p3 は AGENTS.md に書く。版が最新でも人が移す）
   | "unknown" // 版が読めない・節が複数・見出しの形が分からない
   | "unreadable"; // ファイルを読めない
 
@@ -29,7 +30,7 @@ export interface EntryDiagnosis {
   kind: "skill" | "section";
   /** スキルなら置き先（claude / codex） */
   target?: AgentKind;
-  /** 節なら、p3 agents が書く文書（AGENTS.md があればそれ、無ければ CLAUDE.md）か、ほかで見つかった節か */
+  /** 節なら、p3 agents が書く文書（AGENTS.md）か、CLAUDE.md で見つかった節か */
   primary?: boolean;
   /** 読めた入口の版（無い・読めないなら null） */
   version: number | null;
@@ -137,6 +138,14 @@ function diagnoseSections(root: string, primaryDoc: string): { entries: EntryDia
       continue;
     }
     const sections = findSections(r.text);
+    // CLAUDE.md の節は、版や形にかかわらず移す対象（p3 は書かない。Claude Code には CLAUDE.md があっても .claude のスキルで届く）
+    if (!primary && (sections.length || r.text.includes(AGENTS_MARK))) {
+      const body = sections.length === 1 ? r.text.split("\n").slice(sections[0].start, sections[0].end).join("\n") : "";
+      for (const k of KINDS) if (body.includes(AGENT_TARGETS[k].path)) referenced.add(k);
+      const version = parseVersion(SECTION_VERSION.exec(body)?.[1]) ?? null;
+      entries.push({ path: doc, kind: "section", primary, version, status: "misplaced", reason: `${doc} に「${AGENTS_MARK}」の節があります（p3 は AGENTS.md に書きます）` });
+      continue;
+    }
     if (!sections.length) {
       if (r.text.includes(AGENTS_MARK)) entries.push({ path: doc, kind: "section", primary, version: null, status: "unknown", reason: `「${AGENTS_MARK}」が見出しとして見つかりません` });
       continue;
@@ -179,14 +188,14 @@ export function diagnoseAgents(cwd: string): AgentsDiagnosis {
   const base = { root, ...(main !== root ? { writeRoot: main } : {}), expectedVersion: ENTRY_VERSION };
   try {
     const bundled = lf(readFileSync(SKILL_SOURCE, "utf8"));
-    const primaryDoc = DOCS.find((d) => read(join(root, d)).ok) ?? "AGENTS.md";
+    const primaryDoc = "AGENTS.md";
     const sections = diagnoseSections(root, primaryDoc);
     const skills = KINDS.map((k) => diagnoseSkill(root, k, sections.referenced.has(k), bundled)).filter((e): e is EntryDiagnosis => !!e);
     const placed = skills.length + sections.entries.length > 0;
     const entries = [...skills, ...sections.entries];
-    // スキルはあるのに節がどこにも無い
-    if (skills.length && !sections.entries.length) {
-      entries.push({ path: primaryDoc, kind: "section", primary: true, version: null, status: "missing", reason: `スキルはあるのに、${primaryDoc} に「${AGENTS_MARK}」の節がありません` });
+    // スキルか CLAUDE.md の以前の節はあるのに、AGENTS.md に節が無い
+    if (placed && !sections.entries.some((e) => e.primary)) {
+      entries.push({ path: primaryDoc, kind: "section", primary: true, version: null, status: "missing", reason: `${primaryDoc} に「${AGENTS_MARK}」の節がありません` });
     }
     const kinds = new Set<AgentKind>([...sections.referenced, ...skills.map((s) => s.target as AgentKind)]);
     const choice = choiceOf(kinds);
@@ -197,6 +206,9 @@ export function diagnoseAgents(cwd: string): AgentsDiagnosis {
     if (has("missing")) {
       const missingSkills = entries.filter((e) => e.status === "missing" && e.kind === "skill").map((e) => e.target as AgentKind);
       advice.push(`足りない入口があります。人が ${CMD} ${missingSkills.length ? choiceOf(new Set(missingSkills)) : choice} で置く（既にある入口は変えません）`);
+    }
+    if (has("misplaced")) {
+      advice.push(`CLAUDE.md に p3 の節があります。p3 は AGENTS.md に書き、CLAUDE.md は変えません。人が中身を確かめ、プロジェクト固有の決まりがあれば節の外へ移してから CLAUDE.md の p3 の節を消す（AGENTS.md に節が無ければ ${CMD} ${choice} で置く）`);
     }
     if (has("modified")) advice.push("入口の版は同じなのに中身が同梱の入口と違うものがあります。手で直した内容を確かめてください（--force は直した内容を消すので、すぐには勧めません）");
     if (has("newer")) advice.push("この CLI より新しい入口があります。古い p3 で動いていないか（pnpx @infodb/p3 で呼んでいるか、guide の cliVersion）を確かめてください。--force で古い入口に戻さない");
@@ -215,6 +227,7 @@ const STATUS_LABEL: Record<EntryStatus, string> = {
   current: "最新",
   outdated: "古い",
   missing: "無い",
+  misplaced: "CLAUDE.md にある",
   modified: "変更あり",
   newer: "CLI より新しい",
   unknown: "形が不明",

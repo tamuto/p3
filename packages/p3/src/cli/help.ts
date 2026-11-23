@@ -11,7 +11,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                このリポジトリを本体の参照先として登録する。データの既定はリポジトリのルートの .p3（既にあれば作らずに断る → join）
                                --project 名前 --dir フォルダ（外に置くとき。相対は今いる場所から）--repo-name 参照先の名前（既定はフォルダ名）--description
                                --instructions 観点 --yes
-                               --agents claude|codex|both  AI 向けの使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（値を省くと both。付けなければ置かない）
+                               --agents claude|codex|both  AI 向けの使い方（AGENTS.md の節と、選んだ先のスキル）を置く先（省くと both）
   agents claude|codex|both [--force]  AI 向けの使い方を、今いるリポジトリに後から置く・最新にする（選んだ先だけ。データ・個人設定は変えない）
                                違うものは上書きせず知らせる。--force で選んだ先のスキルと p3 の節だけを同梱の版にする（ほかの文は残す）
   guide                        AI エージェント向けの作業の手順（この CLI に同梱した版）を出す。プロジェクトを決めず、何も変えない

@@ -90,9 +90,9 @@ npx @infodb/p3 init --yes --agents claude --project myapp --preflight-runner age
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
   最初に読む・作業先にできる）として登録される
 - `init` は新しく作るだけ。そのフォルダに既にプロジェクト（`project.yaml`）があれば、何も変えずに断って `p3 join` を案内する
-- `--agents claude|codex|both` を付けると、AI エージェント向けの入口（手順は CLI の `p3 guide` から読ませる短い指示）を `AGENTS.md`
-  （無ければ `CLAUDE.md`）に追記し、スキルを選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
-  （値を省くと both。付けなければ置かない。対話では聞き、Enter は置かない）。置いたファイルはリポジトリに入れて共有する。
+- AI エージェント向けの入口（手順は CLI の `p3 guide` から読ませる短い指示）を `AGENTS.md`（無ければ作る。`CLAUDE.md` は変えない）に
+  追記し、スキルを `--agents` で選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
+  （省くと both。対話では聞き、Enter は both）。置いたファイルはリポジトリに入れて共有する。
   作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md#ai-エージェントから使う) の「AI エージェントから使う」。`init --agents` を
   既にあるプロジェクトで実行し直しても置かない）
 - **Preflight の担当**（`preflight.runner`。共有の設定）は段階 1 で選ぶ。`--yes` と Enter は `codex`。後から

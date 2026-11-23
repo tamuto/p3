@@ -1877,7 +1877,7 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 
 - 入口は2つ。同梱のスキル（原本は `skills/p3/SKILL.md` の1つ。選んだ先（`claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、
   `codex` は `.agents/skills/p3/SKILL.md`（Codex））に同じものを写す。置き先の一覧は `packages/p3/src/cli/project.ts` の `AGENT_TARGETS`、
-  選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）と、AGENTS.md（無ければ CLAUDE.md）の「タスク管理（infodb p3）」の節
+  選び方は `AGENT_CHOICES`。個人のスキルの場所には置かない）と、AGENTS.md（無ければ作る。CLAUDE.md は書かない）の「タスク管理（infodb p3）」の節
   （`packages/p3/src/cli/project.ts` の `agentsSnippet`。スキルの参照は、選んだ先と既にある先だけを書く。下は両方のときの `AGENTS_SNIPPET`）
 - 入口に書くのは、いつ使うか（スキルの `description`）・`pnpx @infodb/p3 guide --json` の `guide` を最後まで読んで従うこと・取得
   できなければ p3 を操作せずエラーと呼び方を人に伝えて終えることだけ。入口の古さの伝え方・`whoami` での対象の確かめ方・更新の
@@ -1906,17 +1906,17 @@ Playwright が入っても、それだけでは描画の安全の条件（ネッ
 `whoami --json` と `guide --json` は、同じ診断（`packages/p3/src/cli/agentsStatus.ts` の `diagnoseAgents`）を `agents` に返す。読むだけで、
 古くても操作を断らず、書き換えもしない（更新は人が `p3 agents` で行う。AI は伝えるだけ。手順の「置いた入口の状態」）。
 
-- 調べるのは今いる git の作業ツリーのルート（git 管理外は今いる場所）の、両方のスキルと AGENTS.md / CLAUDE.md の両方の節だけ
+- 調べるのは今いる git の作業ツリーのルート（git 管理外は今いる場所）の、両方のスキルと AGENTS.md の節（CLAUDE.md に残った以前の節も）だけ
   （全リポジトリ・個人のスキルの場所は見ない）。追加の作業ツリーで調べたときは、書く先（メインの作業ツリー）を `writeRoot` に出し、
   更新したものをそのブランチへ取り込むよう案内する
 - 形: `{ root, writeRoot?, expectedVersion, placed, ok, entries: [{ path, kind, target?, primary?, version, status, reason }], advice, problem? }`。
-  `primary` は節が `p3 agents` の書く文書（AGENTS.md があればそれ）か、ほかで見つかった節か
+  `primary` は節が `p3 agents` の書く文書（AGENTS.md）か、CLAUDE.md で見つかった節か
 - 状態: `current`（版が同じで同梱の入口と同じ。改行の違い・見出しの段・節の参照するスキルの組み合わせは許す）・`outdated`（版が小さい・
   版の無い前の p3 の全文）・`missing`・`modified`（版は同じで中身が違う。手で直した可能性を正常と断定しない）・`newer`（CLI より新しい版）・
-  `unknown`（版が読めない・節が複数・見出しでない・p3 のスキルの形でない）・`unreadable`
-- 欠けた片方を必須にしない: スキルは、節が参照している・既にあるものだけを調べる（無ければ `missing`）。スキルはあるのに節がどこにも
-  無ければ節を `missing`。何も無ければ `placed: false` で、人が先を選んで置くよう案内する
-- 案内（`advice`）: `outdated` は差分を確かめてから `--force`、`modified`・`newer`・`unknown` には `--force` を勧めない（`newer` は古い CLI で
+  `misplaced`（CLAUDE.md の節。版や形にかかわらず人が AGENTS.md へ移す）・`unknown`（版が読めない・節が複数・見出しでない・p3 のスキルの形でない）・`unreadable`
+- 欠けた片方を必須にしない: スキルは、節が参照している・既にあるものだけを調べる（無ければ `missing`）。スキルか CLAUDE.md の節はあるのに
+  AGENTS.md に節が無ければ節を `missing`。何も無ければ `placed: false` で、人が先を選んで置くよう案内する
+- 案内（`advice`）: `outdated` は差分を確かめてから `--force`、`modified`・`newer`・`misplaced`・`unknown` には `--force` を勧めない（`newer` は古い CLI で
   動いていないかを確かめる）。実行している版はローカルの `cliVersion` で示し、最新版の照会や起動経路の推測で古い全体インストールと断定しない
 - 診断が失敗しても `problem` に入れて返し、`whoami` の対象の情報や guide の本文は隠さない。通常の出力では、`whoami` は「AI の入口」の
   行に、`guide` は対応が要るときだけ標準エラーに要点と次の操作を出す

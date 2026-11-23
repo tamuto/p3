@@ -31,15 +31,15 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 
 ## 置いた入口（スキル・節）の状態
 
-このリポジトリに置いた AI 向けの入口（`.claude/skills/p3/SKILL.md`・`.agents/skills/p3/SKILL.md` と、AGENTS.md / CLAUDE.md の
-「タスク管理（infodb p3）」の節）の状態は、`guide --json` と `whoami --json` の `agents` に出る（今いる作業ツリーのものを読むだけ）。
+このリポジトリに置いた AI 向けの入口（`.claude/skills/p3/SKILL.md`・`.agents/skills/p3/SKILL.md` と、AGENTS.md の
+「タスク管理（infodb p3）」の節。CLAUDE.md に残った以前の節も見る）の状態は、`guide --json` と `whoami --json` の `agents` に出る（今いる作業ツリーのものを読むだけ）。
 
 - `agents.ok` が `true` なら何もしない
 - `false` なら、作業を始める前に人に伝える: 入口ごとの `path`・`status`・`reason` と、`advice`（人が行う次の操作）。
-  `status` は `outdated`（古い）・`missing`（無い）・`modified`（版は同じで中身が違う）・`newer`（CLI より新しい）・`unknown`（形が不明）・
-  `unreadable`（読めない）。`placed` が `false`（どれも置いていない）なら、置くかどうかと先（claude / codex / both）は人が決める
+  `status` は `outdated`（古い）・`missing`（無い）・`modified`（版は同じで中身が違う）・`newer`（CLI より新しい）・`misplaced`（CLAUDE.md にある。
+  人が AGENTS.md へ移す）・`unknown`（形が不明）・`unreadable`（読めない）。`placed` が `false`（どれも置いていない）なら、置く先（claude / codex / both）は人が決める
 - 入口のファイルを自分で書き換えない。`p3 agents`（とくに `--force`。手で直した分が消える）を自分で実行しない。更新は人が差分を
-  確かめてから行う。`modified`・`newer`・`unknown` に `--force` を勧めない（`newer` は、この CLI が古い版で動いていないかを人に確かめてもらう）
+  確かめてから行う。`modified`・`newer`・`misplaced`・`unknown` に `--force` を勧めない（`newer` は、この CLI が古い版で動いていないかを人に確かめてもらう）
 - 入口が古いことだけを理由に、頼まれた作業を止めない（この手順は CLI から読んだ最新のもの）
 - `agents.problem` があれば（調べられなかった）、その文を人に伝える。`whoami` のほかの結果はそのまま使ってよい
 - `agents.writeRoot` があれば（今いるのが追加の作業ツリー）、`p3 agents` が書くのはそのメインの作業ツリーで、更新したものをこのブランチに
