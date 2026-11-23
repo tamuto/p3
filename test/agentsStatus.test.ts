@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { git, gitInit, tempDir } from "./helpers.ts";
 import { agentsText, diagnoseAgents, type AgentsDiagnosis } from "../packages/p3/src/cli/agentsStatus.ts";
 import { ENTRY_VERSION } from "../packages/p3/src/cli/guide.ts";
-import { AGENTS_SNIPPET, placeAgents, SKILL_SOURCE } from "../packages/p3/src/cli/project.ts";
+import { AGENTS_SNIPPET, agentsSnippet, placeAgents, SKILL_SOURCE } from "../packages/p3/src/cli/project.ts";
 
 const CLAUDE = ".claude/skills/p3/SKILL.md";
 const CODEX = ".agents/skills/p3/SKILL.md";
@@ -103,9 +103,8 @@ describe("置いた AI 向けの入口の診断（whoami・guide の agents）",
     const root = repo();
     put(root, CLAUDE, bundled.replace(`p3-entry-version: "${ENTRY_VERSION}"`, 'p3-entry-version: "一"'));
     put(root, "AGENTS.md", `${AGENTS_SNIPPET}${AGENTS_SNIPPET}`);
-    put(root, "CLAUDE.md", "メモ: タスク管理（infodb p3）は後で書く\n");
     const d = diagnoseAgents(root);
-    expect(status(d)).toEqual({ [CLAUDE]: "unknown", "AGENTS.md": "unknown", "CLAUDE.md": "unknown" });
+    expect(status(d)).toEqual({ [CLAUDE]: "unknown", "AGENTS.md": "unknown" });
     expect(d.entries.find((e) => e.path === "AGENTS.md")?.reason).toContain("2 つ");
     expect(d.advice.join("\n")).toContain("1つの節");
   });
@@ -118,16 +117,32 @@ describe("置いた AI 向けの入口の診断（whoami・guide の agents）",
     expect(status(d)).toEqual({ [CLAUDE]: "current", [CODEX]: "unreadable", "AGENTS.md": "current" });
   });
 
-  it("AGENTS.md と CLAUDE.md の両方に節があれば、p3 agents が書く文書（AGENTS.md）と追加で見つかった節を分けて出す", async () => {
+  it("CLAUDE.md の節は、版や形にかかわらず misplaced で、AGENTS.md に最新の節があっても人が移すよう案内する", async () => {
     const root = repo();
     await placeAgents(root, root, "claude");
     put(root, "CLAUDE.md", OLD_SECTION);
     const d = diagnoseAgents(root);
-    const sections = d.entries.filter((e) => e.kind === "section");
-    expect(sections).toEqual([
+    expect(d.ok).toBe(false);
+    expect(d.entries.filter((e) => e.kind === "section")).toEqual([
       expect.objectContaining({ path: "AGENTS.md", primary: true, status: "current" }),
-      expect.objectContaining({ path: "CLAUDE.md", primary: false, status: "outdated" }),
+      expect.objectContaining({ path: "CLAUDE.md", primary: false, status: "misplaced" }),
     ]);
+    expect(d.advice.join("\n")).toContain("CLAUDE.md の p3 の節を消す");
+    expect(agentsText(d).join("\n")).toContain("CLAUDE.md にある");
+
+    // 最新の版の節が CLAUDE.md だけにある: CLAUDE.md は misplaced、AGENTS.md は missing（置き方を案内）
+    const only = repo();
+    put(only, CLAUDE, bundled);
+    put(only, "CLAUDE.md", `# メモ\n${agentsSnippet(["claude"])}`);
+    const o = diagnoseAgents(only);
+    expect(status(o)).toEqual({ [CLAUDE]: "current", "CLAUDE.md": "misplaced", "AGENTS.md": "missing" });
+    expect(o.entries.find((e) => e.path === "CLAUDE.md")?.version).toBe(ENTRY_VERSION);
+    expect(o.advice.join("\n")).toContain("pnpx @infodb/p3 agents");
+
+    // 見出しになっていない言及・複数の節も misplaced（移す対象）
+    const mention = repo();
+    put(mention, "CLAUDE.md", "メモ: タスク管理（infodb p3）は後で書く\n");
+    expect(status(diagnoseAgents(mention))).toEqual({ "CLAUDE.md": "misplaced", "AGENTS.md": "missing" });
   });
 
   it("節が指すスキルが無ければ missing、スキルだけあって節が無ければ節が missing", async () => {
@@ -145,8 +160,8 @@ describe("置いた AI 向けの入口の診断（whoami・guide の agents）",
     put(noSection, CLAUDE, bundled);
     put(noSection, "CLAUDE.md", "# メモ\n");
     const n = diagnoseAgents(noSection);
-    // 書く先は CLAUDE.md（AGENTS.md が無いので p3 agents もそこに足す）
-    expect(n.entries.find((e) => e.kind === "section")).toMatchObject({ path: "CLAUDE.md", primary: true, status: "missing" });
+    // 書く先は CLAUDE.md があっても AGENTS.md
+    expect(n.entries.find((e) => e.kind === "section")).toMatchObject({ path: "AGENTS.md", primary: true, status: "missing" });
   });
 
   it("見出しの段（###）と改行（CRLF）の違いは current のまま", async () => {

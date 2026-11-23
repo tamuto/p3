@@ -18,7 +18,6 @@ import { agentsText, diagnoseAgents } from "./agentsStatus.ts";
 import { readsOnly } from "@infodb/p3-tasks/cli/readOnly.ts";
 import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
-import { isPreflightRunner, PREFLIGHT_RUNNERS } from "@infodb/p3-tasks/shared/preflightRunner.ts";
 import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
 import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
@@ -148,7 +147,7 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "join") {
     // 参加は個人設定に登録するだけ。AI 向けのファイルと、作るときだけの項目は受け付けない（黙って無視しない）
     if (o.agents !== undefined) throw new UsageError("join は AI 向けのファイルを置きません（--agents は使えません）。置く・最新にするなら p3 agents claude|codex|both");
-    const createOnly = (["name", "description", "instructions", "preflight-runner"] as const).filter((k) => o[k] !== undefined);
+    const createOnly = (["name", "description", "instructions"] as const).filter((k) => o[k] !== undefined);
     if (createOnly.length) throw new UsageError(`join では ${createOnly.map((k) => `--${k}`).join("・")} は使えません（共有の定義は変えません。変えるなら p3 config set）`);
     if (args.length) throw new UsageError(`join は位置引数を取りません: ${args.join(" ")}（p3 join [--project <名前>] [--dir <フォルダ>] [--repo-name <名前>]）`);
     console.log(await joinProject({ cwd, project: o.project, dir: o.dir, repoName: o["repo-name"], yes: o.yes }));
@@ -158,8 +157,6 @@ async function main(argv: string[]): Promise<number> {
   if (cmd === "init") {
     if (o.agents !== undefined && !isAgentChoice(o.agents)) throw new UsageError(`--agents は claude / codex / both のどれか（値を省くと both）: ${o.agents || "（空）"}`);
     if (args.length) throw new UsageError(`init は位置引数を取りません: ${args.join(" ")}`);
-    const runner = o["preflight-runner"];
-    if (runner !== undefined && !isPreflightRunner(runner)) throw new UsageError(`--preflight-runner は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runner || "（空）"}`);
     console.log(
       await init({
         cwd,
@@ -168,7 +165,6 @@ async function main(argv: string[]): Promise<number> {
         name: o.name,
         description: o.description,
         instructions: o.instructions,
-        runner,
         agents: o.agents,
         yes: o.yes,
         repoName: o["repo-name"],

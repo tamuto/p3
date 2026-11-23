@@ -52,29 +52,21 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
     for (const text of procedures) expect(text).toContain("request new");
   });
 
-  it("Preflight を頼まれたときは担当（whoami の preflight.runner）で分け、codex / agent / 読めないときを、どちらも書く", () => {
+  it("Preflight を頼まれたときは担当で分けず、人に頼まれたら手元で評価し、AI は通常の実行をしないと書く", () => {
     for (const text of procedures) {
-      expect(text).toContain("`preflight.runner`");
-      // codex: 人が実行。AI は通常の実行をしない。手元の評価は明示の依頼のときだけ
-      expect(text).toMatch(/`codex`/);
-      expect(text).toMatch(/AI は[^\n]*`--prepare` の無い[^\n]*`p3 preflight`[^\n]*をしない|AI は `p3 preflight <要望ID>`（`--prepare` の無い通常の実行）をしない/);
-      expect(text).toMatch(/人がチャットで対象の要望[^\n]*手元の評価を(?:\n\s*)?明示的に(?:\n\s*)?頼んだときだけ/);
-      // agent: 「Preflight して」で手元で評価し、「このチャットで」は求めない
-      expect(text).toMatch(/`agent`/);
-      expect(text).toMatch(/「Preflight して」/);
-      expect(text).toMatch(/「このチャットで」(?:のような言い方)?は求めない/);
-      // 読めない担当を agent と推測しない
-      expect(text).toMatch(/`agent` と推測しない|`agent` と推測せず/);
-      // 子も親と同じ
+      expect(text).not.toContain("preflight.runner");
+      expect(text).not.toMatch(/担当/);
+      expect(text).toMatch(/AI は `p3 preflight <要望ID>`（`--prepare` の無い通常の実行。/);
+      expect(text).toMatch(/人にチャットで Preflight を頼まれたら（「Preflight して」/);
       expect(text).toMatch(/子の要望も(?:親と)?同じ/);
       expect(text).toContain("対象の要望が分からなければ確かめる");
     }
   });
 
-  it("スキルの役割の表・登録の後・子の要望・してはいけないことが同じ分け方で、前の「Preflight は人」の決まりを残さない", () => {
-    for (const t of procedures) expect(t).toMatch(/\| Preflight（評価・細分化。`preflight`） \| 担当（`whoami --json` の `preflight\.runner`）で決まる/);
-    for (const t of procedures) expect(t).toMatch(/子の Preflight は親と同じく、頼まれたときだけ\n\s*「Preflight を頼まれたとき」の担当に従う/);
-    for (const t of procedures) expect(t).toMatch(/手元の評価（`--prepare` \/ `--complete`）は、上の「Preflight を頼まれたとき」の担当ごとの条件を満たしたときだけ/);
+  it("スキルの役割の表・子の要望・してはいけないことが同じ決まりで、前の「Preflight は人」の決まりを残さない", () => {
+    for (const t of procedures) expect(t).toMatch(/\| Preflight（評価・細分化。`preflight`） \| 人（`p3 preflight` か画面。Codex が評価する）か、人に頼まれた AI（手元で評価する）。AI から始めない/);
+    for (const t of procedures) expect(t).toMatch(/子の Preflight は親と同じく、頼まれたときだけ\n\s*「Preflight を頼まれたとき」に従う/);
+    for (const t of procedures) expect(t).toMatch(/手元の評価（`--prepare` \/ `--complete`）は、人に頼まれたときだけ/);
     for (const text of procedures) {
       expect(text).not.toMatch(/子の Preflight は人が行う/);
       expect(text).not.toMatch(/Preflight（[^）]*）とタスク化（`accept`）は人が行う/);

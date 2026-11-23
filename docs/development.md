@@ -76,12 +76,11 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   伝えて終える」ことだけを確かめ、取れたときの流れは公開した後に確かめる（版と結果はタスクの変更の記録に残す。確かめられなければ未検証と書く）
 - 手元の対話エージェントの Preflight（`--prepare` / `--complete`）は、CLI と取り込みを別プロセスのテストで確かめる
   （`test/localPreflight.test.ts`。PATH を空にして Codex・Docker・claude を呼べない状態で通す）。Claude Code が入口のスキルから手順（`p3 guide`）を読んで
-  担当（`preflight.runner`）どおりに依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。担当で分けた手順の書き方の
-  契約は `test/agents.test.ts`、agent の親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。手順（`packages/p3/src/cli/guide.md`）の Preflight の
-  節や指示の形を変えたときは、一時フォルダのプロジェクト（`init --agents claude --preflight-runner agent`）を Claude Code で開き、
+  依頼を解釈するか、指示のファイルを読み切るかはテストでは確かめられない。手順の書き方の
+  契約は `test/agents.test.ts`、親子の prepare → complete → drafts は `test/localPreflight.test.ts` が確かめる。手順（`packages/p3/src/cli/guide.md`）の Preflight の
+  節や指示の形を変えたときは、一時フォルダのプロジェクト（`init --agents claude`）を Claude Code で開き、
   親と子の要望を作って「要望 <ID> の Preflight をして」と頼み、prepare → 成果物 → complete → drafts まで進んで accept しないこと、
-  依頼の無い登録では始めないことを確かめる。`p3 config set preflight.runner=codex` に変えて、「Preflight して」とだけ頼むと聞き返すこと、
-  「このチャットで実行して」と明示すると手元で評価することも確かめる（版と結果はタスクの変更の記録に残す。確かめられなければ未検証と書く）。Claude Code がスキルを読む場所は公式の文書（<https://code.claude.com/docs/en/skills>）
+  依頼の無い登録では始めないことを確かめる（版と結果はタスクの変更の記録に残す。確かめられなければ未検証と書く）。Claude Code がスキルを読む場所は公式の文書（<https://code.claude.com/docs/en/skills>）
 - CLI のテストは別プロセスで `bin/p3.mjs` を動かし、個人設定を一時フォルダに分け、このマシンの `P3_*` の環境変数は効かないようにしている。
   コマンドのまとまりごとに `test/cli*.test.ts`（init・join・agents・タスク・要望・Preflight・設定・プロジェクトの決まり方・作業先と添付）に分け、
   共通の準備（CLI の呼び出し `p3()`・テストごとの個人設定 `CONFIG_HOME`・初期化済みのプロジェクト `initialized()` など）は `test/cliHelpers.ts` に置く

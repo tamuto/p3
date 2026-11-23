@@ -123,7 +123,7 @@ export interface QualityViewData {
 }
 
 /** タスクの AI レビューの材料のプレビュー（POST .../review-preview） */
-export type TaskReviewPreview = ReturnType<typeof previewOf> & { engineRequired: boolean };
+export type TaskReviewPreview = ReturnType<typeof previewOf>;
 /** タスクの AI レビューの1回分。実行中は所有者の状態（local: serve 自身） */
 export type TaskReviewDetailView = TaskReviewRecord & { owner?: { state: "local" | "alive" } | { state: "dead" | "unknown"; reason: string } };
 export interface TaskReviewSpec {

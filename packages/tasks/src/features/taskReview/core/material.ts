@@ -73,7 +73,6 @@ export class TaskReviewRejected extends Error {
       | "bad_viewpoint"
       | "running"
       | "unavailable"
-      | "engine_required"
       | "material_changed",
     message: string,
     readonly running?: string,

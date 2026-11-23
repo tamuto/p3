@@ -1,5 +1,6 @@
 import { daysUntil, localToday } from "../shared/dates.ts";
-import { openProject } from "../core/context.ts";
+import { openProject, type P3Context } from "../core/context.ts";
+import type { EngineStatus } from "../core/preflight/engine.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { requirementCommand } from "../features/requirements/cli/requirementCommands.ts";
 import { revisitCommand } from "../features/records/cli/revisitCommands.ts";
@@ -12,10 +13,9 @@ import { NotFoundError } from "../core/store/collection.ts";
 import { VIA_LABEL } from "../core/store/locate.ts";
 import { table } from "./format.ts";
 import { cliExit } from "../core/errorOutcome.ts";
-import { config, currentRequest, locateHere, repoCommand, resolveActor, runnerText } from "../features/settings/cli/projectSettings.ts";
+import { config, currentRequest, locateHere, repoCommand, resolveActor } from "../features/settings/cli/projectSettings.ts";
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
-import { runnerView } from "../shared/preflightRunner.ts";
 import type { CommandEnv } from "./args.ts";
 import { Output, bar } from "./output.ts";
 import { requestCommand, milestoneCommand } from "./requestCommands.ts";
@@ -100,9 +100,8 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
 
     case "whoami": {
       const here = locateHere(ctx, cwd);
-      // Preflight の担当（AI 向けの手順が読む。読めなければ runner: null と problem。agent と推測しない）
-      const pf = runnerView(ctx.ws.project.preflight);
-      const preflight = { runner: pf.runner, source: pf.source, ...(pf.problem ? { problem: pf.problem } : {}) };
+      // このマシンで Codex の Preflight を使えるか（既定のエンジンが mock でも、Codex そのものの診断を出す）
+      const preflight = await codexAvailability(ctx);
       // 置いた AI 向けの入口の状態（読むだけ。古くても操作は断らない）
       const { status: agents, lines: agentLines } = r.agents();
       return out.result({ project: target.name ?? null, dataDir: target.dataDir, via: target.via, here: here.repos, branch: here.branch ?? null, actor, request: current ?? null, preflight, agents }, () =>
@@ -112,7 +111,7 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
           `今いる参照先  ${here.repos.length ? here.repos.join(", ") : "（どの参照先の中でもない。p3 repo ls）"}${here.branch ? `  ブランチ ${here.branch}` : ""}`,
           `変更者        ${actor}`,
           `要望          ${current ? `${current}  ${titleOf(ctx, current)}` : "（なし）"}`,
-          `Preflight     ${runnerText(pf)}`,
+          `Preflight     ${preflight.text}`,
           ...agentLines.map((l, i) => (i ? `              ${l}` : `AI の入口     ${l}`)),
         ].join("\n"),
       );
@@ -176,3 +175,18 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
 
 /** エラーを標準エラーに出し、終了コードを返す（競合 3・見つからない 2・ほか 1。対応の表は core/errorOutcome.ts） */
 export const reportError = (e: unknown): number => cliExit(e, (t) => process.stderr.write(t));
+
+/**
+ * whoami の Preflight の行: このマシンで Codex の Preflight を使えるか（Codex の診断をそのまま使う）。
+ * 使えなくても、人が手元の AI エージェントに頼めば評価できる（--prepare / --complete）
+ */
+export async function codexAvailability(ctx: Pick<P3Context, "assistant">): Promise<{ codex: boolean; detail: string; auth: EngineStatus["auth"] | null; text: string }> {
+  const s = ctx.assistant ? await ctx.assistant.codex.status() : { ok: false, detail: "Codex の接続がありません", auth: undefined };
+  const local = "手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼めます";
+  return {
+    codex: s.ok,
+    detail: s.detail,
+    auth: s.auth ?? null,
+    text: s.ok ? `Codex で実行できます（p3 preflight <要望ID> か画面）。${s.detail}` : `Codex は使えません: ${s.detail.replace(/^Codex を使えません: /, "")}。${local}`,
+  };
+}

@@ -29,16 +29,8 @@ function toPlain(cfg: ProjectConfig): Partial<Record<keyof ProjectConfig, unknow
         )
       : undefined,
     branchPattern: cfg.branchPattern,
-    preflight: preflightPlain(cfg.preflight),
+    preflight: cfg.preflight.instructions ? { instructions: cfg.preflight.instructions } : undefined,
   };
-}
-
-/** preflight の項目（空の観点は省く。担当は設定したときだけ書き、読めない値もそのまま残す） */
-function preflightPlain(p: ProjectConfig["preflight"]): Record<string, string> | undefined {
-  const out = Object.fromEntries(
-    Object.entries({ instructions: p.instructions || undefined, runner: p.runner ?? p.invalidRunner }).filter(([, v]) => v !== undefined),
-  ) as Record<string, string>;
-  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -52,11 +44,28 @@ export async function writeProjectFile(path: string, cfg: ProjectConfig): Promis
   dropLegacy(doc);
   for (const key of ORDER) {
     const value = plain[key];
-    if (value === undefined) doc.delete(key);
+    if (key === "preflight") setPreflight(doc, value as Record<string, string> | undefined);
+    else if (value === undefined) doc.delete(key);
     else doc.set(key, doc.createNode(value));
   }
   sortKeys(doc);
   await writeFileAtomic(path, doc.toString({ lineWidth: 0 }));
+}
+
+/**
+ * preflight は観点（instructions）だけを書き、ほかの項目は残す（以前の preflight.runner などを、設定の保存で黙って消さない）。
+ * 残す項目が無く観点も空なら preflight ごと消す
+ */
+function setPreflight(doc: YAML.Document, value: Record<string, string> | undefined) {
+  const node = doc.get("preflight");
+  if (!YAML.isMap(node)) {
+    if (value === undefined) doc.delete("preflight");
+    else doc.set("preflight", doc.createNode(value));
+    return;
+  }
+  if (value?.instructions === undefined) node.delete("instructions");
+  else node.set("instructions", value.instructions);
+  if (!node.items.length) doc.delete("preflight");
 }
 
 /** 以前のプロジェクトの docs（どの保存でも消す）。今は参照先の主なフォルダ（入口）で示す */

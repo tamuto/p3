@@ -147,6 +147,8 @@ describe("p3 init のデータのフォルダ（既定はリポジトリのル�
       else process.env.XDG_CONFIG_HOME = prev;
     }
     expect(questions.find((q) => q.startsWith("データを置くフォルダ"))).toContain(`[${join(root, ".p3")}]`);
+    // 聞くのは六つ: 名前・データのフォルダ・何のプロジェクトか・最初に読むドキュメント・観点・AI 向けの入口の置き先
+    expect(questions.map((q) => q.split("（")[0])).toEqual(["プロジェクト名", "データを置くフォルダ", "何を作っているプロジェクトか", "最初に読むドキュメント", "Preflight で重視する観点・制約", "AI 向けの p3 の使い方"]);
     expect(existsSync(join(root, ".p3", "project.yaml"))).toBe(true);
     expect(existsSync(join(root, "src", ".p3"))).toBe(false);
     expect(registered()).toContain(`dir: ${join(root, ".p3")}`);
@@ -223,7 +225,6 @@ describe("p3 init --agents（AI 向けの指示とスキル）", () => {
     const r = p3(join(root, "src"), ["init", "--yes", "--agents", "--project", "app", "--dir", "../.p3"]);
     expect(r.code).toBe(1);
     expect(r.err).toContain("AI 向けの使い方を置く・最新にするなら: p3 agents claude|codex|both");
-    for (const t of TARGETS) expect(existsSync(join(root, t))).toBe(false);
     rmSync(join(root, "src"), { recursive: true });
     expect(snapshot(root)).toEqual(before.files);
     expect(readFileSync(cfgFile, "utf8")).toBe(before.cfg);
@@ -235,20 +236,21 @@ describe("p3 init --agents（AI 向けの指示とスキル）", () => {
     expect(existsSync(other)).toBe(false);
   });
 
-  it("CLAUDE.md だけがあればそちらに追記する", async () => {
+  it("CLAUDE.md だけがあっても AGENTS.md を作って書き、CLAUDE.md は変えない（--force でも）", async () => {
     const root = await repo();
     rmSync(join(root, "AGENTS.md"));
     writeFileSync(join(root, "CLAUDE.md"), "# claude\n");
     expect(p3(root, ["init", "--yes", "--agents", "--dir", ".p3"]).code).toBe(0);
-    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toContain("タスク管理（infodb p3）");
-    expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe("# claude\n");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("タスク管理（infodb p3）");
     expectPlaced(root);
+    expect(p3(root, ["agents", "both", "--force"]).code).toBe(0);
+    expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe("# claude\n");
   });
 
-  it("--agents が無ければ（非対話では）何も置かない", async () => {
+  it("--agents が無ければ（非対話では）both を置く", async () => {
     const root = await repo();
     expect(p3(root, ["init", "--yes", "--dir", ".p3"]).code).toBe(0);
-    for (const t of TARGETS) expect(existsSync(join(root, t))).toBe(false);
-    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe("# rules\n");
+    expectPlaced(root);
   });
 });

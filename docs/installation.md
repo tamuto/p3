@@ -75,28 +75,29 @@ npx @infodb/p3 init
 #   何を作っているプロジェクトか（Preflight の前提になります）: 社内向けの経費精算アプリ
 #   最初に読むドキュメント（カンマ区切り。Preflight が評価の前に読みます） [docs, README.md]:
 #   Preflight で重視する観点・制約（任意）: 個人情報を扱う変更は必ずリスクに挙げる
-#   Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価） [codex]:
-
-# AI やスクリプトからは引数で（--yes で質問しない。--dir を付けなければリポジトリのルートの .p3）
-npx @infodb/p3 init --yes --agents --project myapp --description "社内向けの経費精算アプリ"
-
-# リポジトリの外に置くなら --dir で指定する
-npx @infodb/p3 init --yes --agents --project myapp --dir ~/p3-data/myapp --description "社内向けの経費精算アプリ"
-
-# Codex（ChatGPT のプラン）を使わず、Claude Code などの手元のエージェントに Preflight を頼むなら
-npx @infodb/p3 init --yes --agents claude --project myapp --preflight-runner agent --description "社内向けの経費精算アプリ"
+#   AI 向けの p3 の使い方（AGENTS.md の節とスキル）を置く先（claude / codex / both） [both]:
 ```
+
+AI やスクリプトからは引数で（`--yes` で質問しない）。作業に使う AI エージェントで選ぶ:
+
+| 作業に使う AI | コマンド |
+| --- | --- |
+| Claude Code | `npx @infodb/p3 init --yes --agents claude --description "社内向けの経費精算アプリ"` |
+| Codex | `npx @infodb/p3 init --yes --agents codex --description "社内向けの経費精算アプリ"` |
+| 両方・決めていない | `npx @infodb/p3 init --yes --description "社内向けの経費精算アプリ"`（`--agents` を省くと both） |
+
+Preflight を Codex でするか、手元の AI エージェントに頼むかは、ここでは選ばない。Codex にサインインしたマシンなら `p3 preflight` が使え、
+どのマシンでも AI エージェントに頼める（[段階 1](#段階-1-preflight-を足す)）。例:「Preflight は Codex、作業は Claude Code」なら、上の
+Claude Code の行で作り、段階 1 の「Codex で評価する」を準備する。データをリポジトリの外に置くなら `--dir ~/p3-data/myapp` を足す。
 
 - データのフォルダには `project.yaml` と空の `requests/` ができる。このリポジトリは **本体の参照先**（Preflight が読むリポジトリ。
   最初に読む・作業先にできる）として登録される
 - `init` は新しく作るだけ。そのフォルダに既にプロジェクト（`project.yaml`）があれば、何も変えずに断って `p3 join` を案内する
-- `--agents claude|codex|both` を付けると、AI エージェント向けの入口（手順は CLI の `p3 guide` から読ませる短い指示）を `AGENTS.md`
-  （無ければ `CLAUDE.md`）に追記し、スキルを選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
-  （値を省くと both。付けなければ置かない。対話では聞き、Enter は置かない）。置いたファイルはリポジトリに入れて共有する。
+- AI エージェント向けの入口（手順は CLI の `p3 guide` から読ませる短い指示）を `AGENTS.md`（無ければ作る。`CLAUDE.md` は変えない）に
+  追記し、スキルを `--agents` で選んだ先に置く: `claude` は `.claude/skills/p3/SKILL.md`（Claude Code）、`codex` は `.agents/skills/p3/SKILL.md`（Codex）、`both` は両方
+  （省くと both。対話では聞き、Enter は both）。置いたファイルはリポジトリに入れて共有する。
   作った後から置く・最新にするのは `p3 agents`（[使い方ガイド](how-to-use.md#ai-エージェントから使う) の「AI エージェントから使う」。`init --agents` を
   既にあるプロジェクトで実行し直しても置かない）
-- **Preflight の担当**（`preflight.runner`。共有の設定）は段階 1 で選ぶ。`--yes` と Enter は `codex`。後から
-  `p3 config set preflight.runner=agent|codex` で変えられる（[段階 1](#段階-1-preflight-を足す)）
 - 何のプロジェクトか（`description`）を `--yes` で省いたら、後から `p3 config set description="..."` で書ける（Preflight の精度に効く。
   [使い方ガイド: プロジェクトの設定](how-to-use.md#プロジェクトの設定)）
 - 登録はこのマシンの **個人設定**（`~/.config/infodb-p3/config.yaml`。`XDG_CONFIG_HOME` があればその下。共有しない）に入る
@@ -104,7 +105,7 @@ npx @infodb/p3 init --yes --agents claude --project myapp --preflight-runner age
 ### 参加の決まり
 
 `p3 join` は、個人設定に「プロジェクト名 → データのフォルダ・このリポジトリのこのマシンのパス」を登録するだけで、
-データ（`project.yaml`・要望）とリポジトリのファイル（スキル・`AGENTS.md` / `CLAUDE.md`）は書かない。
+データ（`project.yaml`・要望）とリポジトリのファイル（スキル・`AGENTS.md`）は書かない。
 チームで消した AI 向けのファイルが、参加した人の操作で戻ることはない。
 
 ```bash
@@ -120,7 +121,7 @@ npx @infodb/p3 join --yes --project myapp                   # このマシンで
   決まらなければ登録せず、`p3 repo ls` と `p3 repo path <名前> <パス>` を案内する
 - データのフォルダが無い・`project.yaml` が無い・壊れている・読めないときは、理由を出して止まり、何も登録しない（作りもしない。
   新しく作るなら `init`）。同じ名前で別のフォルダは断る。同じ参加をもう一度しても何も変えない
-- `--agents` と、作るときだけの項目（`--name`・`--description`・`--instructions`・`--preflight-runner`）は使えない（共有の定義を変えるなら `p3 config set`）
+- `--agents` と、作るときだけの項目（`--name`・`--description`・`--instructions`）は使えない（共有の定義を変えるなら `p3 config set`）
 
 ### 登録を確かめる
 
@@ -131,7 +132,7 @@ npx @infodb/p3 whoami
 # 今いる参照先  myapp  ブランチ main
 # 変更者        human:<git の user.name>
 # 要望          （なし）
-# Preflight     codex（人が p3 から実行する（Codex））
+# Preflight     Codex は使えません: ChatGPT にサインインしてください（…）。手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼めます
 ```
 
 プロジェクトが決まらないと、登録済みの一覧と選び方（`--project <名前>`）が出る。リポジトリの外で使うときや、複数のプロジェクトに
@@ -153,38 +154,21 @@ p3 --project myapp request new "通知"           # どこからでも、明示�
 
 ## 段階 1: Preflight を足す
 
-**すること**: Preflight の評価のしかたを選んで準備する。**できるようになること**: 要望をタスクにする前に、リポジトリと過去の経緯を
+**すること**: Preflight の評価のしかたを準備する。**できるようになること**: 要望をタスクにする前に、リポジトリと過去の経緯を
 読んだ評価と、着手できる粒度のタスク案を受け取る。
 
-### どちらで評価するか選ぶ
+### どちらで評価するか
 
-評価のしかたは、プロジェクトで1つ決める（**Preflight の担当**。`project.yaml` の `preflight.runner`。共有の設定）。
+設定は無い。どちらも使える。このマシンで Codex を使えるかは `npx @infodb/p3 whoami` の Preflight の行に出る。
 
-| 担当 | 評価するもの | 要る準備 |
+| 評価するもの | 頼み方 | 要る準備 |
 | --- | --- | --- |
-| `codex`（既定） | 人が `p3 preflight` か画面から実行し、Codex が評価する | Docker と ChatGPT のアカウント（プラン）。下の「[Codex で評価する](#codex-で評価する)」 |
-| `agent` | 人がチャットで「Preflight して」と頼むと、Claude Code などの手元の AI エージェントが評価する | 足すものは無い（エージェントに入口を置く）。下の「[手元の AI エージェントで評価する](#手元の-ai-エージェントで評価する)」 |
+| Codex | 人が `p3 preflight <要望ID>` か画面から実行する | Docker と ChatGPT のアカウント（プラン）。下の「[Codex で評価する](#codex-で評価する)」 |
+| 手元の AI エージェント（Claude Code・Codex など） | チャットで「要望 261009-k7m3x の Preflight をして」と頼む | 足すものは無い（`init` が置いた入口で動く） |
 
-```bash
-npx @infodb/p3 config set preflight.runner=agent     # codex に戻すなら preflight.runner=codex
-npx @infodb/p3 whoami                                 # Preflight の行に今の担当が出る
-```
-
-担当の細かい決まりは [使い方ガイド: Preflight の担当](how-to-use.md#preflight-の担当)。作るときに `description`（何のプロジェクトか）を
-省いたなら、ここで書いておくと評価の精度が上がる: `npx @infodb/p3 config set description="社内向けの経費精算アプリ"`。
-
-### 手元の AI エージェントで評価する
-
-Docker と ChatGPT は要らない。
-
-1. AI エージェント向けの入口を置く（プロジェクトで1回。置いたファイルはリポジトリに入れて共有する）:
-   `npx @infodb/p3 agents claude`（Codex なら `codex`、両方なら `both`。[使い方ガイド: AI エージェントから使う](how-to-use.md#ai-エージェントから使う)）
-2. 担当を `agent` にする: `npx @infodb/p3 config set preflight.runner=agent`
-3. エージェントのチャットで頼む: 「要望 261009-k7m3x の Preflight をして」
-
-- 評価とタスク案を書くのに Docker は使わない。ただし、画面イメージ（評価に付く画面の絵）を PNG に描くときだけ Docker を使う
-  （Docker が無くても評価は残る。[使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)）
-- 担当が `codex` のプロジェクトでも、手元で評価してほしいことをはっきり頼めば同じように評価できる（同じ節）
+- 手元の評価は Docker を使わない（評価に付く画面の絵を PNG に描くときだけ使い、無くても評価は残る）。詳しくは
+  [使い方ガイド: 手元の対話エージェントで Preflight する](how-to-use.md#手元の対話エージェントで-preflight-する)
+- 作るときに `description`（何のプロジェクトか）を省いたなら、ここで書くと評価の精度が上がる: `npx @infodb/p3 config set description="..."`
 
 **できたと分かる目安**: `npx @infodb/p3 drafts <要望ID>`（か画面の要望）で、評価とタスク案が読める。
 
@@ -382,7 +366,7 @@ Preflight の実行ログの最初の方に、参照先とデータのフォル�
 
 Preflight を使えない・失敗したとき（Docker・ChatGPT の接続・使用量の上限など、理由によらない）は、概要ページ・失敗した run・
 CLI の出力に、Preflight を通さずにタスクを作る道も出る。直すまでの間はそれで進めてよい（[使い方ガイド: Preflight を通さずにタスクを作る](how-to-use.md#preflight-を通さずにタスクを作る)）。Preflight を Claude Code などの手元の対話エージェントに
-頼むなら Docker と ChatGPT は要らない（[手元の AI エージェントで評価する](#手元の-ai-エージェントで評価する)）。
+頼むなら Docker と ChatGPT は要らない（[どちらで評価するか](#どちらで評価するか)）。
 
 | どこで | 出るもの | 確かめる | 直す |
 | --- | --- | --- | --- |

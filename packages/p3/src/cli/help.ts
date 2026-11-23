@@ -11,8 +11,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                このリポジトリを本体の参照先として登録する。データの既定はリポジトリのルートの .p3（既にあれば作らずに断る → join）
                                --project 名前 --dir フォルダ（外に置くとき。相対は今いる場所から）--repo-name 参照先の名前（既定はフォルダ名）--description
                                --instructions 観点 --yes
-                               --preflight-runner codex|agent  Preflight の担当（既定 codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）
-                               --agents claude|codex|both  AI 向けの使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（値を省くと both。付けなければ置かない）
+                               --agents claude|codex|both  AI 向けの使い方（AGENTS.md の節と、選んだ先のスキル）を置く先（省くと both）
   agents claude|codex|both [--force]  AI 向けの使い方を、今いるリポジトリに後から置く・最新にする（選んだ先だけ。データ・個人設定は変えない）
                                違うものは上書きせず知らせる。--force で選んだ先のスキルと p3 の節だけを同梱の版にする（ほかの文は残す）
   guide                        AI エージェント向けの作業の手順（この CLI に同梱した版）を出す。プロジェクトを決めず、何も変えない
@@ -20,8 +19,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   join                         既にあるプロジェクト（共有されたデータのフォルダ）に参加する。個人設定に登録するだけで、データ・リポジトリのファイルは変えない
                                --project 名前 --dir フォルダ（既定はリポジトリのルートの .p3）--repo-name 参照先の名前（共有の定義にあるもの）--yes
   project [ls | add <名前> <フォルダ> | rm <名前>]  個人設定のプロジェクト
-  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions preflight.runner）
-                               preflight.runner=codex|agent  Preflight の担当（共有。未設定は codex。p3 preflight の動きは変えず、AI 向けの手順が whoami で読む）
+  config [set キー=値 ...]      設定の表示・変更（name description branchPattern instructions）
   repo [ls | add | set | path | rm]   Preflight が読む参照先（リポジトリ・フォルダ。数と名前は自由）
                                add <名前> [<パス>] [role=… readFirst=true writable=true]  共有の定義を足す
                                set <名前> キー=値 …  共有の定義を変える / path <名前> <パス>  このマシンのパスだけ登録
@@ -71,7 +69,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                --from YYYY-MM-DD --to YYYY-MM-DD --source 出典 [--milestone ID（省くと全体）] [--note メモ]
                                同じ指標・範囲・期間・単位の再送は何もしない。値を変える訂正は --rev 版（無い・違えば競合で終了コード 3）
   metrics records / rm <M1>     人の記録の全部 / 消す（--rev 版）
-  whoami                       操作するプロジェクト・変更者・今の要望
+  whoami                       操作するプロジェクト・変更者・今の要望・このマシンで Codex の Preflight を使えるか
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）。
                                常にタスク管理（tasks）と観測基盤（observer。/observer）の両方を起動し、画面のナビゲーションで行き来する
                                --all-projects  個人設定に登録したプロジェクトを跨いで扱う（画面で選ぶ。--project / --dir とは一緒に使えない）
@@ -162,7 +160,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                終わるまで待つ。Ctrl-C で取り消す。結果はタスクの状態・済み・基準・証拠を変えない）
                                --target <参照先>:<コミット>[,<コミット>] | <参照先>:<base>..<head>  比較対象（繰り返し可。省くと成果物のコミット）
                                --viewpoint builtin|project|<参照先>@<SHA>:<パス>  観点（省くと既定。project は project.yaml の taskReview.viewpoints）
-                               --engine codex|mock（Preflight の担当が agent なら Codex には --engine codex の明示が要る）--preview 材料を見るだけ
+                               --engine codex|mock --preview 材料を見るだけ
   reviews <T003>               レビューの履歴 / review-show <T003> <run> 1回分 / review-cancel <T003> <run> 取消
                                （所有者を確かめられない run は --acknowledge-stopped で中断。無い → 2、実行中・終わっている・材料が変わった → 3）
   archive <T003>               .archive/ へ移す（消さない。ID は再利用しない）

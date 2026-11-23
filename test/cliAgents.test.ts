@@ -25,14 +25,13 @@ describe("AI 向けの使い方の置く先（init --agents claude|codex|both・
     ["both", ["--agents", "both"], [CLAUDE, CODEX]],
     ["値なし（both）", ["--agents"], [CLAUDE, CODEX]],
     ["値なしの後ろにオプション", ["--agents", "--description", "x"], [CLAUDE, CODEX]],
-    ["指定なし（置かない）", [], []],
+    ["指定なし（both）", [], [CLAUDE, CODEX]],
   ])("init %s", async (_label, args, placed) => {
     const root = await repo();
     const r = p3(root, ["init", "--yes", ...args, "--project", "app"]);
     expect(r.code, r.err).toBe(0);
     for (const t of [CLAUDE, CODEX]) expect(has(root, t), t).toBe(placed.includes(t));
-    if (placed.length) expect(refs(root)).toEqual(placed);
-    else expect(agentsMd(root)).toBe("# rules\n");
+    expect(refs(root)).toEqual(placed);
     expect(agentsMd(root).includes("中身は同じ")).toBe(placed.length > 1);
   });
 
@@ -48,23 +47,23 @@ describe("AI 向けの使い方の置く先（init --agents claude|codex|both・
     }
   });
 
-  it("対話の init: 置く先を選べ、Enter は置かない（既にある AGENTS.md から推測しない）。--agents を付ければ聞かない", async () => {
-    for (const [answer, placed] of [["", []], ["claude", [CLAUDE]], ["codex", [CODEX]], ["both", [CLAUDE, CODEX]]] as const) {
+  it("対話の init: 置く先を選べ、Enter は both（置かない選び方は無い）。--agents を付ければ聞かない", async () => {
+    for (const [answer, placed] of [["", [CLAUDE, CODEX]], ["claude", [CLAUDE]], ["codex", [CODEX]], ["both", [CLAUDE, CODEX]]] as const) {
       const root = await repo();
       const questions: string[] = [];
       await withConfigHome(tempDir("p3-config-"), () =>
         init({ cwd: root, project: "app", prompt: async (q) => (questions.push(q), q.startsWith("AI 向けの p3 の使い方") ? answer : "") }),
       );
       const q = questions.find((x) => x.startsWith("AI 向けの p3 の使い方"));
-      expect(q).toContain("（置かない / claude / codex / both）");
-      expect(q).toContain("[置かない]");
+      expect(q).toContain("（claude / codex / both）");
+      expect(q).toContain("[both]");
       for (const t of [CLAUDE, CODEX]) expect(has(root, t), `${answer || "Enter"}: ${t}`).toBe((placed as readonly string[]).includes(t));
     }
     // 知らない答えは何も作らずに断る
     const root = await repo();
     await expect(
       withConfigHome(tempDir("p3-config-"), () => init({ cwd: root, project: "app", prompt: async (q) => (q.startsWith("AI 向け") ? "cursor" : "") })),
-    ).rejects.toThrow("置く先は 置かない / claude / codex / both のどれか");
+    ).rejects.toThrow("置く先は claude / codex / both のどれか");
     expect(existsSync(join(root, ".p3"))).toBe(false);
     // 明示すれば聞かない
     const root2 = await repo();

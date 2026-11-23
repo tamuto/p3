@@ -8,7 +8,6 @@ import type { ProjectConfig } from "@infodb/p3-tasks/shared/types.ts";
 import { writeProjectFile, writeRepoEntry } from "@infodb/p3-tasks/core/store/projectFile.ts";
 import { normalizeProject } from "@infodb/p3-tasks/core/store/normalize.ts";
 import { repoNameProblem } from "@infodb/p3-tasks/shared/repos.ts";
-import { DEFAULT_PREFLIGHT_RUNNER, isPreflightRunner, PREFLIGHT_RUNNERS, RUNNER_LABEL, type PreflightRunner } from "@infodb/p3-tasks/shared/preflightRunner.ts";
 import { DATA_DIR_NAME } from "@infodb/p3-tasks/core/store/locate.ts";
 import { ENTRY_VERSION } from "./guide.ts";
 import { loadUserConfig, PROJECT_NAME, setProjectNode, updateUserConfig, userConfigPath } from "@infodb/p3-tasks/core/userConfig.ts";
@@ -39,7 +38,7 @@ export const KINDS = Object.keys(AGENT_TARGETS) as AgentKind[];
 export const ENTRY_COMMENT = (v: number) => `<!-- p3-entry-version: ${v} -->`;
 
 /**
- * AGENTS.md / CLAUDE.md に書く指示（節）。入口だけで、手順の本文は CLI（p3 guide）から読ませる。
+ * AGENTS.md に書く指示（節）。入口だけで、手順の本文は CLI（p3 guide）から読ませる。
  * スキルの参照は、置いた先（と既にある先）だけを書く。入口の決まりを変えたら ENTRY_VERSION を上げる（test/agents.test.ts が確かめる）
  */
 export function agentsSnippet(kinds: readonly AgentKind[]): string {
@@ -99,7 +98,7 @@ export function findSections(text: string): { start: number; end: number; level:
 /**
  * AI 向けの使い方を置く（init --agents と p3 agents）。kinds の先だけを扱い、ほかの先は作らず・変えず・消さない。
  *   - スキル: 無ければ置く・同じなら何もしない・違えば上書きせず違う行と最新にする方法を出す（force なら同梱の版にする）
- *   - 指示: AGENTS.md（無ければ CLAUDE.md、どちらも無ければ AGENTS.md を作る）の節。スキルの参照は kinds と既にある先。
+ *   - 指示: AGENTS.md の節（無ければ作る）。CLAUDE.md は作らず・変えない（Claude Code にはスキルで届く）。スキルの参照は kinds と既にある先。
  *     節が無ければ足す・同じなら何もしない・違えば変えずに知らせる（force なら節だけを置き換え、前後の文は残す）。
  *     節が複数・見出しの形が分からないときは force でも変えず、手で整理するよう知らせる
  */
@@ -131,7 +130,7 @@ export async function placeAgents(root: string, cwd: string, choice: AgentChoice
   // 指示の節のスキルの参照: 置いた先と、既にある先（後から片方を足したとき、もう片方も指す。無い先は書かない）
   const refs = KINDS.filter((k) => kinds.includes(k) || existsSync(join(root, AGENT_TARGETS[k].path)));
   const snippet = agentsSnippet(refs);
-  const file = ["AGENTS.md", "CLAUDE.md"].find((f) => existsSync(join(root, f))) ?? "AGENTS.md";
+  const file = "AGENTS.md";
   const target = join(root, file);
   const shown = relative(cwd, target) || target;
   const text = existsSync(target) ? readFileSync(target, "utf8") : "";
@@ -171,9 +170,7 @@ export interface InitOptions {
   name?: string;
   description?: string;
   instructions?: string;
-  /** Preflight の担当（未指定なら、対話では聞き（Enter は codex）、非対話では codex） */
-  runner?: PreflightRunner;
-  /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は置かない）、非対話では置かない） */
+  /** AI 向けの使い方を置く先（未指定なら、対話では聞き（Enter は both）、非対話では both） */
   agents?: AgentChoice;
   yes?: boolean;
   /** このリポジトリの参照先の名前（既定はフォルダ名） */
@@ -253,20 +250,9 @@ export async function init(o: InitOptions): Promise<string> {
       return { path: d, role: "ドキュメント", ...(entry ? { entry } : {}) };
     });
     const instructions = await ask("Preflight で重視する観点・制約（任意）", o.instructions ?? "");
-    // 担当: codex は人が p3 から実行する（Codex と ChatGPT のプランが要る）。agent は Codex を使えない環境で、手元の AI エージェントに頼む
-    const runnerAnswer =
-      o.runner ?? (await ask("Preflight を実行するのは（codex: 人が p3 から Codex で実行 / agent: 頼まれた手元の AI エージェントが評価）", DEFAULT_PREFLIGHT_RUNNER));
-    if (!isPreflightRunner(runnerAnswer)) throw new UsageError(`Preflight の担当は ${PREFLIGHT_RUNNERS.join(" / ")} のどれか: ${runnerAnswer}`);
-    const runner: PreflightRunner = runnerAnswer;
-    // 既にある AGENTS.md / CLAUDE.md からは推測しない（Enter は置かない）
-    let agents = o.agents;
-    if (agents === undefined && interactive) {
-      const a = await ask("AI 向けの p3 の使い方（スキルと AGENTS.md / CLAUDE.md の節）を置く先（置かない / claude / codex / both）", "置かない");
-      if (!["置かない", "none", "n", "no"].includes(a)) {
-        if (!isAgentChoice(a)) throw new UsageError(`置く先は 置かない / claude / codex / both のどれか: ${a}`);
-        agents = a;
-      }
-    }
+    // AI 向けの入口は必ず置く（p3 は AI から使う前提）。聞くのは置く先のスキルだけで、Enter・非対話は both
+    const agents = o.agents ?? (await ask("AI 向けの p3 の使い方（AGENTS.md の節とスキル）を置く先（claude / codex / both）", "both"));
+    if (!isAgentChoice(agents)) throw new UsageError(`置く先は claude / codex / both のどれか: ${agents}`);
 
     const cfg: ProjectConfig = {
       name,
@@ -275,25 +261,22 @@ export async function init(o: InitOptions): Promise<string> {
       repos: [{ name: refName, role: "本体", readFirst: true, writable: true, map }],
       milestones: [],
       branchPattern: "req/{id}-{slug}",
-      preflight: { instructions, runner },
+      preflight: { instructions },
     };
     await mkdir(join(dir, "requests"), { recursive: true });
     await writeProjectFile(join(dir, "project.yaml"), cfg);
     await writeRepoEntry(join(dir, "project.yaml"), refName, cfg.repos[0]);
     await register(key, dir, refName, root);
 
-    const agentLines = agents ? await placeAgents(root, o.cwd, agents) : [];
+    const agentLines = await placeAgents(root, o.cwd, agents);
     return [
       `作りました: ${key} → ${dir}`,
       `  参照先        ${refName}（本体） → ${root}`,
       `  主なフォルダ  ${map.map((m) => m.path).join(", ") || "（なし。設定画面で足せます）"}`,
       `  個人設定      ${userConfigPath()} に登録しました`,
-      `  Preflight     ${runner}（${RUNNER_LABEL[runner]}。変える: p3 config set preflight.runner=${runner === "codex" ? "agent" : "codex"}）`,
       ...agentLines,
       "",
-      runner === "agent"
-        ? "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve"
-        : "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>  →  p3 serve",
+      "次に: p3 request new \"<やりたいこと>\" --body \"...\"  →  p3 preflight <要望ID>（Codex にサインインしたマシン。p3 whoami で分かる）か、手元の AI エージェントに「要望 <要望ID> の Preflight をして」と頼む  →  p3 serve",
       cfg.description ? "" : "※ description が空です。p3 config set description=\"...\" で設定してください（Preflight の精度に効きます）",
     ]
       .filter((l, i, a) => l !== "" || (i > 0 && a[i - 1] !== ""))

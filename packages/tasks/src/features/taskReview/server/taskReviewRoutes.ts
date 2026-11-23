@@ -11,8 +11,7 @@ import { previewOf } from "../shared/taskReview.ts";
  *   POST /requests/:rid/tasks/:tid/review-preview       今の材料の要約と hash（{targets?, viewpoint?}。何も書かない）
  *   GET  /requests/:rid/tasks/:tid/reviews              履歴（新しい順。読めない記録も broken で出す。アーカイブしたタスクも読める）
  *   POST /requests/:rid/tasks/:tid/reviews              始める（202。{targets?, viewpoint?, engine?, expectedHash?}）。
- *                                                       材料が変わっていれば 409 material_changed、実行中なら 409 running、Preflight の担当が agent で
- *                                                       engine を明示していなければ 400 engine_required
+ *                                                       材料が変わっていれば 409 material_changed、実行中なら 409 running
  *   GET  /requests/:rid/tasks/:tid/reviews/:run         1回分（固定した材料・結果。実行中は所有者の状態 owner）
  *   POST /requests/:rid/tasks/:tid/reviews/:run/cancel  取り消す（{acknowledgeStopped?}。マイルストーンレビューと同じ）
  *
@@ -48,7 +47,7 @@ export function taskReviewRoutes(ctx: P3Context) {
   app.post("/requests/:rid/tasks/:tid/review-preview", async (c) => {
     const { targets, viewpoint } = startBody.parse(await c.req.json().catch(() => ({})));
     const p = await svc().preview(rid(c), tid(c), { targets, viewpoint });
-    return c.json({ ...previewOf(p.input), engineRequired: p.engineRequired });
+    return c.json(previewOf(p.input));
   });
   app.get("/requests/:rid/tasks/:tid/reviews", async (c) => c.json({ items: await svc().list(rid(c), tid(c)) }));
   app.post("/requests/:rid/tasks/:tid/reviews", async (c) => {

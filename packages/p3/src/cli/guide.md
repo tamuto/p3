@@ -13,8 +13,8 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 
 - この手順で `p3 <コマンド>` と書いたものは、**この手順を取得したときと同じ呼び方**（ふつうは `pnpx @infodb/p3`。`npx @infodb/p3` でもよい）で呼ぶ。
   ほかの場所に入っている `p3`（`pnpm add -g` などで入れたもの）に勝手に切り替えない。古い版のままのことがあり、この手順と動きが合わない
-- 最初に `p3 whoami --json` で、操作するプロジェクト・データのフォルダ・決まり方（`via`）・変更者・今の要望・Preflight の担当
-  （`preflight.runner`。下の「Preflight を頼まれたとき」）を確かめる。
+- 最初に `p3 whoami --json` で、操作するプロジェクト・データのフォルダ・決まり方（`via`）・変更者・今の要望を確かめる
+  （`preflight` は、このマシンで人が Codex の Preflight を使えるか。AI の手順は変わらない）。
   対象のプロジェクトは今いる場所（リポジトリ・作業ツリー）と個人設定から決まる。決まらなければ、出てきた一覧と案内に従って
   `--project <名前>` を付ける（名前を推測で決めない）
 - `via` が `cwd`（今いる場所で決まった）でなければ（`dir` / `project` / `legacy` / `only`）、それ以上 p3 を操作せず、
@@ -31,15 +31,15 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 
 ## 置いた入口（スキル・節）の状態
 
-このリポジトリに置いた AI 向けの入口（`.claude/skills/p3/SKILL.md`・`.agents/skills/p3/SKILL.md` と、AGENTS.md / CLAUDE.md の
-「タスク管理（infodb p3）」の節）の状態は、`guide --json` と `whoami --json` の `agents` に出る（今いる作業ツリーのものを読むだけ）。
+このリポジトリに置いた AI 向けの入口（`.claude/skills/p3/SKILL.md`・`.agents/skills/p3/SKILL.md` と、AGENTS.md の
+「タスク管理（infodb p3）」の節。CLAUDE.md に残った以前の節も見る）の状態は、`guide --json` と `whoami --json` の `agents` に出る（今いる作業ツリーのものを読むだけ）。
 
 - `agents.ok` が `true` なら何もしない
 - `false` なら、作業を始める前に人に伝える: 入口ごとの `path`・`status`・`reason` と、`advice`（人が行う次の操作）。
-  `status` は `outdated`（古い）・`missing`（無い）・`modified`（版は同じで中身が違う）・`newer`（CLI より新しい）・`unknown`（形が不明）・
-  `unreadable`（読めない）。`placed` が `false`（どれも置いていない）なら、置くかどうかと先（claude / codex / both）は人が決める
+  `status` は `outdated`（古い）・`missing`（無い）・`modified`（版は同じで中身が違う）・`newer`（CLI より新しい）・`misplaced`（CLAUDE.md にある。
+  人が AGENTS.md へ移す）・`unknown`（形が不明）・`unreadable`（読めない）。`placed` が `false`（どれも置いていない）なら、置く先（claude / codex / both）は人が決める
 - 入口のファイルを自分で書き換えない。`p3 agents`（とくに `--force`。手で直した分が消える）を自分で実行しない。更新は人が差分を
-  確かめてから行う。`modified`・`newer`・`unknown` に `--force` を勧めない（`newer` は、この CLI が古い版で動いていないかを人に確かめてもらう）
+  確かめてから行う。`modified`・`newer`・`misplaced`・`unknown` に `--force` を勧めない（`newer` は、この CLI が古い版で動いていないかを人に確かめてもらう）
 - 入口が古いことだけを理由に、頼まれた作業を止めない（この手順は CLI から読んだ最新のもの）
 - `agents.problem` があれば（調べられなかった）、その文を人に伝える。`whoami` のほかの結果はそのまま使ってよい
 - `agents.writeRoot` があれば（今いるのが追加の作業ツリー）、`p3 agents` が書くのはそのメインの作業ツリーで、更新したものをこのブランチに
@@ -50,7 +50,7 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 | 操作 | するのは |
 | --- | --- |
 | 要望の登録（`request new`） | AI も人も |
-| Preflight（評価・細分化。`preflight`） | 担当（`whoami --json` の `preflight.runner`）で決まる。**codex** は人（人がチャットで対象の要望の手元の評価を明示的に頼んだときだけ AI が評価する）、**agent** は人に頼まれた AI（手元で評価する）。どちらも AI から始めない（下の「Preflight を頼まれたとき」） |
+| Preflight（評価・細分化。`preflight`） | 人（`p3 preflight` か画面。Codex が評価する）か、人に頼まれた AI（手元で評価する）。AI から始めない（下の「Preflight を頼まれたとき」） |
 | タスク化（`accept`） | **人だけ** |
 | タスクの着手・完了（`move ... doing` / `done`）と成果物の登録、作業中に見つけたタスクの追加 | AI も人も |
 | 要望を対応済にする（`request set <要望ID> status=resolved`） | 作業を終えた AI（か人） |
@@ -61,8 +61,8 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 
 1. `request new "<タイトル>" --body "<背景・やりたいこと・完了条件を箇条書きで>"`（任意で `--area src/web --tag ui --due YYYY-MM-DD --milestone <id>`）
 2. 登録したら要望 ID をユーザーに伝えて終える。**Preflight（評価・細分化）は自分から始めず、タスク化（`accept`）は人が行う。**
-   Preflight を勧めたり、実行してよいか尋ねたりもしない。人に Preflight を頼まれたら、下の「Preflight を頼まれたとき」に従う
-   （担当で分ける）。人がタスク化を終えたら、タスクを進める
+   Preflight を勧めたり、実行してよいか尋ねたりもしない。人に Preflight を頼まれたら、下の「Preflight を頼まれたとき」に従う。
+   人がタスク化を終えたら、タスクを進める
 
 人が行った Preflight の内容を聞かれたら、`drafts <要望ID>` で評価とタスク案を読んで答えてよい（読むだけ）。
 `drafts` には「調べた範囲」（参照先ごとに読んだか）と「判断の根拠」（確かめた / 推測）も出る。答えるときは、見ていない参照先や
@@ -72,24 +72,20 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 `preflight <要望ID> --note "..." --note-only` のメモ）。どちらも評価の実行はしない（再評価は人が明示して始める）。
 要求の出典・根拠の記録（`source`）は、人に頼まれた内容だけを残す。回答元・確かめた人は人が伝えた役割名で書き、氏名・連絡先は書かない。
 
-## Preflight を頼まれたとき（担当で分ける）
+## Preflight を頼まれたとき
 
-誰が Preflight を実行するかは、プロジェクトの担当（`whoami --json` の `preflight.runner`）で決まる。担当は人が
-`p3 init` か `p3 config set preflight.runner=...` で決める（AI は変えない）。
+Preflight は、人が `p3 preflight` か画面から実行する（Codex が評価する。Codex にサインインしたマシンだけ）か、人に頼まれた AI
+（あなた）が手元で評価する。どのプロジェクト・マシンでも同じ。
 
-- **`codex`**（`preflight` の項目が無い古い p3 も同じ）: Preflight は人が `p3 preflight` か画面から実行する（Codex が評価する）。
-  AI は `p3 preflight <要望ID>`（`--prepare` の無い通常の実行）をしない。人がチャットで対象の要望を挙げて、手元の評価を明示的に
-  頼んだとき（例: 「要望 261009-k7m3x の Preflight を Claude Code のこのチャットで実行して」）だけ、下の手順で評価する。
-  「Preflight して」とだけ頼まれたら、断らずに、人が `p3 preflight <要望ID>`・画面で実行するのか、このチャットで手元の評価をするのかを確かめる
-- **`agent`**（Codex を使えない環境）: 人に Preflight を頼まれたら（「Preflight して」「要望 <ID> の Preflight をして」など。
-  「このチャットで」のような言い方は求めない）、下の手順で手元で評価する。`p3 preflight <要望ID>`（`--prepare` の無い通常の実行）はしない
-- **`runner` が `null`**（担当が読めない。理由は `problem`）: `agent` と推測しない。`problem` を人に伝え、`codex` と同じ扱いにする
+- 人にチャットで Preflight を頼まれたら（「Preflight して」「要望 <ID> の Preflight をして」など）、下の手順で手元で評価する
+- AI は `p3 preflight <要望ID>`（`--prepare` の無い通常の実行。Codex を使い、利用者のプランを消費する）をしない。Codex で評価して
+  ほしいと言われたら、人が `p3 preflight <要望ID>` か画面で実行するよう伝える（使えるかは `whoami` の Preflight の行）
 - タスク化した後の要望（進行中・対応済・完了済、タスク化・分割の採用をした要望）は再評価しない（p3 も断る）。タスクの作業中に計画を変えたくなったら、
   再評価を頼む・勧める代わりに、新しい要望（続きなら `--parent` で子）の登録を人に提案する
-- どの担当でも: 要望の登録・タスクの作業・子の要望の作成・分割の採用のついでに自分から始めない（勧めたり、実行してよいか尋ねたりも
-  しない）。対象の要望が分からなければ確かめる。子の要望も親と同じ担当・同じ手順。P3 はモデルを呼ばない（`claude -p` や API キーは使わない）
+- 要望の登録・タスクの作業・子の要望の作成・分割の採用のついでに自分から始めない（勧めたり、実行してよいか尋ねたりも
+  しない）。対象の要望が分からなければ確かめる。子の要望も親と同じ手順。P3 はモデルを呼ばない（`claude -p` や API キーは使わない）
 
-1. `whoami --json` で対象のプロジェクトと担当を確かめ（`via` の扱いは上と同じ）、`request show <要望ID> --brief --json` で頼まれた要望かを確かめる
+1. `whoami --json` で対象のプロジェクトを確かめ（`via` の扱いは上と同じ）、`request show <要望ID> --brief --json` で頼まれた要望かを確かめる
 2. 準備: `preflight <要望ID> --prepare --json`（変更なので `P3_ACTOR` を付ける）。評価対象を固定し、`instructions`（指示のファイル）・
    `outputs`（書く成果物）・`run`（PF-...）・`next`（次のコマンド）を返す。始められない（同じ要望の Preflight が待っている・実行中）
    ときは止めて人に伝える（自分の判断で `--cancel` しない。`--acknowledge-stopped` は、人が run の止まっていることを確かめて
@@ -186,7 +182,7 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 - 子の要望（`parent` のある要望）は、親とは別の要望として、子ごとのタスクとブランチで作業する（親のタスクにしない。
   手順は上と同じ）。親子は `request show <要望ID> --brief --json` の `parent`・`ancestors`・`children` で読む
 - 分割の案（Preflight の子の案）の採用（`accept`）は人が行う。子の Preflight は親と同じく、頼まれたときだけ
-  「Preflight を頼まれたとき」の担当に従う（分割の採用・子の作成から、自分で子の評価へ進まない）
+  「Preflight を頼まれたとき」に従う（分割の採用・子の作成から、自分で子の評価へ進まない）
 - 子のタスクを全部終えたら、子を対応済にする（6）。親を対応済にするのは、親のタスクと見送り以外の子（`children`）が
   全部 対応済か完了済になってから。条件を満たさなければ拒否される（理由が出る）
 - 子にタスクを足す・完了から戻すと、対応済の親も進行中に戻る（`--json` の `reopenedAncestors`）。完了済の親は変わらず
@@ -209,7 +205,7 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
 ## してはいけないこと
 
 - Preflight（`preflight`）を自分から始めない・勧めない。`p3 preflight <要望ID>`（Codex で評価する通常の実行）は人が行い、AI は
-  しない。手元の評価（`--prepare` / `--complete`）は、上の「Preflight を頼まれたとき」の担当ごとの条件を満たしたときだけ
+  しない。手元の評価（`--prepare` / `--complete`）は、人に頼まれたときだけ（上の「Preflight を頼まれたとき」）
 - タスク化（`accept`）をしない（人が行う。Preflight を頼まれたときも、評価の後にタスク化・着手へ進まない）
 - `check`（済み）を付けない。済みは人が成果物を確認して付ける
 - 要望のステータスを `done`（完了済）/ `rejected`（見送り）にしない（人が決める）。AI がするのは作業を終えたときの `resolved`（対応済）まで。
@@ -219,8 +215,7 @@ P3_ACTOR=ai:<エージェント名> pnpx @infodb/p3 <コマンド> [引数] --js
   （例外は、頼まれた Preflight で `--prepare` が返した run の成果物だけ）
 - 人への質問をタスクにしない（続けられないなら今のタスクに止まっている理由を付ける）
 - 止まっている理由を付けたまま作業を続けたり、完了・済み・対応済に進めたりしない。回答を受けずに自分で解除しない
-- タスクの AI レビュー（`review`）を頼まれずに始めない（Codex を使い、利用者のプランを消費する）。頼まれたら Preflight と同じく担当で
-  分け、`agent` のプロジェクトでも Codex で実行するのは人が明示したときだけ（`--engine codex`）。レビューの結果を理由に済みにしない・
+- タスクの AI レビュー（`review`）を頼まれずに始めない（Codex を使い、利用者のプランを消費する）。レビューの結果を理由に済みにしない・
   基準や証拠を書き換えない（結果は参考の記録で、済みは人が決める）
 - 受け入れ基準を自分で消す・書き換える・並べ替えて、満たしたことにしない（基準を変える必要があれば人に確かめる。済みのタスクの
   基準・証拠を変えると人の済みが外れる）。確かめていない項目を `met` にしない
