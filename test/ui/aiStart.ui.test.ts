@@ -1,11 +1,11 @@
 // AI の実行を始める操作の開始待ち: 開始の応答をわざと遅らせても、押した直後に「開始を待っています…」が出て押せなくなり、開始は1回だけ送られる。
-// 断られたら理由が出てもう一度押せる。Preflight（概要・メモ欄の保存して再実行）・リリースノートの要約・観測の手順の提案で確かめる。
+// 断られたら理由が出てもう一度押せる。Preflight（概要・メモ欄の保存して再実行）・リリースノートの要約で確かめる。
 import type { Page, Route } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
-const ids = { request: "", preflight: "", observation: "" };
+const ids = { request: "", preflight: "" };
 async function prepare(env: UiEnv) {
   await env.p3(["milestone", "add", "v1", "--title", "最初のリリース"]);
   ids.request = JSON.parse(await env.p3(["request", "new", "申請の検索", "--milestone", "v1", "--body", "申請を検索する", "--json"])).id;
@@ -14,7 +14,6 @@ async function prepare(env: UiEnv) {
   await env.p3(["request", "set", ids.request, "status=resolved"]);
   // Preflight はタスク化の前の要望で（対応済の要望は再評価しない）
   ids.preflight = JSON.parse(await env.p3(["request", "new", "申請の絞り込み", "--body", "申請を絞り込む", "--json"])).id;
-  ids.observation = JSON.parse(await env.p3(["observer", "add", "--title", "検索の速さ", "--body", "画面で検索が速いか", "--json"])).id;
 }
 
 /** 開始の POST を手で放すまで止める（送られた数を数える）。fail なら断る */
@@ -84,17 +83,6 @@ describe.skipIf(!inject("chromium").available)("AI の実行の開始待ち", ()
       expect(h.count()).toBe(1);
       await h.release();
       await until.visible(page.getByRole("button", { name: /生成し直す|生成を取り消す|もう一度生成する/ }));
-    });
-    await step("観測の手順の提案", async () => {
-      await page.goto(`/observer/${ids.observation}/edit`);
-      const h = await hold(page, /\/definitions\/[^/]+\/suggestions$/);
-      await page.getByRole("button", { name: "提案を頼む" }).click();
-      const waiting = page.getByRole("button", { name: "開始を待っています…" });
-      await until.visible(waiting);
-      await waiting.click({ force: true });
-      expect(h.count()).toBe(1);
-      await h.release();
-      await until.visible(page.getByRole("button", { name: /もう一度頼む|提案を待っています…/ }));
     });
   });
 });

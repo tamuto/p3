@@ -23,7 +23,7 @@ describe.skipIf(!inject("chromium").available)("serve の製品（常に両方�
       await until.url(page, /\/observer$/);
       await until.visible(page.getByRole("heading", { name: "観測", exact: true }));
       await until.visible(page.getByRole("banner").getByText("uitest"));
-      expect(await page.getByRole("banner").getByRole("navigation").getByRole("link").allInnerTexts()).toEqual(["進捗", "観測", "リリースノート", "開発の指標", "設定"]);
+      expect(await page.getByRole("banner").getByRole("navigation").getByRole("link").allInnerTexts()).toEqual(["進捗", "観測", "リリースノート", "設定"]);
     });
     await step("直リンクで開き、再読み込みしても観測の一覧", async () => {
       const fresh = await s!.open({ width: 1280 });

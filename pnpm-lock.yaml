@@ -337,6 +337,9 @@ importers:
       '@infodb/codex-workspace':
         specifier: ^0.2.1
         version: 0.2.1
+      '@infodb/p3-observer':
+        specifier: workspace:*
+        version: link:../observer
       '@infodb/p3-shared':
         specifier: workspace:*
         version: link:../shared

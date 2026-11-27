@@ -8,7 +8,6 @@ import { writableRepos } from "../../shared/workTarget.ts";
 import { SPLIT_HINT_TASKS } from "../../shared/hierarchy.ts";
 import { ASSESSMENT_SPEC, CHILD_SPEC, DRAFT_SPEC, SPLIT_GUIDE, type PreflightJob } from "./engine.ts";
 import { checkLine } from "../../features/quality/shared/quality.ts";
-import { observationSection } from "./observations.ts";
 import { renderRequirement, requestSubject, requirementInputOf } from "../../features/requirements/shared/requirementSource.ts";
 
 /**
@@ -307,7 +306,7 @@ ${job.project.name}: ${job.project.description || "（説明なし）"}
 ${codeMapSection(job, env)}
 ## 要望（${env.runDir}/request.md にも同じ内容があります）
 ${r.body.trim() || "(本文なし)"}
-${requirementSection(job)}${familySection(job)}${observationSection(job.observations)}${carryoverSection(job, env)}${attachmentsSection(job, env)}
+${requirementSection(job)}${familySection(job)}${carryoverSection(job, env)}${attachmentsSection(job, env)}
 
 ${historySection(job, env)}
 ## やること

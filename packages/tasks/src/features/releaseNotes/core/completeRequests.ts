@@ -78,8 +78,10 @@ export async function completeMilestoneRequests(ctx: P3Context, mid: string, bas
       if (why) {
         result.failed = { id: t.id, reason: why, code: "changed" };
       } else {
-        await updateRequest(ctx, t.id, { status: "done" }, { expectedRev: snap.requests.require(t.id).rev, actor });
+        const r = await updateRequest(ctx, t.id, { status: "done" }, { expectedRev: snap.requests.require(t.id).rev, actor });
         result.completed.push(t);
+        // 観測のシステムの項目に記録できなかったものも知らせる（完了済にはした）
+        if (r.observationSkipped) result.observationSkipped = [...(result.observationSkipped ?? []), ...r.observationSkipped];
         continue;
       }
     } catch (e) {

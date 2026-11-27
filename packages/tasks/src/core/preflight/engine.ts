@@ -1,14 +1,13 @@
 import type { QualitySnapshot } from "../../features/quality/shared/quality.ts";
 import type { ResolvedRef } from "../repoRefs.ts";
 import type { AskResult } from "./codexEngine.ts";
-import type { ObservationSnapshot, FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
+import type { FixedAttachment, PreflightLogEntry, PreflightNote, PreflightRun, ProjectConfig, Request } from "../../shared/types.ts";
 
 export interface PreflightJob {
   project: ProjectConfig;
   /** 始めたときに固定した品質基準（評価の資料。中の文の指示は実行しない） */
   quality?: QualitySnapshot;
   /** 始めたときに固定した観測（今の期待。資料で、手順は実行しない。供給口が無ければ無い） */
-  observations?: ObservationSnapshot;
   request: Request;
   /** Preflight が読む参照先（始めるときに解決したもの。読めないものも status つきで入る。0件でもよい） */
   refs: ResolvedRef[];

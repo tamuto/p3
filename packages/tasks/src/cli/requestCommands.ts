@@ -155,6 +155,7 @@ export async function requestCommand(
       warn(next.warnings ?? []);
       reopenedNote(undefined, next.reopenedAncestors);
       if (next.completionSkipped) process.stderr.write(`${next.completionSkipped}\n`);
+      for (const m of next.observationSkipped ?? []) process.stderr.write(`${m}\n`);
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
     case "order": {

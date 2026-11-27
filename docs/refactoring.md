@@ -113,7 +113,6 @@
 
 | ファイル | 置き場所 | ロック | 壊れたとき（今） |
 | --- | --- | --- | --- |
-| `metrics/manual.json` | `core/metrics/manual.ts` | `metrics/.manual.lock` | 読むときは問題として知らせ、書くのは断る（`metrics_unreadable`） |
 | `requests/<ID>/retrospective.json` | `core/retrospective.ts` | あり | JSON として読めなければ断る（`retro_unreadable`）。無ければ空 |
 | `quality-improvements.json` | `core/qualityImprovement.ts` | `.quality-improvements.lock` | 読めない（`readFile` の失敗）なら空とみなす。JSON として読めなければ診断・登録とも断る（`invalid`） |
 | `release-notes/<ID>.md` | `core/releaseNotes/store.ts` | あり | 読めない・形が違えば `invalid` |
@@ -196,7 +195,6 @@
 | 読み手 | 置き場所 | 読むもの |
 | --- | --- | --- |
 | 見直し候補 | `shared/reviewCandidate.ts`（`diagnoseTask`・`diagnoseRequest`）・`core/reviewCandidates.ts` | 最新の完了の記録と今の条件 |
-| 開発の指標 | `core/metrics/definitions.ts` | 最初の対応済・完了済の記録 |
 | 作る | `core/requestOps.ts`（`taskCompletionPatch` など） | 完了・済みの契機 |
 | 表示 | `cli/showView.ts`・`cli/output.ts`・`web/components/CompletionReview.tsx`・`TaskDrawer.tsx`・`request/RequestReviewNotice.tsx` | 記録の一覧・最新 |
 

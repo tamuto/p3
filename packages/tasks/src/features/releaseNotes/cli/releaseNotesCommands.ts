@@ -112,6 +112,7 @@ export async function releaseNotesCommand(env: CommandEnv): Promise<number> {
       if (!basedOn) throw new UsageError(`判定を確かめた材料の hash を --based-on で指定してください（p3 release-notes show ${shellArg(id)} --json の completion.basedOn）`);
       try {
         const r = await completeMilestoneRequests(ctx, id, basedOn, actor);
+        for (const m of r.observationSkipped ?? []) process.stderr.write(`${m}\n`);
         out.result(r, () =>
           [
             r.completed.length ? `完了済にしました（${r.completed.length} 件）:` : r.failed ? "完了済にした要望はありません" : "完了済にする要望はありません（変えていません）",

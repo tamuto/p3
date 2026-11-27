@@ -63,10 +63,10 @@ ID（F01…）は後続の要望から参照するための番号。
 | F22 | リリースノートの手での編集・保存・出力 | 維持 | tasks | `src/core/releaseNotes/service.ts`・`src/cli/releaseNotesCommands.ts`・`src/web/routes/release-notes.tsx`。マイルストーンと変更の記録に依存する。保存と出力の契約を守る |
 | F23 | リリースノートの AI 要約 | 簡素化 | tasks | `src/core/releaseNotes/generate.ts`。任意の生成として扱い、手で書いて保存する導線を先にする候補。生成と保存は既に分かれている。削除や CLI・API の変更の判断には利用実態が要る |
 | F24 | Preflight のリスクの振り返り、完了と手戻りの履歴 | 維持 | tasks | `src/core/retrospective.ts`・`src/shared/{completionRecord,reworkHistory}.ts`・`src/cli/retroCommands.ts`。採用した run が固定したリスク、人の判定と根拠、訂正の履歴は要望に属する |
-| F25 | 開発の指標の集計、費用・リリース後の不具合の人による記録 | 維持 | tasks | `src/core/metrics/`・`src/cli/metricsCommands.ts`・`src/web/routes/metrics.tsx`。定義・0 と欠損と記録なしの区別・通貨と期間とマイルストーンの境界を守る。人の記録は CLI、集計は CLI・API・画面。独立した観測（F28）の利用が具体化したら、人が記録する指標の責務を見直す |
+| F25 | 開発の指標（要望の到達時間・完了時の受け入れ基準・手戻り）と、費用・リリース後の不具合などの値 | 分離（済み） | observer・tasks | 要望 261128-c7z79 で観測へ移した。指標は観測のシステムの項目で、tasks が要望・タスクの操作のその場で値を書く（`core/systemObservations.ts`）。費用などは利用者が決める観測の項目キー。以前の見るたびの集計・`p3 metrics`・人の記録（`metrics/manual.json`）は無くした |
 | F26 | Codex の準備・起動・診断、ChatGPT の接続、Docker とホストのパス、ログの秘密の除去 | 保留 | 未定 | `src/cli/{codex,chatgpt}.ts`・`src/core/{chatgpt,redact}.ts`・`src/core/preflight/{codexEngine,docker,hostPaths}.ts`・`src/server/api/chatgptRoutes.ts`。**B 案では暫定で tasks**。2 つの製品に共通する認証・実行環境と、設定・秘密の情報の境界が具体化したら決め直す。接続の保存先と各機能が渡す入力の範囲を守る |
 | F27 | デモデータと使い方の動画 | 維持 | tasks | `scripts/{demo,demoData}.ts`・`scripts/video/`。tasks の画面と CLI を使う開発用の道具（配布物には入らない）。B 案では tasks のパッケージに付ける |
-| F28 | 独立した観測・再現・実験の結果の収集 | 保留 | observer | p3-observer。今の証拠・レビュー・指標は上の tasks の行の責務。`packages/observer` を用意し、起動の確認だけを持つ（要望 261120-2254g。[設計: p3-observer](architecture.md#p3-observer)）。観測の入力・確かめる主体・保存の契約・利用者が具体化したら、収集と保存を足す |
+| F28 | 観測（項目キーと値） | 維持 | observer | `packages/observer`。項目キーに値を登録して貯めて見せるだけで、値を何を実行して得たかは扱わず、判定もしない（要望 261128-c7z79。[設計: p3-observer](architecture.md#p3-observer)）。以前の手順・準備・実行の結果などは外した |
 
 ### まとめ
 
@@ -74,7 +74,7 @@ ID（F01…）は後続の要望から参照するための番号。
 - **簡素化の候補**: F23（リリースノートの AI 要約）
 - **統合の候補**: F19（AI レビューの run の管理。共用済みの範囲に限る）
 - **分離（B 案で分けて置く）**: F03〜F09。入口と kit に切り出すのは起動・登録・外枠・保存の土台・個人設定・監視で、中身（要望の運用）は tasks に残る
-- **保留**: F26（AI 接続・実行環境。暫定 tasks）、F28（独立した観測。observer のパッケージは起動の確認だけ）
+- **保留**: F26（AI 接続・実行環境。暫定 tasks）。F25・F28 は要望 261128-c7z79 で観測（項目キーと値）に決めた
 - 残りは **tasks に維持**。要望から人の確認までの記録・振り返り・指標は tasks の責務
 
 ## B 案（261119-9d1zk）への引き継ぎ
@@ -114,7 +114,6 @@ ID（F01…）は後続の要望から参照するための番号。
 - 要望の概要（Preflight に渡すプロジェクトの説明）では、ブラウザの画面を「ビューア」と呼んでいる。今の画面は要望の編集・案の採用・タスクの更新もできる
 - `docs/architecture.md` の「開発の工程と P3 の受け持ち」の表は、確認事項への回答をメモ中心に書いている。今は ID の付いた回答を要望に保存し、
   評価対象の固定と採用の判定に反映する。同じ表に、リスクの振り返り・開発の指標・証拠の根拠の種類が無い
-- `src/cli/metricsCommands.ts` の冒頭のコメントは「読むだけ」としているが、今の `metrics record` と `metrics rm` は記録を変える（API と画面は読むだけ）
 - 画面を開く例は `http://localhost:4310` だが、serve の待ち受けの既定は `0.0.0.0`。個別の API のローカル制限（`src/server/api/local.ts`）と serve 全体の
   制限を取り違えない
 - 見送りにした要望 261119-vgxsq で互換を崩してよいとした回答は、その要望についてのもの。B 案は 261119-9d1zk の互換の条件（入口・データ・CLI・API・画面を変えない）に従う
@@ -123,7 +122,6 @@ ID（F01…）は後続の要望から参照するための番号。
 
 - 機能ごとの実際の利用の頻度と、外部のスクリプト・自動化が使っている CLI・API（簡素化・廃止の判断の前に要る。特に F23）
 - AI 接続・実行環境を製品の間で共通にするか（F26）: 2 つ目の製品が要る認証・実行環境・秘密の情報の範囲
-- p3-observer の責務と契約（F28）: 観測の入力・確かめる主体・保存の形・利用者
 - B 案の配布の方式: kit・tasks を別のパッケージとして npm に出すか、`@infodb/p3` に同梱するか（261119-9d1zk の Preflight で比べる）
 - AI レビュー以外の run（Preflight・リリースノートの生成）の管理を統合できるか（F19）: 回復と取り消しの違い
 

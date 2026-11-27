@@ -5,7 +5,6 @@ import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts"
 import { requirementCommand } from "../features/requirements/cli/requirementCommands.ts";
 import { revisitCommand } from "../features/records/cli/revisitCommands.ts";
 import { retroCommand } from "../features/retro/cli/retroCommands.ts";
-import { metricsCommand } from "../features/metrics/cli/metricsCommands.ts";
 import type { RequestProgress } from "../shared/types.ts";
 import { taskReviewCommand } from "../features/taskReview/cli/taskReviewCommands.ts";
 import { qualityCommand } from "../features/quality/cli/qualityCommands.ts";
@@ -84,7 +83,7 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env)) ?? (await metricsCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {

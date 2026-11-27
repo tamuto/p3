@@ -39,7 +39,7 @@ export const ACCEPTANCE_LIMITS = {
 } as const;
 
 /** 証拠の根拠の種類 */
-export const EVIDENCE_BASIS_KINDS = ["unverified", "declaration", "read", "machine", "observation"] as const;
+export const EVIDENCE_BASIS_KINDS = ["unverified", "declaration", "read", "machine"] as const;
 export type EvidenceBasisKind = (typeof EVIDENCE_BASIS_KINDS)[number];
 export const isEvidenceBasisKind = (v: unknown): v is EvidenceBasisKind => typeof v === "string" && (EVIDENCE_BASIS_KINDS as readonly string[]).includes(v);
 
@@ -51,16 +51,13 @@ export type EvidenceBasis =
   | { kind: "unverified" }
   | { kind: "declaration" }
   | { kind: "read"; reference: string }
-  | { kind: "machine"; command: string; result: string; target: string }
-  /** 観測の結果（observer の観測 ID と結果 ID）。満たしたの根拠にするときは、アプリが結果が完了して期待どおりかを確かめる */
-  | { kind: "observation"; observation: string; result: string };
+  | { kind: "machine"; command: string; result: string; target: string };
 
 export const EVIDENCE_BASIS_LABEL: Record<EvidenceBasisKind, string> = {
   unverified: "未確認",
   declaration: "申告のみ",
   read: "読んで確認",
   machine: "検査結果あり",
-  observation: "観測の結果",
 };
 
 /** 根拠の説明（画面の凡例・CLI の案内で使う） */
@@ -69,10 +66,9 @@ export const EVIDENCE_BASIS_HINT: Record<EvidenceBasisKind, string> = {
   declaration: "満たしたと作業した側が申告しただけ（確かめた方法の記録なし）",
   read: "作業した側（AI を含む）がコード・資料・画面を読んで確かめた",
   machine: "作業した側が記録した検査の結果（P3 は実行していない）",
-  observation: "観測（p3 observer）を実行して記録した結果（観測 ID と結果 ID）",
 };
 
-export const BASIS_LIMITS = { reference: 1000, command: 1000, result: 2000, target: 300, observation: 100 } as const;
+export const BASIS_LIMITS = { reference: 1000, command: 1000, result: 2000, target: 300 } as const;
 
 /** 受け入れ基準の1項目 */
 export interface AcceptanceCriterion {
@@ -204,6 +200,9 @@ export function lastSourceSeq(s: Pick<AcceptanceState, "acceptanceSources" | "ac
 
 /** ファイルの根拠を読む（読めなければ理由の文） */
 function readBasis(v: unknown): EvidenceBasis | string {
+  // 以前の観測の結果の根拠（観測の実行と結果は無くなった）は、読んで確認した記録として読む（ファイルは次に保存するときにこの形になる）
+  const old = v as { kind?: unknown; observation?: unknown; result?: unknown } | undefined;
+  if (old?.kind === "observation") return { kind: "read", reference: `以前の観測の結果 ${String(old.observation)}/${String(old.result)}（今は観測の結果を記録しません）` };
   try {
     return cleanBasis(v);
   } catch (e) {
@@ -232,8 +231,6 @@ export function cleanBasis(v: unknown): EvidenceBasis {
       return { kind: "read", reference: field("reference", "読んだもの") };
     case "machine":
       return { kind: "machine", command: field("command", "検査のコマンド"), result: field("result", "検査の結果"), target: field("target", "対象（参照先とコミット）") };
-    case "observation":
-      return { kind: "observation", observation: field("observation", "観測の ID"), result: field("result", "結果の ID") };
   }
 }
 
@@ -268,11 +265,6 @@ export function basisDetail(basis: EvidenceBasis): { label: string; value: strin
         { label: "コマンド", value: basis.command },
         { label: "検査の結果", value: basis.result },
         { label: "対象", value: basis.target },
-      ];
-    case "observation":
-      return [
-        { label: "観測", value: basis.observation },
-        { label: "結果", value: basis.result },
       ];
     default:
       return [];

@@ -1,6 +1,5 @@
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { AcceptanceInputError } from "../features/requirements/shared/acceptance.ts";
-import { MetricsError } from "../features/metrics/shared/metrics.ts";
 import { QualityInputError } from "../features/quality/shared/quality.ts";
 import { RequirementInputError } from "../features/requirements/shared/requirementSource.ts";
 import { RetrospectiveError } from "../features/retro/shared/retrospective.ts";
@@ -59,7 +58,6 @@ export function errorOutcome(e: unknown): ErrorOutcome | undefined {
     if (e.code === "invalid") return { exit, cli, ...coded(422, "invalid") };
     return { exit, cli, ...coded(409, "rev_conflict", { reason: e.code }) };
   }
-  if (e instanceof MetricsError) return { exit: e.code === "metrics_conflict" ? 3 : 1, cli: e.code === "metrics_conflict" ? conflict(e) : e.message, ...coded(400, e.code) };
   if (e instanceof RetrospectiveError) return { exit: e.code === "retro_conflict" ? 3 : 1, cli: e.code === "retro_conflict" ? conflict(e) : e.message, ...coded(e.code === "retro_invalid" ? 400 : 409, e.code) };
   if (e instanceof GenerationRejected) return { exit: 1, cli: e.message, ...coded(e.code === "running" ? 409 : 400, e.code) };
   if (e instanceof CompletionRejected) return { ...coded(409, e.code, { plan: e.plan }) };

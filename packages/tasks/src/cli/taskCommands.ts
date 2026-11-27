@@ -1,4 +1,3 @@
-import { clearWorkSession, writeWorkSession } from "@infodb/p3-shared/node/workContext.ts";
 import { readFileSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { relationRole, type ArchivedTask, type ProposedTask, type Task } from "../shared/types.ts";
@@ -119,8 +118,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       );
       const t = r.task;
       warn(r.warnings);
+      observationSkippedNote(r.observationSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
-      return out.result({ ...t, ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.warnings.length ? { warnings: r.warnings } : {}) }, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
+      return out.result({ ...t, ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.warnings.length ? { warnings: r.warnings } : {}), ...recordSkips(r) }, () => [`作成: ${t.ref}  ${t.title}`, workHint(ctx, t)].filter(Boolean).join("\n"));
     }
 
     case "set": {
@@ -143,6 +143,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       checkClearedNote(r.checkCleared);
       completionSkippedNote(r.completionSkipped);
       completionSkippedNote(r.reworkSkipped);
+      observationSkippedNote(r.observationSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
       return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}), ...recordSkips(r) }, () =>
@@ -168,13 +169,11 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const acceptance = evidenceOps(o);
       const r = await updateTask(ctx, cur.request, tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
-      // 作業の文脈（観測の操作に作業の帰属として渡す）: 作業中にしたら残し、作業中から動かしたら消す
-      if (status === "doing") writeWorkSession(cwd, { project: ctx.projectName ?? "", dataDir: ctx.ws.dataDir, ref: next.ref, at: new Date().toISOString() });
-      else clearWorkSession(cwd, next.ref);
       warn(warnings);
       checkClearedNote(r.checkCleared);
       completionSkippedNote(r.completionSkipped);
       completionSkippedNote(r.reworkSkipped);
+      observationSkippedNote(r.observationSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
       if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
@@ -259,13 +258,19 @@ function checkClearedNote(msg: string | undefined) {
  * 状態は変えたが記録を残せなかった知らせ（完了の記録 completionSkipped・手戻りの履歴 reworkSkipped）。--json の結果にも、API のタスクの PATCH と
  * 同じ項目名・文で入れる（無ければ省く）。AI は JSON だけを読むので、標準エラーの知らせと別に要る
  */
-const recordSkips = (r: { completionSkipped?: string; reworkSkipped?: string }) => ({
+const recordSkips = (r: { completionSkipped?: string; reworkSkipped?: string; observationSkipped?: string[] }) => ({
   ...(r.completionSkipped ? { completionSkipped: r.completionSkipped } : {}),
   ...(r.reworkSkipped ? { reworkSkipped: r.reworkSkipped } : {}),
+  ...(r.observationSkipped?.length ? { observationSkipped: r.observationSkipped } : {}),
 });
 
 export function completionSkippedNote(msg: string | undefined) {
   if (msg) process.stderr.write(`${msg}\n`);
+}
+
+/** 観測のシステムの項目に記録できなかった（操作はした）ことを知らせる */
+export function observationSkippedNote(list: readonly string[] | undefined) {
+  for (const m of list ?? []) process.stderr.write(`${m}\n`);
 }
 
 /** 基準・証拠の操作を当てて、今の基準と不足を出す */

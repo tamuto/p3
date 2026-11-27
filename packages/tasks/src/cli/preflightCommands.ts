@@ -123,17 +123,7 @@ export async function preflightCommand(cmd: string, env: CommandEnv): Promise<nu
       const run = await pickRun(ctx, rid, o.run);
       const inputMatch = await ctx.preflight.inputMatch(rid, run);
       const next = runNext(rid, run);
-      // 評価のあとで変わった観測（採る前に再評価が要るかの判断材料。タスク化は止めない）
-      const observationsChanged = run.materialized?.length ? [] : await ctx.preflight.observationsChanged(run);
-      return out.result({ ...run, inputMatch, ...(observationsChanged.length ? { observationsChanged } : {}), ...(next ? { next } : {}) }, () =>
-        [
-          formatRun(ctx, rid, run),
-          inputMatchLine(rid, run, inputMatch),
-          observationsChanged.length
-            ? `\n⚠ 評価のあとで観測が変わりました（${observationsChanged.map((o) => `${o.id} ${o.title}: 版 ${o.evaluated} → ${o.current === null ? "無い" : `版 ${o.current}`}`).join("・")}）。今の期待で評価し直すか決めてから accept してください（p3 preflight ${rid}）`
-            : "",
-        ].join("\n"),
-      );
+      return out.result({ ...run, inputMatch, ...(next ? { next } : {}) }, () => [formatRun(ctx, rid, run), inputMatchLine(rid, run, inputMatch)].join("\n"));
     }
 
     case "accept": {

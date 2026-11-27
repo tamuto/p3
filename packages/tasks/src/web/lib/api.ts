@@ -1,4 +1,4 @@
-import type { MetricsReport } from "../../features/metrics/shared/metrics.ts";
+import { noteObservationSkipped } from "./observationNotice.ts";
 import type { RepoRef } from "../../shared/repos.ts";
 import type { HierarchyIssue, RequestLink } from "../../shared/hierarchy.ts";
 import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
@@ -12,7 +12,7 @@ import type { ImprovementDiagnosis, ImprovementSource } from "../../features/qua
 import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../features/quality/shared/quality.ts";
 import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../features/taskReview/shared/taskReview.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../features/milestoneReview/shared/milestoneReview.ts";
-import type { ObservationChange,
+import type {
   AdoptionResult,
   ArchivedTask,
   ArchivedTaskList,
@@ -41,7 +41,7 @@ import type { ObservationChange,
 } from "../../shared/types.ts";
 
 /** API の run（評価対象と今の要望が同じか inputMatch を添える。run.json には無い） */
-export type RunInfo = PreflightRun & { inputMatch?: InputMatch; liveness?: RunLiveness; observationsChanged?: ObservationChange[] };
+export type RunInfo = PreflightRun & { inputMatch?: InputMatch; liveness?: RunLiveness };
 
 export interface AttachmentList {
   items: Attachment[];
@@ -111,6 +111,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const res = await send(path, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
+  noteObservationSkipped((data as { observationSkipped?: unknown }).observationSkipped);
   return data as T;
 }
 
@@ -273,15 +274,6 @@ export const api = {
   /** 要望の一覧と進捗 */
   requests: () => call<RequestProgress[]>("GET", "/requests"),
   request: (rid: string) => call<RequestDetail>("GET", `/requests/${rid}`),
-  /** この要望の作業で作った・期待を変えた・終えた観測（アプリが観測の履歴の逆引きで返す。要望の詳細の本体とは別に後から読む）と、この要望を作った観測の結果 */
-  requestObservations: (rid: string) =>
-    call<{ observations: { id: string; title: string; ended: boolean; kinds: ("created" | "expected" | "ended")[] }[]; unreadable: number; results?: { observation: string; result: string; title?: string }[] }>(
-      "GET",
-      `/requests/${rid}/observations`,
-    ),
-  /** 受け入れ基準の証拠の根拠にした観測の結果の今の状態（アプリが observer から読む。観測の製品が無ければ 404） */
-  observationResult: (obs: string, rid: string) =>
-    call<{ status: "running" | "completed" | "interrupted"; verdict?: "met" | "unmet" | "unconfirmed"; rev: number; currentRev: number }>("GET", `/observation-results/${obs}/${rid}`),
   createRequest: (r: { title: string; body: string; areas: string[]; due?: string; milestone?: string; tags?: string[]; parent?: string }) => call<Request>("POST", "/requests", r),
   /** 要望の更新。配下に未完了ができて祖先を戻したら reopenedAncestors、完了済の祖先は warnings（ancestor_done） */
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>
@@ -347,7 +339,6 @@ export const api = {
 
   /** マイルストーンのリリースノート */
   /** 開発の指標（milestone を省けばプロジェクト全体） */
-  metrics: (milestone?: string) => call<MetricsReport>("GET", `/metrics${milestone ? `?milestone=${encodeURIComponent(milestone)}` : ""}`),
   releaseNotes: () => call<{ milestones: ReleaseNoteSummary[]; warnings: ReleaseWarning[] }>("GET", "/release-notes"),
   releaseNote: (mid: string) => call<ReleaseNoteDetail>("GET", `/release-notes/${encodeURIComponent(mid)}`),
   /** マイルストーンの対応済の要望を一括で完了済にする（basedOn は表示したときの completion.basedOn）。途中で止まったら 409 partial */

@@ -6,7 +6,6 @@ import { NEW_REQUEST_HINT, preflightClosedReason } from "../../../../shared/pref
 import { runAction } from "../../../lib/action.ts";
 import { api, type RunInfo } from "../../../lib/api.ts";
 import { STARTING_LABEL, useStartOnce } from "@infodb/p3-shared/web/startOnce.ts";
-import { RequestObservations } from "../../../components/RequestObservations.tsx";
 import { notesPanelState, PLAIN_RUN_BLOCKED } from "../../../lib/notes.ts";
 import { useAppCtx, type AppCtx } from "../../../lib/appCtx.ts";
 import { useRequestData, type RequestData } from "../../../lib/requestData.tsx";
@@ -293,8 +292,6 @@ function RequestPanel({
       <RequestReviewNotice ctx={ctx} data={data} />
 
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
-
-      <RequestObservations requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-accent-soft p-4">
         {closed ? (

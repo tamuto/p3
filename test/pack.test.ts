@@ -25,7 +25,7 @@ describe("npm pack の中身だけで動く", () => {
     const pkg = join(work, "package");
     const files: string[] = JSON.parse(out)[0].files.map((f: { path: string }) => f.path);
     // 入口・同梱したアプリ・機能（tasks・observer）・shared の JavaScript と資材が lib/ に入る
-    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/cli/guide.md", "lib/tasks/cli/tasksCli.js", "lib/shared/node/fsutil.js", "lib/app/server/server.js", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/mock-ui.png", "lib/tasks/core/preflight/mock-ui.html", "lib/tasks/core/preflight/launcher.mjs", "lib/observer/core/status.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js", "lib/observer/shared/status.js"]) {
+    for (const f of ["bin/p3.mjs", "lib/cli/main.js", "lib/cli/guide.md", "lib/tasks/cli/tasksCli.js", "lib/shared/node/fsutil.js", "lib/app/server/server.js", "lib/tasks/core/preflight/render-image/Dockerfile", "lib/tasks/core/preflight/render-image/render.mjs", "lib/tasks/core/preflight/mock-ui.png", "lib/tasks/core/preflight/mock-ui.html", "lib/tasks/core/preflight/launcher.mjs", "lib/observer/core/status.js", "lib/observer/core/metricStore.js", "lib/observer/shared/metric.js", "lib/observer/cli/observerCli.js", "lib/observer/server/api/routes.js", "lib/observer/shared/status.js"]) {
       expect(files, f).toContain(f);
     }
     // README から辿る文書と、その文書のリンクの先も入る（npm のページから読んでも切れない）
@@ -81,8 +81,8 @@ describe("npm pack の中身だけで動く", () => {
     expect(JSON.parse(p3(["whoami", "--json"]))).toMatchObject({ project: "sample" });
     const rid = JSON.parse(p3(["request", "new", "通知", "--body", "- 送信\n- 設定", "--json"])).id;
     expect(JSON.parse(p3(["preflight", rid, "--engine", "mock", "--json"]))).toMatchObject({ status: "completed" });
-    // 機能のまとまり（features/）に移したコマンドも同梱した JavaScript で動く
-    expect(JSON.parse(p3(["metrics", "--json"]))).toMatchObject({ scope: { kind: "project" }, metrics: expect.any(Array) });
+    // 同梱した観測（observer）の項目キーと値のコマンドも動く（システムの項目は値が無くても一覧に出る）
+    expect(JSON.parse(p3(["observer", "list", "--json"])).keys.map((k: { key: string }) => k.key)).toContain("p3.task.rework");
 
     // serve: API はいつも、画面はビルドしてあれば（pnpm -s check はテストの後にビルドする）
     const port = 20000 + Math.floor(Math.random() * 20000);
