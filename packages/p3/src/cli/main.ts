@@ -1,8 +1,7 @@
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
 import { renderCommand } from "@infodb/p3-tasks/cli/render.ts";
 import { machineSettingsSource, resolveMachineSettings } from "@infodb/p3-tasks/core/machineSettings.ts";
-import { candidateService, startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
+import { startServer, type RunningServer } from "@infodb/p3-app/server/server.ts";
 import { onlyRegistrationNotice, ProjectNotResolvedError, resolveProject } from "@infodb/p3-tasks/core/store/locate.ts";
 import { loadUserConfig } from "@infodb/p3-tasks/core/userConfig.ts";
 import { codexCommand } from "@infodb/p3-tasks/cli/codex.ts";
@@ -20,16 +19,6 @@ import { checkRepeatedRepo, parse } from "@infodb/p3-tasks/cli/args.ts";
 import { Output } from "@infodb/p3-tasks/cli/output.ts";
 import { observerCommand, observerNeedsProject, observerWrites, type ObserverResult } from "@infodb/p3-observer/cli/observerCli.ts";
 import { resolveActor } from "@infodb/p3-tasks/features/settings/cli/projectSettings.ts";
-import { SuggestionService } from "@infodb/p3-observer/core/suggest.ts";
-import { WorkStore } from "@infodb/p3-observer/core/workStore.ts";
-import { fileChecker } from "@infodb/p3-observer/core/files.ts";
-import { openProject } from "@infodb/p3-tasks/core/context.ts";
-import { observerAssistant } from "@infodb/p3-app/core/observerAssistant.ts";
-import { resolveWork } from "@infodb/p3-app/core/observerWork.ts";
-import { followUpAdapter } from "@infodb/p3-app/core/observerFollowUp.ts";
-import { installObservationSource } from "@infodb/p3-app/core/observerMaterial.ts";
-import { readWorkSession } from "@infodb/p3-shared/node/workContext.ts";
-import type { WorkRef } from "@infodb/p3-observer/shared/definition.ts";
 import { PRODUCTS_OPTION_REMOVED } from "@infodb/p3-app/core/products.ts";
 
 /**
@@ -90,8 +79,6 @@ function observerOutput(out: Output, r: ObserverResult): number {
 async function main(argv: string[]): Promise<number> {
   // 製品（tasks）が名乗る版は、配布の単位の版（この CLI のパッケージ）
   setAppVersion(cliVersion());
-  // Preflight の材料に観測（今の期待）を入れる供給口（tasks は observer を読まないので入口が置く）
-  installObservationSource();
   const { values: o, positionals } = parse(argv);
   const [cmd, ...args] = positionals;
   if (!cmd || o.help || cmd === "help") {
@@ -174,7 +161,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   // observer の名前空間。起動状態（status）と使い方の誤りは、tasks のプロジェクトの解決・個人設定の読み込みより前に扱う
-  // （登録が無くても動き、tasks のデータ・登録を作らない）。観測の定義は下で tasks と同じ方法でプロジェクトを決めてから
+  // （登録が無くても動き、tasks のデータ・登録を作らない）。項目キーと値は下で tasks と同じ方法でプロジェクトを決めてから
   if (cmd === "observer" && !observerNeedsProject(args)) return observerOutput(out, await observerCommand(args));
 
   // ChatGPT との接続はこのマシンのもの（どのプロジェクトにも属さない）なので、プロジェクトを決める前に扱う
@@ -226,43 +213,23 @@ async function main(argv: string[]): Promise<number> {
   // マシンごとの設定は環境変数と個人設定から（.env は読まない）
   const settings = resolveMachineSettings(user, process.env, { port: o.port, host: o.host });
 
-  // 観測の定義（list・show・add・update）。決めたプロジェクトのデータのフォルダの observer/ だけを読み書きする（tasks のデータは開かない）
+  // 観測の項目キーと値。決めたプロジェクトのデータのフォルダの observer/metrics/ だけを読み書きする（tasks のデータは開かない）
   if (cmd === "observer") {
-    // 作業の帰属: p3 move <T> doing で残した作業の文脈が、このプロジェクトの作業中のタスクのときだけ渡す（文脈の無い操作・古い文脈には付けない）
-    const session = observerWrites(args) ? readWorkSession(cwd) : undefined;
-    let work: WorkRef | undefined;
-    if (session && resolve(session.dataDir) === resolve(target.dataDir)) {
-      const w = resolveWork(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() }), session.ref);
-      if (w.ok) work = w.work;
-      else process.stderr.write(`p3: ${w.reason}。作業の帰属は付けません\n`);
-    }
     const r = await observerCommand(args, {
-      work,
-      reason: o.reason,
-      movedTo: o["moved-to"],
-      candidate: o.candidate,
-      origin: o.origin,
-      create: o.create,
-      followUp: async () => followUpAdapter(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
-      candidates: async () => candidateService(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })),
-      target: { project: target.name, dataDir: target.dataDir, repoPath: (name) => target.repos[name], repoNames: () => Object.keys(target.repos) },
-      cwd,
+      target: { dataDir: target.dataDir },
       actor: resolveActor(o.actor ?? process.env.P3_ACTOR, cwd),
-      input: o.input,
-      title: o.title,
-      category: o.category,
+      name: o.name,
+      type: o.type,
+      unit: o.unit,
       body: o.body,
+      min: o.min,
+      max: o.max,
       expected: o.expected,
       rev: o.rev,
-      command: o.command,
-      repo: o.repos,
+      at: o.at,
+      valueTarget: o.target,
+      milestone: o.milestone,
       note: o.note,
-      // 手順の提案だけ tasks のプロジェクトを開く（Codex の接続と参照先のこのマシンのパスを使う。tasks のデータは変えない）
-      suggestions: async () =>
-        new SuggestionService(observerAssistant(await openProject(target.dataDir, { repos: target.repos, projectName: target.name, settings: machineSettingsSource() })), {
-          store: new WorkStore(target.dataDir),
-          files: fileChecker((name) => target.repos[name]),
-        }),
     });
     return observerOutput(out, r);
   }

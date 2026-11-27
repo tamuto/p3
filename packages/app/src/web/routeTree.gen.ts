@@ -10,40 +10,21 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './../../../tasks/src/web/routes/index'
-import { Route as MetricsRouteImport } from './../../../tasks/src/web/routes/metrics'
-import { Route as ObserverRouteRouteImport } from './../../../observer/src/web/routes/observer/route'
 import { Route as ReleaseNotesRouteImport } from './../../../tasks/src/web/routes/release-notes'
 import { Route as SettingsRouteImport } from './../../../tasks/src/web/routes/settings'
 import { Route as ObserverIndexRouteImport } from './../../../observer/src/web/routes/observer/index'
-import { Route as ObserverCandidatesRouteImport } from './../../../observer/src/web/routes/observer/candidates'
+import { Route as ObserverKeyRouteImport } from './../../../observer/src/web/routes/observer/$key'
 import { Route as ObserverNewRouteImport } from './../../../observer/src/web/routes/observer/new'
 import { Route as RequestsRequestIdRouteImport } from './../../../tasks/src/web/routes/requests/$requestId'
 import { Route as RequestsNewRouteImport } from './../../../tasks/src/web/routes/requests/new'
-import { Route as ObserverIdIndexRouteImport } from './../../../observer/src/web/routes/observer/$id/index'
-import { Route as ObserverIdEditRouteImport } from './../../../observer/src/web/routes/observer/$id/edit'
-import { Route as ObserverPreparationsIndexRouteImport } from './../../../observer/src/web/routes/observer/preparations/index'
-import { Route as ObserverPreparationsNewRouteImport } from './../../../observer/src/web/routes/observer/preparations/new'
 import { Route as RequestsRequestIdIndexRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/index'
 import { Route as RequestsRequestIdArchiveRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/archive'
 import { Route as RequestsRequestIdBoardRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/board'
 import { Route as RequestsRequestIdDoneRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/done'
-import { Route as ObserverIdRunsRidRouteImport } from './../../../observer/src/web/routes/observer/$id/runs/$rid'
-import { Route as ObserverPreparationsPidIndexRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/index'
-import { Route as ObserverPreparationsPidEditRouteImport } from './../../../observer/src/web/routes/observer/preparations/$pid/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MetricsRoute = MetricsRouteImport.update({
-  id: '/metrics',
-  path: '/metrics',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ObserverRouteRoute = ObserverRouteRouteImport.update({
-  id: '/observer',
-  path: '/observer',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
@@ -57,19 +38,19 @@ const SettingsRoute = SettingsRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ObserverIndexRoute = ObserverIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ObserverRouteRoute,
+  id: '/observer/',
+  path: '/observer/',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ObserverCandidatesRoute = ObserverCandidatesRouteImport.update({
-  id: '/candidates',
-  path: '/candidates',
-  getParentRoute: () => ObserverRouteRoute,
+const ObserverKeyRoute = ObserverKeyRouteImport.update({
+  id: '/observer/$key',
+  path: '/observer/$key',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ObserverNewRoute = ObserverNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => ObserverRouteRoute,
+  id: '/observer/new',
+  path: '/observer/new',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsRequestIdRoute = RequestsRequestIdRouteImport.update({
   id: '/requests/$requestId',
@@ -80,27 +61,6 @@ const RequestsNewRoute = RequestsNewRouteImport.update({
   id: '/requests/new',
   path: '/requests/new',
   getParentRoute: () => rootRouteImport,
-} as any)
-const ObserverIdIndexRoute = ObserverIdIndexRouteImport.update({
-  id: '/$id/',
-  path: '/$id/',
-  getParentRoute: () => ObserverRouteRoute,
-} as any)
-const ObserverIdEditRoute = ObserverIdEditRouteImport.update({
-  id: '/$id/edit',
-  path: '/$id/edit',
-  getParentRoute: () => ObserverRouteRoute,
-} as any)
-const ObserverPreparationsIndexRoute =
-  ObserverPreparationsIndexRouteImport.update({
-    id: '/preparations/',
-    path: '/preparations/',
-    getParentRoute: () => ObserverRouteRoute,
-  } as any)
-const ObserverPreparationsNewRoute = ObserverPreparationsNewRouteImport.update({
-  id: '/preparations/new',
-  path: '/preparations/new',
-  getParentRoute: () => ObserverRouteRoute,
 } as any)
 const RequestsRequestIdIndexRoute = RequestsRequestIdIndexRouteImport.update({
   id: '/',
@@ -123,170 +83,102 @@ const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
   path: '/done',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
-const ObserverIdRunsRidRoute = ObserverIdRunsRidRouteImport.update({
-  id: '/$id/runs/$rid',
-  path: '/$id/runs/$rid',
-  getParentRoute: () => ObserverRouteRoute,
-} as any)
-const ObserverPreparationsPidIndexRoute =
-  ObserverPreparationsPidIndexRouteImport.update({
-    id: '/preparations/$pid/',
-    path: '/preparations/$pid/',
-    getParentRoute: () => ObserverRouteRoute,
-  } as any)
-const ObserverPreparationsPidEditRoute =
-  ObserverPreparationsPidEditRouteImport.update({
-    id: '/preparations/$pid/edit',
-    path: '/preparations/$pid/edit',
-    getParentRoute: () => ObserverRouteRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/observer': typeof ObserverRouteRouteWithChildren
-  '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
-  '/observer/candidates': typeof ObserverCandidatesRoute
+  '/observer/$key': typeof ObserverKeyRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/observer/': typeof ObserverIndexRoute
-  '/observer/$id/edit': typeof ObserverIdEditRoute
-  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
-  '/observer/$id/': typeof ObserverIdIndexRoute
-  '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
-  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
-  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
-  '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
-  '/observer/candidates': typeof ObserverCandidatesRoute
+  '/observer/$key': typeof ObserverKeyRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/new': typeof RequestsNewRoute
   '/observer': typeof ObserverIndexRoute
-  '/observer/$id/edit': typeof ObserverIdEditRoute
-  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
-  '/observer/$id': typeof ObserverIdIndexRoute
-  '/observer/preparations': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
-  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
-  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
-  '/observer/preparations/$pid': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/observer': typeof ObserverRouteRouteWithChildren
-  '/metrics': typeof MetricsRoute
   '/release-notes': typeof ReleaseNotesRoute
   '/settings': typeof SettingsRoute
-  '/observer/candidates': typeof ObserverCandidatesRoute
+  '/observer/$key': typeof ObserverKeyRoute
   '/observer/new': typeof ObserverNewRoute
   '/requests/$requestId': typeof RequestsRequestIdRouteWithChildren
   '/requests/new': typeof RequestsNewRoute
   '/observer/': typeof ObserverIndexRoute
-  '/observer/$id/edit': typeof ObserverIdEditRoute
-  '/observer/preparations/new': typeof ObserverPreparationsNewRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
   '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
-  '/observer/$id/': typeof ObserverIdIndexRoute
-  '/observer/preparations/': typeof ObserverPreparationsIndexRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
-  '/observer/$id/runs/$rid': typeof ObserverIdRunsRidRoute
-  '/observer/preparations/$pid/edit': typeof ObserverPreparationsPidEditRoute
-  '/observer/preparations/$pid/': typeof ObserverPreparationsPidIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/observer'
-    | '/metrics'
     | '/release-notes'
     | '/settings'
-    | '/observer/candidates'
+    | '/observer/$key'
     | '/observer/new'
     | '/requests/$requestId'
     | '/requests/new'
     | '/observer/'
-    | '/observer/$id/edit'
-    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
-    | '/observer/$id/'
-    | '/observer/preparations/'
     | '/requests/$requestId/'
-    | '/observer/$id/runs/$rid'
-    | '/observer/preparations/$pid/edit'
-    | '/observer/preparations/$pid/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/metrics'
     | '/release-notes'
     | '/settings'
-    | '/observer/candidates'
+    | '/observer/$key'
     | '/observer/new'
     | '/requests/new'
     | '/observer'
-    | '/observer/$id/edit'
-    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
-    | '/observer/$id'
-    | '/observer/preparations'
     | '/requests/$requestId'
-    | '/observer/$id/runs/$rid'
-    | '/observer/preparations/$pid/edit'
-    | '/observer/preparations/$pid'
   id:
     | '__root__'
     | '/'
-    | '/observer'
-    | '/metrics'
     | '/release-notes'
     | '/settings'
-    | '/observer/candidates'
+    | '/observer/$key'
     | '/observer/new'
     | '/requests/$requestId'
     | '/requests/new'
     | '/observer/'
-    | '/observer/$id/edit'
-    | '/observer/preparations/new'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
     | '/requests/$requestId/done'
-    | '/observer/$id/'
-    | '/observer/preparations/'
     | '/requests/$requestId/'
-    | '/observer/$id/runs/$rid'
-    | '/observer/preparations/$pid/edit'
-    | '/observer/preparations/$pid/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ObserverRouteRoute: typeof ObserverRouteRouteWithChildren
-  MetricsRoute: typeof MetricsRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
   SettingsRoute: typeof SettingsRoute
+  ObserverKeyRoute: typeof ObserverKeyRoute
+  ObserverNewRoute: typeof ObserverNewRoute
   RequestsRequestIdRoute: typeof RequestsRequestIdRouteWithChildren
   RequestsNewRoute: typeof RequestsNewRoute
+  ObserverIndexRoute: typeof ObserverIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -296,20 +188,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/metrics': {
-      id: '/metrics'
-      path: '/metrics'
-      fullPath: '/metrics'
-      preLoaderRoute: typeof MetricsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/observer': {
-      id: '/observer'
-      path: '/observer'
-      fullPath: '/observer'
-      preLoaderRoute: typeof ObserverRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/release-notes': {
@@ -328,24 +206,24 @@ declare module '@tanstack/react-router' {
     }
     '/observer/': {
       id: '/observer/'
-      path: '/'
+      path: '/observer'
       fullPath: '/observer/'
       preLoaderRoute: typeof ObserverIndexRouteImport
-      parentRoute: typeof ObserverRouteRoute
+      parentRoute: typeof rootRouteImport
     }
-    '/observer/candidates': {
-      id: '/observer/candidates'
-      path: '/candidates'
-      fullPath: '/observer/candidates'
-      preLoaderRoute: typeof ObserverCandidatesRouteImport
-      parentRoute: typeof ObserverRouteRoute
+    '/observer/$key': {
+      id: '/observer/$key'
+      path: '/observer/$key'
+      fullPath: '/observer/$key'
+      preLoaderRoute: typeof ObserverKeyRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/observer/new': {
       id: '/observer/new'
-      path: '/new'
+      path: '/observer/new'
       fullPath: '/observer/new'
       preLoaderRoute: typeof ObserverNewRouteImport
-      parentRoute: typeof ObserverRouteRoute
+      parentRoute: typeof rootRouteImport
     }
     '/requests/$requestId': {
       id: '/requests/$requestId'
@@ -360,34 +238,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/requests/new'
       preLoaderRoute: typeof RequestsNewRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/observer/$id/': {
-      id: '/observer/$id/'
-      path: '/$id'
-      fullPath: '/observer/$id/'
-      preLoaderRoute: typeof ObserverIdIndexRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
-    '/observer/$id/edit': {
-      id: '/observer/$id/edit'
-      path: '/$id/edit'
-      fullPath: '/observer/$id/edit'
-      preLoaderRoute: typeof ObserverIdEditRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
-    '/observer/preparations/': {
-      id: '/observer/preparations/'
-      path: '/preparations'
-      fullPath: '/observer/preparations/'
-      preLoaderRoute: typeof ObserverPreparationsIndexRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
-    '/observer/preparations/new': {
-      id: '/observer/preparations/new'
-      path: '/preparations/new'
-      fullPath: '/observer/preparations/new'
-      preLoaderRoute: typeof ObserverPreparationsNewRouteImport
-      parentRoute: typeof ObserverRouteRoute
     }
     '/requests/$requestId/': {
       id: '/requests/$requestId/'
@@ -417,59 +267,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdDoneRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
-    '/observer/$id/runs/$rid': {
-      id: '/observer/$id/runs/$rid'
-      path: '/$id/runs/$rid'
-      fullPath: '/observer/$id/runs/$rid'
-      preLoaderRoute: typeof ObserverIdRunsRidRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
-    '/observer/preparations/$pid/': {
-      id: '/observer/preparations/$pid/'
-      path: '/preparations/$pid'
-      fullPath: '/observer/preparations/$pid/'
-      preLoaderRoute: typeof ObserverPreparationsPidIndexRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
-    '/observer/preparations/$pid/edit': {
-      id: '/observer/preparations/$pid/edit'
-      path: '/preparations/$pid/edit'
-      fullPath: '/observer/preparations/$pid/edit'
-      preLoaderRoute: typeof ObserverPreparationsPidEditRouteImport
-      parentRoute: typeof ObserverRouteRoute
-    }
   }
 }
-
-interface ObserverRouteRouteChildren {
-  ObserverCandidatesRoute: typeof ObserverCandidatesRoute
-  ObserverNewRoute: typeof ObserverNewRoute
-  ObserverIndexRoute: typeof ObserverIndexRoute
-  ObserverIdEditRoute: typeof ObserverIdEditRoute
-  ObserverPreparationsNewRoute: typeof ObserverPreparationsNewRoute
-  ObserverIdIndexRoute: typeof ObserverIdIndexRoute
-  ObserverPreparationsIndexRoute: typeof ObserverPreparationsIndexRoute
-  ObserverIdRunsRidRoute: typeof ObserverIdRunsRidRoute
-  ObserverPreparationsPidEditRoute: typeof ObserverPreparationsPidEditRoute
-  ObserverPreparationsPidIndexRoute: typeof ObserverPreparationsPidIndexRoute
-}
-
-const ObserverRouteRouteChildren: ObserverRouteRouteChildren = {
-  ObserverCandidatesRoute: ObserverCandidatesRoute,
-  ObserverNewRoute: ObserverNewRoute,
-  ObserverIndexRoute: ObserverIndexRoute,
-  ObserverIdEditRoute: ObserverIdEditRoute,
-  ObserverPreparationsNewRoute: ObserverPreparationsNewRoute,
-  ObserverIdIndexRoute: ObserverIdIndexRoute,
-  ObserverPreparationsIndexRoute: ObserverPreparationsIndexRoute,
-  ObserverIdRunsRidRoute: ObserverIdRunsRidRoute,
-  ObserverPreparationsPidEditRoute: ObserverPreparationsPidEditRoute,
-  ObserverPreparationsPidIndexRoute: ObserverPreparationsPidIndexRoute,
-}
-
-const ObserverRouteRouteWithChildren = ObserverRouteRoute._addFileChildren(
-  ObserverRouteRouteChildren,
-)
 
 interface RequestsRequestIdRouteChildren {
   RequestsRequestIdArchiveRoute: typeof RequestsRequestIdArchiveRoute
@@ -490,12 +289,13 @@ const RequestsRequestIdRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ObserverRouteRoute: ObserverRouteRouteWithChildren,
-  MetricsRoute: MetricsRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
   SettingsRoute: SettingsRoute,
+  ObserverKeyRoute: ObserverKeyRoute,
+  ObserverNewRoute: ObserverNewRoute,
   RequestsRequestIdRoute: RequestsRequestIdRouteWithChildren,
   RequestsNewRoute: RequestsNewRoute,
+  ObserverIndexRoute: ObserverIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

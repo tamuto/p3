@@ -459,39 +459,11 @@ export interface UiMaterials {
   verdictAdjusted?: { from: "go"; to: "clarify" };
 }
 
-/** Preflight の材料の観測（アプリの供給口から始めた時点で固定する。core/preflight/observations.ts） */
-export interface ObservationItem {
-  id: string;
-  title: string;
-  /** 今の期待（未記入なら無い。確定した仕様として扱わない） */
-  expected?: string;
-  rev: number;
-  ended: boolean;
-}
-
-/** 始めた時点の観測（読めなければ error。読めない観測のファイルの数も残す） */
-export interface ObservationSnapshot {
-  items: ObservationItem[];
-  unreadable: number;
-  error?: string;
-}
-
-/** 評価のあとで版が変わった・消えた観測 */
-export interface ObservationChange {
-  id: string;
-  title: string;
-  /** 評価したときの版と今の版（消えていれば null） */
-  evaluated: number;
-  current: number | null;
-}
-
 export interface PreflightRun {
   id: string;
   requestId: string;
   /** 始めたときのプロジェクトの品質基準（状態・版・項目）。評価の資料とタスク化の取り込みに使う（古い run には無い） */
   quality?: QualitySnapshot;
-  /** 始めたときに固定した観測（今の期待。アプリの供給口が無ければ無い） */
-  observations?: ObservationSnapshot;
   /** 評価したもの。local: 手元の対話エージェント（p3 preflight --prepare で準備し、--complete で取り込む。P3 はモデルを呼ばない） */
   engine: "codex" | "mock" | "local";
   /** running の間は、local ならエージェントの評価を待っている（プロセスを跨いで続く） */
@@ -845,6 +817,8 @@ export interface RequestCompletionResult {
   failed?: { id: string; reason: string; code: "conflict" | "changed" | "error" };
   notRun: string[];
   alreadyDone: string[];
+  /** 観測のシステムの項目に記録できなかった（項目・対象・理由。完了済にはした） */
+  observationSkipped?: string[];
 }
 
 /** 保存したリリースノート。本文（公開する Markdown）と、内部の出典（frontmatter）を分けて持つ */

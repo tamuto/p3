@@ -22,9 +22,6 @@ export function readsOnly(cmd: string, args: string[], opts: Readonly<Record<str
     case "clarify":
     case "revisit":
       return true;
-    case "metrics":
-      // 集計（引数なし）と人の記録の一覧だけ
-      return sub === undefined || sub === "records";
     case "retro":
     case "retrospective": {
       // retro [<要望>] [show]（retroCommands.ts と同じ読み方）

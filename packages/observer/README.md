@@ -1,10 +1,9 @@
 # @infodb/p3-observer
 
-p3-observer（観測基盤）。試作の段階で、起動の確認（`p3 observer status`・`GET /api/observer/status`）と、観測の定義の登録
-（`p3 observer list / show / add / update`・`/api/observer/definitions`・画面の `/observer`）と、AI による確認の手順の提案（`p3 observer suggest`・
-`/api/observer/suggestions`・画面の「AI に手順を提案してもらう」。AI の接続は入口が渡す）と、前提の観測と準備の定義（`p3 observer prep`・
-`/api/observer/preparations`・画面の `/observer/preparations`。提案に前提と準備の候補が出る）を持つ。観測の実行・結果の保存はまだ無い。
-shared だけを読み、入口・アプリ・tasks は読まない。公開しない（入口の [@infodb/p3](../p3/README.md) に同梱する）。
+p3-observer（観測）。項目キーごとに値（メトリクス）を貯めて見せるだけで、値を何を実行して得たかは扱わず、判定もしない（目安は並べて見せるだけ）。
+起動の確認（`p3 observer status`・`GET /api/observer/status`）と、項目キーと値（`p3 observer list / show / key / value`・`/api/observer/keys`・画面の `/observer`）を持つ。
+システムの項目（`p3.` で始まる開発の指標）の値は tasks が要望・タスクの操作のときに書く（tasks → observer の一方向。observer は tasks を読まない）。
+shared だけを読む。公開しない（入口の [@infodb/p3](../p3/README.md) に同梱する）。
 
-- 所有の境界・起動の構成・観測の実装を置く範囲: [docs/architecture.md の「p3-observer」](../../docs/architecture.md#p3-observer)
-- 使い方（起動のしかた）: [使い方ガイド](../../docs/how-to-use.md)
+- 線引き・システムの項目・保存・入口: [docs/architecture.md の「p3-observer」](../../docs/architecture.md#p3-observer)
+- 使い方: [使い方ガイド: 製品（tasks と observer）](../../docs/how-to-use.md#製品tasks-と-observer)

@@ -26,10 +26,7 @@ export interface P3Context {
   chatgpt?: ChatGptAccount;
   /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
   projectName?: string;
-  /**
-   * ほかの製品（observer の手順の提案）が頼みごとに使う接続。Preflight と同じ Codex の接続と、既定の頼む先（個人設定の preflight.engine。
-   * 読むたびに今の設定）。入口がアダプターにして渡す（製品どうしは読まない）
-   */
+  /** Codex の接続と、既定の頼む先（個人設定の preflight.engine。読むたびに今の設定）。whoami の Preflight の行が使う */
   assistant?: { codex: CodexWorkspaceEngine; engine: () => Promise<PreflightEngine["name"]> };
 }
 

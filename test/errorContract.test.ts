@@ -7,7 +7,6 @@ import { UserConfigError } from "../packages/tasks/src/core/userConfig.ts";
 import { SettingsError } from "../packages/tasks/src/core/machineSettings.ts";
 import { DataDirError, ProjectNotResolvedError } from "../packages/tasks/src/core/store/locate.ts";
 import { ReleaseNoteError } from "../packages/tasks/src/features/releaseNotes/core/store.ts";
-import { MetricsError } from "../packages/tasks/src/features/metrics/shared/metrics.ts";
 import { RetrospectiveError } from "../packages/tasks/src/features/retro/shared/retrospective.ts";
 import { GenerationRejected } from "../packages/tasks/src/features/releaseNotes/core/generate.ts";
 import { HierarchyError } from "../packages/tasks/src/core/hierarchy.ts";
@@ -61,8 +60,6 @@ describe("CLI: エラー → 終了コードと標準エラー", () => {
     ["リリースノートの版の競合", new ReleaseNoteError("conflict", "v1", "変わった"), 3, /^競合: 変わった\n$/],
     ["リリースノートが既にある", new ReleaseNoteError("exists", "v1", "ある"), 3, /^ある\n$/],
     ["リリースノートが読めない", new ReleaseNoteError("invalid", "v1", "読めない"), 1, /^読めない\n$/],
-    ["指標の版の競合", new MetricsError("変わった", "metrics_conflict"), 3, /^競合: 変わった\n$/],
-    ["指標の規則", new MetricsError("負数"), 1, /^負数\n$/],
     ["振り返りの版の競合", new RetrospectiveError("retro_conflict", "変わった"), 3, /^競合: 変わった\n$/],
     ["振り返りの規則", new RetrospectiveError("retro_invalid", "理由が無い"), 1, /^理由が無い\n$/],
     ["要約を始められない", new GenerationRejected("running", "実行中"), 1, /^実行中\n$/],
@@ -129,7 +126,6 @@ describe("API: エラー → HTTP の状態と code", () => {
       [new PremiseInputError("不正"), 400, "premise_invalid"],
       [new RetrospectiveError("retro_invalid", "不正"), 400, "retro_invalid"],
       [new RetrospectiveError("retro_conflict", "変わった"), 409, "retro_conflict"],
-      [new MetricsError("知らない範囲"), 400, "metrics_invalid"],
       [new BlockInputError("blocked", "止まっている"), 409, "blocked"],
       [new BlockInputError("block_invalid", "不正"), 400, "block_invalid"],
       [new QualityInputError("quality_conflict", "変わった"), 409, "quality_conflict"],

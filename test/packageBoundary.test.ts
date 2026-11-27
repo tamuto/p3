@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * パッケージの境界（docs/architecture.md「パッケージの構成」）。依存は 入口 → アプリ／機能／shared、アプリ → 機能／shared、機能 → shared の一方向。
+ * パッケージの境界（docs/architecture.md「パッケージの構成」）。依存は 入口 → アプリ／機能／shared、アプリ → 機能／shared、tasks → observer、機能 → shared の一方向。
  *   入口 @infodb/p3（packages/p3）: CLI の起動・振り分けと入口だけの処理（init / join / agents・guide）。配布の窓口
  *   @infodb/p3-app（packages/app）: serve の組み立て・画面の外枠・プロジェクトの登録・機能をつなぐアダプター
- *   @infodb/p3-tasks（packages/tasks）・@infodb/p3-observer（packages/observer）: 機能。自分のページ・コマンド・API・データを持つ。機能どうしは読まない
+ *   @infodb/p3-tasks（packages/tasks）・@infodb/p3-observer（packages/observer）: 機能。自分のページ・コマンド・API・データを持つ。
+ *     機能の間は tasks → observer の一方向だけ（tasks が要望・タスクの操作のその場で観測のシステムの項目に値を書く。observer は tasks を読まない）
  *   @infodb/p3-shared（packages/shared）: 横断する処理（src/node は Node だけ、src/web は画面）。何も読まない
  * パッケージの間はパッケージ名（@infodb/p3-tasks/... ）で読み、相対パスで別のパッケージのファイルを指さない。読むパッケージは manifest に書く
  */
@@ -17,7 +18,7 @@ type Pkg = "p3" | "app" | "tasks" | "observer" | "shared";
 const FEATURES = ["tasks", "observer"] as const;
 const DIRS = Object.fromEntries((["p3", "app", "tasks", "observer", "shared"] as const).map((p) => [p, join(PACKAGES, p)])) as Record<Pkg, string>;
 const NAME: Record<Pkg, string> = { p3: "@infodb/p3", app: "@infodb/p3-app", tasks: "@infodb/p3-tasks", observer: "@infodb/p3-observer", shared: "@infodb/p3-shared" };
-const ALLOWED: Record<Pkg, Pkg[]> = { p3: ["p3", "app", ...FEATURES, "shared"], app: ["app", ...FEATURES, "shared"], tasks: ["tasks", "shared"], observer: ["observer", "shared"], shared: ["shared"] };
+const ALLOWED: Record<Pkg, Pkg[]> = { p3: ["p3", "app", ...FEATURES, "shared"], app: ["app", ...FEATURES, "shared"], tasks: ["tasks", "observer", "shared"], observer: ["observer", "shared"], shared: ["shared"] };
 const PKGS = Object.keys(DIRS) as Pkg[];
 
 function files(dir: string): string[] {
@@ -73,12 +74,12 @@ const manifest = (pkg: Pkg) => JSON.parse(readFileSync(join(DIRS[pkg], "package.
 const declaredRange = (pkg: Pkg, dep: Pkg) => manifest(pkg).dependencies?.[NAME[dep]] ?? manifest(pkg).devDependencies?.[NAME[dep]];
 
 describe("パッケージの境界", () => {
-  it("入口 → アプリ → 機能 → shared の一方向だけ。逆向き・機能の間・相対パスでの迂回は無い", () => {
+  it("入口 → アプリ → 機能 → shared の一方向だけ。機能の間は tasks → observer だけ。逆向き・相対パスでの迂回は無い", () => {
     const { uses, violations } = scan();
     expect(violations).toEqual([]);
-    expect(uses).toEqual(["app→observer", "app→shared", "app→tasks", "observer→shared", "p3→app", "p3→observer", "p3→shared", "p3→tasks", "tasks→shared"]);
-    // 機能どうしは読まない（つなぐのはアプリ）
-    expect(uses.filter((u) => u === "tasks→observer" || u === "observer→tasks")).toEqual([]);
+    expect(uses).toEqual(["app→observer", "app→shared", "app→tasks", "observer→shared", "p3→app", "p3→observer", "p3→shared", "p3→tasks", "tasks→observer", "tasks→shared"]);
+    // observer は tasks を読まない（読み合いの循環を作らない）
+    expect(uses.filter((u) => u === "observer→tasks")).toEqual([]);
   });
 
   it("機能の間・共通層から上への読み込みと、相対パスでの迂回を見つける（確かめ方そのもの）", () => {
@@ -87,7 +88,7 @@ describe("パッケージの境界", () => {
       return to !== undefined && to !== from && !ALLOWED[from].includes(to);
     };
     expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "@infodb/p3-tasks/core/context.ts")).toBe(true);
-    expect(check("tasks", join(DIRS.tasks, "src", "core", "x.ts"), "@infodb/p3-observer/core/status.ts")).toBe(true);
+    expect(check("tasks", join(DIRS.tasks, "src", "core", "x.ts"), "@infodb/p3-observer/core/metricStore.ts")).toBe(false);
     expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "../../../tasks/src/core/context.ts")).toBe(true);
     expect(check("observer", join(DIRS.observer, "src", "core", "x.ts"), "@infodb/p3-shared/node/appInfo.ts")).toBe(false);
     expect(check("shared", join(DIRS.shared, "src", "node", "x.ts"), "@infodb/p3-tasks/core/context.ts")).toBe(true);

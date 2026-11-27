@@ -230,13 +230,13 @@ packages/
                      context.ts（プロジェクトを開く）・userConfig.ts・machineSettings.ts
     src/server/api/  API の組み立て（routes.ts が機能の API をつなぐ）と共通の API
     src/web/         画面の共通の部品（components/）・処理（lib/）・ルートの宣言（routes/。ページの中身は機能の web/ から読む）
-    src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: metrics・records（完了の記録・手戻り・見直し候補・前提）・
+    src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: records（完了の記録・手戻り・見直し候補・前提）・
                      quality・retro・requirements（要求の根拠・回答・受け入れ基準）・settings・taskReview・milestoneReview・releaseNotes。
                      読んでよいものは docs/refactoring.md「モジュール構成」（test/featureBoundary.test.ts）
-  observer/          @infodb/p3-observer（観測基盤。試作で、起動の確認と観測の定義の登録。公開しない）: shared/status.ts（起動状態の型・ページと API の場所）・
-                     shared/definition.ts（観測の定義の型と検証。CLI・API・画面で共通）・shared/suggestion.ts と core/suggest.ts（手順の提案）・
-                     core/status.ts・core/definitionStore.ts（定義の保存）・
-                     cli/observerCli.ts（p3 observer）・server/api/routes.ts（/api/observer）・web/（/observer の一覧・登録・詳細・編集と、アプリが決める対象 lib/scope.ts）
+  observer/          @infodb/p3-observer（観測。項目キーと値。公開しない）: shared/status.ts（起動状態の型）・shared/metric.ts（項目キーと値の型と検証・
+                     システムの項目の一覧。CLI・API・画面で共通）・core/status.ts・core/metricStore.ts（保存）・cli/observerCli.ts（p3 observer）・
+                     server/api/routes.ts（/api/observer）・web/（/observer の一覧・項目の登録・項目と値と、アプリが決める対象 lib/scope.ts）。
+                     システムの項目に値を書くのは tasks の core/systemObservations.ts（tasks → observer の一方向）
   shared/            @infodb/p3-shared（横断する処理。公開しない）: src/node（fsutil.ts・usage.ts・appInfo.ts。Node だけ）・src/web（画面）
 skills/p3/SKILL.md   AI 向けの入口のスキルの原本（p3 init --agents / p3 agents で .claude/skills・.agents/skills の選んだ先に写す。本文は p3 guide から読ませる）
 scripts/             配布物のビルド（build-cli.mjs）・デモデータ・配布物の確認・使い方の動画（video/）
@@ -254,7 +254,7 @@ test/                ユニットテスト（パッケージをまたいで確�
 
 画面のページは TanStack Router のファイルベースのルーティングで、`packages/tasks/src/web/routes/` にファイルを置けば足りる
 （アプリの `__root.tsx` の下に、このフォルダをそのまま付ける。`tsr.config.json` の `virtualRouteConfig`）。機能のページは、ルートのファイルに
-URL と検索の値の宣言だけを置き、中身を機能の `web/` に書く（例: `routes/metrics.tsx` と `features/metrics/web/MetricsPage.tsx`）。
+URL と検索の値の宣言だけを置き、中身を機能の `web/` に書く（例: `routes/release-notes.tsx` と `features/releaseNotes/web/`）。
 小さいページは中身もそのファイルに書く。大きいページは、ルートのファイルを組み立て（状態と並び）だけにし、部品を
 `packages/tasks/src/web/components/<ページ>/` に分ける（要望の画面は `components/request/`）。ルート一覧 `packages/app/src/web/routeTree.gen.ts` は
 `pnpm dev` / `pnpm build` / `pnpm typecheck` のたびに生成される（型検査のためにコミットしておく）。画面のビルド（Vite の root）はアプリの
@@ -304,7 +304,7 @@ tasks・observer・アプリの画面は、`packages/shared/src/web/ui.tsx` の�
 - 狭い進捗の要望名も本文として 16px で、2行まで折り返す（行の高さは2行とステータスの段が入るように決める。`routes/index.tsx` の `ROW_H`）
 - 全体の CSS で大きさを強制的に上書きせず、部品ごと・用途ごとに上の大きさを選ぶ
 - 確認する画面: 進捗・新しい要望・要望の概要と Preflight の案・タスクボードとタスクの詳細・設定（プロジェクト・品質基準）・リリースノート
-  （マイルストーン・レビュー）・観測（一覧・登録・詳細・編集と AI の提案の結果。提案は完了の表示まで待って検査する）。幅 375 / 1280・明暗のテーマ・
+  （マイルストーン・レビュー）・観測（一覧・項目の登録・項目と値（数値の推移・構造化データ）・システムの項目）。幅 375 / 1280・明暗のテーマ・
   200% の拡大で、はみ出しと操作への到達を確かめる（上の「UI テスト」）。画面を足したら、この一覧と `test/ui/readability.ui.test.ts` の `screens` に足す
 
 ## npm で配る中身

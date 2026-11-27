@@ -1,7 +1,5 @@
 import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
-import { observationBasisProblem } from "./preflight/observations.ts";
-import { AcceptanceInputError, acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
-import { readManual } from "../features/metrics/core/manual.ts";
+import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
 import { qualityCriteria, standardHash, taskQualityDiff } from "../features/quality/shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
@@ -29,6 +27,7 @@ import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
 import { checkRepoTarget, ensureWorkstreams } from "./workTargets.ts";
+import { observeRequest, observeTask } from "./systemObservations.ts";
 
 /**
  * 要望とタスクの変更の手順。CLI と API はここを呼び、引数の解釈と出力だけを持つ。
@@ -62,6 +61,8 @@ export interface TaskResult {
   completionSkipped?: string;
   /** 手戻りの履歴が壊れているため、今回の履歴を足せなかった（状態は変えた） */
   reworkSkipped?: string;
+  /** 観測のシステムの項目に記録できなかった（項目・対象・理由。操作はした） */
+  observationSkipped?: string[];
 }
 
 /** 品質基準の取り込み方（auto: 作業先に当てはまるもの / none: 取り込まない / ID の並び: 明示したもの） */
@@ -108,7 +109,7 @@ class NoChange extends Error {}
 export const CHECK_CLEARED_BY_ACCEPTANCE = "受け入れ基準か証拠の中身が変わったため、人の「済み」を外しました（もう一度確かめてください）";
 
 /** 要望を作った・変えた結果に添える、祖先を戻した結果（無ければ何も足さない） */
-export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[]; completionSkipped?: string };
+export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[]; completionSkipped?: string; observationSkipped?: string[] };
 
 /** 完了の記録を作るときの周りの値（品質は今の project.yaml、参照先は書く前に取ったもの） */
 const completionContext = (ctx: P3Context, at: string, by: string | undefined, refs: RefCapture[] | undefined): CompletionContext => ({
@@ -177,13 +178,6 @@ export async function checkMilestoneRemoval(ctx: P3Context, next: string[]): Pro
   if (reviewed.length) {
     throw new OpRuleError(`レビューの履歴のあるマイルストーンは消せません（ID も変えられません）: ${reviewed.join(", ")}（milestone-reviews/<ID>/ に残っています）`);
   }
-  // 人が記録した指標の値（読めなければ参照があるか分からないので消さない）
-  const manual = await readManual(ctx.ws.dataDir);
-  if (manual.problem) throw new OpRuleError(`指標の記録（metrics/manual.json）が読めないため、マイルストーンを消せるか分かりません: ${manual.problem}`);
-  const measured = [...new Set(manual.records.filter((r) => removed.includes(r.scope)).map((r) => r.scope))];
-  if (measured.length) {
-    throw new OpRuleError(`指標の値を記録したマイルストーンは消せません（ID も変えられません）: ${measured.join(", ")}（p3 metrics --milestone <ID> で確かめ、要らなければ p3 metrics rm で消してから）`);
-  }
 }
 
 /** 要望を変えた後: 配下に未完了ができたら対応済の祖先を進行中に戻し（変更通知も）、完了済の祖先は警告にする */
@@ -238,8 +232,9 @@ export async function createTask(
   const draft = { ...plain, ...acceptance, repo, status } as Task;
   const { patch: records } = taskCompletionPatch(ctx, rid, undefined, draft, 1, false, { at: now, by: actor, refs });
   const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status, ...records }, actor);
+  const observationSkipped = await observeTask(ctx, undefined, task, actor);
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
-  return { task, warnings: ancestorWarnings, ...after };
+  return { task, warnings: ancestorWarnings, ...after, ...(observationSkipped.length ? { observationSkipped } : {}) };
 }
 
 /**
@@ -275,19 +270,16 @@ export async function updateTask(
   let reworkSkipped: string | undefined;
   // 完了・済みになりうる更新なら、参照先を書く前に取る（ロックの外。取得時刻を残す）
   const refs = next.status === "done" || checked === true ? await captureRefs(ctx.ws.refs()) : undefined;
-  // 観測の結果を満たしたの根拠にするなら、書く前に結果が完了して期待どおりかを確かめる（アプリが置いた照合。tasks は observer を読まない）
-  for (const op of acceptance ?? []) {
-    if (op.op !== "record" || op.result !== "met" || op.basis?.kind !== "observation") continue;
-    const problem = await observationBasisProblem(ctx.ws.dataDir, op.basis.observation, op.basis.result);
-    if (problem) throw new AcceptanceInputError(`${op.id} の根拠にできません: ${problem}`);
-  }
   // 停止の操作だけで何も変わらない（同じ内容の付け直し・付いていない解除）なら書かない（rev を上げない）
   const onlyBlock = !!blockOp && !acceptance?.length && Object.keys(next).length === 0;
   let unchanged: Task | undefined;
+  // 書く直前に読み直した値（観測のシステムの項目は、この値と書いた後の値で状態の変化を見る）
+  let before: Task | undefined;
   const write = () =>
     col.update(
       tid,
       (fresh) => {
+        before = fresh;
         const now = new Date().toISOString();
         let out: Partial<Task> = next;
         // 停止: 書く直前に読み直した値と、更新した後の状態で確かめる（止まったままの移動・作業中でない付与は断る）
@@ -335,8 +327,17 @@ export async function updateTask(
     throw e;
   });
   if (unchanged && task === unchanged) return { task, warnings: [] };
+  const observationSkipped = before ? await observeTask(ctx, before, task, opts.actor) : [];
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
-  return { task, warnings: ancestorWarnings, ...after, ...(checkCleared ? { checkCleared } : {}), ...(completionSkipped ? { completionSkipped } : {}), ...(reworkSkipped ? { reworkSkipped } : {}) };
+  return {
+    task,
+    warnings: ancestorWarnings,
+    ...after,
+    ...(checkCleared ? { checkCleared } : {}),
+    ...(completionSkipped ? { completionSkipped } : {}),
+    ...(reworkSkipped ? { reworkSkipped } : {}),
+    ...(observationSkipped.length ? { observationSkipped } : {}),
+  };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */
@@ -375,6 +376,8 @@ export async function updateRequest(ctx: P3Context, rid: string, input: Partial<
   // 対応済・完了済になりうる更新なら、参照先を書く前に取る
   const refs = patch.status === "resolved" || patch.status === "done" ? await captureRefs(ctx.ws.refs()) : undefined;
   let completionSkipped: string | undefined;
+  // 書く直前に読み直した値（観測のシステムの項目は、この値と書いた後の値で状態の変化を見る）
+  let before: Request | undefined;
   // 状態か親が変わったら、未完了になった配下の分だけ祖先を戻す
   const after = async (r: Request) => (patch.status !== undefined || "parent" in patch ? withAncestors(r, await afterRequestWrite(ctx, r.id, opts.actor)) : r);
   // 題・本文を変えたら、要望の根拠の記録の確認は効かなくなる（書く直前に読み直した値で、履歴へ移す）
@@ -383,6 +386,7 @@ export async function updateRequest(ctx: P3Context, rid: string, input: Partial<
     ctx.ws.requests.update(
       rid,
       (fresh) => {
+        before = fresh;
         const p = withSettledSources(fresh, patch);
         const final = { ...fresh, ...p };
         const triggers = requestTriggers(fresh.status, final.status);
@@ -398,17 +402,20 @@ export async function updateRequest(ctx: P3Context, rid: string, input: Partial<
       },
       opts,
     );
-  const skipped = (r: RequestResult): RequestResult => (completionSkipped ? { ...r, completionSkipped } : r);
+  const skipped = async (r: RequestResult): Promise<RequestResult> => {
+    const observationSkipped = before ? await observeRequest(ctx, before, r, opts.actor) : [];
+    return { ...r, ...(completionSkipped ? { completionSkipped } : {}), ...(observationSkipped.length ? { observationSkipped } : {}) };
+  };
   if (!("parent" in patch)) {
     const r = await write();
     changed(ctx, "request", r.id);
-    return skipped(await after(r));
+    return after(await skipped(r));
   }
   const { result: r, previous } = await withParentChange(ctx.ws, rid, patch.parent, write);
   changed(ctx, "request", r.id);
   // 前と今の親の子の一覧も変わる
   for (const p of new Set([previous, r.parent])) if (p && p !== r.id) changed(ctx, "request", p);
-  return skipped(await after(r));
+  return after(await skipped(r));
 }
 
 /** 題・本文の変更で効かなくなった要望の根拠の確認を履歴へ移した patch（変わらなければ patch のまま） */

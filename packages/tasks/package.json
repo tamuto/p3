@@ -2,17 +2,18 @@
   "name": "@infodb/p3-tasks",
   "version": "0.17.0",
   "private": true,
-  "description": "p3-tasks: 要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート（今の p3 の機能。配布は @infodb/p3 に同梱）",
+  "description": "p3-tasks: 要望・タスク・Preflight・レビュー・振り返り・リリースノート（今の p3 の機能。配布は @infodb/p3 に同梱）",
   "license": "MIT",
   "type": "module",
   "exports": {
     "./*": "./src/*"
   },
   "dependencies": {
-    "@infodb/p3-shared": "workspace:*",
     "@hono/node-server": "~2.1.3",
     "@infodb/chatgpt-plan": "^0.1.1",
     "@infodb/codex-workspace": "^0.2.1",
+    "@infodb/p3-observer": "workspace:*",
+    "@infodb/p3-shared": "workspace:*",
     "hono": "^4.13.13",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"

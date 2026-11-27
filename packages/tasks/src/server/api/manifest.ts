@@ -18,18 +18,13 @@ export const AI_MANIFEST = {
   endpoints: [
     { method: "GET", path: "/api/mode", desc: "serve の形 {mode: single（project: 名前）| all-projects, products: この serve の製品（常に tasks・observer の両方）}" },
     { method: "GET", path: "/api/observer/status", desc: "p3-observer の起動状態 {product, version（共通の版）, state, dataDir, products}。どの serve でも使える" },
-    { method: "GET", path: "/api/observer/definitions", desc: "観測の定義の一覧 {definitions, unreadable（読めないファイルと理由）}。プロジェクトを跨ぐ serve では /api/projects/<名前>/observer/definitions" },
-    { method: "GET", path: "/api/observer/definitions/:id", desc: "観測の定義 {definition}" },
-    { method: "POST", path: "/api/observer/definitions", desc: "観測の定義を作る（本文 {title, category, description, measures, procedures}。項目は docs/how-to-use.md「観測の定義を登録する」）。誤りは 400 {code: invalid, problems: [{path, message}]}" },
-    { method: "PUT", path: "/api/observer/definitions/:id", desc: "観測の定義を直す（本文 {rev: 今の版, definition}）。版が違えば 409 {code: conflict, current}" },
-    { method: "GET", path: "/api/observer/definitions/:id/draft", desc: "観測の編集途中の入力 {draft: {version, basedOnRev, input, savedAt} | null}。PUT {version: 読んだ版か null, basedOnRev, input} で保存（版が違えば 409）" },
-    { method: "POST", path: "/api/observer/definitions/:id/suggestions", desc: "保存した観測に手順の提案を頼む {definition: 頼むときの入力, note, basedOnRev}。依頼を観測に残してから始める（202）。GET で履歴（新しい順。中断は interrupted）、GET .../:sid で1件、POST .../:sid/cancel で取り消す" },
-    { method: "POST", path: "/api/observer/definitions/:id/procedures/:pid/switch", desc: "手順を置き換え候補のスクリプトに切り替える {rev, invoke, evidence}。ファイルが参照先の中に有ること・今の版が要る。前の実行方法は history に残る" },
-    { method: "GET", path: "/api/observer/files", desc: "ファイルの有無 ?ref=<参照先>:<パス>（繰り返せる）→ {files: {<参照先>:<パス>: {state: exists|planned|unverified, checkedAt}}}" },
-    { method: "GET", path: "/api/observer/suggestions/context", desc: "手順の提案の頼む先の状態 {engine: {name, ok, detail}, repos: [{name, available, reason}]}" },
-    { method: "POST", path: "/api/observer/suggestions", desc: "ID の無い互換の経路: 未保存の入力から確認の手順の提案を始める（本文 {definition, note}）。202 で実行 {id, status}。保存しない（このプロセスの中だけ）" },
-    { method: "GET", path: "/api/observer/suggestions/:id", desc: "提案の実行 {status: running|completed|failed|cancelled, result: {surface, rationale, procedures: [{procedure, evidence}], missing, warnings}, failure, error}" },
-    { method: "POST", path: "/api/observer/suggestions/:id/cancel", desc: "提案を取り消す" },
+    { method: "GET", path: "/api/observer/keys[?milestone=<ID>]", desc: "観測の項目キーの一覧（システムの項目 p3.… を含む）と最後の値・値の数 {keys, milestones（値に付いたマイルストーン）, unreadable}。プロジェクトを跨ぐ serve は /api/projects/<名前>/observer/..." },
+    { method: "POST", path: "/api/observer/keys", desc: "項目キーを登録する {key（英小文字・数字・.・_・-）, name, type: number|string|boolean|json, unit?, description?, guide?: {min?, max?} | {expected?}}。誤りは 400 {code: invalid, problems}" },
+    { method: "GET", path: "/api/observer/keys/:key[?milestone=<ID>]", desc: "項目キーと値（新しい順）{key, values: [{id, at, value, by, recordedAt, target?, milestone?, note?}]}" },
+    { method: "PUT", path: "/api/observer/keys/:key", desc: "項目キーを変える {rev, name, type, …}。版が違えば 409 {code: conflict, current}、値があるのに type を変えると 409 in_use" },
+    { method: "DELETE", path: "/api/observer/keys/:key?rev=<版>", desc: "項目キーを消す（値があれば 409 in_use）" },
+    { method: "POST", path: "/api/observer/keys/:key/values", desc: "値を足す {value, at?（日付か日時。省くと今）, target?, milestone?, note?}。何を実行して得たかは受け取らない。システムの項目は 403" },
+    { method: "DELETE", path: "/api/observer/keys/:key/values/:id", desc: "値を消す（システムの項目は 403）" },
     {
       method: "GET",
       path: "/api/projects",
@@ -115,14 +110,6 @@ export const AI_MANIFEST = {
     },
     {
       method: "GET",
-      path: "/api/metrics[?milestone=<ID>]",
-      desc:
-        "開発の指標（p3 metrics と同じ）。範囲は省けばプロジェクト全体（マイルストーンなしを含む）、milestone は登録済みのマイルストーンに直接属する要望（見送り・アーカイブは除く。登録に無い ID は 400 metrics_invalid）。" +
-        "{scope, scopeLabel, scopeRule, metrics: [{id, label, kind: record|manual, unit: hours|count|amount, source, target, method, missingRule, recordHint?, state: ok|no_targets|no_data|not_reached|unrecorded, value（ok 以外は null。manual は1行のときだけ）, targets, observed, missing, denominator?, breakdown, missingItems, rows?（manual: 範囲が一致する人の記録 {id, from, to, value, unit, source, note?, rev, ...}。合算しない）}], notices（broken_request|manual_unreadable|manual_orphan）, scopes}。" +
-        "記録の欠けは 0 にせず missing に数える。読むだけ（レビューは実行しない。人の記録を書くのは CLI の p3 metrics record だけ）",
-    },
-    {
-      method: "GET",
       path: "/api/revisit[?request=<要望ID>]",
       desc:
         "見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む）。各項目は {target, state, record, qualityVersion, reasons: [{code, target, was?, now?, related?}], unreadable?}。" +
@@ -166,7 +153,7 @@ export const AI_MANIFEST = {
         "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
         "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
         "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
-        "完了・済みにすると、そのときの条件の写しを completionRecords に追記する（要望の PATCH の対応済・完了済も同じ。記録の値は受け付けない。記録が読めず足せなければ completionSkipped）。" +
+        "完了・済みにすると、そのときの条件の写しを completionRecords に追記する（要望の PATCH の対応済・完了済も同じ。記録の値は受け付けない。記録が読めず足せなければ completionSkipped）。完了になる・完了から戻る・要望が初めて対応済・完了済になると観測のシステムの項目に値を記録し、記録できなければ observationSkipped（文の並び。操作はした。タスクの作成・マイルストーンの一括完了の結果も同じ）。" +
         "GET は見直しの診断 review（完了したタスクだけ。state: no_record|unreadable|none|candidate、基点の record、reasons: [{code, target, was?, now?, related?}]。状態は変えない）も返す。" +
         "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
         "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },

@@ -70,7 +70,6 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
  *   <data>/requests/<要望ID>/notes/N-....md   Preflight へのメモ
  *   <data>/requests/<要望ID>/attachments/A-.../{meta.json, file.*}   添付（画像・xlsx）
  *   <data>/release-notes/<マイルストーンID>.md   リリースノート（マイルストーンごとに1件。releaseNotes/store.ts）
- *   <data>/metrics/manual.json   人が記録した指標の値（費用・リリース後の不具合。metrics/manual.ts）
  *
  * 共有（git / ファイル共有）も要望のフォルダ単位で行える。
  */

@@ -62,13 +62,6 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                できるか・対象・hash は show で見る。材料が変わっていれば何も変えずに終了コード 3、途中で止まったら非ゼロ
                                例: p3 release-notes generate v0.2 > draft.md → 直す → p3 release-notes save v0.2 --file draft.md
                                    p3 release-notes export v0.2 > RELEASE.md
-  metrics [--milestone <ID>]   開発の指標（要望の作成から対応済・完了済までの時間、受け入れ基準の未達・未検証・証拠なし・再確認、
-                               手戻り、AI レビューの未達判定・意図しない変更の候補）。
-                               値・単位・対象・欠損・算出の方法を出す（読むだけ。記録の欠けは 0 にせず欠損と出す。成績の評価には使わない）
-  metrics record <指標> <値>    人が記録する値: cost（--unit JPY など通貨ごと）/ post_release_defects（0 以上の整数）
-                               --from YYYY-MM-DD --to YYYY-MM-DD --source 出典 [--milestone ID（省くと全体）] [--note メモ]
-                               同じ指標・範囲・期間・単位の再送は何もしない。値を変える訂正は --rev 版（無い・違えば競合で終了コード 3）
-  metrics records / rm <M1>     人の記録の全部 / 消す（--rev 版）
   whoami                       操作するプロジェクト・変更者・今の要望・このマシンで Codex の Preflight を使えるか
   serve [--port] [--host]      ブラウザ用のビューアを起動（既定は個人設定の serve.port / serve.host か $P3_PORT / $P3_HOST）。
                                常にタスク管理（tasks）と観測基盤（observer。/observer）の両方を起動し、画面のナビゲーションで行き来する
@@ -76,28 +69,17 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
   chatgpt login | status | logout   Preflight に使う ChatGPT プランの接続（このマシン。プロジェクトに属さない）
                                login: --paste（コールバックに届かないとき URL を貼る）--no-browser --port 1455
                                logout: --forget（このマシンの登録ごと消す）
-  observer status              p3-observer（観測基盤。試作）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
-  observer list | show <ID>    観測の定義の一覧・詳細（tasks と同じ方法で決めたプロジェクトのデータのフォルダの observer/）
-  observer add                 観測の定義を作る: --input <JSON のファイル|->（項目は docs/how-to-use.md「観測の定義を登録する」）か
-                                 --title --category --body（観測内容）
-  observer update <ID> --rev <今の版>   直す（--input か --title など。--input を省くと今の定義に重ねる。版が違えば終了コード 3）
-  observer suggest <ID>        保存した観測に AI の確認の手順の提案を頼む（--note <補足>）。依頼と結果は観測に残る（定義は変えない）
-  observer suggestions <ID> [<提案 ID>]   提案の履歴・1件（中断は interrupted）
-  observer suggest --input …   ID の無い互換の経路（未保存の入力に頼んで出すだけ。保存しない）
-  observer switch <ID> <P1> --rev <今の版> --command <確かめた呼び出し方> --body <確かめた結果>
-                               手順を置き換え候補のスクリプトに切り替える（ファイルが参照先の中に有ることが要る。前の実行方法は履歴に残る）
-  observer end <ID> --rev <今の版> --reason <理由> [--moved-to <移した CI など>]   観測を終える（前提として使われていれば断る）
-                               作成・期待の変更・終了は期待の履歴に残る（update の --reason は期待を変えた理由）。p3 move <T> doing で始めた作業のタスクも残る
-  observer candidates [--note <補足>] | candidates <CID>   AI に観測の候補を頼む（人が頼んだときだけ）・記録した候補
-                               add --candidate <CID>:<番号> [--origin] で確かめて登録（--origin で推定の経緯も残す）
-  observer run <ID> [--body <環境のメモ>]   実行を始める（P3 は手順を実行しない。人か担当の AI が実行して記録する。定義の版と中身を写す）
-  observer record <ID> <結果 ID> --input <段の JSON|->   段を1つ記録する（phase・ref・result・measures・basis・evidence）
-  observer finish <ID> <結果 ID> | interrupt <ID> <結果 ID> --reason <理由>   完了して判定する（期待どおり・期待どおりでない・未確認）・中断として閉じる
-  observer results <ID> [<結果 ID>]   結果の一覧・1件
-  observer followup <ID> <結果 ID> [--create bug|spec]   期待どおりでなかった結果の要望の原稿（--create を付けたときだけ下書きの要望を作る）
-  observer prep list | show | add | update | switch | rm   準備（観測の前後で状態を作る・戻すもの）の一覧・詳細・作成・更新・切り替え・削除
-                               add / update は --input か --title <名前>・--body <説明>。switch は <準備 ID> <check|setup|teardown>。rm は使う観測が無いときだけ
-                               --json で product・version・state・dataDir（今は何も保存しないので null）
+  observer status              p3-observer（観測基盤）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
+                               --json で product・version・state・dataDir（null）
+  observer list [--milestone <ID>]   観測の項目キーの一覧と最後の値（システムの項目 p3.… を含む。データのフォルダの observer/metrics/）
+  observer show <キー> [--milestone <ID>]   項目キーと値（新しい順）。目安は並べて見せるだけで、判定はしない
+  observer key add <キー> --name <名前> --type number|string|boolean|json [--unit <単位>] [--body <説明>]
+                                 [--min <下限>] [--max <上限>] [--expected <期待する値>]   項目キーを登録する（英小文字・数字・.・_・-。p3. は作れない）
+  observer key set <キー> --rev <今の版> [--name ..] [--type ..] …   変える（省いた項目は今のまま。値があるあいだは --type を変えられない）
+  observer key rm <キー> --rev <今の版>   消す（値があれば断る）
+  observer value add <キー> <値|-> [--at <日付か日時>] [--target <対象>] [--milestone <ID>] [--note <メモ>]
+                               値を足す（- は標準入力。構造化データは JSON）。何を実行して得たかは受け取らない
+  observer value rm <キー> <値 ID>   値を消す（直すときは消して入れ直す）。システムの項目の値は足す・消すことはできない
   codex update                 Codex のイメージを今すぐ作り直し、入った Codex の版を表示（Docker が要る。認証は要らない）
                                Preflight の前は、作ってから1日より古いときだけ作り直す
   render <原稿.html>             自己完結した HTML / CSS を PNG にする（画面イメージと同じ描画。Docker が要る）

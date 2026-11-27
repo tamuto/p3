@@ -855,7 +855,8 @@ src は5つの層に分け、依存の向きを `test/layers.test.ts` で確か�
 | 要求の出典と確認（根拠の記録・確認の要件と状態・変更での失効・回答・確認事項の読み方・評価の資料）と、壊れた値の読み方 | `features/requirements/shared/requirementSource.ts`（要望の保存は `core/requestOps.ts` の `updateRequirement`・`saveClarifyAnswer`、基準の記録は `features/requirements/shared/acceptance.ts` の `source` 操作、評価対象の固定と比較は `core/preflight/input.ts`） |
 | タスクの手戻りの履歴（済みの解除・完了からの再開の契機・1操作1件・壊れた値） | `features/records/shared/reworkHistory.ts`（保存は `core/requestOps.ts` の `updateTask`） |
 | 要望の振り返り（対象の候補・確定と訂正・記録の読み方） | `features/retro/shared/retrospective.ts`（保存は `features/retro/core/retrospective.ts`） |
-| 開発の指標（定義・対象・算出・欠損の扱い・範囲）と人が記録する値 | `features/metrics/core/definitions.ts` の `METRIC_DEFINITIONS`（範囲と材料は `features/metrics/core/index.ts`、人の記録の保存は `features/metrics/core/manual.ts`、型は `features/metrics/shared/metrics.ts`） |
+| 観測の項目キーと値（キー・値の形・目安・値の検証・システムの項目の一覧） | observer の `shared/metric.ts`（保存は `core/metricStore.ts`） |
+| 観測のシステムの項目に記録するとき（状態の変化・数え方・1回だけ・失敗の知らせ） | tasks の `core/systemObservations.ts`（呼ぶのは `core/requestOps.ts` の `createTask`・`updateTask`・`updateRequest`） |
 | JSON の記録のファイルの読み書き（読むときの扱いを記録ごとに渡す・置き換えで書く） | `core/store/jsonRecord.ts` の `readJsonRecord`・`writeJsonRecord`（記録ごとの扱いの違いは [docs/refactoring.md](refactoring.md) の表） |
 | 要望・タスクの p3 が管理する frontmatter の項目のまとまり（読む・壊れた値の書き戻し・書かない項目・入力から外す項目） | `core/store/fieldGroups.ts` の `TASK_FIELD_GROUPS`・`REQUEST_FIELD_GROUPS`（まとまりごとの検査は各 `shared/*.ts`、書き戻しの仕組みは `core/store/collection.ts` の `keepRaw`） |
 | 要望とそのタスクの保存のロック（別のプロセスとの読み直し・書く・移すの排他） | `core/store/collection.ts` の `lock`・`core/store/workspace.ts` の `requestLock` |
@@ -882,12 +883,12 @@ CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・
 | パッケージ | 中身 | 読み込んでよいもの |
 | --- | --- | --- |
 | 入口 `@infodb/p3`（`packages/p3`） | 配布の窓口（`bin/p3.mjs`・npm・Docker）・CLI の起動と振り分け・help・guide とスキル（置く・診断）・init / join / project | アプリ・機能・shared |
-| `@infodb/p3-app`（`packages/app`） | serve の組み立て・画面の外枠（`__root`・プロジェクトの選択と切り替え）・プロジェクトの登録の一覧・機能をつなぐアダプター（observer の提案に Codex の接続を渡す）・製品の一覧 | 機能・shared |
-| `@infodb/p3-tasks`（`packages/tasks`） | 要望・タスク・Preflight・レビュー・振り返り・指標・リリースノート・品質・設定・参照先・保存・ページ・API | shared |
-| `@infodb/p3-observer`（`packages/observer`） | 観測の定義・手順の提案（下の「p3-observer」） | shared |
+| `@infodb/p3-app`（`packages/app`） | serve の組み立て・画面の外枠（`__root`・プロジェクトの選択と切り替え）・プロジェクトの登録の一覧・製品の一覧 | 機能・shared |
+| `@infodb/p3-tasks`（`packages/tasks`） | 要望・タスク・Preflight・レビュー・振り返り・リリースノート・品質・設定・参照先・保存・ページ・API。観測のシステムの項目に値を書く | observer・shared |
+| `@infodb/p3-observer`（`packages/observer`） | 観測の項目キーと値（下の「p3-observer」） | shared |
 | `@infodb/p3-shared`（`packages/shared`） | 横断する処理。`src/node` は Node だけ（置き換え書き込み・ロック・採番・使い方の誤り・git の小物・動いている版）、`src/web` は画面 | なし |
 
-- 機能どうし（tasks ⇔ observer）は読み込まない。つなぐのはアプリ（アダプターを値で渡す）。機能は入口・アプリを読まない
+- 機能の間は tasks → observer の一方向だけ（tasks が要望・タスクの操作のその場で観測のシステムの項目に値を書く。observer は tasks を読まない。下の「p3-observer」）。機能は入口・アプリを読まない
 - 機能の中の `shared` 層はその機能の型と検証。複数の機能が使う処理だけを `packages/shared` に置き、使い手のいない処理は置かない
 - パッケージの間はパッケージ名（`@infodb/p3-tasks/core/context.ts` のように、そのパッケージの `src` からのパス）で読み、相対パスで別の
   パッケージのファイルを指さない。読むパッケージは manifest に workspace の参照で書く。境界は `test/packageBoundary.test.ts`、層の向き
@@ -915,9 +916,9 @@ CLI は `cli/main.ts`（入口: 引数の解釈・プロジェクトの決定・
 | F07 serve・プロジェクトの切り替え・ナビゲーション・テーマ・表示部品 | 分ける | アプリ: `server/server.ts`・`server/api/projectsRoutes.ts`・`core/projectRegistry.ts`・`web/{main,Boot,App,router}.tsx`・`web/routes/__root.tsx`・`web/components/{ProjectSwitcher,ProjectChooser}.tsx`。tasks: API（`server/api/routes.ts` ほか）・ページ・`server/api/local.ts`。表示部品と意味の色は `packages/shared/src/web/ui.tsx`・`colors.css`（tasks・observer・アプリが使う。機能はパレットの色名と素の button を書かない。`test/uiStyle.test.ts` が照らす）。テーマ（`ThemePanel`・`features/settings/core/userTheme.ts`・`features/settings/server/userThemeRoutes.ts`）は設定画面（tasks のページ）が使うので tasks に置き、アプリが読み込む |
 | F08 変更の監視・通知・読み直し | tasks | `core/store/dataWatcher.ts`（`Workspace` が使う）・`server/api/routes.ts` の `/events`・`/reload`。プロジェクトを跨ぐ通知はアプリの `projectsRoutes.ts` |
 | F09 AI 向けの API の説明 | tasks | `server/api/manifest.ts`。アプリの `projectsRoutes.ts` も同じ説明を返す |
-| F10〜F25・F27 | tasks | 判断表の根拠のパスのまま |
+| F10〜F24・F27 | tasks | 判断表の根拠のパスのまま |
 | F26 AI 接続・実行環境 | tasks（暫定） | `cli/{codex,chatgpt}.ts`・`core/chatgpt.ts`・`core/preflight/{codexEngine,docker,hostPaths}.ts`。入口は `codex`・`chatgpt`・`render` のコマンドをプロジェクトを決める前に tasks の関数で動かす |
-| F28 独立した観測 | observer | `packages/observer`。観測の定義・準備・期待の履歴・実行の結果（下の「p3-observer」） |
+| F25・F28 開発の指標・観測 | observer・tasks | `packages/observer`（項目キーと値）。システムの項目の記録は tasks の `core/systemObservations.ts`（下の「p3-observer」） |
 
 **shared の中身と使い手**（`packages/shared/src/node/`）: `usage.ts`（使い方の誤り `UsageError`・パスの展開・git の小物。入口・tasks・observer が使う）、
 `appInfo.ts`（動いている p3 の版。入口が起動のときに渡し、tasks・observer が読む）、`fsutil.ts`（置き換え書き込み・ロック・採番。tasks・observer の保存が使う）。
@@ -925,187 +926,59 @@ frontmatter は tasks だけが使うので tasks（`core/store/frontmatter.ts`�
 
 ### p3-observer
 
-観測・再現・実験の結果を集める基盤（棚卸しの F28）。今は**試作の段階**で、観測の定義（何を観測し、どう確かめ、何を測るか）と、その期待の履歴を持つ。
-観測の実行の結果も記録する（P3 は手順を実行しない。下の「観測の実行と結果」）。tasks とは責務で分けた別の製品だが、相互に連携するツールとして常に一緒に起動する（製品ごとの ON/OFF は持たない）。
+観測は「**項目キーに値（メトリクス）を登録する**」ことだけを受け持つ（要望 261128-c7z79）。その値を何を実行して得たか（コマンド・手順・
+スクリプト・環境・実行した人や AI の段取り）には関与しない。p3 は実行しない（製品の方針。観測でも同じ）ので、境界を「値を受け取る」ところに置く。
 
-**観測の位置付け**
+**位置付けと線引き**
 
-- 観測は「**今の期待（仕様）が、実際の環境・データ・使い方で成り立っているかを確かめる記録**」。何を確かめるかの正本は観測の「期待する結果」の1か所で、
-  要望には持たせない。要望は終わる出来事で、観測は続くもの。要望は「期待を変える出来事」として観測の履歴に残る（保ち続ける結び付けにしない）
-- ユニットテストは観測の対象ではなく、手順の道具（今の実行方法に書ける）。観測するのは利用者から見た期待のほう
-- p3 は観測を定期実行・きっかけ実行しない（CI・Jenkins の代わりにしない）。頼まれたときに人か担当の AI が手順に従って確かめる。
-  P3 は手順・スクリプトを実行せず、実行した人か AI が結果を記録する（下の「観測の実行と結果」）
-- 出口: 毎回同じ動作で機械的に判定できるようになった手順は外部の CI に移し、移した先を記録して観測を終える（終了の `movedTo`。p3 が CI を走らせない）
+- 値を作るのは p3 の外（CI・スクリプト・人・AI）。項目キーは先に登録し、値を作る側がそのキーを指定して送る（最初に値を送ったときにキーを発行すると、
+  発行されたキーを誰かが結び付ける負担になるので、そうしない）
+- 判定をしない。項目キーの目安（数値は下限・上限、文字列・論理値は期待する値、構造化データは無し）は値と並べて見せるだけで、外れの印も出さない・保存しない
+- 値に添えるのは、いつの値か（時点。期間で考える値は期間の終わり）・登録した人・任意の対象・任意のマイルストーン・任意のメモだけ。実行の内容を受け取る項目は作らない
+- 値は足すと消すだけ（訂正は消して入れ直す）。項目キーは版（`rev`）で照らして変える。値があるあいだは値の形を変えられず、キーを消せない
+- 以前の観測（手順・AI による手順の提案・スクリプトへの切り替え・前提の観測・準備・実行と判定・期待の履歴・Preflight の材料・結果から要望を作る）は、
+  実行の中身に踏み込んだ形だったので、要望 261128-c7z79 で外した。そのデータ（`observer/definitions/` など）と人が記録した指標（`metrics/manual.json`）は読まない（消さない）
 
-**期待の履歴と作業の帰属**
+**システムの項目（開発の指標）**
 
-- 作成・期待の変更・終了を、保存の層が観測の定義の履歴（`history`）に足す（種類・日時・変更者・理由・前の期待・作業の帰属）。足すだけで、要望が
-  終わっても外すものが無い。手順・測定項目だけの編集と、確定前の下書きは履歴に入れない。履歴は定義と同じ置き換え書き込み・版の照合で一緒に更新する
-  （再送や競合で半端な履歴・重複を残さない）
-- 作業の帰属（`work: { request, task }`）は、タスクを起点にした操作のときだけ付く: CLI は `p3 move <T> doing` で始めた作業の文脈（作業ツリーの git の
-  フォルダに残し、`done` などで消える）、画面はタスクの詳細から観測へ移った文脈。入口・アプリが同じプロジェクト・作業中のタスク・登録世代を確かめて
-  observer に値で渡す（observer は tasks を読まない）。要望のブランチの作業中のタスクの数から推測しない。文脈の無い操作には帰属を付けない
-- 推定の経緯（`estimatedOrigin`）: あとから作った観測に、AI が記録と git から調べた「どの要望で決まった期待か」を根拠付きで、利用者が確かめたときだけ
-  残す。実作業の帰属とは別の項目で、逆引きでは実作業として扱わない
+- `p3.` で始まる項目はシステムの項目（`shared/metric.ts` の `SYSTEM_KEYS`）。ファイルの定義を持たず、値が無くても一覧に出る。利用者は作る・変える・消す・値を足す・消すことができない（API は 403、CLI は終了コード 1）
+- 記録するのは tasks（`core/systemObservations.ts`）で、`createTask`・`updateTask`・`updateRequest` が書いた直後に呼ぶ（マイルストーンの一括完了は `updateRequest` を通る）。
+  CLI は serve を通さずファイルに直接書くので、取りこぼさずに記録できるのは操作のその場だけ。だから依存の向きは tasks → observer にし、observer は tasks を読まない
+  （読み合いの循環を作らない。「observer は tasks を読まない機能」という以前の決まりは、観測が独立した製品だった前提のもので、撤回した）
+- 状態の変化は、書く直前に読み直した値（更新の関数の中の `fresh`）と書いた後の値で見る。同じ状態の再送・成果物の追記は変化ではない
+  - 要望が初めて対応済・完了済になった → `p3.request.lead_time_resolved`・`p3.request.lead_time_done`（作成からの時間。時間・小数 2 桁）。「初めて」は観測にその要望（対象）の値が
+    まだ無いことで決め、確かめと追加は観測のロックの中で行う（`recordSystem` の `once`）。対応済を経ない完了済は完了済の項目だけ
+  - タスクが完了になった（完了で作った・未完了から完了にした）→ `p3.task.criteria_unmet`（`acceptanceStatus` で met でない基準の数。根拠の種類は問わない。基準が無ければ記録しない、読めなければ失敗）
+  - タスクを完了から戻した → `p3.task.rework`（1）
+- 対象は要望 ID かタスクの参照（`<要望ID>/T001`）、マイルストーンは記録したときの要望のもの、登録した人は操作の変更者（無ければ `p3`）
+- 記録に失敗しても操作は止めない（状態の保存は先に済んでいる）。失敗は文の並び `observationSkipped` で返し、CLI は標準エラーと `--json` の結果、API は結果
+  （タスクの作成・更新、要望の更新、マイルストーンの一括完了）、画面は外枠の知らせ（tasks の `web/lib/observationNotice.ts`。API の呼び出しが拾う）に出す
+- 完了の記録・手戻りの履歴・AI レビューは使わない（どれも別の要望で消す・変わる見込みがあり、その順に依らないため）
 
-**仕様変更を要望の評価で捉える**
+**保存**（`core/metricStore.ts`。型・検証は `shared/metric.ts` の1か所で、CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
 
-- Preflight の材料に、対象プロジェクトの観測（ID・タイトル・期待・版・状態）を開始の時点で固定して入れる（アプリが observer から読み、tasks に値で渡す）。
-  定義の文は資料で、手順は実行しない
-- AI は要望を分ける: 期待を変える・観測を足す・観測を終える → タスク案、今の期待を壊すおそれ → 観測 ID 付きの受け入れ基準（観測し直して期待どおり。
-  確かめるのは人か担当の AI）。採否は今のタスク化（`accept`）。評価した観測の版が変わっていれば、採る前に再評価が要るかを知らせる。
-  期待が未記入の観測は確定した仕様として扱わない
-- 要望を通らない変化: 期待を確定したとき（期待のある作成・期待の変更）に、そのときの現行の参照ファイル（今の実行方法のファイルと、使う準備の確かめ・
-  前処理・後処理のファイル）の内容の比較基準（`baseline`）を取り、詳細を開くたびに今の内容と比べて「期待の見直しが要るかもしれない」を出す。
-  保存しない（閲覧で定義は変わらない）。任意のコマンドや文中のファイル名は推測せず、参照先の外は読まず、読めないものは未確認とする
+- 場所: 入口・アプリが解決したプロジェクトのデータのフォルダの `observer/metrics/`。`keys/<キー>.json`（利用者の項目キー。`{ format: 1, key, rev, name, description?, type, unit?, guide?, createdAt, createdBy, updatedAt, updatedBy }`）と
+  `values/<キー>.json`（その項目の値の全部。`{ format: 1, key, seq, values: [{ id: V1…, at, value, by, recordedAt, target?, milestone?, note? }] }`。`seq` は振った最後の番号で、消した番号は使い直さない）
+- キーは英小文字・数字・`.`・`_`・`-` だけで、英小文字か数字で始める（ファイル名にするので `.` で始めない。100 文字まで）
+- 書き込みは `observer/metrics/.lock`（shared の `withFileLock`）の中で読み直した値に当て、置き換えで書く（shared の `writeFileAtomic`。作成は `createExclusive`）。
+  キーの変更・削除と値の追加が重なっても、値のあるキーを消す・形を変えることは起きない。ロックは同じマシンのプロセスの間だけで、複数のマシンでは項目キーの版の照合だけに頼る
+- 読めない・形の版が違うファイルは一覧に理由を出し、上書きしない
 
-**観測の候補と表示の速さ**
+**入口**
 
-- 観測の候補: 人が頼んだときだけ、AI が期待・理由・根拠付きの候補を出す。選んで確かめて保存したものだけが観測になる
-  （AI に定義を書かせない）。候補は上の「観測の位置付け」に合うもの: 利用者から見える振る舞いで、今の環境で行える操作と判定が書け、繰り返し確かめる
-  価値があるもの（機械の判定に移せる期待も含み、CI に移せたら観測を終える）。コードの構造・レビュー、終わった要望の受け入れの確かめ直し、一度きりの
-  移行・リリース、AI の出力の良し悪し、今は用意できない状況が要るものは除き、無ければ空で返す。期待の出発点は README と使い方の文書の主な利用の流れで、
-  品質基準・未検証の受け入れ基準・最近の要望は最近変わった期待の手がかり（要望ごとに候補を作らない）。今ある観測は ID・タイトル・記入済みの期待に
-  説明と今の手順の要点（記録の本文・置き換えの履歴は写さない）を、粒度の見本と重なりの判定に渡す（上限 `CANDIDATE_LIMITS`。指示は `packages/observer/src/shared/candidates.ts`）
-- 一覧（要望の一覧・ボード・`p3 ls`）と要望の詳細の本体は観測を読まない。要望の詳細の「この要望で作った・期待を変えた・終えた観測」は別の API で
-  後から読む（`GET /requests/:rid/observations`。索引はアプリの `core/observerIndex.ts`、API は `server/api/requestObservations.ts` で、tasks の API より先に付ける）。serve は観測の履歴の逆引きの索引を
-  プロジェクト（文脈）ごとにメモリに持ち、データのフォルダの監視が観測のフォルダの変更を知らせたら次に読むときにまとめて作り直す。監視していない・
-  監視を立て直した後（`watchEpoch` が変わった）は取りこぼしがあり得るので読むたびに作り直す。実作業の帰属だけを数え、推定の経緯は数えない。
-  画面は読み込み中・無い・読めない（もう一度読む）を分けて出す
-
-**所有の境界**
-
-| | observer が持つ | observer が持たない |
-| --- | --- | --- |
-| コード | `packages/observer/src` の層（`shared` 起動状態と観測の定義の型・検証、`core` 起動状態と観測の定義・準備の保存、`cli` `p3 observer` のサブコマンド、`server/api` `/api/observer` の Hono のルート、`web` `/observer` の観測と準備の一覧・登録・詳細・編集） | 入口の振り分け・プロジェクトの解決・serve の組み立て・画面の外枠と対象の決定（入口）。tasks のコードは読まない（`test/packageBoundary.test.ts`） |
-| データ | 入口が解決したプロジェクトのデータのフォルダの `observer/` だけ（下の「観測の定義の保存」） | tasks の要望・タスク・run・設定・個人設定の登録。プロジェクトの解決は入口が tasks の方法で行い、observer はデータのフォルダを値で受け取る |
-| 版 | 入口が渡す共通の版（shared の `appInfo.ts`）を名乗る | 自分の版・タグ |
-
-**観測の実装を置く範囲**: 収集（`core`）・保存の形（`shared` の型と `core` の保存。`packages/shared` の置き換え書き込み・ロックを使う）・CLI のサブコマンド（`cli`）・
-API（`server/api`）・ページ（`web`）は、どれも `packages/observer/src` の同じ層に足す。tasks の記録（証拠・レビュー・指標）を読む連携が要るときは、
-機能の間で直接読み込まず、アプリがつなぐ（今は連携しない）。保存の形を変えるときは、形の版（`format`）を上げ、
-移行を先に決める。
-
-**観測の定義の保存**
-
-- 場所: 入口が解決したプロジェクトのデータのフォルダの `observer/definitions/<ID>.json`（定義ごとに1ファイル）。ID は `obs-<作成日>-<乱数5文字>`
-  （shared の採番。要望の ID と同じ作り方）。CLI はほかの tasks のコマンドと同じ方法でプロジェクトを決め（`--project` / `--dir`・登録が1つだけで
-  決まったときは書き込みを止める）、serve は開いたプロジェクト（プロジェクトを跨ぐ serve では `/api/projects/<名前>/observer`）のものを使う
-- 形: `{ format: 3, id, rev, title, category, description, expected?, prerequisites?: 前提の観測の ID, preparations?: 使う準備の ID, measures, procedures, createdAt, createdBy, updatedAt, updatedBy }`。手順は
-  `{ id: P1…, title, measures, run: 今の実行方法, replacement?: 置き換え候補, history?: 切り替えの履歴 }`。形の版 1（手順に kind を直に持つ）は読むときに今の形に移し
-  （`migrateProcedures`。提案の記録も同じ）、形の版 2 までは前提と準備の無い定義として読み、更新のときに 3 で書く。手順の識別子は保存の層が付け、履歴は保存の層だけが書く（入力の履歴は使わない）
-- 確認の手順の段取り: スクリプト等が無いあいだは AI への指示（前提・対象・順に行う操作・判定・測定値の記録方法）で確かめ、毎回同じ動作で結果を機械的に処理できる
-  ようになったら、置き換え候補（用意するファイル・再現する操作・出力の形・比べる条件・切り替えの条件）のスクリプトを別の作業で用意し、`switchProcedure` で切り替える。
-  切り替えには、参照先の中にファイルが有ること・今の版・確かめた呼び出し方と結果の根拠が要り、今の実行方法と呼び出し方が同じ更新で変わる
-- ファイルの有無（`core/files.ts`）: AI の出力とは別に、入口・アプリが渡す参照先のこのマシンのパスの中で照らす（参照先の外・シンボリックリンクの先が外なら新規予定、
-  参照先を読めなければ未確認）。新規予定のファイルは今の実行方法に使えない（保存で断る）。`GET /files` で画面に、`show` で CLI に出す
-- 項目と手順の中身・検証は `shared/definition.ts` の1か所（CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
-- 書き込み（作成・更新・切り替え・準備の削除）は `observer/.lock`（shared の `withFileLock`）の中で行い、参照（前提の観測・使う準備・準備の名前の重複・
-  準備を使う観測）もロックの中で確かめる。作成は同じ名前のファイルが無いときだけ作り（O_EXCL）、更新は今の版を読み、添えた版と同じときだけ
-  置き換える（shared の `writeFileAtomic`。違えば競合で断り、今の定義を返す）。ロックは同じマシンのプロセスの間だけで、複数のマシンでの同時の
-  更新は版の照合だけに頼る（共有のフォルダでの排他は確かめていない）
-- 読めない・知らない形の版（`format` が違う）・中身が検証に通らないファイルは、一覧に理由を出し、更新しない（上書きで消さない）
-- 観測の作業の記録（`core/workStore.ts`）: 確定した定義とは別に `observer/work/<ID>/` に置く。`draft.json` は編集途中の入力（検証の前の不完全な入力も
-  そのまま。`version` を添えて保存し、違えば断る。`basedOnRev` でもとにした定義の版を持つ）、`suggestions/<SID>.json` は提案の依頼（頼んだときの入力・
-  定義の版・補足）と結果。観測はタイトルと観測内容だけで先に作って ID を付け（カテゴリは後でよい）、入力と提案はその ID に結び付けて残す
-- 提案は依頼を保存してから始め、結果を保存してから完了として見せる。記録に実行しているプロセス（ホストと pid）を持ち、同じマシンでそのプロセスが
-  終わっていれば中断（`interrupted`）と読む。終わりの書き込みはロックの中で今の状態を読み、既に終わっている（取り消し・中断）記録は上書きしない
-- 画面: 入口の Boot が tasks と同じ対象で observer の API の基点と登録世代のヘッダーを決め（`web/lib/scope.ts`）、observer の画面はそれだけを使う。
-  プロジェクトを跨ぐ serve の変える操作には登録世代を添え、登録が変わっていれば入口が断る（古い画面の保存を新しい登録先へ流さない）
-
-**前提の観測と準備**（Flaky 対策の段階 1。実行の順番と判定は下の「観測の実行と結果」）
-
-観測を順につないで状態を受け渡すと、順番や片方の失敗に結果が左右され、それ自体が不安定（Flaky）の原因になる。そこで判定の関係（前提の観測）と、
-状態を作る・戻すもの（準備）を分けて定義する。
-
-- 前提の観測（`prerequisites`）: ほかの観測の ID の並び。前提が失敗したら、この観測は失敗ではなく**未確認**として扱う（例: サインインの観測が
-  通っていなければ、業務画面の観測は判定しない）。状態は受け渡さない。自分自身・直接や間接の循環・存在しない ID は登録と更新で断る（ほかの観測の
-  今の前提をロックの中でたどる。読めない観測を指していれば確かめられないとして断る）
-- 準備（`observer/preparations/<ID>.json`。ID は `prep-<作成日>-<乱数5文字>`、形は `{ format: 1, id, rev, name, description?, check?, setup?, teardown?, exclusive, createdAt, … }`）:
-  名前（プロジェクトの中で一意。前後の空白を除いた完全一致。ID と同じ形は不可）・説明・確かめ・前処理・後処理・占有（同時に走らせないもの。自由な文字列）。
-  確かめ・前処理・後処理は確認の手順と同じ実行できるもの（`Executable`: 今の実行方法・置き換え候補・切り替えの履歴）で、検証（`fieldChecker`）・
-  切り替え（`switched`）・画面の入力欄と表示も手順と共通。新しい実行の型は作らない。項目と検証は `shared/preparation.ts`
-- 使う準備（`preparations`）: 入力は準備の名前か ID で、保存の層が ID にして保存する（改名しても参照は切れない）。存在しない準備は断る。
-  使われている準備は消せず（`in_use`。参照元の観測を示す）、観測のファイルが読めず使っていないことを確かめられないときも消さない
-- 準備の原則（文書と AI への依頼に書く）: 始める前に既知の状態に戻す（後処理はできるときにやる片付けで、頼りにしない）・作るデータには実行ごとに
-  一意な名前を付ける・失敗したら片付ける前に証跡を取る・決まった秒数ではなく条件で待つ
-- 前後で必要になりやすい観点（型にせず、AI の提案と文書の観点として使う）: データ・認証と権限・アプリの状態・時刻と地域・外部の依存・
-  キャッシュと非同期処理・ファイル・ブラウザ・証跡
-- 実行の段階で扱うこと（実行と結果の要望）: 実行の順番（確かめ → 前処理 → 観測 → 証跡 → 後処理）・前提が失敗したときの未確認・再試行と「不安定」の記録。
-  占有を使った並列実行（同じ占有を持つ準備を使う観測を同時に走らせない）はさらに後
-
-**観測の実行と結果**
-
-- 頼まれたときに人か担当の AI（作業の環境で p3 の CLI・画面を使う）が手順に従って実行し、段ごとに記録する。P3 は手順・スクリプト・コマンドを
-  実行しない（品質基準と同じ原則。CI の代わりにしない）。Codex に書き込み・アプリの起動を許して実行を頼む仕組みは持たない
-- 保存（`core/resultStore.ts`。型・検証・判定は `shared/result.ts` の1か所）: `observer/results/<観測ID>/<結果ID>.json`（ID は `res-<作成日>-<乱数5文字>`）、
-  形の版 1。`{ format, id, observation, rev: 開始時点の定義の版, snapshot: 期待・前提・測定項目・手順・使う準備の写し, status: running | completed | interrupted,
-  startedAt, startedBy, environment: { repos: 参照先ごとのコミット・ブランチ・未コミットの変更, note? }, steps, prerequisites?, verdict?, reason?, teardownProblems?, finishedAt?, finishedBy?, interruptedReason? }`。
-  開始で写しを持つので、実行中に定義が変わっても手順と記録の対応はずれない。定義のファイルには触れない（版も履歴も増えない）
-- 段の記録（`steps`）: `{ phase: check | setup | procedure | teardown, ref: 準備の ID か手順の ID, result: met | unmet | failed（実行できなかった）, measures?, basis, evidence?, note?, at, by }`。
-  写しにある準備の段・手順と、その手順の測定項目（型も）だけを受け付ける。根拠（`basis`）は実行したコマンドと結果（machine）・読んで見て確かめた（read）・
-  申告のみ（declaration）で、どれも記録した側の申告。記録は足すだけで、同じ段を記録し直すと判定には後のものを使う
-- 判定（完了のとき）: 期待が未記入・前提の観測に今の版で期待どおりの最後の結果が無い（未実行・古い版だけ・期待どおりでない・未確認）・準備の確かめか前処理が
-  期待どおりでない（記録が無いも）・手順が実行できなかったか記録が無い → 未確認。手順のどれかが期待どおりでない → 期待どおりでない。全部の手順が期待どおり →
-  期待どおり。後処理の失敗は判定を変えず `teardownProblems` に残す。前提の観測の照らした状態も結果に残す
-- 書き込み（開始・記録・完了・中断）は定義と同じ `observer/.lock` の中で行う。完了・中断した結果は変えない（競合）。CLI で段ごとに別のプロセスが記録するので、
-  プロセスの終わりで中断とは読まない。止めた実行は人か AI が理由を付けて中断として閉じる。読めない結果のファイルは一覧に理由を出す
-- 表示: 一覧の最後の結果は別の API（`GET /results/summary`）で後から読む。今の版より前の版で実行した結果は古いと出し、不安定（今の版の完了した結果に
-  期待どおりと期待どおりでないが混ざる）は結果から毎回数える（`resultSummary`。保存しない）
-- 結果から要望を作る: 判定が期待どおりでない結果だけ、人が種類（不具合 / 仕様のずれ）を選んで明示したときに作る。原稿（`followUpDraft`）は observer が作り、
-  観測の文は資料と注記する。作るのはアプリ（`app/src/core/observerFollowUp.ts`）が tasks の `createRequest` で下書きの要望を作り、結び付きは要望のタグ
-  `observation-result:<観測ID>/<結果ID>` で持つ（結果のファイルは変えない）。探す・作るは結果のロックの中で行い、タグで探すので途中で落ちても重ねて作らない。
-  要望の詳細の観測の欄（`GET /requests/:rid/observations`）はタグから元の結果を返す
-
-**手順の提案**
-
-- 保存した観測（ID）に、頼むときの入力・補足と、プロジェクトの参照先を材料に、AI に操作面と確認の手順を頼む。依頼と結果は観測の作業の記録に残し、
-  定義には利用者が取り込んで保存したときだけ入る。依頼文・応答の読み方（JSON。手順は定義と同じ検証を通し、定義に無い測定項目の参照は外して知らせる）・
-  Mock の提案・実行（取り消し・時間切れ）は observer（`shared/suggestion.ts`・`core/suggest.ts`）が持つ。ID の無い互換の経路
-  （`p3 observer suggest --input`・`POST /suggestions`）はこのプロセスの中だけで保存しない
-- AI を呼ぶのはアプリが渡すアダプター（`app/src/core/observerAssistant.ts`）。Preflight と同じ頼む先（個人設定の `preflight.engine`）と Codex の接続
-  （tasks の `P3Context.assistant`。`CodexWorkspaceEngine.ask`）を使い、Preflight と同じく読める参照先を全部、読むだけでマウントする（選ばせない。読めないものは外す）。
-  依頼文の頭には、Preflight と同じ組み立て（tasks の `core/preflight/instructions.ts` の `referenceContext`。参照先の一覧・最初に読むもの・主なフォルダ・
-  品質基準・git の調べ方の部品を Preflight と共有する）のプロジェクトの文脈を付ける。タスク化の規則・出力の形・データのフォルダは入れない。
-  使った品質基準の版と読ませた参照先のパスは提案の記録（`context`）に残す。observer は tasks を読まない
-- 失敗は種類（接続を使えない・使用量の上限・応答の形の違い・時間切れ）と文で返し、画面は入力中の定義を変えない。提案の実行は
-  プロジェクトごとの API（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer/suggestions`）にあり、別のプロジェクトからは読めない。
-  画面はページ（プロジェクト）ごとに作り直すので、切り替える前の応答を別のプロジェクトの入力に取り込まない
+| | 呼び方 |
+| --- | --- |
+| CLI | `p3 observer status`（プロジェクトを決めない）・`list`・`show`・`key add / set / rm`・`value add / rm`（tasks と同じ方法でプロジェクトを決める。`cli/observerCli.ts`）。入口の `cli/main.ts` が名前空間 `observer` を振り分ける |
+| API | `/api/observer`（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer`）の `/status`・`/keys`・`/keys/:key`・`/keys/:key/values`（`server/api/routes.ts`）。tasks の API より先に付ける |
+| 画面 | `/observer`（一覧）・`/observer/new`（項目の登録）・`/observer/$key`（項目と値・数値の推移・値を足す・消す）。tasks と同じ外枠・同じ対象で出し、API の基点はアプリの Boot が決める（`web/lib/scope.ts`） |
 
 **起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は常に全部を起動する）
 
-| | CLI | serve |
-| --- | --- | --- |
-| tasks | 名前空間の無いコマンド（`p3 <コマンド>`） | `p3 serve`・`p3 serve --all-projects` のどちらでも両方の製品を起動する |
-| observer | `p3 observer status`（プロジェクトの登録が無くても動く） | 同上 |
-
-以前の要望で入れた製品の選択（`p3 serve --products`）は撤回した。付けると、外せば両方を起動することを案内して使い方の誤りにする
-（黙って無視しない。`shared/products.ts` の `PRODUCTS_OPTION_REMOVED`）。
-
-**CLI の振り分け**: 入口の `cli/main.ts` が、名前空間 `observer` を tasks のプロジェクトの解決・個人設定の読み込みより前に observer の
-`cli/observerCli.ts` へ渡す。名前空間の無いコマンドは今までどおり tasks（`runTasksCommand`）で、呼び方・出力・終了コードは変えない。
-入口が知っている名前空間だけを振り分け、入っている製品を実行時に探して読み込むことはしない。
-
-**serve と画面の製品**
-
-- アプリの `core/products.ts` が組み込んだ製品（`PRODUCTS`）を持つ。serve（`server/server.ts`）は全部の製品の API を付け、`/api/mode` の
-  `products` で取り付けた製品を返す（部品の `singleProjectApp`・`projectsRoutes` だけを使うときは observer を付けないので `tasks` だけを返す。
-  返す一覧と実際のルートを一致させる）
-- API: `/api/observer`（observer の `server/api/routes.ts`）は tasks の API（`/api` の下の 404 の JSON）より先に付ける。無い API は画面の HTML を
-  成功として返さず 404 の JSON にする
-- 画面: 観測のページ（observer の `web/routes/observer/`）は tasks のページと同じルーター・同じ外枠（`routes/__root.tsx` の Layout。プロジェクト名・
-  プロジェクトの切り替え・再読み込み）・同じ対象で出す。URL はプロジェクトの URL の基点の下の `/observer`（プロジェクトを跨ぐ serve は
-  `/projects/<名前>/observer`）。観測のページだけの外枠や分岐は持たない
-- ナビゲーション: 進捗・観測・リリースノート・開発の指標・設定の順（ルーターの中の移動）
-- 共通の資材: 画面のビルド（`dist/web`）は組み込んだ全部の製品のページと CSS を1つに含む
-
-**できること・できないこと（モジュラー化の範囲）**
-
-- できる: ビルドのときに入口へ組み込んだ製品（tasks・observer）を、同じ serve で全部まとめて起動する。CLI は名前空間で製品に振り分ける
-  （observer の名前空間は tasks のプロジェクトの解決を経ない）
-- できない: 配布した後に製品を足す・外す（別の npm パッケージを入れると現れる、など）。そうするには、入口が製品を見つけて読み込む登録の仕組み
-  （製品の一覧の置き場所・読み込みの約束・版の互換の確かめ方）と、画面のルート一覧を実行時に組み立てる仕組みが別に要る（今は作らない。
-  ルート一覧と CSS はビルドのときに決まる）
+- serve（`p3 serve`・`p3 serve --all-projects`）は tasks と observer の両方を起動する。製品ごとの ON/OFF は無い。以前の `--products` は使い方の誤りにして、
+  外せば両方を起動することを案内する（黙って無視しない。`app/core/products.ts` の `PRODUCTS_OPTION_REMOVED`）
+- `/api/mode` の `products` は取り付けた製品を返す（部品の `singleProjectApp`・`projectsRoutes` だけを使うときは observer を付けないので `tasks` だけ）
+- ナビゲーション: 進捗・観測・リリースノート・設定の順。ヘッダーの「新しい観測項目」は項目の登録を開く
+- できないこと: 配布した後に製品を足す・外す（別の npm パッケージを入れると現れる、など）。ルート一覧と CSS はビルドのときに決まる
 
 ## サーバに置かない理由
 
@@ -1378,37 +1251,6 @@ P3 は AI の実装を動かさず、成績も測らない。
 - **照合**（`checkEvidence`）: 読むたびに、保存した参照先で今の記録を引き、結果の版が同じなら `ok`、違えば `changed`、無ければ `missing`。
   要望の付け替え・タスクのアーカイブの後も、保存した要望 ID・タスク ID で引く。親子の間で確認や根拠は継承しない
 
-### 開発の指標
-
-外部の評価への対応: AI 開発の成果をコードの量ではなく、到達の時間・品質（手戻り・基準の未達）などで振り返る材料として、記録から指標を出す。
-P3 は AI の実装を動かして測らない。成績の評価・順位には使わない。
-
-- **定義**: `features/metrics/core/definitions.ts` の `METRIC_DEFINITIONS` の1か所。各定義は ID・名前・単位・出典・対象・算出・欠損の扱いと `compute(input)`。
-  CLI の `metrics`・API の `GET /api/metrics` は `features/metrics/core/index.ts` の `metricsReport` を通り、同じ値を返す
-- **範囲**: プロジェクト全体（所属なし・登録に無いマイルストーンの要望を含む）か、`project.yaml` に登録したマイルストーンに今直接属する要望。
-  見送り・アーカイブの要望は除く。タスクは要望の直下だけ。読めない要望は `notices`
-- **値の状態**: `ok`・`no_targets`（対象なし）・`no_data`（欠損だけ）・`not_reached`（まだ到達していない）・`unrecorded`（記録なし）。値は `ok` のときだけで、ほかは `null`（0 にしない）
-- **到達時間**: 要望の `createdAt` から `completionRecords` の最初の `request_resolved`・`request_done` までの中央値。記録・日時が読めない・逆転・
-  今の状態から到達済みと分かるのに記録が無いものは欠損。完了済の記録だけで対応済の記録が無いものは直接の遷移（対応済に未到達）、
-  記録の1つも無い完了済は「到達したか分からない」（欠損）。`updatedAt`・`doneAt` で推し量らない
-- **受け入れ基準**: 今完了しているタスクの今の基準を `acceptanceStatus` で照らす。分母は数えた基準の合計。基準なしは対象なし、`acceptanceProblems` と
-  読めないタスクのファイルは欠損、対応する基準の無い証拠は分母の外。5つの基準の指標は、1回のレポートの材料（`MetricsInput`）ごとに1回だけ
-  集計した結果を使う（`sharedCriteria`。材料に結んだ `WeakMap` で、レポートの外へは持ち越さない）
-- **手戻り**: タスクの `reworkHistory` の件数（同じタスクの同じ `rev` は1件）。`reworkProblems` と読めないタスクのファイルは欠損、履歴の無いタスクは内訳の
-  「記録が無い」。履歴より前は分からない（観測の始まりを保存していないので、全期間の完全さは保証しない）
-- **タスクレビュー**: 今完了しているタスクごとに、`selectTaskReview` で完了した run を1件選ぶ（`finishedAt` の新しい順、同時刻は run ID の大きい方。
-  読めない記録・`finishedAt` の無い完了の run があれば欠損）。選んだ結果の `items` の `missing` と `unplanned` を別の指標に数える。`undetermined`・`checks` は
-  内訳だけ。レビューの無いタスクばかりなら `unrecorded`。読むのは `taskReviews.list`・`get` だけで、run を作らない。マイルストーンレビューの所見は今後の候補。
-  読み取りはタスクごと（一覧・選択・結果の取得）に並行に行い、同時に読む数は1回のレポートの全部の要望で1つの上限（`REVIEW_READ_CONCURRENCY`）に
-  収める。結果は要望 ID とタスク ID に結び、集計は読み終わった順ではなく要望・タスクの順で行う（欠損の明細の並びも同じ）
-- **人が記録する値**（`kind: manual`。定義の `manual` に値の規則）: `features/metrics/core/manual.ts`。`<data>/metrics/manual.json`（`{version: 1, seq, records}`）に持ち、
-  `metrics/.manual.lock` のロックの中で読み直してから置き換えで書く。識別は指標・範囲（`project` かマイルストーン ID）・期間・単位で、同じ内容は書かない。
-  値・出典・メモの訂正は記録の `rev` を照らす（渡さない・違えば `metrics_conflict`）。訂正の `updatedBy` はその訂正の主体で、主体を記録できない
-  訂正では省く（前の更新者を残すと、その人が訂正したように読めるため）。`createdBy`・`createdAt` は作ったときのまま。同じ内容の再送と競合は
-  更新者・更新日時・版を変えない。壊れたファイルは空とみなさず `metrics_unreadable`（読む側は欠損と `notices`）。
-  表示は範囲が一致する記録だけを期間・単位ごとの `rows` に出し、範囲の間・通貨・期間をまたいで合算しない（`value` は1行のときだけ）。書くのは CLI だけ。
-  記録のあるマイルストーンは `checkMilestoneRemoval` で消さず、登録に無いマイルストーンへの記録は `manual_orphan`
-
 ### 完了の記録
 
 タスクの完了（`task_done`）・人の済み（`task_checked`）・要望の対応済（`request_resolved`）・完了済（`request_done`）のとき、
@@ -1476,12 +1318,10 @@ P3 は AI の実装を動かして測らない。成績の評価・順位には�
 - **証拠は申告**: 結果は `met` / `unmet` / `unverified`。`met` は本文が要る（空は入力の誤り）。未記録（証拠なし）と未検証は分ける。
   これは作業した側の申告で、レビューの判定ではない（AI のレビューを足すときも、その判定は証拠とは別の型で持ち、証拠を書き換えない）
 - **根拠の種類**: 証拠は任意の `basis` を持つ（`{kind: unverified}` 未確認 / `{kind: declaration}` 申告のみ / `{kind: read, reference}`
-  読んで確認 / `{kind: machine, command, result, target}` 検査結果あり / `{kind: observation, observation, result}` 観測の結果）。結果と別の軸で、どれも作業した側の申告（P3 は実行しない。
+  読んで確認 / `{kind: machine, command, result, target}` 検査結果あり）。結果と別の軸で、どれも作業した側の申告（P3 は実行しない。
   read と machine に正しさの上下は付けない。人の済みはタスクの `checkedAt` で、basis に human は作らない。AI レビューの判定は写さない）。
   型・ラベル・組み合わせ（met / unmet に未確認は不可、unverified は未確認だけ）・古い値の解釈・内訳・変更の比較は `features/requirements/shared/acceptance.ts`。
-  観測の結果を `met` の根拠にする記録は、書く前に `updateTask` が照合する（完了して判定が期待どおりの結果だけ。tasks は observer を読まないので、照合の
-  供給口 `setObservationResultSource`（`core/preflight/observations.ts`）をアプリが起動のときに置く。無ければ断る）。タスクの詳細は結果の状態と、結果を実行した版・
-  観測の今の版を後から読み（`GET /observation-results/:obs/:rid`。アプリの `server/api/requestObservations.ts`）、期待が変わっていれば知らせる
+  以前の根拠「観測の結果」（`{kind: observation}`）は、読むときに読んで確認（`read`）として読む（観測の実行と結果は無くなった。`readBasis`）。
   根拠を省いた record は、同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ（古い CLI・画面の更新を
   妨げず、古い証拠を同じ値で保存し直しても根拠を足さない）。保存した値に basis が無い古い証拠は書き換えず、読むときだけ
   unverified は未確認、ほかは「申告のみ（種類未記録）」と解釈する（本文から推し量って格上げしない）。`acceptanceStatus` の `met` は

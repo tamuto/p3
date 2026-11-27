@@ -11,7 +11,6 @@ import { ACCEPTANCE_RESULTS, acceptanceStatus, type EvidenceBasis } from "../../
 import { requestRequirementView, type CriterionSource, type SourceOp } from "../../features/requirements/shared/requirementSource.ts";
 import { MILESTONE_REVIEW_SECTIONS, RISK_STATES, TASK_REVIEW_SECTIONS } from "../../features/retro/shared/retrospective.ts";
 import { confirmRetrospectiveTarget, judgeRisk, retrospectiveView } from "../../features/retro/core/retrospective.ts";
-import { metricsRoutes } from "../../features/metrics/server/metricsRoutes.ts";
 import { requestReview, reviewCandidates, taskReview } from "../../features/records/core/reviewCandidates.ts";
 import { taskQualityDiff, type QualityOp } from "../../features/quality/shared/quality.ts";
 import { qualityTemplate, qualityView, updateQuality } from "../../features/quality/core/quality.ts";
@@ -41,7 +40,6 @@ import { CancelRefusedError, PulseInputError } from "../../core/preflight/servic
  *   /requests/:rid/preflight[/:run]        Preflight
  *   /requests/:rid/notes                   Preflight へのメモ
  *   /release-notes[/:mid]                  マイルストーンのリリースノート（releaseNoteRoutes.ts）
- *   /metrics[?milestone=<ID>]              開発の指標（features/metrics。読むだけ）
  *   /milestones/:mid/review[s...]          マイルストーンレビュー（milestoneReviewRoutes.ts）
  *   /requests/:rid/tasks/:tid/review[s...] タスクの AI レビュー（taskReviewRoutes.ts）
  */
@@ -320,7 +318,6 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     return c.json(await judgeRisk(ctx, rid(c), input, { expectedVersion: version, actor: actorOf(c) }));
   });
   /** 見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む。?request= でその要望だけ） */
-  app.route("/", metricsRoutes(ctx));
   app.get("/revisit", (c) => {
     const request = c.req.query("request");
     return c.json(reviewCandidates(ctx, request ? { request } : {}));
@@ -398,8 +395,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
     const { repo, ...b } = unnull(raw);
     // 作業先は null（作業先なし）を残す。書かなければ既定（requestOps.createTask）
     const input = { ...b, ...("repo" in raw ? { repo: raw.repo ?? null } : {}) } as Partial<Task> & { title: string };
-    const { task, reopened, reopenedAncestors, warnings } = await createTask(ctx, rid(c), input, actorOf(c));
-    return c.json({ ...task, ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(warnings.length ? { warnings } : {}) }, 201);
+    const { task, reopened, reopenedAncestors, warnings, observationSkipped } = await createTask(ctx, rid(c), input, actorOf(c));
+    return c.json({ ...task, ...(reopened ? { reopened } : {}), ...(reopenedAncestors ? { reopenedAncestors } : {}), ...(warnings.length ? { warnings } : {}), ...(observationSkipped ? { observationSkipped } : {}) }, 201);
   });
   app.get("/requests/:rid/tasks/:tid", (c) => {
     const task = ws.tasksOf(rid(c)).require(tid(c));
@@ -415,8 +412,8 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(acceptance?.length ? { acceptance } : {}),
     };
     // 完了済の祖先の下に未完了ができたら警告を添える（操作は続ける）。基準・証拠が変わって済みを外したら checkCleared
-    // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）
-    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped, reworkSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
+    // 完了の記録が壊れていて足せなかったら completionSkipped（状態は変えた）。観測のシステムの項目に記録できなかったら observationSkipped
+    const { task, warnings, reopened, reopenedAncestors, checkCleared, completionSkipped, reworkSkipped, observationSkipped } = await updateTask(ctx, rid(c), tid(c), next, { expectedRev: expectedRev(c, { rev }), actor: actorOf(c) });
     return c.json({
       ...task,
       ...(warnings.length ? { warnings } : {}),
@@ -425,6 +422,7 @@ export function apiRoutes(ctx: P3Context, opts: { notify?: (kind: "user" | "chat
       ...(checkCleared ? { checkCleared } : {}),
       ...(completionSkipped ? { completionSkipped } : {}),
       ...(reworkSkipped ? { reworkSkipped } : {}),
+      ...(observationSkipped ? { observationSkipped } : {}),
     });
   });
   /** 今の品質基準との差分（読むだけ。タスクは書き換えない） */
