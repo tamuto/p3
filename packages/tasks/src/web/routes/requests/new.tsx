@@ -63,7 +63,8 @@ function NewRequest() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-8">
+    // 画面は左寄せで、左右の余白は観測の項目の登録と同じ。幅の上限を付けず、全幅の入力欄は本文の幅まで広げる（docs/development.md「画面の文字と余白」）
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
       <h2 className="text-xl font-bold">新しい要望</h2>
       <p className="text-fg-4">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
       <Field label="タイトル">

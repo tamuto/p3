@@ -101,10 +101,20 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
       }, page);
 
       await s.step(at("新しい要望"), async () => {
+        // 左寄せ: 見出しとタイトルの欄の左端は観測の項目の登録の見出しと揃い、広い画面では入力欄が本文の左右の余白まで広がる
+        await page.goto("/observer/new");
+        const left = (await box(page.getByRole("heading", { name: "観測の項目を登録" }))).left;
         await page.goto("/requests/new");
         await until.visible(page.getByRole("heading", { name: "新しい要望" }));
         await page.getByLabel("タイトル").fill(LONG_TITLE);
+        await page.getByLabel(/親の要望/).selectOption(ids.drafts);
+        const [main, title, body] = [await box(page.locator("main")), await box(page.getByLabel("タイトル")), await box(page.getByLabel(/^内容/))];
+        for (const [what, b] of [["見出し", await box(page.getByRole("heading", { name: "新しい要望" }))], ["タイトルの欄", title]] as const) {
+          expect(Math.abs(b.left - left), at(`${what}の左端（${b.left} / ${left}）`)).toBeLessThanOrEqual(1);
+        }
+        if (width >= 1024) for (const b of [title, body]) expect(main.right - b.right, at(`入力欄の右の余白（${main.right - b.right}）`)).toBeLessThanOrEqual(32 + 20);
         none(await pageOverflow(page), at("新しい要望のページ"));
+        none(await reachable(page.getByText("ファイルを選ぶ（複数可）"), "添付"), at("新しい要望の操作"));
         none(await reachable(page.getByRole("button", { name: "作成", exact: true }), "作成"), at("新しい要望の操作"));
       }, page);
 
