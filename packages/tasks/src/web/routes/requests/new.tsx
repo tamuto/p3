@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { NewAttachments } from "../../components/Attachments.tsx";
 import { TagInput } from "../../components/TagInput.tsx";
-import { Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
+import { Alert, Button, Field, inputCls, linkCls } from "@infodb/p3-shared/web/ui.tsx";
 import { addTag } from "../../../shared/tags.ts";
 import { api } from "../../lib/api.ts";
 import { useUnsaved } from "../../lib/unsaved.ts";
@@ -63,10 +63,14 @@ function NewRequest() {
   }
 
   return (
-    // 画面は左寄せで、左右の余白は観測の項目の登録と同じ。幅の上限を付けず、全幅の入力欄は本文の幅まで広げる（docs/development.md「画面の文字と余白」）
+    // 戻るリンク・見出し・説明・余白・幅は観測の項目の登録と揃える（docs/development.md「画面の文字と余白」）
     <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
-      <h2 className="text-xl font-bold">新しい要望</h2>
-      <p className="text-fg-4">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
+      <Link to="/" className={linkCls}>
+        ← 進捗
+      </Link>
+      <h1 className="text-2xl font-bold">新しい要望</h1>
+      <p className="text-fg-3">要望はプロジェクトで行う作業の単位です。要望ごとにフォルダが作られ、Preflight で生まれたタスクはすべてその中に置かれます。</p>
+      {error && <Alert box>{error}</Alert>}
       <Field label="タイトル">
         <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
@@ -110,7 +114,6 @@ function NewRequest() {
         <TagInput id="new-request-tags" tags={tags} onChange={setTags} text={tagText} onText={setTagText} />
       </div>
       <NewAttachments items={files} onChange={setFiles} check={check} disabled={!!busy} />
-      {error && <p className="text-danger">{error}</p>}
       <Button
         variant="primary"
         disabled={!title.trim() || blocked || !!busy}

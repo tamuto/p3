@@ -197,7 +197,7 @@ describe.skipIf(!inject("chromium").available)("プロジェクトを跨ぐ serv
     await step("古い画面からの作成は断られ、入力は残り、選び直しを案内する", async () => {
       await page.getByLabel("タイトル").fill("古い画面から");
       await page.getByRole("button", { name: "作成", exact: true }).click();
-      await until.visible(page.getByRole("alert").filter({ hasText: "登録が変わりました" }));
+      await until.visible(page.getByRole("alert").filter({ hasText: "登録が変わりました" }).first());
       await until.value(page.getByLabel("タイトル"), "古い画面から");
       const titles = JSON.parse(execFileSync("node", [P3_BIN, "progress", "--project", "second", "--json"], { cwd: s.env.repo, env: s.env.env, encoding: "utf8" })) as { request: { title: string } }[];
       expect(titles.map((r) => r.request.title)).not.toContain("古い画面から");

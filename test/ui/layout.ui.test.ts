@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { box, escapes, inViewport, isDark, luminance, pageOverflow, reachable, reachByScroll } from "./layout.ts";
+import { box, escapes, type Box, inViewport, isDark, luminance, pageOverflow, reachable, reachByScroll } from "./layout.ts";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
@@ -101,18 +101,22 @@ describe.skipIf(!inject("chromium").available)("表示（幅・テーマ）", ()
       }, page);
 
       await s.step(at("新しい要望"), async () => {
-        // 左寄せ: 見出しとタイトルの欄の左端は観測の項目の登録の見出しと揃い、広い画面では入力欄が本文の左右の余白まで広がる
+        // 観測の項目の登録と揃える: 戻るリンク・見出し・タイトルの欄の左端が同じで、広い画面ではどちらの入力欄も本文の左右の余白まで広がる
+        const wide = (main: Box, b: Box) => width < 1024 || expect(main.right - b.right, at(`入力欄の右の余白（${main.right - b.right}）`)).toBeLessThanOrEqual(32 + 20);
         await page.goto("/observer/new");
         const left = (await box(page.getByRole("heading", { name: "観測の項目を登録" }))).left;
+        wide(await box(page.locator("main")), await box(page.getByLabel("名前")));
         await page.goto("/requests/new");
         await until.visible(page.getByRole("heading", { name: "新しい要望" }));
         await page.getByLabel("タイトル").fill(LONG_TITLE);
         await page.getByLabel(/親の要望/).selectOption(ids.drafts);
         const [main, title, body] = [await box(page.locator("main")), await box(page.getByLabel("タイトル")), await box(page.getByLabel(/^内容/))];
-        for (const [what, b] of [["見出し", await box(page.getByRole("heading", { name: "新しい要望" }))], ["タイトルの欄", title]] as const) {
+        const back = page.getByRole("link", { name: "← 進捗" });
+        for (const [what, b] of [["戻るリンク", await box(back)], ["見出し", await box(page.getByRole("heading", { level: 1, name: "新しい要望" }))], ["タイトルの欄", title]] as const) {
           expect(Math.abs(b.left - left), at(`${what}の左端（${b.left} / ${left}）`)).toBeLessThanOrEqual(1);
         }
-        if (width >= 1024) for (const b of [title, body]) expect(main.right - b.right, at(`入力欄の右の余白（${main.right - b.right}）`)).toBeLessThanOrEqual(32 + 20);
+        for (const b of [title, body]) wide(main, b);
+        expect(await back.getAttribute("href"), at("戻るリンクの行き先")).toBe("/");
         none(await pageOverflow(page), at("新しい要望のページ"));
         none(await reachable(page.getByText("ファイルを選ぶ（複数可）"), "添付"), at("新しい要望の操作"));
         none(await reachable(page.getByRole("button", { name: "作成", exact: true }), "作成"), at("新しい要望の操作"));
