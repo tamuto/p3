@@ -38,7 +38,6 @@ function RequestLayout() {
 const TABS = [
   { to: "/requests/$requestId", label: "概要・Preflight", exact: true },
   { to: "/requests/$requestId/board", label: "タスクボード", exact: false },
-  { to: "/requests/$requestId/done", label: "対応済み", exact: false, hint: "人が「済み」にしたタスクの一覧（要望のステータスの「対応済」とは別）" },
   { to: "/requests/$requestId/archive", label: "アーカイブ", exact: false, hint: "アーカイブしたタスク（閲覧専用。進捗・対応済の判定には数えない）" },
 ] as const;
 

@@ -127,7 +127,7 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
   Mock のエンジン・変更者・cwd を明示する。手元の個人設定・プロジェクト・`.p3-demo/` には触れない。`p3 serve` は 127.0.0.1 の
   空いたポートで起こす（取られていたら別のポートで試し直す）。ブラウザは親の環境で起こす（一時の HOME をブラウザの探索に使わない）
 - 主な流れ（`test/ui/flow.ui.test.ts`）: 要望の登録 → Mock の Preflight → 評価と案 → タスク化 → ボード → タスクの着手・完了
-  （成果物・変更の記録）→ 済み → 要望の完了済を、すべて画面の操作で進め、再読み込みと CLI でも残っていることを確かめる
+  （成果物・変更の記録）→ 要望の完了済を、すべて画面の操作で進め、再読み込みと CLI でも残っていることを確かめる
 - 表示（`test/ui/layout.ui.test.ts`）: 進捗・新しい要望・概要と Preflight の案・タスクボード・タスクの詳細を幅 1280 と 375 で、
   案の詳細（Markdown の本文）を幅 375 / 768 / 1280 の明暗のテーマで開き、長い題・長いパス・複数の案・依存・表とコードのある本文で確かめる:
   ページ全体の横のはみ出し、枠（カード・行・詳細）からのはみ出し、ボードの並び（広い幅は未着手と完了が横、狭い幅は縦に積む）、
@@ -138,7 +138,7 @@ pnpm video                   # 使い方の動画を録り直す（.p3-video/p3-
 - 縦スクロール（`test/ui/verticalScroll.ui.test.ts`）: 幅 1280 / 375・高さ 900 / 600・明暗で、通常のタスク案・子の分割案・
   親を持つ子（長い題の祖先が2段）・Preflight 未実行の要望を開き、文書と `main` が縦に送れず本文（`request-content`）だけが送れること、
   本文を下端まで送ると最後の要素まで届くこと、送ったあともコピーとタブが画面内にあること、横に送るタブと上のナビゲーションが縦に送れないこと、子の分割案の「採用内容を確認」と実行ログの
-  末尾に届くことを測る。進捗・新しい要望・設定の3つのタブ・リリースノート・タスクボード・対応済みは、文書と上のナビゲーションとタブ（設定・リリースノートの tablist）が縦に
+  末尾に届くことを測る。進捗・新しい要望・設定の3つのタブ・リリースノート・タスクボードは、文書と上のナビゲーションとタブ（設定・リリースノートの tablist）が縦に
   送れないことだけを測る。測るのは名指しした要素（文書・`main`・本文・タブ・上のナビゲーション・実行ログ）の送れる量で、すべての要素を数えはしない。ほかの局所スクロールの
   中身や、通知（再読み込みの失敗・外での削除）が出ているときの高さは測らない
 - 文字の大きさと拡大（`test/ui/readability.ui.test.ts`）: 下の「画面の文字と余白」の確認する画面を、幅 1280（明るい）と 375（暗い）で開き、
@@ -230,8 +230,8 @@ packages/
                      context.ts（プロジェクトを開く）・userConfig.ts・machineSettings.ts
     src/server/api/  API の組み立て（routes.ts が機能の API をつなぐ）と共通の API
     src/web/         画面の共通の部品（components/）・処理（lib/）・ルートの宣言（routes/。ページの中身は機能の web/ から読む）
-    src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: records（完了の記録・手戻り・見直し候補・前提）・
-                     quality・retro・requirements（要求の根拠・回答・受け入れ基準）・settings・taskReview・milestoneReview・releaseNotes。
+    src/features/    機能のまとまり。<機能>/{shared,core,cli,server,web} に層で分ける: records（手戻り）・
+                     quality・requirements（確認事項への回答・受け入れ基準）・settings・milestoneReview・releaseNotes。
                      読んでよいものは docs/refactoring.md「モジュール構成」（test/featureBoundary.test.ts）
   observer/          @infodb/p3-observer（観測。項目キーと値。公開しない）: shared/status.ts（起動状態の型）・shared/metric.ts（項目キーと値の型と検証・
                      システムの項目の一覧。CLI・API・画面で共通）・core/status.ts・core/metricStore.ts（保存）・cli/observerCli.ts（p3 observer）・
@@ -267,7 +267,7 @@ tasks・observer・アプリの画面は、`packages/shared/src/web/ui.tsx` の�
 
 - 色は `packages/shared/src/web/colors.css` の意味の色だけを使い、パレットの色名（`slate-500`・`amber-50` など）と `dark:` の書き分けは書かない
   （明・暗は意味の色が持つ）。文字 `fg-strong`〜`fg-5`、面 `page`・`surface`・`surface-2`・`surface-3`、境界 `line-soft`・`line`・`line-strong`、
-  意味 `accent`（操作・選択）・`danger`（失敗・消す）・`warn`（注意）・`ok`（済み）・`info`・`special`（アーカイブなど）に、それぞれ
+  意味 `accent`（操作・選択）・`danger`（失敗・消す）・`warn`（注意）・`ok`（完了）・`info`・`special`（アーカイブなど）に、それぞれ
   `-strong`（強い文字）・`-soft`（面）・`-muted`（濃い面）・`-line`（境界）・`-solid`（塗り・印）。テーマで変えない暗い面は `inverse`
 - 素の `<button>` は書かない。普通のボタンは `Button`、小さな記号のボタン（外す ×・開閉 ▸）は `IconButton`、中身で見せる押せる領域（行・印・
   サムネイル・メニューの項目）は `PlainButton`、1つを選ぶ切り替えの並びは `Segmented`、タブは `Tabs`・`TabPanel`。押せる部品はフォーカスの枠（`FOCUS`）を持つ

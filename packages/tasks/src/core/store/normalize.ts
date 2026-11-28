@@ -1,4 +1,4 @@
-import { qualityVersion, readQuality } from "../../features/quality/shared/quality.ts";
+import { readQuality } from "../../features/quality/shared/quality.ts";
 import { keepRawOf, problemKeysOf, readFieldGroups, REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS } from "./fieldGroups.ts";
 import { repoNameProblem, type CodeMapEntry, type RepoRef } from "../../shared/repos.ts";
 import { isTaskStatus, RELATION_TYPES, REQUEST_STATUSES, type Milestone, type MilestoneGoal, type ProjectConfig, type Relation, type RepoOutput, type Request, type RequestStatus, type Task, type Workstream } from "../../shared/types.ts";
@@ -44,9 +44,8 @@ export const normalizeTaskIn =
     ...(Array.isArray(d.repoOutputs) ? { repoOutputs: normalizeRepoOutputs(d.repoOutputs) } : {}),
     startedAt: d.startedAt ? iso(d.startedAt) : undefined,
     doneAt: d.doneAt ? iso(d.doneAt) : undefined,
-    checkedAt: d.checkedAt ? iso(d.checkedAt) : undefined,
     record: str(d.record)?.trim() || undefined,
-    // 受け入れ基準・停止・完了の記録・手戻り（fieldGroups.ts）
+    // 受け入れ基準・停止・手戻り（fieldGroups.ts）
     ...readFieldGroups(TASK_FIELD_GROUPS, d),
     relations: normalizeRelations(d.relations),
     ...(legacyRelationCount(d.relations) ? { legacyRelations: legacyRelationCount(d.relations) } : {}),
@@ -69,7 +68,7 @@ export const taskKeepRaw = (t: Task): readonly string[] => (t.legacyRelations ? 
 
 export const TASK_KEY_ORDER: (keyof Task)[] = [
   "id", "title", "status", "repo", "labels", "areas", "outputs", "repoOutputs", "record",
-  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "acceptanceSources", "acceptanceSourceSeq", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "checkedAt", "updatedAt", "updatedBy", "reworkHistory", "completionRecords",
+  "acceptanceCriteria", "acceptanceEvidence", "acceptanceSeq", "block", "blockHistory", "relations", "rev", "createdAt", "startedAt", "doneAt", "updatedAt", "updatedBy", "reworkHistory",
 ];
 
 export function normalizeRequest(d: Record<string, unknown>, body: string, id: string): Request {
@@ -89,7 +88,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
     tags: strs(d.tags),
     ...(d.workstreams && typeof d.workstreams === "object" ? { workstreams: normalizeWorkstreams(d.workstreams) } : {}),
     lastPreflight: str(d.lastPreflight),
-    // 要求の根拠・完了の記録・前提（fieldGroups.ts）
+    // 確認事項への回答（fieldGroups.ts）
     ...readFieldGroups(REQUEST_FIELD_GROUPS, d),
     rev: num(d.rev) ?? 1,
     createdAt: iso(d.createdAt),
@@ -101,7 +100,7 @@ export function normalizeRequest(d: Record<string, unknown>, body: string, id: s
 
 export const REQUEST_KEY_ORDER: (keyof Request)[] = [
   "id", "title", "status", "parent", "childOrder", "splitFrom", "due", "milestone", "tags", "areas", "workstreams", "lastPreflight",
-  "requirementSources", "requirementSeq", "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy", "premiseChanges", "completionRecords",
+  "clarifyAnswers", "rev", "createdAt", "updatedAt", "updatedBy",
 ];
 
 /** 要望のうちファイルに書かないキー（読んだときの問題） */
@@ -148,14 +147,8 @@ export function normalizeProject(d: Record<string, unknown>): ProjectConfig {
       : [],
     branchPattern: str(d.branchPattern) ?? "req/{id}-{slug}",
     preflight: { instructions: str(preflight.instructions) ?? "" },
-    ...qualityOf(d.quality, normalizeRepos(d.repos).map((r) => r.name)),
+    quality: readQuality(d.quality, normalizeRepos(d.repos).map((r) => r.name)),
   };
-}
-
-/** 品質基準（無い・読めない・読めるを分ける。読めない値もそのまま版に入れ、書き換えない） */
-function qualityOf(raw: unknown, repoNames: string[]): Pick<ProjectConfig, "quality" | "qualityVersion"> {
-  const quality = readQuality(raw, repoNames);
-  return { quality, qualityVersion: qualityVersion(quality, raw) };
 }
 
 /**

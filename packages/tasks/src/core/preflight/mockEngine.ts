@@ -1,4 +1,4 @@
-import { ASK_UNKNOWN } from "../../features/requirements/shared/requirementSource.ts";
+import { ASK_UNKNOWN } from "../../features/requirements/shared/clarify.ts";
 import { writableRepos } from "../../shared/workTarget.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";

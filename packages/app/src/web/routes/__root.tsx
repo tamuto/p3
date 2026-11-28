@@ -13,7 +13,6 @@ import { clearObservationNotices, useObservationNotices } from "@infodb/p3-tasks
  *   /requests/new                       新しい要望
  *   /requests/$requestId                要望の概要と Preflight（?run=）
  *   /requests/$requestId/board          要望のタスクボード（V 字: 未着手 → 作業中 → 完了）
- *   /requests/$requestId/done           要望の対応済み（済みにしたタスク）
  *   /release-notes?tab=                 マイルストーンの管理（既定）/ notes リリースノート（?m=）/ review レビュー
  *   /settings?tab=                      設定（personal 個人 / project プロジェクトの基本 / repos 参照先）
  *

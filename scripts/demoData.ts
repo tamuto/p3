@@ -78,12 +78,12 @@ export async function seedDemo(dir: string) {
   };
   async function backdate(path: string, fields: Record<string, number | undefined>) {
     const { data, body } = parseFrontmatter(await readFile(path, "utf8"));
-    for (const [k, v] of Object.entries(fields)) if (v !== undefined) data[k] = at(v, k === "createdAt" ? 9 : k === "checkedAt" ? 17 : 11);
-    data.updatedAt = [data.createdAt, data.startedAt, data.doneAt, data.checkedAt].filter((v): v is string => typeof v === "string").sort().at(-1);
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined) data[k] = at(v, k === "createdAt" ? 9 : 11);
+    data.updatedAt = [data.createdAt, data.startedAt, data.doneAt].filter((v): v is string => typeof v === "string").sort().at(-1);
     await writeFile(path, stringifyFrontmatter(data, body));
   }
-  const task = (rid: string, tid: string, f: { created?: number; started?: number; done?: number; checked?: number }) =>
-    backdate(ws.tasksOf(rid).path(tid), { createdAt: f.created, startedAt: f.started, doneAt: f.done, checkedAt: f.checked });
+  const task = (rid: string, tid: string, f: { created?: number; started?: number; done?: number }) =>
+    backdate(ws.tasksOf(rid).path(tid), { createdAt: f.created, startedAt: f.started, doneAt: f.done });
   const req = (rid: string, created: number) => backdate(ws.requests.path(rid), { createdAt: created });
 
   // v0.1: リリース済み
@@ -105,9 +105,9 @@ export async function seedDemo(dir: string) {
   for (const [i, t] of ["T001", "T002", "T003"].entries()) await work(store, t, "done", pr(i + 1));
   await ws.requests.update(store, { status: "done" }, { actor: "human:demo" });
   await req(store, -24);
-  await task(store, "T001", { created: -23, started: -22, done: -20, checked: -19 });
-  await task(store, "T002", { created: -23, started: -19, done: -17, checked: -16 });
-  await task(store, "T003", { created: -23, started: -15, done: -13, checked: -12 });
+  await task(store, "T001", { created: -23, started: -22, done: -20 });
+  await task(store, "T002", { created: -23, started: -19, done: -17 });
+  await task(store, "T003", { created: -23, started: -15, done: -13 });
 
   // v0.2: 進行中
   const views = await request(
@@ -131,7 +131,7 @@ export async function seedDemo(dir: string) {
   await work(views, "T002", "done", [pr(5), "ボードは V 字の配置にした。完了の列を上段に置き、作業中を下段で広く見せるため", "src/web/routes/requests/$requestId/board.tsx"]);
   await work(views, "T003", "doing");
   await req(views, -9);
-  await task(views, "T001", { created: -8, started: -7, done: -6, checked: -5 });
+  await task(views, "T001", { created: -8, started: -7, done: -6 });
   await task(views, "T002", { created: -8, started: -4, done: -2 });
   await task(views, "T003", { created: -8, started: -1 });
   await task(views, "T004", { created: -8 });
@@ -160,7 +160,7 @@ export async function seedDemo(dir: string) {
   await work(cli, "T001", "done", pr(6));
   await work(cli, "T002", "doing");
   await req(cli, -7);
-  await task(cli, "T001", { created: -6, started: -5, done: -3, checked: -3 });
+  await task(cli, "T001", { created: -6, started: -5, done: -3 });
   await task(cli, "T002", { created: -6, started: -2 });
   await task(cli, "T003", { created: -6 });
 

@@ -9,8 +9,8 @@ import { changedLabel } from "../../shared/preflightInput.ts";
 
 export const UNSAVED_BLOCKED = "タイトルか本文が未保存です。保存するかキャンセルしてください";
 
-/** 要求の出典と確認・確認事項への回答が未保存（評価の開始とタスク化を止める） */
-export const REQUIREMENT_UNSAVED = "要求の出典と確認か、確認事項への回答が未保存です。保存するか取消してください";
+/** 確認事項への回答が未保存（評価の開始とタスク化を止める） */
+export const REQUIREMENT_UNSAVED = "確認事項への回答が未保存です。保存するか取消してください";
 
 /** 未保存の項目（Preflight の開始とタスク化を止める） */
 export function unsavedFields(s: { title: boolean; body: boolean }): string[] {

@@ -1,6 +1,6 @@
 import type { AcceptanceCriterion, AcceptanceEvidence, EvidenceSummary } from "../features/requirements/shared/acceptance.ts";
 import type { BlockHistoryEntry, TaskBlock } from "./taskBlock.ts";
-import type { QualitySnapshot, QualityState } from "../features/quality/shared/quality.ts";
+import type { QualityState } from "../features/quality/shared/quality.ts";
 import type { RefScope, RepoRef } from "./repos.ts";
 /**
  * p3 のドメイン型。サーバ・CLI・Web で共有する。
@@ -95,8 +95,6 @@ export interface Task {
    */
   startedAt?: string;
   doneAt?: string;
-  /** 完了したタスクを人が確認して「済み」にした日時（完了から戻すと消える） */
-  checkedAt?: string;
   /**
    * 変更の記録（Markdown）。完了にするときに作業した側が書く: 何を変えたか・なぜ・入れた決まり・やめたもの。
    * 後の Preflight が経緯を調べるとき、タスク解析・リリースノートの材料に読む。AI が完了にするときは必須
@@ -108,10 +106,6 @@ export interface Task {
   acceptanceEvidence?: AcceptanceEvidence[];
   /** 基準に振った最後の番号（消した ID を使い直さない） */
   acceptanceSeq?: number;
-  /** 基準ごとの要求の根拠（出典・確かめた人・日・根拠。criterionId で対応。実装後の証拠とは別。shared/requirementSource.ts） */
-  acceptanceSources?: CriterionSource[];
-  /** 基準ごとの要求の根拠に振った最後の番号（S1, S2…。基準をまたいでタスクで1つ。消した ID を使い直さない。p3 が書く） */
-  acceptanceSourceSeq?: number;
   /** 直接編集で読めなかった基準・証拠の理由（ファイルには書かない。あれば基準・証拠は操作で変えられない） */
   acceptanceProblems?: string[];
   /** 止まっている理由（作業中のタスクの属性。状態ではない）。規則は shared/taskBlock.ts */
@@ -120,11 +114,7 @@ export interface Task {
   blockHistory?: BlockHistoryEntry[];
   /** 直接編集で読めなかった停止の値の理由（ファイルには書かない） */
   blockProblems?: string[];
-  /** 完了・人の済みにしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
-  completionRecords?: CompletionRecord[];
-  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
-  completionProblems?: string[];
-  /** 手戻りの履歴（済みの解除・完了からの再開。追記だけ。shared/reworkHistory.ts） */
+  /** 手戻りの履歴（完了からの再開。追記だけ。shared/reworkHistory.ts） */
   reworkHistory?: ReworkEntry[];
   /** 直接編集で読めなかった手戻りの履歴の理由（ファイルには書かない） */
   reworkProblems?: string[];
@@ -207,22 +197,10 @@ export interface Request {
   workstreams?: Record<string, Workstream>;
   /** 最新 preflight run */
   lastPreflight?: string;
-  /** 要求の根拠の記録（任意。出典・確かめた人・日・根拠。shared/requirementSource.ts） */
-  requirementSources?: RequirementSource[];
-  /** 根拠の記録に振った最後の番号 */
-  requirementSeq?: number;
   /** Preflight の確認事項への回答（元の run と確認事項の ID ごと。過去の run は書き換えない） */
   clarifyAnswers?: ClarifyAnswer[];
-  /** 直接編集で読めなかった根拠・回答の理由（ファイルには書かない。あれば操作で変えない） */
+  /** 直接編集で読めなかった回答の理由（ファイルには書かない。あれば操作で変えない） */
   requirementProblems?: string[];
-  /** 対応済・完了済にしたときの条件の記録（追記だけ。shared/completionRecord.ts） */
-  completionRecords?: CompletionRecord[];
-  /** 直接編集で読めなかった完了の記録の理由（ファイルには書かない） */
-  completionProblems?: string[];
-  /** 人が明示した前提の変更（外部の規則の変更など。追記だけ。shared/reviewCandidate.ts） */
-  premiseChanges?: PremiseChange[];
-  /** 直接編集で読めなかった前提の変更の理由（ファイルには書かない） */
-  premiseProblems?: string[];
   rev: number;
   createdAt: string;
   updatedAt: string;
@@ -231,18 +209,14 @@ export interface Request {
 }
 
 import type { HierarchyIssue } from "./hierarchy.ts";
-import type { CompletionRecord } from "../features/records/shared/completionRecord.ts";
 import type { ReworkEntry } from "../features/records/shared/reworkHistory.ts";
-import type { PremiseChange, ReviewState, ReviewSummary } from "../features/records/shared/reviewCandidate.ts";
-import type { Clarification, ClarifyAnswer, CriterionSource, RequirementInput, RequirementSource } from "../features/requirements/shared/requirementSource.ts";
+import type { Clarification, ClarifyAnswer, RequirementInput } from "../features/requirements/shared/clarify.ts";
 
 /** 進捗の画面・CLI 用の集計 */
 /** 進捗のスケジュールに描くためのタスクの要約 */
-export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "checkedAt" | "block"> & {
+export type TaskMark = Pick<Task, "id" | "ref" | "title" | "status" | "createdAt" | "startedAt" | "doneAt" | "block"> & {
   /** 受け入れ基準の証拠の概要（有効な met・申告のみの件数・根拠ごとの件数・読めない値の有無。本文は載せない）。基準も証拠も無ければ省く */
   evidence?: EvidenceSummary;
-  /** 完了したタスクの見直しの診断の状態（完了していなければ省く） */
-  review?: ReviewState;
 };
 
 export interface RequestProgress {
@@ -265,18 +239,6 @@ export interface RequestProgress {
   subtree: { counts: Record<TaskStatus, number>; total: number; done: number; blocked: number; requests: Record<RequestStatus, number> };
   /** 親子の問題（自分・祖先・子孫） */
   hierarchyIssues: HierarchyIssue[];
-  /** 見直しが必要（候補）の概要（shared/reviewCandidate.ts） */
-  review?: RequestReviewCounts;
-}
-
-/**
- * 要望の見直し候補の概要。self: 要望自身の診断（対応済・完了済のときだけ）/ tasks: 自分のタスクの候補の数 / below: 自分を除く配下
- * （子孫の要望自身と、そのタスク）の候補の数。親の件数は集約で、その親自身を候補とは扱わない
- */
-export interface RequestReviewCounts {
-  self?: ReviewSummary;
-  tasks: number;
-  below: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,10 +289,6 @@ export interface ProposedTask {
   acceptanceCriteria?: AcceptanceCriterion[];
   /** 案の基準が読めない理由（案のファイルには書かない。あればその案はタスク化できない。基準を直すと消える） */
   acceptanceProblems?: string[];
-  /** 基準ごとの要求の根拠（タスク化するとタスクに写す。shared/requirementSource.ts） */
-  acceptanceSources?: CriterionSource[];
-  /** 根拠に振った最後の番号（消した ID を使い直さない。タスク化するとタスクに引き継ぐ。p3 が書く） */
-  acceptanceSourceSeq?: number;
 }
 
 export interface PreflightAssessment {
@@ -341,7 +299,7 @@ export interface PreflightAssessment {
   risks: string[];
   /** 確認事項（文の並び。以前の run と同じ形で残す） */
   questions: string[];
-  /** 構造化した確認事項（確認先・質問・必要な根拠・判断への影響。無ければ記録なし。shared/requirementSource.ts） */
+  /** 構造化した確認事項（確認先・質問・必要な根拠・判断への影響。無ければ記録なし。shared/clarify.ts） */
   clarifications?: Clarification[];
   /** 読めなかった確認事項の理由（黙って捨てない） */
   clarificationProblems?: string[];
@@ -462,8 +420,6 @@ export interface UiMaterials {
 export interface PreflightRun {
   id: string;
   requestId: string;
-  /** 始めたときのプロジェクトの品質基準（状態・版・項目）。評価の資料とタスク化の取り込みに使う（古い run には無い） */
-  quality?: QualitySnapshot;
   /** 評価したもの。local: 手元の対話エージェント（p3 preflight --prepare で準備し、--complete で取り込む。P3 はモデルを呼ばない） */
   engine: "codex" | "mock" | "local";
   /** running の間は、local ならエージェントの評価を待っている（プロセスを跨いで続く） */
@@ -560,7 +516,7 @@ export interface PreflightInput {
    */
   parent?: { id: string; hash: string };
   children?: { id: string; hash: string }[];
-  /** 始めたときの要求の根拠と確認事項への回答（無ければ無し。以前の run にも無い。shared/requirementSource.ts） */
+  /** 始めたときの確認事項への回答（無ければ無し。以前の run の要求の根拠は読まない。shared/clarify.ts） */
   requirement?: RequirementInput;
 }
 
@@ -792,7 +748,7 @@ export interface ReleaseMaterial {
 /**
  * マイルストーンの要望を一括で完了済にできるか（core/releaseNotes/completeRequests.ts が判定する。画面・CLI は見せるだけ）。
  * 見送りを除く全要望が収録の条件（対応済か完了済・タスクが1件以上で全部完了・読めないタスクなし）を満たすときだけできる。
- * 変えるのは対応済（resolved）だけで、完了済・見送り・タスク（済みを含む）・ノートは変えない
+ * 変えるのは対応済（resolved）だけで、完了済・見送り・タスク・ノートは変えない
  */
 export interface RequestCompletionPlan {
   milestone: string;
@@ -918,8 +874,6 @@ export interface ProjectConfig {
    * 無ければ未設定として扱う。規則は shared/quality.ts
    */
   quality?: QualityState;
-  /** 品質基準の版（品質だけの中身の hash。保存の前に比べる） */
-  qualityVersion?: string;
 }
 
 /** changed の kind "reload": データのフォルダを全部読み直した（画面の「再読み込み」）。画面はすべて取り直す */
@@ -927,8 +881,6 @@ export type ServerEvent =
   | { type: "changed"; kind: "task" | "request" | "preflight" | "note" | "attachment" | "project" | "projects" | "chatgpt" | "user" | "reload"; request?: string; ref?: string }
   /** リリースノートのファイルが変わった・消えた（CLI・画面・直接編集） */
   | { type: "changed"; kind: "release-note"; milestone: string }
-  /** タスクの AI レビューの状態が変わった */
-  | { type: "task-review"; id?: string; request: string; task: string; status?: "running" | "completed" | "failed" | "cancelled" }
   /** リリースノートの要約の生成の状態が変わった */
   | { type: "release-generation"; id: string; milestone: string; status: ReleaseGenerationStatus }
   /** マイルストーンレビューの実行の状態（このプロセスの実行と、ほかのプロセスが書いた履歴の変化。status は分からなければ無い） */

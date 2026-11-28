@@ -6,8 +6,6 @@ import { api, archiveUnreadable, failureOf } from "../lib/api.ts";
 import { fmtTime } from "../lib/format.ts";
 import { latestOnly, STALE } from "../lib/latest.ts";
 import { AcceptanceView } from "../../features/requirements/web/Acceptance.tsx";
-import { CriteriaSources } from "../../features/requirements/web/RequirementSources.tsx";
-import { TaskReviewPanel } from "../../features/taskReview/web/TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { Outputs } from "./Outputs.tsx";
@@ -131,7 +129,6 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
         <Item label="作成">{fmtTime(task.createdAt)}</Item>
         <Item label="作業中にした">{fmtTime(task.startedAt) || "—"}</Item>
         <Item label="完了にした">{fmtTime(task.doneAt) || "—"}</Item>
-        <Item label="人の最終確認">{task.checkedAt ? `確認済み（${fmtTime(task.checkedAt)}）` : "未"}</Item>
         {task.labels.length > 0 && <Item label="ラベル">{task.labels.join(", ")}</Item>}
         {task.areas.length > 0 && <Item label="影響領域">{task.areas.join(", ")}</Item>}
       </dl>
@@ -144,11 +141,6 @@ function Body({ ctx, task, rid }: { ctx: AppCtx; task: ArchivedTask; rid: string
       )}
       <Section title="受け入れ基準と作業した側の証拠">
         <AcceptanceView task={task} />
-      </Section>
-      {/* 要求の出典と確認（閲覧専用） */}
-      <CriteriaSources criteria={task.acceptanceCriteria} sources={task.acceptanceSources} />
-      <Section title="タスクの AI レビュー（履歴）">
-        <TaskReviewPanel task={task} archived />
       </Section>
       <Section title="成果物">
         {task.outputs.length || task.repoOutputs?.length ? <Outputs outputs={task.outputs} repoOutputs={task.repoOutputs} /> : <p className="text-base text-fg-4">ありません</p>}

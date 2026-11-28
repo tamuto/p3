@@ -87,13 +87,14 @@
 
 | 項目のまとまり | 読む関数と項目 | 問題の置き場所 |
 | --- | --- | --- |
-| 受け入れ基準・証拠・基準の根拠・採番 | `shared/acceptance.ts` の `readAcceptance`・`ACCEPTANCE_KEYS` | `acceptanceProblems` |
+| 受け入れ基準・証拠・採番 | `features/requirements/shared/acceptance.ts` の `readAcceptance`・`ACCEPTANCE_KEYS` | `acceptanceProblems` |
 | 停止と履歴 | `shared/taskBlock.ts`・`BLOCK_KEYS` | `blockProblems` |
-| 完了の記録 | `shared/completionRecord.ts` の `readCompletion`・`COMPLETION_KEYS` | `completionProblems` |
-| 手戻りの履歴 | `shared/reworkHistory.ts` の `readRework`・`REWORK_KEYS` | `reworkProblems` |
-| 要望の要求の根拠・回答 | `shared/requirementSource.ts` の `readRequirement`・`REQUIREMENT_KEYS` | `requirementProblems` |
-| 前提の変更 | `shared/reviewCandidate.ts` の `readPremises`・`PREMISE_KEYS` | `premiseProblems` |
-| 案の基準・根拠・採番 | `core/store/preflightStore.ts` の `draftCriteriaOf`、`core/preflight/service.ts` の `updateDraft`（`rawDraftField`・`saveDraftRaw`） | 案の `acceptanceProblems` |
+| 手戻りの履歴 | `features/records/shared/reworkHistory.ts` の `readRework`・`REWORK_KEYS` | `reworkProblems` |
+| 要望の確認事項への回答 | `features/requirements/shared/clarify.ts` の `readRequirement`・`REQUIREMENT_KEYS` | `requirementProblems` |
+| 案の基準 | `core/store/preflightStore.ts` の `draftCriteriaOf`、`core/preflight/service.ts` の `updateDraft`（`rawDraftField`・`saveDraftRaw`） | 案の `acceptanceProblems` |
+
+要望 261128-gbwmf で、完了の記録・要求の根拠・前提の変更のまとまりを無くした（以前の版の項目は読まずに知らない項目としてファイルに残し、
+入力からは書かない。`fieldGroups.ts` の `LEGACY_KEYS`）。下の T002 の記録は当時のもの。
 
 - **既に共用しているもの**: 書き戻しの仕組みは `core/store/collection.ts` の `keepRaw`（汎用）。要望とタスクは `core/store/normalize.ts` の
   `requestKeepRaw`・`taskKeepRaw`（問題がある項目のまとまりを列挙）と `TASK_DERIVED`（書かない項目）で、まとまりごとに手で並べている
@@ -113,10 +114,8 @@
 
 | ファイル | 置き場所 | ロック | 壊れたとき（今） |
 | --- | --- | --- | --- |
-| `requests/<ID>/retrospective.json` | `core/retrospective.ts` | あり | JSON として読めなければ断る（`retro_unreadable`）。無ければ空 |
-| `quality-improvements.json` | `core/qualityImprovement.ts` | `.quality-improvements.lock` | 読めない（`readFile` の失敗）なら空とみなす。JSON として読めなければ診断・登録とも断る（`invalid`） |
 | `release-notes/<ID>.md` | `core/releaseNotes/store.ts` | あり | 読めない・形が違えば `invalid` |
-| レビューの run（`run.json`・`input.json`・`review.json`） | `core/reviewRuns.ts` の `readJson`・`writeJson`（タスク・マイルストーンの各 `store.ts`） | run ごと | `broken` |
+| レビューの run（`run.json`・`input.json`・`review.json`） | `core/reviewRuns.ts` の `readJson`・`writeJson`（マイルストーンレビューの `store.ts`） | run ごと | `broken` |
 | Preflight の run・案・子の案 | `core/store/preflightStore.ts` | 案ごと（`drafts/.<key>.lock`） | 項目ごとに問題として知らせる |
 | 添付の一覧（`attachments.json`） | `core/store/attachments.ts` | なし | 読めない添付を `invalid` に分ける |
 | 画面資料の描画の記録 | `core/preflight/uiRender.ts` | なし | — |
@@ -134,7 +133,7 @@
   （ファイルの `version`、記録の `rev`、診断の hash）と、品質の改善要望の予約 → 作成 → 確定の順は変えていない
 - **まとめなかったもの**: Markdown の記録（リリースノート・案・子の案）は frontmatter で別の形なので今のまま。ロックは kit の `withFileLock` を各記録が
   呼ぶ形のまま（ロックのファイルと、その中で何を確かめるかが記録ごとに違う）。品質の改善要望の「読めない（readFile の失敗）なら空とみなす」は今の扱いとして
-  残した（直すなら別の判断）
+  残した（直すなら別の判断）。振り返り・品質の改善要望の記録は要望 261128-gbwmf で無くした
 
 ### 3. AI の実行（run）
 
@@ -245,8 +244,8 @@ tasks の中は、移す前と同じ技術の層（`shared` / `core` / `cli` / `
 | 段階 | 移した機能 |
 | --- | --- |
 | T007 | 開発の指標（`features/metrics`: `shared/metrics.ts`・`core/{definitions,index,manual}.ts`・`cli/metricsCommands.ts`・`server/metricsRoutes.ts`（API から切り出した）・`web/MetricsPage.tsx`（ルートの宣言は `web/routes/metrics.tsx`）） |
-| T008 | 完了の記録・手戻り・見直し候補・前提（`features/records`）、品質基準・テンプレート・改善要望（`features/quality`）、振り返り（`features/retro`）、要求の根拠・確認事項と回答・受け入れ基準と証拠（`features/requirements`。基準の根拠が要求の根拠と同じ記録なので、受け入れ基準と 1 つのまとまりにした）、参照先・テーマ・マシンごとの設定の書き換え（`features/settings`） |
-| T009 | タスクの AI レビュー（`features/taskReview`）、マイルストーンレビュー（`features/milestoneReview`）、リリースノートと要約・要望の一括完了（`features/releaseNotes`）。2 つのレビューがリリースノートの要約の型（`Summarizer`）を読んでいたのを、AI の実行の共通（`core/preflight/engine.ts`）に移し、タスクの AI レビューがマイルストーンレビューのコードの材料から読んでいた成果物のコミットの取り出しを `shared/commitRefs.ts` に移した（機能の core どうしを読まないため） |
+| T008 | 完了の記録・手戻り・見直し候補・前提（`features/records`。要望 261128-gbwmf で手戻りだけにした）、品質基準・テンプレート・改善要望（`features/quality`。同じく品質基準だけにした）、振り返り（`features/retro`。同じく無くした）、要求の根拠・確認事項と回答・受け入れ基準と証拠（`features/requirements`。基準の根拠が要求の根拠と同じ記録なので、受け入れ基準と 1 つのまとまりにした）、参照先・テーマ・マシンごとの設定の書き換え（`features/settings`） |
+| T009 | タスクの AI レビュー（`features/taskReview`。要望 261128-gbwmf で無くした）、マイルストーンレビュー（`features/milestoneReview`）、リリースノートと要約・要望の一括完了（`features/releaseNotes`）。2 つのレビューがリリースノートの要約の型（`Summarizer`）を読んでいたのを、AI の実行の共通（`core/preflight/engine.ts`）に移し、タスクの AI レビューがマイルストーンレビューのコードの材料から読んでいた成果物のコミットの取り出しを `shared/commitRefs.ts` に移した（機能の core どうしを読まないため） |
 
 ## 前後の計測
 

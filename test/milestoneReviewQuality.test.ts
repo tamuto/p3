@@ -1,4 +1,4 @@
-// マイルストーンレビューの品質: 品質基準を版つきで材料に固定し hash に入れる、未設定・読めないは警告で品質は評価しない、
+// マイルストーンレビューの品質: 品質基準を材料に固定し hash に入れる、未設定・読めないは警告で品質は評価しない、
 // 基準ごとの判定の網羅と根拠、品質の低下は履歴のコミットで裏付けたときだけ、始める前の確かめ（material_changed）、
 // 実行中の材料の変化の記録、古い記録は品質を評価していない、目的の判定と別に出る（偽の app-server と偽の頼む先）。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -34,10 +34,8 @@ async function setup(reviewer?: Summarizer, quality = true) {
   const ctx = await openTestProject(repo.dataDir);
   if (quality) {
     await updateQuality(ctx.ws, [
-      { op: "add", standard: { text: "lint が通る", check: { kind: "machine", command: "pnpm lint", success: "0" } } },
-      { op: "add", standard: { text: "文書を直す", check: { kind: "manual", reference: "r" } } },
-      { op: "add", standard: { text: "除外", check: { kind: "manual", reference: "r" } } },
-      { op: "exempt", id: "Q3", reason: "対象外" },
+      { op: "add", standard: { text: "lint が通る", how: "pnpm lint（成功: 0）" } },
+      { op: "add", standard: { text: "文書を直す", how: "r" } },
     ]);
   }
   ctx.milestoneReview = new MilestoneReviewService(ctx.ws, { codex: reviewer }, { pollMs: 20 });
@@ -47,11 +45,12 @@ async function setup(reviewer?: Summarizer, quality = true) {
 }
 
 describe("材料と結果の確かめ", () => {
-  it("品質基準を版つきで固定し hash に入れる。未設定は警告で品質は判定させない", async () => {
+  it("品質基準（確かめ方を含む）を材料に固定し hash に入れる。未設定は警告で品質は判定させない", async () => {
     const { ctx, dataDir } = await setup();
     const a = await extractReviewInput(dataDir, "v1", ctx.ws.refs());
-    expect(a.quality).toMatchObject({ state: "set", standards: [{ id: "Q1" }, { id: "Q2" }, { id: "Q3", exempt: { reason: "対象外" } }] });
+    expect(a.quality).toMatchObject({ state: "set", standards: [{ id: "Q1", how: "pnpm lint（成功: 0）" }, { id: "Q2" }] });
     expect(reviewPrompt(a).instructions).toContain("品質（quality）");
+    expect(JSON.stringify(reviewPrompt(a))).toContain("pnpm lint（成功: 0）");
     await updateQuality(ctx.ws, [{ op: "edit", id: "Q2", standard: { text: "文書を同じ変更で直す" } }]);
     expect((await extractReviewInput(dataDir, "v1", ctx.ws.refs())).hash).not.toBe(a.hash);
     const none = await setup(undefined, false);
@@ -70,7 +69,7 @@ describe("材料と結果の確かめ", () => {
     const bad: [string, unknown][] = [
       ["無い", undefined],
       ["欠落", [{ standard: "Q1", verdict: "undetermined", reason: "r" }]],
-      ["除外した基準", [{ standard: "Q1", verdict: "undetermined", reason: "r" }, { standard: "Q2", verdict: "undetermined", reason: "r" }, { standard: "Q3", verdict: "undetermined", reason: "r" }]],
+      ["無い基準", [{ standard: "Q1", verdict: "undetermined", reason: "r" }, { standard: "Q2", verdict: "undetermined", reason: "r" }, { standard: "Q3", verdict: "undetermined", reason: "r" }]],
       ["コミットの無い低下", [{ standard: "Q1", verdict: "violated", reason: "r", evidence: ["main:src/stock.ts"], regression: true }, { standard: "Q2", verdict: "undetermined", reason: "r" }]],
       ["根拠の無い違反", [{ standard: "Q1", verdict: "violated", reason: "r", evidence: [] }, { standard: "Q2", verdict: "undetermined", reason: "r" }]],
       ["理由の無い対象外", [{ standard: "Q1", verdict: "not_applicable", reason: "" }, { standard: "Q2", verdict: "undetermined", reason: "r" }]],

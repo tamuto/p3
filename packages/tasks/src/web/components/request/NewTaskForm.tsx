@@ -40,7 +40,6 @@ export function NewTaskForm({
   // 受け入れ基準（任意。ID はサーバが振る）
   const [criteria, setCriteria] = useState<CriterionRow[]>([]);
   // 品質基準を受け入れ基準に取り込むか（作業先に当てはまるもの）
-  const [withQuality, setWithQuality] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -56,7 +55,6 @@ export function NewTaskForm({
       setBody("");
       setRepo(initialRepo);
       setCriteria([]);
-      setWithQuality(true);
       setError(null);
     };
     d.addEventListener("close", reset);
@@ -79,9 +77,8 @@ export function NewTaskForm({
     setBusy(true);
     setError(null);
     try {
-      const input: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" } = { title: title.trim(), body, status: "todo" };
+      const input: Partial<Task> & { criteria?: string[] } = { title: title.trim(), body, status: "todo" };
       if (criteria.length) input.criteria = criteria.map((c) => c.text);
-      if (project.quality?.state === "set") input.quality = withQuality ? "auto" : "none";
       if (project.repos.length) input.repo = repo === NO_REPO ? null : repo;
       const created = (await api.createTask(request.id, input)) as Task & { reopened?: string };
       onCreated(created, !!created.reopened);
@@ -139,15 +136,8 @@ export function NewTaskForm({
           </fieldset>
           {project.quality?.state === "set" && (() => {
             const target = project.repos.length ? (repo === NO_REPO ? null : repo) : null;
-            const n = standardsFor(project.quality.config, target).applies.length;
-            return target ? (
-              <label className="flex items-center gap-2 text-base">
-                <input type="checkbox" checked={withQuality} disabled={busy} onChange={(e) => setWithQuality(e.target.checked)} />
-                作業先 {target} に当てはまる品質基準を受け入れ基準に取り込む（{n} 件）
-              </label>
-            ) : (
-              <p className="text-base text-fg-4">作業先なしのタスクには品質基準を取り込みません（必要なら CLI の p3 new --quality Q1,Q2 で明示します）。</p>
-            );
+            const n = standardsFor(project.quality.config, target).length;
+            return n ? <p className="text-base text-fg-4">{target ? `作業先 ${target}` : "作業先なし"}に当てはまる品質基準 {n} 件を、受け入れ基準に足して作ります。</p> : null;
           })()}
           {BEFORE_ACTIVE.includes(request.status) && (
             <p className="text-base text-fg-4">

@@ -157,7 +157,7 @@ function completionLines(p: RequestCompletionPlan): string[] {
   const head = !p.ready
     ? "要望の一括完了: できません（見送り以外の全要望が、全タスク完了の対応済か完了済になってから）"
     : p.targets.length
-      ? `要望の一括完了: 対応済 ${p.targets.length} 件を完了済にできます（タスクの済みは変えません）`
+      ? `要望の一括完了: 対応済 ${p.targets.length} 件を完了済にできます（タスクは変えません）`
       : "要望の一括完了: 完了済にする要望はありません";
   return [
     head,

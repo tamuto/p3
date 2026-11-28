@@ -1,4 +1,4 @@
-// 要望 ID のコピー: 要望の枠の見出し（タブの外・本文のスクロールの外）に1組だけあり、概要・タスクボード・対応済みのどのタブでも、
+// 要望 ID のコピー: 要望の枠の見出し（タブの外・本文のスクロールの外）に1組だけあり、概要・タスクボードのどのタブでも、
 // 本文を下へ送っても押せる。コピーされるのは今の要望の ID 全文。失敗は手で選ぶよう案内し、キーボードでも押せ、タイトルの入力中に
 // マウスで押しても保存しない。375 / 1280・明暗・長い題・タスク 0 件と複数件で、はみ出しと本文への到達を確かめる。
 import type { Page } from "playwright-core";
@@ -81,16 +81,6 @@ describe.skipIf(!inject("chromium").available)("要望 ID のコピー", () => {
             await until.url(page, /\/board$/);
             await until.visible(page.locator("section article").first());
             await copiesAfterScroll(ids.tasks, "タスクボード", width < 768);
-          },
-          page,
-        );
-
-        await s.step(
-          at("対応済み"),
-          async () => {
-            await page.getByRole("link", { name: "対応済み", exact: true }).click();
-            await until.url(page, /\/done$/);
-            await copiesAfterScroll(ids.tasks, "対応済み", false);
           },
           page,
         );

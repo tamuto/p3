@@ -48,13 +48,12 @@ describe("要望の対応済", () => {
     await expect(checkStatusChange(ctx.ws, req.id, "done")).resolves.toBeUndefined(); // 対応済以外は確かめない
   });
 
-  it("未完了のタスクができたら進行中に戻す。完了のタスクを足す・済みを外すだけでは戻さない。完了済・見送りは戻さない", async () => {
+  it("未完了のタスクができたら進行中に戻す。完了のタスクを足すだけでは戻さない。完了済・見送りは戻さない", async () => {
     const { ctx, req, tasks } = await setup();
-    await newTask(ctx, req.id, { title: "A", status: "done", checkedAt: "2026-10-10T00:00:00Z" });
+    await newTask(ctx, req.id, { title: "A", status: "done" });
     const resolve = () => ctx.ws.requests.update(req.id, { status: "resolved" });
     await resolve();
     await newTask(ctx, req.id, { title: "完了で足す", status: "done" });
-    await tasks.update("T001", { checkedAt: undefined });
     expect(await reopenIfNeeded(ctx.ws, req.id)).toBe(false);
     expect(ctx.ws.requests.get(req.id)?.status).toBe("resolved");
 

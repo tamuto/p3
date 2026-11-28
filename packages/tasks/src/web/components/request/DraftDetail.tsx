@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject } from "react";
+import { type RefObject } from "react";
 import type { AcceptanceCriterion } from "../../../features/requirements/shared/acceptance.ts";
 import { type ProjectConfig, type ProposedTask } from "../../../shared/types.ts";
 import { NO_REPO, repoChoices } from "../../../shared/workTarget.ts";
@@ -31,7 +31,6 @@ export function DraftDetail({
   done = false,
   edit,
   onEdit,
-  sources,
 }: {
   dialog: RefObject<HTMLDialogElement | null>;
   draft: ProposedTask | null;
@@ -48,8 +47,6 @@ export function DraftDetail({
     /** 他で変わった基準を元に、入力を残して直し直す */
     rebase: () => void;
   };
-  /** 基準ごとの要求の出典と確認（受け入れ基準の下に置く） */
-  sources?: ReactNode;
 }) {
   const repoLabel = draft && (repoChoices(project, draft.repo).find((c) => c.value === (draft.repo ?? NO_REPO))?.label ?? draft.repo);
   return (
@@ -170,7 +167,6 @@ export function DraftDetail({
                 </>
               )}
             </section>
-            {sources}
           </div>
         </div>
       )}

@@ -1,16 +1,13 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readJsonRecord, writeJsonRecord } from "../packages/tasks/src/core/store/jsonRecord.ts";
-import { confirmRetrospectiveTarget, judgeRisk, loadRetrospective } from "../packages/tasks/src/features/retro/core/retrospective.ts";
-import { archiveRequest } from "../packages/tasks/src/core/requestOps.ts";
-import { NotFoundError } from "../packages/tasks/src/core/store/collection.ts";
-import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
+import { tempDir } from "./helpers.ts";
 
 /**
  * JSON の記録のファイルの共通の読み書き（core/store/jsonRecord.ts）: 読むときの扱いを記録ごとに渡せること（無い・読めない・空・JSON として
- * 読めない・形）、置き換えで整形して書くこと。振り返りは要望のロックの中で要望があることを確かめ、アーカイブした後の場所に書き戻さないこと
+ * 読めない・形）、置き換えで整形して書くこと
  * （記録ごとの値・エラー・書き込みの有無は各機能のテスト: metricsManual・retrospective・qualityImprovement・milestoneReviewStore）
  */
 
@@ -46,28 +43,3 @@ describe("読む・書く", () => {
   });
 });
 
-describe("振り返りの記録とアーカイブ", () => {
-  it("読み込んだ後に要望がアーカイブされても、確定・リスクの確認はロックの中で気づいて NotFound にし、元の場所に書き戻さない", async () => {
-    const p = await makeProject();
-    const req = await newRequest(p.ctx, { title: "請求", status: "active", body: "- 案" });
-    // アーカイブの前に読み込んだ別のプロセス
-    const stale = await openTestProject(p.dataDir);
-    await archiveRequest(p.ctx, req.id);
-    const old = join(p.dataDir, "requests", req.id);
-    expect(existsSync(old)).toBe(false);
-    await expect(confirmRetrospectiveTarget(stale, req.id, { run: "PF-x" })).rejects.toBeInstanceOf(NotFoundError);
-    await expect(judgeRisk(stale, req.id, { risk: 1, state: "occurred", evidence: [] })).rejects.toBeInstanceOf(NotFoundError);
-    expect(existsSync(old)).toBe(false);
-  });
-
-  it("JSON として読めない記録は retro_unreadable、無い以外の読めない理由はそのまま投げる", async () => {
-    const p = await makeProject();
-    const req = await newRequest(p.ctx, { title: "請求" });
-    const file = join(p.dataDir, "requests", req.id, "retrospective.json");
-    writeFileSync(file, "{ 壊れた");
-    await expect(loadRetrospective(p.ctx, req.id)).rejects.toMatchObject({ code: "retro_unreadable" });
-    rmSync(file);
-    mkdirSync(file);
-    await expect(loadRetrospective(p.ctx, req.id)).rejects.toMatchObject({ code: "EISDIR" });
-  });
-});

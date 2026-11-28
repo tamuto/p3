@@ -13,7 +13,7 @@ type Outcome =
   | { kind: "error"; text: string };
 
 /**
- * マイルストーンの要望を一括で完了済にする（対応済 → 完了済。タスクの済み・ノート・マイルストーンは変えない）。
+ * マイルストーンの要望を一括で完了済にする（対応済 → 完了済。人の最終確認。タスク・ノート・マイルストーンは変えない）。
  * できるか・対象・できない理由はサーバの判定（plan）をそのまま出す（ここで条件を作り直さない）。確かめの欄を開いたときの判定を
  * 固定し、その basedOn で頼む（後で変わっていればサーバが何も書かずに断る。自動では頼み直さない）。
  * ノートの保存・要約の生成・マイルストーンのリリース済みとは別の操作
@@ -73,7 +73,7 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
       ) : n === 0 ? (
         <p className="text-base text-fg-4">完了済にする要望はありません</p>
       ) : (
-        <p className="text-base text-fg-3">対応済の要望 {n} 件を完了済にできます（タスクの「済み」は変えません）。</p>
+        <p className="text-base text-fg-3">対応済の要望 {n} 件を完了済にできます（タスクは変えません）。</p>
       )}
 
       {/* 確かめている間も出しておく（キャンセルでフォーカスを戻す先） */}
@@ -103,7 +103,7 @@ export function CompleteRequests({ plan, title, onChanged }: { plan: RequestComp
               </li>
             ))}
           </ul>
-          <p>要望の状態を「対応済」から「完了済」にします。タスクの「済み」は変更しません。</p>
+          <p>要望の状態を「対応済」から「完了済」にします。タスクは変更しません。</p>
           <p>保存した本文と出典はそのままです（実行後は「材料が変わった」と出ます）。</p>
           <div className="flex flex-wrap gap-2">
             <Button autoFocus disabled={busy} onClick={close}>

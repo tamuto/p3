@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  QUALITY_VERDICT_LABELS,
   REVIEW_STATUS_LABELS,
   REVIEW_VERDICT_LABELS,
   REVIEW_VERDICTS,
@@ -15,8 +16,6 @@ import { fmtTime } from "../../../web/lib/format.ts";
 import { latestOnly, STALE } from "../../../web/lib/latest.ts";
 import { useServerEvents } from "../../../web/lib/live.ts";
 import { Alert, Badge, Button, cx, PlainButton } from "@infodb/p3-shared/web/ui.tsx";
-import { ImprovementButton } from "../../quality/web/ImprovementDialog.tsx";
-import { QUALITY_VERDICT_LABELS } from "../../taskReview/shared/taskReview.ts";
 
 /**
  * 1つのマイルストーンのレビュー（リリースノートの画面の「レビュー」タブ）。規則（材料・判定・排他・回復）はサーバ
@@ -193,7 +192,7 @@ export function MilestoneReviewPanel({
               <p className="text-base text-fg-4">
                 品質基準:{" "}
                 {preview.quality.state === "set"
-                  ? `版 ${preview.quality.version}・${preview.quality.standards.filter((q) => !q.exempt).length} 件を評価${preview.quality.standards.some((q) => q.exempt) ? `・除外 ${preview.quality.standards.filter((q) => q.exempt).map((q) => q.id).join(", ")}` : ""}`
+                  ? `${preview.quality.standards.length} 件を評価`
                   : preview.quality.state === "unset"
                     ? "未設定（品質は評価しません）"
                     : "読めません（品質は評価しません）"}
@@ -345,13 +344,10 @@ const VERDICT_CLS: Record<ReviewVerdict, string> = {
   insufficient: "bg-surface-2 text-fg-2",
 };
 
-/** 品質（目的・予定機能の達成とは別の欄）。評価した版・最新の版との差・基準ごとの判定・品質の低下。古い記録は品質を評価していない */
+/** 品質（目的・予定機能の達成とは別の欄）。基準ごとの判定・品質の低下。古い記録は品質を評価していない */
 function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run: ReviewRun }> }) {
   const { input, result } = detail;
-  const { info } = useAppData();
-  const latest = info.project.qualityVersion;
   const q = input?.quality;
-  const canImprove = !!q && detail.run.status === "completed" && (q.state !== "set" || (result?.quality ?? []).some((r) => r.verdict === "violated" || r.verdict === "undetermined") || (q.standards ?? []).some((x) => x.exempt));
   return (
     <section aria-label="品質" className="space-y-2">
       <p className="text-base font-medium">品質（プロジェクトの品質基準への適合。目的の達成とは別）</p>
@@ -363,10 +359,6 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
         </p>
       ) : (
         <>
-          <p className="text-base text-fg-4">
-            評価した版 <span className="font-mono">{q.version}</span>
-            {latest && latest !== q.version ? <span className="text-warn">（今の品質基準は版 {latest} に変わっています）</span> : null}
-          </p>
           {(result?.quality ?? []).some((r) => r.verdict === "violated") && <Alert box>品質の指摘: {(result?.quality ?? []).filter((r) => r.verdict === "violated").map((r) => `${r.standard}${r.regression ? "（品質の低下）" : ""}`).join(", ")}</Alert>}
           <ul className="space-y-2 text-base">
             {(result?.quality ?? []).map((r) => (
@@ -389,17 +381,9 @@ function ReviewQualityView({ detail }: { detail: Extract<ReviewDetailView, { run
                 {r.unread && <p className="break-words text-fg-4">確かめられなかった範囲: {r.unread}</p>}
               </li>
             ))}
-            {(q.standards ?? [])
-              .filter((x) => x.exempt)
-              .map((x) => (
-                <li key={x.id} className="text-fg-4">
-                  <span className="font-mono">{x.id}</span> 除外（{x.exempt!.reason}）
-                </li>
-              ))}
           </ul>
         </>
       )}
-      {canImprove && <ImprovementButton source={{ type: "milestone-review", milestone: detail.run.milestone, run: detail.run.id }} />}
     </section>
   );
 }

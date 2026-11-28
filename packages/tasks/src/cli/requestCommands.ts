@@ -2,8 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, relative, resolve as resolvePath } from "node:path";
 import { REQUEST_STATUSES, type Attachment, type Milestone, type Request } from "../shared/types.ts";
 import { nextGoalId } from "../shared/milestoneGoals.ts";
-import { QUALITY_VERDICT_LABELS } from "../features/taskReview/shared/taskReview.ts";
-import { REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../features/milestoneReview/shared/milestoneReview.ts";
+import { QUALITY_VERDICT_LABELS, REVIEW_STATUS_LABELS, REVIEW_VERDICT_LABELS, REVIEW_VERDICTS, type ReviewVerdict } from "../features/milestoneReview/shared/milestoneReview.ts";
 import type { ReviewDetail } from "../features/milestoneReview/core/service.ts";
 import { type P3Context } from "../core/context.ts";
 import { archiveRequest, checkMilestone, checkMilestoneRemoval, createRequest, orderChildren, updateRequest } from "../core/requestOps.ts";
@@ -13,16 +12,7 @@ import { resolveRequestId } from "../core/ops.ts";
 import { table } from "./format.ts";
 import { requestWorkstreams, taskRepo } from "../shared/workTarget.ts";
 import { briefRequest, formatBriefRequest, formatFamily } from "./showView.ts";
-import { formatReview as formatRevisit } from "../features/records/cli/revisitCommands.ts";
-import { requestReview } from "../features/records/core/reviewCandidates.ts";
-import { reviewSummary } from "../features/records/shared/reviewCandidate.ts";
 
-/** 要望の配下の見直し候補の件数（無ければ何も出さない。親の件数は集約で、親自身を候補とは扱わない） */
-function reviewCountLines(review: ReturnType<typeof requestReview>): string[] {
-  const { tasks, below } = review.counts;
-  if (!tasks && !below) return [];
-  return ["", `見直しが必要（候補）: タスク ${tasks} 件${below ? `・配下 ${below} 件（子の要望とそのタスク）` : ""}（p3 revisit で理由）`];
-}
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { tagsFrom } from "../shared/tags.ts";
 import { sortMilestones } from "../shared/milestoneOrder.ts";
@@ -98,18 +88,15 @@ export async function requestCommand(
       const rid = requestArg(rest[0]);
       const r = ctx.ws.requests.require(rid);
       const family = await hierarchyView(ctx.ws, rid);
-      const review = requestReview(ctx, rid);
       if (o.brief) {
-        // 見直しの概要は、要望自身か配下に候補があるときだけ（記録なし・差分なしは短い出力に出さない）
-        const brief = review.self?.state === "candidate" || review.counts.tasks || review.counts.below ? { review: { ...(review.self ? { self: reviewSummary(review.self) } : {}), counts: review.counts } } : {};
-        const view = { ...briefRequest(ctx, r, resolvedIssue(ctx.ws, r)), ...family, ...brief };
-        return out.result(view, () => [formatBriefRequest(view), ...reviewCountLines(review)].join("\n"));
+        const view = { ...briefRequest(ctx, r, resolvedIssue(ctx.ws, r)), ...family };
+        return out.result(view, () => formatBriefRequest(view));
       }
       const file = relative(process.cwd(), ctx.ws.requests.path(rid));
       const issue = resolvedIssue(ctx.ws, r);
       const branches = requestWorkstreams(r);
       const multi = ctx.ws.project.repos.length > 0;
-      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), file, ...family, ...(issue ? { issue } : {}), review }, () => {
+      return out.result({ item: r, workstreams: branches, tasks: ctx.ws.tasksOf(rid).list(), file, ...family, ...(issue ? { issue } : {}) }, () => {
         const tasks = ctx.ws.tasksOf(rid).list();
         return [
           issue ? `※ ${issue}\n` : "",
@@ -121,9 +108,7 @@ export async function requestCommand(
             : []),
           "",
           `タスク (${tasks.length}):`,
-          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, [deps(t), review.tasks[t.id]?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  ")])) || "  （なし）",
-          ...reviewCountLines(review),
-          ...(review.self ? ["", ...formatRevisit(review.self)] : []),
+          table(tasks.map((t) => [`  ${t.id}`, t.status, ...(multi ? [taskRepo(t) ?? "（なし）"] : []), t.title, deps(t)])) || "  （なし）",
         ].join("\n");
       });
     }
@@ -154,7 +139,6 @@ export async function requestCommand(
       const next = await updateRequest(ctx, rid, patch, { expectedRev, actor });
       warn(next.warnings ?? []);
       reopenedNote(undefined, next.reopenedAncestors);
-      if (next.completionSkipped) process.stderr.write(`${next.completionSkipped}\n`);
       for (const m of next.observationSkipped ?? []) process.stderr.write(`${m}\n`);
       return out.result(next, () => `更新: ${next.id} (rev ${next.rev})  ${Object.keys(patch).join(", ")}`);
     }
@@ -398,7 +382,7 @@ function formatReview(d: ReviewDetail): string {
       for (const u of result.unplanned) lines.push(`  - ${u.text}${u.evidence.length ? `（根拠: ${u.evidence.join(", ")}）` : ""}`);
     }
     const q = input?.quality;
-    lines.push("", !q ? "品質: 評価していません（品質基準を材料に入れる前の記録です）" : q.state !== "set" ? `品質: 評価していません（品質基準が${q.state === "unset" ? "未設定" : "読めません"}）` : `品質（品質基準 版 ${q.version}。目的の達成とは別）:`);
+    lines.push("", !q ? "品質: 評価していません（品質基準を材料に入れる前の記録です）" : q.state !== "set" ? `品質: 評価していません（品質基準が${q.state === "unset" ? "未設定" : "読めません"}）` : "品質（目的の達成とは別）:");
     for (const r of result.quality ?? []) {
       lines.push(`  ${r.verdict === "violated" ? "✗" : "・"} ${r.standard}  ${QUALITY_VERDICT_LABELS[r.verdict]}${r.regression ? "（品質の低下）" : ""}  ${r.reason}`);
       if (r.evidence.length) lines.push(`      根拠: ${r.evidence.join(", ")}`);

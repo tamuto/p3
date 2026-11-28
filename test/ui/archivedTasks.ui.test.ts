@@ -81,7 +81,7 @@ describe.skipIf(!inject("chromium").available)("アーカイブしたタスク�
       await until.visible(dialog.getByText("ARCHIVED-BODY"));
       await until.visible(dialog.getByRole("link", { name: /pr\/3/ }));
       await until.visible(dialog.getByText("アーカイブ前の状態"));
-      for (const name of ["保存", "済みにする", "済みを外す", "破棄"]) expect(await dialog.getByRole("button", { name, exact: true }).count(), name).toBe(0);
+      for (const name of ["保存", "破棄"]) expect(await dialog.getByRole("button", { name, exact: true }).count(), name).toBe(0);
       expect(await dialog.locator("input, textarea, select").count()).toBe(0);
       expect(await dialog.getByRole("button", { name: "閉じる" }).evaluate((e) => e === document.activeElement)).toBe(true);
       await page.keyboard.press("Escape");

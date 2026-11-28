@@ -26,7 +26,7 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
     "dependencies", // 依存の状態の読み方
     "status=resolved", // 作業を終えたら対応済
     "rejected", // 完了済・見送りは人
-    "check", // 済みは人
+    "人の最終確認", // 要望の完了済は人の最終確認
     "warnings",
     "人への質問をタスクにしない",
     "`work`", // 作業先のリポジトリとブランチ
@@ -127,7 +127,7 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
       expect(text).toContain("人に伝える");
       expect(text).toMatch(/基準を自分で消す・書き換え/);
     }
-    // 証拠は申告で、済みは人。変更の記録とは役割が違う
+    // 証拠は申告で、最終確認は人（要望の完了済）。変更の記録とは役割が違う
     for (const t of procedures) expect(t).toContain("証拠は自分の申告で、レビューの判定ではない");
     for (const t of procedures) expect(t).toContain("役割が違う");
     for (const t of procedures) expect(t).toContain("`--record -` と標準入力を取り合う");
@@ -147,7 +147,7 @@ describe("作業の手順の決まり（guide の原本 src/cli/guide.md）", ()
       expect(text).toContain("--decision");
       expect(text).toContain("通常の修正・調査の途中では使わない");
       expect(text).toMatch(/JSON の `block` で保存できたことを確かめ/);
-      expect(text).toContain("止まったまま完了・済み・");
+      expect(text).toContain("止まったまま完了・要望の対応済に進めない");
       expect(text).toContain("unblock");
       expect(text).toContain("--resolution");
       expect(text).toContain("解除だけでは");

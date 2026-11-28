@@ -3,157 +3,106 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { qualityView, updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
+import { qualityState, updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { applyQualityOps, QualityInputError, qualityVersion, readQuality, standardsFor, templateDiffs, type QualityTemplate } from "../packages/tasks/src/features/quality/shared/quality.ts";
-import { QUALITY_TEMPLATES } from "../packages/tasks/src/features/quality/shared/qualityTemplates.ts";
+import { applyQualityOps, QualityInputError, readQuality, standardsFor, type QualityOp } from "../packages/tasks/src/features/quality/shared/quality.ts";
 import { MAIN_REF, makeProject, openTestProject, tempDir } from "./helpers.ts";
 
 /**
- * プロジェクトの品質基準（shared/quality.ts・core/quality.ts・project.yaml の quality）: 未設定・設定済み（空を含む）・読めないの区別、
- * 重複した ID・知らない参照先・理由の無い除外、ID を使い直さないこと、テンプレートの採用と改版の差分、保存の往復、ほかの保存で
- * 消えないこと・コメントと知らない項目を残すこと、版の競合、CLI と API の同じ結果、CLI の --repo の繰り返しと省略・init の意味
+ * プロジェクトの品質基準（shared/quality.ts・core/quality.ts・project.yaml の quality）: 項目は ID・文・対象の参照先・確かめ方だけ。
+ * 未設定・設定済み（空を含む）・読めないの区別、重複した ID・知らない参照先、ID を使い直さないこと、以前の版の形（check・除外・
+ * テンプレート・出典）の読み方、保存の往復とほかの保存で消えないこと、CLI と API の同じ結果、CLI の --repo の繰り返しと省略
  */
 
-const ctx0 = { repoNames: ["app", "infra"], templates: QUALITY_TEMPLATES };
+const repoNames = ["app", "infra"];
 
 describe("規則（shared）", () => {
-  it("無い・空・読めないを分け、重複した ID・理由の無い除外は読めない、知らない参照先は警告", () => {
+  it("無い・空・読めないを分け、重複した ID・空の文は読めない、知らない参照先は警告", () => {
     expect(readQuality(undefined)).toEqual({ state: "unset" });
-    expect(readQuality({ standards: [] })).toEqual({ state: "set", config: { standards: [] } });
-    expect(readQuality("文字")).toMatchObject({ state: "invalid" });
-    const dup = readQuality({ standards: [{ id: "Q1", text: "a", check: { kind: "manual", reference: "r" } }, { id: "Q1", text: "b", check: { kind: "manual", reference: "r" } }] });
-    expect(dup).toMatchObject({ state: "invalid", problems: [expect.stringContaining("重複")] });
-    expect(readQuality({ standards: [{ id: "Q1", text: "a", check: { kind: "manual", reference: "r" }, exempt: {} }] })).toMatchObject({ state: "invalid", problems: [expect.stringContaining("理由")] });
-    expect(readQuality({ standards: [{ id: "Q1", text: "a", check: { kind: "machine", command: "x" } }] })).toMatchObject({ state: "invalid" });
-    expect(readQuality({ standards: [{ id: "Q1", text: "a", repos: ["nope"], check: { kind: "manual", reference: "r" } }] }, ["app"])).toMatchObject({ state: "set", warnings: [expect.stringContaining("nope")] });
-    expect(qualityVersion({ state: "unset" })).not.toBe(qualityVersion({ state: "set", config: { standards: [] } }));
+    expect(readQuality({})).toEqual({ state: "set", config: { standards: [] } });
+    expect(readQuality([])).toMatchObject({ state: "invalid" });
+    expect(readQuality({ standards: [{ id: "Q1", text: "a" }, { id: "Q1", text: "b" }] })).toMatchObject({ state: "invalid", problems: [expect.stringContaining("重複")] });
+    expect(readQuality({ standards: [{ id: "Q1", text: " " }] })).toMatchObject({ state: "invalid" });
+    expect(readQuality({ standards: [{ id: "Q1", text: "a", repos: ["nope"] }] }, repoNames)).toMatchObject({ state: "set", warnings: [expect.stringContaining("nope")] });
   });
 
-  it("テンプレートを写して採用し、消した ID を使い直さない。対象・除外・置き換え", () => {
-    let c = applyQualityOps({ state: "unset" }, [{ op: "adopt", template: "basic" }], ctx0);
-    expect(c.standards.map((s) => s.id)).toEqual(["Q1", "Q2", "Q3", "Q4"]);
-    expect(c.standards[0].source).toEqual({ template: "basic", version: 1, key: "conventions" });
-    expect(c.templates).toEqual([{ id: "basic", version: 1 }]);
-    expect(() => applyQualityOps({ state: "set", config: c }, [{ op: "adopt", template: "basic" }], ctx0)).toThrow(QualityInputError);
-    c = applyQualityOps({ state: "set", config: c }, [{ op: "remove", id: "Q4" }, { op: "add", standard: { text: "lint", repos: ["app"], check: { kind: "machine", command: "pnpm lint", success: "0" } } }], ctx0);
-    expect(c.standards.map((s) => s.id)).toEqual(["Q1", "Q2", "Q3", "Q5"]);
-    expect(c.seq).toBe(5);
-    expect(() => applyQualityOps({ state: "set", config: c }, [{ op: "add", standard: { text: "x", repos: ["nope"], check: { kind: "manual", reference: "r" } } }], ctx0)).toThrow(/登録されていません/);
-    expect(() => applyQualityOps({ state: "set", config: c }, [{ op: "exempt", id: "Q1", reason: " " }], ctx0)).toThrow(QualityInputError);
-    c = applyQualityOps({ state: "set", config: c }, [{ op: "exempt", id: "Q2", reason: "小さい CLI なので層が無い" }], ctx0);
-    expect(standardsFor(c, "infra")).toMatchObject({ applies: [{ id: "Q1" }, { id: "Q3" }], exempt: [{ id: "Q2" }] });
-    expect(standardsFor(c, "app").applies.map((s) => s.id)).toEqual(["Q1", "Q3", "Q5"]);
-    expect(standardsFor(c, null).applies.map((s) => s.id)).toEqual(["Q1", "Q3"]);
-    c = applyQualityOps({ state: "set", config: c }, [{ op: "replace", standards: [{ id: "Q5", text: "lint を通す", repos: [], check: { kind: "machine", command: "pnpm lint", success: "0" } }, { text: "新", check: { kind: "manual", reference: "r" } }] }], ctx0);
-    expect(c.standards.map((s) => [s.id, s.text])).toEqual([["Q5", "lint を通す"], ["Q6", "新"]]);
-    expect(() => applyQualityOps({ state: "invalid", problems: ["x"] }, [{ op: "init" }], ctx0)).toThrow(/読めない/);
+  it("以前の版の check は確かめ方として読み、除外した基準・テンプレート・出典・版は読まない。除外した ID は使い直さない", () => {
+    const q = readQuality(
+      {
+        templates: [{ id: "basic", version: 1 }],
+        standards: [
+          { id: "Q1", text: "型検査", check: { kind: "machine", command: "pnpm typecheck", success: "終了コード 0" }, source: { template: "basic", version: 1 } },
+          { id: "Q2", text: "文書", check: { kind: "manual", reference: "docs を直す" } },
+          { id: "Q3", text: "除外", check: { kind: "manual", reference: "r" }, exempt: { reason: "層が無い" } },
+        ],
+      },
+      repoNames,
+    );
+    expect(q).toEqual({
+      state: "set",
+      config: { standards: [{ id: "Q1", text: "型検査", how: "pnpm typecheck（成功: 終了コード 0）" }, { id: "Q2", text: "文書", how: "docs を直す" }], seq: 3 },
+    });
+    const next = applyQualityOps(q, [{ op: "add", standard: { text: "新しい" } }], { repoNames });
+    expect(next.standards.map((s) => s.id)).toEqual(["Q1", "Q2", "Q4"]);
   });
 
-  it("テンプレートが改版しても採用済みの内容は変わらず、差分を見て明示して当てる", () => {
-    const v2: QualityTemplate = { ...QUALITY_TEMPLATES[0], version: 2, items: [{ ...QUALITY_TEMPLATES[0].items[0], text: "規約に従う（改版）" }, ...QUALITY_TEMPLATES[0].items.slice(1, 3), { key: "security", text: "秘密を書かない", check: { kind: "manual", reference: "r" } }] };
-    const templates = [...QUALITY_TEMPLATES, v2];
-    const c = applyQualityOps({ state: "unset" }, [{ op: "adopt", template: "basic", version: 1 }], { ...ctx0, templates });
-    expect(c.standards[0].text).toBe(QUALITY_TEMPLATES[0].items[0].text);
-    const [d] = templateDiffs(c, templates);
-    expect(d).toMatchObject({ template: "basic", from: 1, to: 2, added: [{ key: "security" }], changed: [{ key: "conventions", ids: ["Q1"] }], removed: [{ key: "docs", ids: ["Q4"] }] });
-    const up = applyQualityOps({ state: "set", config: c }, [{ op: "upgrade", template: "basic" }], { ...ctx0, templates });
-    expect(up.standards.find((s) => s.id === "Q1")!.text).toBe("規約に従う（改版）");
-    expect(up.standards.find((s) => s.id === "Q4")!.source).toBeUndefined();
-    expect(up.standards.at(-1)).toMatchObject({ id: "Q5", text: "秘密を書かない" });
-    expect(up.templates).toEqual([{ id: "basic", version: 2 }]);
-    expect(templateDiffs(up, templates)).toEqual([]);
+  it("足す・直す・消す・丸ごと置き換え。消した ID を使い直さず、知らない参照先・空の文・無い ID は1件も当てない", () => {
+    let c = applyQualityOps({ state: "unset" }, [{ op: "add", standard: { text: "一", how: "見る" } }, { op: "add", standard: { text: "二", repos: ["app"] } }], { repoNames });
+    expect(c.standards).toEqual([{ id: "Q1", text: "一", how: "見る" }, { id: "Q2", text: "二", repos: ["app"] }]);
+    c = applyQualityOps({ state: "set", config: c }, [{ op: "remove", id: "Q2" }, { op: "add", standard: { text: "三" } }, { op: "edit", id: "Q1", standard: { how: "" } }], { repoNames });
+    expect(c.standards).toEqual([{ id: "Q1", text: "一" }, { id: "Q3", text: "三" }]);
+    c = applyQualityOps({ state: "set", config: c }, [{ op: "replace", standards: [{ id: "Q3", text: "三'", repos: ["infra"] }, { text: "四" }] }], { repoNames });
+    expect(c.standards.map((s) => [s.id, s.text, s.repos])).toEqual([["Q3", "三'", ["infra"]], ["Q4", "四", undefined]]);
+    const state = { state: "set" as const, config: c };
+    const bad: QualityOp[][] = [[{ op: "add", standard: { text: "x", repos: ["nope"] } }], [{ op: "add", standard: { text: " " } }], [{ op: "remove", id: "Q9" }]];
+    for (const ops of bad)
+      expect(() => applyQualityOps(state, ops, { repoNames })).toThrow(QualityInputError);
+    expect(() => applyQualityOps({ state: "invalid", problems: ["x"] }, [], { repoNames })).toThrow(/読めないため変えられません/);
+    // 置き換えに添えた編集前の一覧が今と違えば、他の変更を消さずに断る
+    expect(() => applyQualityOps(state, [{ op: "replace", standards: [], base: [{ id: "Q3", text: "三'" }] }], { repoNames })).toThrow(expect.objectContaining({ code: "quality_conflict" }));
+    expect(applyQualityOps(state, [{ op: "replace", standards: [], base: c.standards }], { repoNames }).standards).toEqual([]);
+  });
+
+  it("参照先の指定が無い基準は作業先なしにも当てはまり、指定がある基準は一致する作業先だけ", () => {
+    const config = { standards: [{ id: "Q1", text: "全部" }, { id: "Q2", text: "app だけ", repos: ["app"] }] };
+    expect(standardsFor(config, null).map((s) => s.id)).toEqual(["Q1"]);
+    expect(standardsFor(config, "app").map((s) => s.id)).toEqual(["Q1", "Q2"]);
+    expect(standardsFor(config, "infra").map((s) => s.id)).toEqual(["Q1"]);
   });
 });
 
 describe("保存（core）", () => {
-  it("採用して保存し直して読める。設定の保存・参照先の保存では消えず、コメントと知らない項目も残る", async () => {
+  it("保存し直して読める。設定の保存では消えず、コメントと知らない項目も残る。並行の保存は順に当たる", async () => {
     const { ctx, dataDir } = await makeProject();
     const file = join(dataDir, "project.yaml");
     writeFileSync(file, `# チームのメモ\n${readFileSync(file, "utf8")}future: keep\n`);
     await ctx.ws.reloadAll();
-    expect(qualityView(ctx.ws).quality.state).toBe("unset");
-    await updateQuality(ctx.ws, [{ op: "adopt", template: "typescript" }]);
+    expect(qualityState(ctx.ws).state).toBe("unset");
+    const other = await openTestProject(dataDir);
+    await Promise.all([updateQuality(ctx.ws, [{ op: "add", standard: { text: "一", how: "pnpm test" } }]), updateQuality(other.ws, [{ op: "add", standard: { text: "二" } }])]);
     await ctx.ws.saveProject({ description: "説明を直した" });
     const text = readFileSync(file, "utf8");
     expect(text).toContain("# チームのメモ");
     expect(text).toContain("future: keep");
     const again = await openTestProject(dataDir);
-    const v = qualityView(again.ws);
-    expect(v.quality).toMatchObject({ state: "set", config: { standards: [{ id: "Q1", text: "型検査が通る" }, {}, {}, {}], templates: [{ id: "typescript", version: 1 }] } });
+    const q = qualityState(again.ws);
+    expect(q.state === "set" && q.config.standards.map((s) => s.id).sort()).toEqual(["Q1", "Q2"]);
     expect(again.ws.project.description).toBe("説明を直した");
   });
 
   it("読めない設定は消さず、操作は断る（直す方法を示す）。ほかの保存でも残る", async () => {
     const { ctx, dataDir } = await makeProject();
     const file = join(dataDir, "project.yaml");
-    writeFileSync(file, `${readFileSync(file, "utf8")}quality:\n  standards:\n    - id: Q1\n      text: 理由の無い除外\n      check: { kind: manual, reference: r }\n      exempt: {}\n`);
+    writeFileSync(file, `${readFileSync(file, "utf8")}quality:\n  standards:\n    - id: 壊れた\n      text: 読めない基準\n`);
     await ctx.ws.reloadAll();
-    expect(qualityView(ctx.ws).quality).toMatchObject({ state: "invalid" });
-    await expect(updateQuality(ctx.ws, [{ op: "init" }])).rejects.toMatchObject({ code: "quality_unreadable" });
+    expect(qualityState(ctx.ws)).toMatchObject({ state: "invalid" });
+    await expect(updateQuality(ctx.ws, [{ op: "add", standard: { text: "x" } }])).rejects.toMatchObject({ code: "quality_unreadable" });
     await ctx.ws.saveProject({ description: "x" });
-    expect(readFileSync(file, "utf8")).toContain("理由の無い除外");
-  });
-
-  it("版が違えば何も書かない（並行の保存は後のほうが断られる）", async () => {
-    const { ctx, dataDir } = await makeProject();
-    const other = await openTestProject(dataDir);
-    const base = qualityView(ctx.ws).version;
-    await updateQuality(ctx.ws, [{ op: "init" }], { expectedVersion: base });
-    await expect(updateQuality(other.ws, [{ op: "adopt", template: "basic" }], { expectedVersion: base })).rejects.toMatchObject({ code: "quality_conflict" });
-    await ctx.ws.reloadAll();
-    expect(qualityView(ctx.ws).quality).toEqual({ state: "set", config: { standards: [] } });
-    // 版なしの並行の保存は順に当たる（ロックの中で最新に当てる）
-    await Promise.all([updateQuality(ctx.ws, [{ op: "add", standard: { text: "一", check: { kind: "manual", reference: "r" } } }]), updateQuality(other.ws, [{ op: "add", standard: { text: "二", check: { kind: "manual", reference: "r" } } }])]);
-    await ctx.ws.reloadAll();
-    const q = qualityView(ctx.ws).quality;
-    expect(q.state === "set" && q.config.standards.map((s) => s.id).sort()).toEqual(["Q1", "Q2"]);
+    expect(readFileSync(file, "utf8")).toContain("読めない基準");
   });
 });
 
 describe("CLI と API", () => {
-  it("CLI と API で同じ基準が残る。版の競合は CLI 3・API 409", async () => {
-    const a = await makeProject();
-    const b = await makeProject();
-    const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
-    const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("P3_"))), XDG_CONFIG_HOME: tempDir("p3-config-"), P3_ACTOR: "human:test" };
-    const p3 = (args: string[]) => {
-      const r = spawnSync(process.execPath, [BIN, "--dir", a.dataDir, ...args], { encoding: "utf8", env });
-      return { code: r.status, out: r.stdout, err: r.stderr };
-    };
-    expect(p3(["quality"]).out).toContain("未設定");
-    expect(p3(["quality", "templates"]).out).toContain("basic@1");
-    expect(p3(["quality", "template", "typescript"]).out).toContain("型検査が通る");
-    expect(p3(["quality", "adopt", "basic"]).code).toBe(0);
-    expect(p3(["quality", "add", "--text", "lint を通す", "--command", "pnpm lint", "--success", "終了コード 0"]).code).toBe(0);
-    expect(p3(["quality", "add", "--text", "x"]).code).toBe(1);
-    expect(p3(["quality", "exempt", "Q2", "--reason", "層が無い"]).code).toBe(0);
-    expect(p3(["quality", "rm", "Q4"]).code).toBe(0);
-    expect(p3(["quality", "init", "--version", "0000"]).code).toBe(3);
-    const viaCli = (JSON.parse(p3(["quality", "--json"]).out) as { quality: unknown }).quality;
-    expect(p3(["quality"]).out).toContain("除外の理由: 層が無い");
-
-    const app = apiRoutes(b.ctx);
-    const post = async (body: unknown) => {
-      const res = await app.request("/quality", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
-    };
-    const ops = [
-      { op: "adopt", template: "basic" },
-      { op: "add", standard: { text: "lint を通す", check: { kind: "machine", command: "pnpm lint", success: "終了コード 0" } } },
-      { op: "exempt", id: "Q2", reason: "層が無い" },
-      { op: "remove", id: "Q4" },
-    ];
-    expect((await post({ ops })).status).toBe(200);
-    expect((await post({ ops: [{ op: "init" }], version: "0000" })).body).toMatchObject({ code: "quality_conflict" });
-    expect((await post({ ops: [{ op: "add", standard: { text: " ", check: { kind: "manual", reference: "r" } } }] })).body).toMatchObject({ code: "quality_invalid" });
-    const viaApi = ((await (await app.request("/quality")).json()) as { quality: unknown }).quality;
-    expect(viaApi).toEqual(viaCli);
-    expect((await app.request("/quality/templates/nope")).status).toBe(404);
-  });
-});
-
-describe("CLI の対象（--repo）と未設定からの開始", () => {
   const BIN = fileURLToPath(new URL("../packages/p3/bin/p3.mjs", import.meta.url));
   async function setup() {
     const a = await makeProject({ repos: [MAIN_REF, { ...MAIN_REF, name: "infra", readFirst: false }] });
@@ -162,72 +111,67 @@ describe("CLI の対象（--repo）と未設定からの開始", () => {
       const r = spawnSync(process.execPath, [BIN, "--dir", a.dataDir, ...args], { encoding: "utf8", env });
       return { code: r.status, out: r.stdout, err: r.stderr };
     };
-    const standards = () => (JSON.parse(p3(["quality", "--json"]).out) as { quality: { state: string; config?: { standards: { id: string; repos?: string[] }[] } } }).quality;
+    const standards = () => (JSON.parse(p3(["quality", "--json"]).out) as { quality: { state: string; config?: { standards: { id: string; repos?: string[]; how?: string }[] } } }).quality;
     const yaml = () => readFileSync(join(a.dataDir, "project.yaml"), "utf8");
     return { a, p3, standards, yaml };
   }
-  const manual = ["--reference", "目で見る"];
 
-  it("add / set で --repo を繰り返した全部が残り、通常表示と JSON に出る。省略・all・同名の反復", async () => {
-    const { p3, standards } = await setup();
-    // 未設定から init なしで add できる
-    expect(p3(["quality", "add", "--text", "両方", "--repo", "main", "--repo", "infra", ...manual]).code).toBe(0);
-    expect(p3(["quality", "add", "--text", "等号", "--repo=main", "--repo=infra", "--repo=main", ...manual]).code).toBe(0);
-    expect(p3(["quality", "add", "--text", "省略", ...manual]).code).toBe(0);
-    expect(p3(["quality", "add", "--text", "全部", "--repo", "all", ...manual]).code).toBe(0);
-    let q = standards();
-    expect(q.config!.standards.map((s) => s.repos)).toEqual([["main", "infra"], ["main", "infra"], undefined, undefined]);
-    const text = p3(["quality"]).out;
-    expect(text).toContain("対象: main, infra");
-    expect(text).toContain("対象: 全参照先");
-
-    // set: 省略は対象を変えない・繰り返しは全部に置き換える・all は全参照先に戻す
-    expect(p3(["quality", "set", "Q1", "--text", "文だけ変える"]).code).toBe(0);
-    expect(p3(["quality", "set", "Q3", "--repo", "infra", "--repo", "main"]).code).toBe(0);
-    expect(p3(["quality", "set", "Q2", "--repo", "all"]).code).toBe(0);
-    q = standards();
-    expect(q.config!.standards.map((s) => s.repos)).toEqual([["main", "infra"], undefined, ["infra", "main"], undefined]);
-    // 単一の指定は今までどおり
-    expect(p3(["quality", "set", "Q4", "--repo", "infra", "--json"]).code).toBe(0);
-    expect(standards().config!.standards[3].repos).toEqual(["infra"]);
-  });
-
-  it("all と個別名の混在・登録されていない参照先は失敗して何も変えない。ほかのコマンドの --repo の反復は断る", async () => {
-    const { p3, yaml } = await setup();
-    expect(p3(["quality", "add", "--text", "元", ...manual]).code).toBe(0);
-    const before = yaml();
-    const mixed = p3(["quality", "add", "--text", "x", "--repo", "all", "--repo", "main", ...manual]);
-    expect(mixed.code).toBe(1);
-    expect(mixed.err).toContain("一緒に指定できません");
-    expect(p3(["quality", "set", "Q1", "--repo", "main", "--repo", "all"]).code).toBe(1);
-    const unknown = p3(["quality", "add", "--text", "x", "--repo", "main", "--repo", "nope", ...manual]);
-    expect(unknown.code).toBe(1);
-    expect(unknown.err).toContain("nope");
-    expect(p3(["quality", "init", "--repo", "main"]).code).toBe(1);
-    expect(yaml()).toBe(before);
-
-    // 作業先を1つだけ取るコマンドは、繰り返すと説明付きで断り、タスクを作らない
-    const req = (JSON.parse(p3(["request", "new", "要望", "--json"]).out) as { id: string }).id;
-    const created = p3(["new", "タスク", "--req", req, "--repo", "main", "--repo", "infra"]);
-    expect(created.code).toBe(1);
-    expect(created.err).toContain("1つだけ");
-    expect(p3(["ls", "--req", req, "--repo", "main", "--repo=infra"]).code).toBe(1);
-    expect(JSON.parse(p3(["ls", "--req", req, "--json"]).out)).toEqual([]);
-    // 1つなら今までどおり
-    expect(p3(["new", "タスク", "--req", req, "--repo", "infra"]).code).toBe(0);
-  });
-
-  it("init は必須でなく既存の基準を消さない。未設定の表示から add・adopt・続けられることが分かる", async () => {
+  it("CLI と API で同じ基準が残る。未設定の表示から足し方が分かり、空の文は CLI 1・API 400", async () => {
     const { p3, standards } = await setup();
     const unset = p3(["quality"]).out;
     expect(unset).toContain("作業は続けられます");
     expect(unset).toContain("p3 quality add");
-    expect(unset).toContain("p3 quality adopt");
-    expect(p3(["help"]).out).toContain("init は必須ではない");
-    expect(p3(["quality", "adopt", "basic"]).code).toBe(0);
-    const n = standards().config!.standards.length;
-    expect(n).toBeGreaterThan(0);
-    expect(p3(["quality", "init"]).code).toBe(0);
-    expect(standards().config!.standards.length).toBe(n);
+    expect(p3(["quality", "add", "--text", "lint を通す", "--how", "pnpm lint"]).code).toBe(0);
+    expect(p3(["quality", "add", "--text", "文書を直す"]).code).toBe(0);
+    expect(p3(["quality", "add", "--text", " "]).code).toBe(1);
+    expect(p3(["quality", "set", "Q2", "--how", "README を見る"]).code).toBe(0);
+    expect(p3(["quality", "set", "Q1", "--how="]).code).toBe(0);
+    expect(p3(["quality", "rm", "Q1"]).code).toBe(0);
+    const viaCli = standards();
+    expect(viaCli).toEqual({ state: "set", config: { standards: [{ id: "Q2", text: "文書を直す", how: "README を見る" }], seq: 2 } });
+    expect(p3(["quality"]).out).toContain("確かめ方: README を見る");
+
+    const b = await makeProject({ repos: [MAIN_REF, { ...MAIN_REF, name: "infra", readFirst: false }] });
+    const app = apiRoutes(b.ctx);
+    const post = async (body: unknown) => {
+      const res = await app.request("/quality", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    expect((await post({ ops: [{ op: "add", standard: { text: "lint を通す", how: "pnpm lint" } }, { op: "add", standard: { text: "文書を直す" } }] })).status).toBe(200);
+    expect((await post({ ops: [{ op: "edit", id: "Q2", standard: { how: "README を見る" } }, { op: "remove", id: "Q1" }] })).status).toBe(200);
+    const bad = await post({ ops: [{ op: "add", standard: { text: " " } }] });
+    expect([bad.status, bad.body.code]).toEqual([400, "quality_invalid"]);
+    const viaApi = ((await (await app.request("/quality")).json()) as { quality: unknown }).quality;
+    expect(viaApi).toEqual(viaCli);
+  });
+
+  it("add / set で --repo を繰り返した全部が残る。省略・all・同名の反復。混在・登録されていない参照先は何も変えない", async () => {
+    const { p3, standards, yaml } = await setup();
+    expect(p3(["quality", "add", "--text", "両方", "--repo", "main", "--repo", "infra"]).code).toBe(0);
+    expect(p3(["quality", "add", "--text", "等号", "--repo=main", "--repo=infra", "--repo=main"]).code).toBe(0);
+    expect(p3(["quality", "add", "--text", "省略"]).code).toBe(0);
+    expect(p3(["quality", "add", "--text", "全部", "--repo", "all"]).code).toBe(0);
+    expect(standards().config!.standards.map((s) => s.repos)).toEqual([["main", "infra"], ["main", "infra"], undefined, undefined]);
+    const text = p3(["quality"]).out;
+    expect(text).toContain("対象: main, infra");
+    expect(text).toContain("対象: 全参照先");
+    // set: 省略は対象を変えない・繰り返しは全部に置き換える・all は全参照先に戻す
+    expect(p3(["quality", "set", "Q1", "--text", "文だけ変える"]).code).toBe(0);
+    expect(p3(["quality", "set", "Q3", "--repo", "infra", "--repo", "main"]).code).toBe(0);
+    expect(p3(["quality", "set", "Q2", "--repo", "all"]).code).toBe(0);
+    expect(standards().config!.standards.map((s) => s.repos)).toEqual([["main", "infra"], undefined, ["infra", "main"], undefined]);
+
+    const before = yaml();
+    const mixed = p3(["quality", "add", "--text", "x", "--repo", "all", "--repo", "main"]);
+    expect([mixed.code, mixed.err]).toEqual([1, expect.stringContaining("一緒に指定できません")]);
+    const unknown = p3(["quality", "add", "--text", "x", "--repo", "main", "--repo", "nope"]);
+    expect([unknown.code, unknown.err]).toEqual([1, expect.stringContaining("nope")]);
+    expect(p3(["quality", "rm", "Q1", "--repo", "main"]).code).toBe(1);
+    expect(yaml()).toBe(before);
+    // 作業先を1つだけ取るコマンドは、繰り返すと説明付きで断り、タスクを作らない
+    const req = (JSON.parse(p3(["request", "new", "要望", "--json"]).out) as { id: string }).id;
+    const created = p3(["new", "タスク", "--req", req, "--repo", "main", "--repo", "infra"]);
+    expect([created.code, created.err]).toEqual([1, expect.stringContaining("1つだけ")]);
+    expect(JSON.parse(p3(["ls", "--req", req, "--json"]).out)).toEqual([]);
   });
 });

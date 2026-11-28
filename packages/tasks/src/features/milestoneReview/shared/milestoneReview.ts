@@ -1,6 +1,10 @@
 import type { MilestoneGoal, PreflightLogEntry, RequestStatus, RunOwner, TaskStatus } from "../../../shared/types.ts";
 import type { QualitySnapshot } from "../../quality/shared/quality.ts";
-import type { QualityVerdict } from "../../taskReview/shared/taskReview.ts";
+
+/** 品質基準ごとの判定（レビューの結果。材料に入れた基準を全部1回ずつ） */
+export const QUALITY_VERDICTS = ["satisfied", "violated", "undetermined", "not_applicable"] as const;
+export type QualityVerdict = (typeof QUALITY_VERDICTS)[number];
+export const QUALITY_VERDICT_LABELS: Record<QualityVerdict, string> = { satisfied: "満たす", violated: "違反", undetermined: "判断できない", not_applicable: "対象外（理由つき）" };
 
 /**
  * マイルストーンレビューの形（CLI・API・画面で共有する）。保存の規則は core/milestoneReview/。

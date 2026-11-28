@@ -4,15 +4,11 @@ import { relationRole, type ArchivedTask, type ProposedTask, type Task } from ".
 import { normalizeTaskId } from "../shared/refs.ts";
 import { getArchivedTask, listArchivedTasks } from "../core/store/archivedTasks.ts";
 import { listTasks, resolve, resolveRef, resolveRequestId } from "../core/ops.ts";
-import { archiveTask, createTask, importQuality, updateTask } from "../core/requestOps.ts";
-import { taskQualityDiff } from "../features/quality/shared/quality.ts";
+import { archiveTask, createTask, updateTask } from "../core/requestOps.ts";
 import { table } from "./format.ts";
 import { taskRepo } from "../shared/workTarget.ts";
 import { addRepoOutputs, parseRepoOutput, repoArg } from "../core/workTargets.ts";
 import { briefTask, formatAcceptance, formatBlock, formatBriefTask, taskExtras } from "./showView.ts";
-import { formatReview } from "../features/records/cli/revisitCommands.ts";
-import { taskReview } from "../features/records/core/reviewCandidates.ts";
-import { reviewSummary } from "../features/records/shared/reviewCandidate.ts";
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { basisFromOptions, parseTaskAssignments, checkStatus, evidenceOps, readBody, type CommandEnv } from "./args.ts";
@@ -22,7 +18,7 @@ import { dependentsOf, formatEntity, indent, ambiguous, reopenedNote, warn, deps
 import { requestCommand } from "./requestCommands.ts";
 import { pickRun } from "./preflightCommands.ts";
 
-/** タスクのコマンド（ls / show / find / impact / new / set / move / check / criteria / evidence / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
+/** タスクのコマンド（ls / show / find / impact / new / set / move / criteria / evidence / archive）。変更は server/requestOps.ts を通す。扱わないコマンドは undefined */
 
 const RECORD_REQUIRED =
   "AI が完了にするときは --record で変更の記録を残してください（何を変えたか・なぜ・入れた決まり・やめたもの。Markdown。- で標準入力）\n" +
@@ -38,7 +34,7 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (o.repo !== undefined && o.repo !== "none" && !ctx.ws.project.repos.some((r) => r.name === o.repo)) {
         throw new UsageError(`参照先「${o.repo}」は登録されていません（p3 repo ls）`);
       }
-      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked, review: o.review };
+      const filter = { status: o.status?.split(","), area: o.area?.[0], q: o.q, repo: o.repo, blocked: o.blocked };
       const tasks = listTasks(ctx, { ...filter, request: o.all ? undefined : requestArg(undefined) });
       // 共有の参照先があるときは作業先の列を出す
       const multi = ctx.ws.project.repos.length > 0;
@@ -49,9 +45,9 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
             t.status,
             ...(multi ? [taskRepo(t) ?? "（なし）"] : []),
             t.title,
-            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t), taskReview(ctx, t)?.state === "candidate" ? "※見直し候補" : ""].filter(Boolean).join("  "),
+            [t.block ? `⏸停止 ${t.block.since.slice(0, 10)}: ${t.block.reason.split("\n")[0]}` : "", deps(t)].filter(Boolean).join("  "),
           ]),
-        ) || (o.blocked ? "止まっているタスクはありません" : o.review ? "見直しが必要（候補）のタスクはありません" : "タスクはありません"),
+        ) || (o.blocked ? "止まっているタスクはありません" : "タスクはありません"),
       );
     }
 
@@ -62,22 +58,15 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       if (!ref) return ambiguous(out, ctx, query, current);
       if (!ref.includes("/")) return requestCommand(ctx, out, ["show", ref], o, actor, requestArg, expectedRev);
       const item = ctx.ws.requireTask(ref);
-      const review = taskReview(ctx, item);
       if (o.brief) {
-        // 見直しの概要は候補のときだけ（記録なし・差分なしは短い出力に出さない）
-        const view = { ...briefTask(ctx, item), ...(review?.state === "candidate" ? { review: reviewSummary(review) } : {}) };
-        return out.result(view, () => [formatBriefTask(view), ...(review?.state === "candidate" ? ["", ...formatReview(review)] : [])].join("\n"));
+        const view = briefTask(ctx, item);
+        return out.result(view, () => formatBriefTask(view));
       }
       const file = relative(cwd, split(ref).col.path(item.id));
       const { dependencies } = taskExtras(ctx, item);
       const dependents = dependentsOf(ctx, item).map((t) => ({ ref: t.ref, title: t.title, status: t.status }));
       const acceptance = acceptanceStatus(item) ?? null;
-      return out.result({ item, file, dependencies, dependents, acceptance, review: review ?? null }, () =>
-        [
-          formatEntity(ctx, item, file),
-          review ? `\n\n${formatReview(review).join("\n")}` : "",
-        ].join(""),
-      );
+      return out.result({ item, file, dependencies, dependents, acceptance }, () => formatEntity(ctx, item, file));
     }
 
     case "find":
@@ -110,8 +99,6 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
           outputs: o.output ?? [],
           ...(repoOutputs.length ? { repoOutputs: addRepoOutputs([], repoOutputs) } : {}),
           ...(o.criterion?.length ? { criteria: o.criterion } : {}),
-          // 品質基準: 省く・all は作業先に当てはまるもの（作業先なしは取り込まない）、none は取り込まない、Q1,Q2 は明示したもの
-          ...(o.quality !== undefined ? { quality: o.quality === "all" ? "auto" : o.quality === "none" ? "none" : o.quality.split(",").map((x) => x.trim()).filter(Boolean) } : {}),
           body: readBody(o.body),
         },
         actor,
@@ -140,13 +127,11 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const r = await updateTask(ctx, ref.split("/")[0], tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
-      checkClearedNote(r.checkCleared);
-      completionSkippedNote(r.completionSkipped);
-      completionSkippedNote(r.reworkSkipped);
+      reworkSkippedNote(r.reworkSkipped);
       observationSkippedNote(r.observationSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const keys = [...Object.keys(patch), ...(acceptance.length ? ["acceptance"] : [])];
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}), ...recordSkips(r) }, () =>
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...recordSkips(r) }, () =>
         [`更新: ${next.ref} (rev ${next.rev})  ${keys.join(", ")}`, "repo" in patch ? workHint(ctx, next) : ""].filter(Boolean).join("\n"),
       );
     }
@@ -170,25 +155,14 @@ export async function taskCommand(cmd: string, env: CommandEnv): Promise<number 
       const r = await updateTask(ctx, cur.request, tid, { ...patch, ...(acceptance.length ? { acceptance } : {}) }, { expectedRev, actor });
       const { task: next, warnings } = r;
       warn(warnings);
-      checkClearedNote(r.checkCleared);
-      completionSkippedNote(r.completionSkipped);
-      completionSkippedNote(r.reworkSkipped);
+      reworkSkippedNote(r.reworkSkipped);
       observationSkippedNote(r.observationSkipped);
       const reopened = reopenedNote(r.reopened, r.reopenedAncestors);
       const short = status === "done" ? acceptanceStatus(next)?.shortfalls : undefined;
       if (short?.length) process.stderr.write(`受け入れ基準の不足（完了はしました。人が確かめます）: ${short.join(" / ")}\n`);
-      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}), ...recordSkips(r) }, () =>
+      return out.result({ ...next, ...(warnings.length ? { warnings } : {}), ...(reopened ? { reopened } : {}), ...(r.reopenedAncestors ? { reopenedAncestors: r.reopenedAncestors } : {}), ...recordSkips(r) }, () =>
         `${next.ref} → ${status}${[...(o.output ?? []), ...(o["repo-output"] ?? [])].length ? `  (${[...(o.output ?? []), ...(o["repo-output"] ?? [])].join(", ")})` : ""}`,
       );
-    }
-
-    case "check": {
-      const ref = taskArg(args[0]);
-      const { tid } = split(ref);
-      const { task: next, completionSkipped, reworkSkipped } = await updateTask(ctx, ref.split("/")[0], tid, { checked: !o.off }, { expectedRev, actor });
-      completionSkippedNote(completionSkipped);
-      completionSkippedNote(reworkSkipped);
-      return out.result(next, () => `${next.ref} ${o.off ? "の済みを外しました" : "を済みにしました"}`);
     }
 
     case "block":
@@ -249,22 +223,17 @@ async function blockCommand(cmd: "block" | "unblock", { ctx, out, args, o, actor
 
 // --- 受け入れ基準と証拠 -------------------------------------------------------------
 
-function checkClearedNote(msg: string | undefined) {
-  if (msg) process.stderr.write(`${msg}\n`);
-}
-
 /** 完了の記録・手戻りの履歴を足せなかった（壊れた記録）ことを知らせる */
 /**
- * 状態は変えたが記録を残せなかった知らせ（完了の記録 completionSkipped・手戻りの履歴 reworkSkipped）。--json の結果にも、API のタスクの PATCH と
+ * 状態は変えたが記録を残せなかった知らせ（手戻りの履歴 reworkSkipped・観測のシステムの項目 observationSkipped）。--json の結果にも、API のタスクの PATCH と
  * 同じ項目名・文で入れる（無ければ省く）。AI は JSON だけを読むので、標準エラーの知らせと別に要る
  */
-const recordSkips = (r: { completionSkipped?: string; reworkSkipped?: string; observationSkipped?: string[] }) => ({
-  ...(r.completionSkipped ? { completionSkipped: r.completionSkipped } : {}),
+const recordSkips = (r: { reworkSkipped?: string; observationSkipped?: string[] }) => ({
   ...(r.reworkSkipped ? { reworkSkipped: r.reworkSkipped } : {}),
   ...(r.observationSkipped?.length ? { observationSkipped: r.observationSkipped } : {}),
 });
 
-export function completionSkippedNote(msg: string | undefined) {
+export function reworkSkippedNote(msg: string | undefined) {
   if (msg) process.stderr.write(`${msg}\n`);
 }
 
@@ -277,9 +246,8 @@ export function observationSkippedNote(list: readonly string[] | undefined) {
 async function applyAcceptance({ ctx, out, actor, expectedRev, split }: CommandEnv, ref: string, acceptance: AcceptanceOp[]): Promise<number> {
   const { tid } = split(ref);
   const r = await updateTask(ctx, ref.split("/")[0], tid, { acceptance }, { expectedRev, actor });
-  checkClearedNote(r.checkCleared);
   const acc = acceptanceStatus(r.task);
-  return out.result({ ...r.task, acceptance: acc ?? null, ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () =>
+  return out.result({ ...r.task, acceptance: acc ?? null }, () =>
     [`更新: ${r.task.ref} (rev ${r.task.rev})`, ...formatAcceptance(r.task)].join("\n"),
   );
 }
@@ -298,7 +266,6 @@ async function criteriaCommand(env: CommandEnv): Promise<number> {
   if (draft) return draftCriteriaCommand(env, draft[1], draft[2].toUpperCase());
   const ref = taskArg(args[0]);
   const [sub, ...rest] = args.slice(1);
-  if (sub === "quality") return qualitySubcommand(env, ref, rest);
   if (sub === undefined || sub === "ls" || sub === "show") {
     const task = ctx.ws.requireTask(ref);
     const acc = acceptanceStatus(task);
@@ -324,38 +291,6 @@ async function criteriaCommand(env: CommandEnv): Promise<number> {
       return applyAcceptance(env, ref, [{ op: "order", ids: rest }]);
   }
   throw new UsageError(`criteria の操作は add / edit / rm / order です: ${sub}`);
-}
-
-/**
- * criteria <T> quality                     今の品質基準との差分（追加・変更・削除・除外・タスクで直した）。読むだけ
- * criteria <T> quality import [<kind>:<Q>...]  差分を明示して取り込む（省くと「直した」以外の全部）
- */
-async function qualitySubcommand({ ctx, out, actor, expectedRev }: CommandEnv, ref: string, rest: string[]): Promise<number> {
-  const t = ctx.ws.requireTask(ref);
-  if (rest[0] === undefined || rest[0] === "diff") {
-    const q = ctx.ws.project.quality;
-    const diff = taskQualityDiff(t.acceptanceCriteria ?? [], q, t.repo);
-    const state = q?.state ?? "unset";
-    const label = { add: "足す", change: "変わった", remove: "消す", exempt: "除外になった", edited: "タスクで直した" } as const;
-    return out.result({ ref: t.ref, quality: state, version: ctx.ws.project.qualityVersion, diff }, () =>
-      state !== "set"
-        ? `品質基準は${state === "unset" ? "未設定" : "読めません"}です（p3 quality）`
-        : diff.length
-          ? [
-              `${t.ref} と今の品質基準の差分（版 ${ctx.ws.project.qualityVersion}）:`,
-              ...diff.map((d) => `  ${d.kind}:${d.quality}  ${label[d.kind]}${d.criterion ? `（${d.criterion}）` : ""}${d.text ? `  ${d.text}` : ""}${d.reason ? `  ${d.reason}` : ""}`),
-              t.repo ? "" : "  ※作業先なしのタスクには、足す案を出しません（p3 new --quality Q1,Q2 のように明示して取り込めます）",
-              `取り込む: p3 criteria ${t.id} quality import [<kind>:<Q>...]`,
-            ]
-              .filter(Boolean)
-              .join("\n")
-          : `${t.ref} は今の品質基準と差分がありません`,
-    );
-  }
-  if (rest[0] !== "import") throw new UsageError("使い方: p3 criteria <T> quality [import [<kind>:<Q>...]]");
-  const r = await importQuality(ctx, t.request, t.id, rest.length > 1 ? rest.slice(1) : undefined, { expectedRev, actor });
-  if (r.checkCleared) process.stderr.write(`${r.checkCleared}\n`);
-  return out.result({ ...r.task, applied: r.applied, ...(r.checkCleared ? { checkCleared: r.checkCleared } : {}) }, () => [`取り込みました: ${r.applied.join(", ")}`, ...formatAcceptance(r.task)].join("\n"));
 }
 
 /**
@@ -471,7 +406,6 @@ function formatArchived(t: ArchivedTask, file: string): string {
     ["createdAt", t.createdAt],
     ["startedAt", t.startedAt],
     ["doneAt", t.doneAt],
-    ["checkedAt", t.checkedAt],
     ["updatedAt", t.updatedAt],
     ["updatedBy", t.updatedBy],
   ];

@@ -3,7 +3,6 @@ import { normalizeTaskId } from "../shared/refs.ts";
 import { REQUEST_STATUSES, type RequestProgress, type RequestStatus, type Task, TASK_STATUSES, type TaskStatus } from "../shared/types.ts";
 import type { P3Context } from "./context.ts";
 import { hierarchyNow } from "./requestStatus.ts";
-import { requestReviewCounts, reviewMemo, taskReview } from "../features/records/core/reviewCandidates.ts";
 
 /**
  * API と CLI で共通の読み取り（一覧・参照の解き方・進捗）。変更の手順は requestOps.ts。
@@ -19,8 +18,6 @@ export interface TaskFilter {
   repo?: string;
   /** 止まっているタスクだけ（ほかの条件と AND） */
   blocked?: boolean;
-  /** 見直しが必要（候補）の完了したタスクだけ（ほかの条件と AND。完了済みを隠さない） */
-  review?: boolean;
 }
 
 export function listTasks(ctx: P3Context, f: TaskFilter = {}): Task[] {
@@ -31,7 +28,6 @@ export function listTasks(ctx: P3Context, f: TaskFilter = {}): Task[] {
   // 作業先で絞る（none は作業先なし）
   if (f.repo !== undefined) tasks = tasks.filter((t) => (t.repo ?? null) === (f.repo === "none" ? null : f.repo));
   if (f.blocked) tasks = tasks.filter((t) => !!t.block);
-  if (f.review) tasks = tasks.filter((t) => taskReview(ctx, t)?.state === "candidate");
   if (f.q) {
     const q = f.q.toLowerCase();
     tasks = tasks.filter((t) => `${t.ref} ${t.title} ${t.body}`.toLowerCase().includes(q));
@@ -102,8 +98,6 @@ export function titleOf({ ws }: P3Context, ref: string): string {
  */
 export function progress(ctx: P3Context): RequestProgress[] {
   const h = hierarchyNow(ctx.ws);
-  // 見直しの診断はこの呼び出しの中で使い回す（タスク行と、要望の自身・自分のタスク・配下の件数で同じ結果を使う）
-  const memo = reviewMemo(ctx);
   const zero = () => Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
   return ctx.ws.requests
     .list()
@@ -134,12 +128,10 @@ export function progress(ctx: P3Context): RequestProgress[] {
       return {
         request,
         tasks: tasks.map((t) => {
-          const { id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, block } = t;
+          const { id, ref, title, status, createdAt, startedAt, doneAt, block } = t;
           // 証拠の小さな概要（本文は載せない。規則は shared/acceptance.ts）
           const evidence = evidenceSummary(t);
-          // 完了したタスクの見直しの診断の状態（理由は詳細で読む）
-          const review = memo.task(t)?.state;
-          return { id, ref, title, status, createdAt, startedAt, doneAt, checkedAt, ...(block ? { block } : {}), ...(evidence ? { evidence } : {}), ...(review ? { review } : {}) };
+          return { id, ref, title, status, createdAt, startedAt, doneAt, ...(block ? { block } : {}), ...(evidence ? { evidence } : {}) };
         }),
         counts,
         total: tasks.length,
@@ -149,7 +141,6 @@ export function progress(ctx: P3Context): RequestProgress[] {
         children: h.children(request.id).map((c) => c.id),
         subtree: sub,
         hierarchyIssues: h.issuesAround(request.id),
-        review: requestReviewCounts(ctx, request, h, memo),
       };
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || byId(a.request.id, b.request.id));

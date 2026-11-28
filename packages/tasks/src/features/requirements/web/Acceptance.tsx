@@ -140,7 +140,7 @@ export function metSummary(acc: AcceptanceStatus): string {
   return `満たしたと申告 ${acc.met}/${acc.total}${acc.met ? `、うち申告のみ ${acc.declarationOnly.length}` : ""}${others.length ? `（${others.join("・")}）` : ""}`;
 }
 
-/** 不足の数（「済み」の近くに出す）。不足が無ければ「すべて満たした」 */
+/** 不足の数（完了の近くに出す）。不足が無ければ「すべて満たした」 */
 export function shortfallSummary(acc: AcceptanceStatus): string {
   const n = (s: CriterionState) => acc.items.filter((i) => i.state === s).length;
   const parts = [
@@ -152,7 +152,7 @@ export function shortfallSummary(acc: AcceptanceStatus): string {
     acc.problems.length && `読めない値 ${acc.problems.length} 件`,
     acc.declarationOnly.length && `申告のみの達成 ${acc.declarationOnly.length} 件（確かめた方法の記録なし）`,
   ].filter(Boolean);
-  return parts.length ? `${parts.join("・")}。内容を確かめて判断してください。不足があっても「済み」にできます` : `${acc.total} 件すべてを満たした（作業した側の申告）`;
+  return parts.length ? `${parts.join("・")}。内容を確かめて判断してください。不足があっても完了にでき、要望を完了済にするときに人が確かめます` : `${acc.total} 件すべてを満たした（作業した側の申告）`;
 }
 
 /** 根拠（結果と別のラベル）。古い証拠は「種類未記録」、読んだもの・検査の項目を並べる */
@@ -331,8 +331,8 @@ export function AcceptancePanel({
 }: {
   task: Task;
   disabled: boolean;
-  /** 保存した（checkCleared: 済みを外した理由） */
-  onSaved: (checkCleared?: string) => void;
+  /** 保存した */
+  onSaved: () => void;
   onDirty: (dirty: boolean) => void;
 }) {
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -377,9 +377,9 @@ export function AcceptancePanel({
     if (!ops.length) return cancel();
     setBusy(true);
     try {
-      const res = await api.patchTask(`${task.request}/${task.id}`, { acceptance: ops, rev: baseRev });
+      await api.patchTask(`${task.request}/${task.id}`, { acceptance: ops, rev: baseRev });
       cancel();
-      onSaved(res.checkCleared);
+      onSaved();
     } catch (e) {
       if (failureOf(e) === "rev_conflict") {
         setConflict(true);
@@ -438,7 +438,7 @@ export function AcceptancePanel({
   if (editing?.kind === "criteria") {
     return (
       <div className="space-y-3">
-        <p className="text-base text-fg-4">基準の文を変えると、その基準の証拠は「再確認が必要」になります。済みの後に基準・証拠を変えると済みが外れます。</p>
+        <p className="text-base text-fg-4">基準の文を変えると、その基準の証拠は「再確認が必要」になります。</p>
         <CriteriaRowsEditor rows={editing.rows} disabled={busy} idPrefix={`task-${task.id}`} onChange={(rows) => setEditing({ ...editing, rows })} />
         {notice}
         {actions("基準を保存")}
@@ -498,7 +498,7 @@ export function AcceptancePanel({
   return (
     <div className="space-y-3">
       {acc ? (
-        <p className="text-base text-fg-4">証拠と根拠は作業した側の申告です。人が内容を確かめて「済み」（最終確認）を決めます（{metSummary(acc)}）</p>
+        <p className="text-base text-fg-4">証拠と根拠は作業した側の申告です。人は要望を完了済にするときに内容を確かめます（{metSummary(acc)}）</p>
       ) : (
         <p className="text-base text-fg-4">受け入れ基準なし</p>
       )}

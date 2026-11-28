@@ -12,7 +12,7 @@ import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /**
- * 手戻りの履歴（shared/reworkHistory.ts）: 明示の済みの解除・基準の変更による解除・完了からの再開の見分け、1操作で両方なら1件、
+ * 手戻りの履歴（shared/reworkHistory.ts）: 完了からの再開だけを足すこと、以前の版の済みの解除の契機が混ざった履歴を読めること、
  * 同じ値の再保存で増えないこと、競合・別のプロセスのアーカイブとの重なり、旧データ・壊れた値、CLI・API を確かめる
  */
 
@@ -20,54 +20,41 @@ async function setup() {
   const p = await makeProject();
   const r = await newRequest(p.ctx, { title: "請求" });
   const { task } = await createTask(p.ctx, r.id, { title: "実装", criteria: ["a"] });
-  const done = async () => {
-    await updateTask(p.ctx, r.id, task.id, { status: "done" });
-    return (await updateTask(p.ctx, r.id, task.id, { checked: true })).task;
-  };
+  const done = async () => (await updateTask(p.ctx, r.id, task.id, { status: "done" })).task;
   return { ...p, rid: r.id, tid: task.id, done, file: join(p.dataDir, "requests", r.id, "tasks", `${task.id}.md`) };
 }
 
 describe("見分け", () => {
-  it("明示の済みの解除・基準の変更による解除・完了からの再開を契機で分け、済みの完了から戻す1操作は両方を示す1件", async () => {
-    const { ctx, rid, tid, done } = await setup();
+  it("完了から戻すたびに1件（cause: reopen）。以前の版の済みの解除の契機が混ざった履歴の続きにも足す", async () => {
+    const { ctx, rid, tid, done, file } = await setup();
     await done();
-    let t = (await updateTask(ctx, rid, tid, { checked: false }, { actor: "human:a" })).task;
-    expect(t.reworkHistory).toEqual([expect.objectContaining({ id: "R1", cause: "explicit", unchecked: true, reopened: false, by: "human:a", rev: t.rev, from: { status: "done", checked: true }, to: { status: "done", checked: false } })]);
-    await updateTask(ctx, rid, tid, { checked: true });
-    t = (await updateTask(ctx, rid, tid, { acceptance: [{ op: "edit", id: "A1", text: "b" }] }, { actor: "ai:x" })).task;
-    expect(t.reworkHistory?.at(-1)).toMatchObject({ id: "R2", cause: "acceptance", unchecked: true, reopened: false, by: "ai:x" });
-    await updateTask(ctx, rid, tid, { checked: true });
-    t = (await updateTask(ctx, rid, tid, { status: "doing" })).task;
-    expect(t.reworkHistory?.at(-1)).toMatchObject({ id: "R3", cause: "reopen", unchecked: true, reopened: true, from: { status: "done", checked: true }, to: { status: "doing", checked: false } });
-    expect(t.reworkHistory).toHaveLength(3);
-    // 済みの無い完了から戻す
-    await updateTask(ctx, rid, tid, { status: "done" });
-    t = (await updateTask(ctx, rid, tid, { status: "todo" })).task;
-    expect(t.reworkHistory?.at(-1)).toMatchObject({ id: "R4", cause: "reopen", unchecked: false, reopened: true });
+    // 以前の版の履歴（済みの解除 explicit と checked）を読み、続きの番号で足す
+    const legacy = "status: done\nreworkHistory:\n  - id: R1\n    at: 2026-11-01T00:00:00.000Z\n    rev: 3\n    cause: explicit\n    unchecked: true\n    reopened: false\n    from: { status: done, checked: true }\n    to: { status: done, checked: false }";
+    await writeFile(file, (await readFile(file, "utf8")).replace("status: done", legacy));
+    await ctx.ws.tasksOf(rid).reload(tid);
+    expect(ctx.ws.tasksOf(rid).require(tid).reworkHistory?.[0]).toMatchObject({ cause: "explicit", unchecked: true, from: { status: "done", checked: true } });
+    const t = (await updateTask(ctx, rid, tid, { status: "doing" }, { actor: "human:a" })).task;
+    expect(t.reworkHistory?.map((e) => [e.id, e.cause])).toEqual([["R1", "explicit"], ["R2", "reopen"]]);
+    expect(t.reworkHistory?.[1]).toMatchObject({ reopened: true, by: "human:a", rev: t.rev, from: { status: "done" }, to: { status: "doing" } });
   });
 
-  it("同じ値の再保存・済みを保ったままの変更・成果物の追記では増えず、再完了・再確認の後も以前の履歴を読める", async () => {
+  it("同じ値の再保存・成果物の追記・基準の変更では増えず、再完了の後も以前の履歴を読める", async () => {
     const { ctx, rid, tid, done } = await setup();
     await done();
     await updateTask(ctx, rid, tid, { status: "done" });
     await updateTask(ctx, rid, tid, { outputs: ["https://example.com/pr/1"] });
-    await updateTask(ctx, rid, tid, { checked: true });
-    await updateTask(ctx, rid, tid, { checked: true, acceptance: [{ op: "edit", id: "A1", text: "b" }] });
+    await updateTask(ctx, rid, tid, { acceptance: [{ op: "edit", id: "A1", text: "b" }] });
     await updateTask(ctx, rid, tid, { labels: ["x"] });
     expect(ctx.ws.tasksOf(rid).require(tid).reworkHistory).toBeUndefined();
-    // 済みの無いタスクで済みを外しても増えない
-    await updateTask(ctx, rid, tid, { checked: false });
-    await updateTask(ctx, rid, tid, { checked: false });
-    expect(ctx.ws.tasksOf(rid).require(tid).reworkHistory).toHaveLength(1);
-    await done();
-    const t = (await updateTask(ctx, rid, tid, { status: "done" })).task;
+    await updateTask(ctx, rid, tid, { status: "doing" });
+    const t = await done();
     expect(t.reworkHistory?.map((e) => e.id)).toEqual(["R1"]);
   });
 
   it("規則（shared）", () => {
-    expect(reworkOf({ status: "done" }, { status: "done" }, { explicitUncheck: true, acceptanceChanged: false })).toBeUndefined();
-    expect(reworkOf({ status: "doing" }, { status: "todo" }, { explicitUncheck: false, acceptanceChanged: false })).toBeUndefined();
-    expect(reworkOf({ status: "done", checkedAt: "x" }, { status: "done" }, { explicitUncheck: false, acceptanceChanged: true })?.cause).toBe("acceptance");
+    expect(reworkOf({ status: "done" }, { status: "done" })).toBeUndefined();
+    expect(reworkOf({ status: "doing" }, { status: "todo" })).toBeUndefined();
+    expect(reworkOf({ status: "done" }, { status: "todo" })).toMatchObject({ cause: "reopen", reopened: true });
   });
 });
 
@@ -136,24 +123,21 @@ function p3(dataDir: string, args: string[]) {
 }
 
 describe("CLI と API", () => {
-  it("CLI の check --off・move と show、API の PATCH と詳細で履歴を読める", async () => {
+  it("CLI の move と show、API の PATCH と詳細で履歴を読める", async () => {
     const { ctx, rid, tid, done, dataDir } = await setup();
     await done();
-    expect(p3(dataDir, ["check", `${rid}/${tid}`, "--off"]).code).toBe(0);
-    expect(p3(dataDir, ["check", `${rid}/${tid}`]).code).toBe(0);
     expect(p3(dataDir, ["move", `${rid}/${tid}`, "doing"]).code).toBe(0);
     const shown = p3(dataDir, ["show", `${rid}/${tid}`]);
     expect(shown.out).toContain("手戻りの履歴");
-    expect(shown.out).toContain("R1  済みが外れた（done・済み → done）  済みを外した");
-    expect(shown.out).toContain("R2  完了から戻した・済みが外れた（done・済み → doing）  完了から戻した");
+    expect(shown.out).toContain("R1  完了から戻した（done → doing）  完了から戻した");
     const app = apiRoutes(ctx);
     const send = (method: string, path: string, body?: unknown) => app.request(path, { method, headers: { "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
     await ctx.ws.tasksOf(rid).reload(tid);
     const forged = await send("PATCH", `/requests/${rid}/tasks/${tid}`, { reworkHistory: [], status: "done" });
-    expect(((await forged.json()) as { reworkHistory: unknown[] }).reworkHistory).toHaveLength(2);
+    expect(((await forged.json()) as { reworkHistory: unknown[] }).reworkHistory).toHaveLength(1);
     const r = await send("PATCH", `/requests/${rid}/tasks/${tid}`, { status: "todo" });
-    expect(((await r.json()) as { reworkHistory: { cause: string }[] }).reworkHistory.at(-1)).toMatchObject({ id: "R3", cause: "reopen" });
+    expect(((await r.json()) as { reworkHistory: { cause: string }[] }).reworkHistory.at(-1)).toMatchObject({ id: "R2", cause: "reopen" });
     const detail = (await (await send("GET", `/requests/${rid}/tasks/${tid}`)).json()) as { task: { reworkHistory: unknown[] } };
-    expect(detail.task.reworkHistory).toHaveLength(3);
+    expect(detail.task.reworkHistory).toHaveLength(2);
   });
 });

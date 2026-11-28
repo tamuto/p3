@@ -26,9 +26,6 @@ import { latestOnly, STALE } from "../../../lib/latest.ts";
 import { createPulsePoller, latestNotice, shownRunChanged } from "../../../lib/preflightWatch.ts";
 import { PreflightNotice } from "../../../components/request/PreflightNotice.tsx";
 import { DirectTaskLink } from "../../../components/request/DirectTaskLink.tsx";
-import { RequirementPanel } from "../../../../features/requirements/web/RequirementPanel.tsx";
-import { RequestReviewNotice } from "../../../../features/records/web/RequestReviewNotice.tsx";
-import { RetrospectivePanel } from "../../../../features/retro/web/Retrospective.tsx";
 
 
 /** 要望の概要と Preflight。?run= で表示する preflight を選ぶ（省くと最新） */
@@ -92,10 +89,9 @@ function RequestPanel({
   const [editingBody, setEditingBody] = useState(false);
   // 未保存のタイトル・本文がある間は、Preflight の開始とタスク化を止める（保存していない内容は評価にもタスクにも渡らない）
   const unsaved = unsavedFields({ title: isDirty(drafts.titleD), body: editingBody && isDirty(drafts.bodyD, sameBody) });
-  // 要求の出典と確認・確認事項への回答の未保存も、評価の開始とタスク化を止める（保存していない根拠・回答は評価に渡らない）
-  const [sourcesDirty, setSourcesDirty] = useState(false);
+  // 確認事項への回答の未保存も、評価の開始とタスク化を止める（保存していない回答は評価に渡らない）
   const [answersDirty, setAnswersDirty] = useState(false);
-  const blocked = unsaved.length ? UNSAVED_BLOCKED : sourcesDirty || answersDirty ? REQUIREMENT_UNSAVED : null;
+  const blocked = unsaved.length ? UNSAVED_BLOCKED : answersDirty ? REQUIREMENT_UNSAVED : null;
   useUnsaved(unsaved.length > 0);
   const [error, setError] = useState<string | null>(null);
   // 個人設定を直したら、取り直したとき（タブに戻った・「再読み込み」など）に反映する
@@ -287,10 +283,6 @@ function RequestPanel({
         )}
       </section>
 
-      <RequirementPanel data={data} onDirty={setSourcesDirty} />
-
-      <RequestReviewNotice ctx={ctx} data={data} />
-
       <AttachmentsPanel key={request.id} requestId={request.id} tick={ctx.tick} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-accent-soft p-4">
@@ -387,7 +379,6 @@ function RequestPanel({
       )}
 
       {/* 振り返り（実装の後に、採用した評価のリスクが起きたかを残す）。上の履歴で別の run を開いても対象は変わらない */}
-      <RetrospectivePanel ctx={ctx} data={data} />
     </div>
   );
 }

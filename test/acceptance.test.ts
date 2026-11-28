@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { AcceptanceInputError, acceptanceStatus, applyAcceptanceOps, criteriaEditOps, parseEvidenceArg, parseEvidenceFile, type AcceptanceState } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
-import { CHECK_CLEARED_BY_ACCEPTANCE, createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { checkStatusChange } from "../packages/tasks/src/core/requestStatus.ts";
 import { ConflictError } from "../packages/tasks/src/core/store/collection.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
@@ -164,38 +164,17 @@ describe("保存と更新（core）", () => {
     expect(ctx.ws.tasksOf(rid).require(task.id).acceptanceCriteria).toHaveLength(1);
   });
 
-  it("不足があっても完了・済み・対応済を拒まない。完了と同時に証拠を残せ、後の成果物の追記で基準・証拠・doneAt を失わない", async () => {
+  it("不足があっても完了・対応済を拒まない。完了と同時に証拠を残せ、後の成果物の追記で基準・証拠・doneAt を失わない", async () => {
     const { ctx, rid } = await setup();
     const { task } = await createTask(ctx, rid, { title: "t", criteria: ["一", "二"] });
     const done = await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e" }] });
     expect(done.task.status).toBe("done");
     expect(acceptanceStatus(done.task)!.shortfalls).toEqual(["証拠なし: A2", "申告のみの met（確かめた方法の記録なし）: A1"]);
     await expect(checkStatusChange(ctx.ws, rid, "resolved")).resolves.toBeUndefined();
-    const checked = await updateTask(ctx, rid, task.id, { checked: true });
-    expect(checked.task.checkedAt).toBeTruthy();
     const later = await updateTask(ctx, rid, task.id, { outputs: ["https://example.com/pr/1"] });
-    expect(later.task).toMatchObject({ doneAt: done.task.doneAt, checkedAt: checked.task.checkedAt, acceptanceCriteria: done.task.acceptanceCriteria, acceptanceEvidence: done.task.acceptanceEvidence });
-    expect(later.checkCleared).toBeUndefined();
+    expect(later.task).toMatchObject({ doneAt: done.task.doneAt, acceptanceCriteria: done.task.acceptanceCriteria, acceptanceEvidence: done.task.acceptanceEvidence });
   });
 
-  it("済みの後に基準・証拠の中身が変わったら済みを外す。同じ値の再保存では外さない。未完了へ戻すと従来どおり外れる", async () => {
-    const { ctx, rid } = await setup();
-    const { task } = await createTask(ctx, rid, { title: "t", status: "done", criteria: ["一"] });
-    await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e" }] });
-    await updateTask(ctx, rid, task.id, { checked: true });
-    const same = await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e" }] });
-    expect(same.task.checkedAt).toBeTruthy();
-    expect(same.checkCleared).toBeUndefined();
-    const changed = await updateTask(ctx, rid, task.id, { acceptance: [{ op: "edit", id: "A1", text: "一（変更）" }] });
-    expect(changed.task.checkedAt).toBeUndefined();
-    expect(changed.checkCleared).toBe(CHECK_CLEARED_BY_ACCEPTANCE);
-    // 同じ操作で済みを付け直すなら外さない
-    const both = await updateTask(ctx, rid, task.id, { checked: true, acceptance: [{ op: "add", text: "二" }] });
-    expect(both.task.checkedAt).toBeTruthy();
-    const back = await updateTask(ctx, rid, task.id, { status: "todo" });
-    expect(back.task.checkedAt).toBeUndefined();
-    expect(back.task.acceptanceEvidence).toHaveLength(1);
-  });
 });
 
 describe("API", () => {

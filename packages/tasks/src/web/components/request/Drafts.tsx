@@ -1,7 +1,5 @@
-import { CriteriaSources } from "../../../features/requirements/web/RequirementSources.tsx";
-import type { SourceOp } from "../../../features/requirements/shared/requirementSource.ts";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ProposedTask, type Request } from "../../../shared/types.ts";
 import { Badge, Button, buttonCls, cx, inputCls, Empty, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { api, ApiError, type RunInfo } from "../../lib/api.ts";
@@ -93,9 +91,6 @@ export function Drafts({
     return !!e && (criteriaEditDirty(e) || e.saving);
   });
   useUnsaved(criteriaPending);
-  // 基準ごとの出典と確認の入力中（保存していない間はタスク化を止める）
-  const [sourcesPending, setSourcesPending] = useState(false);
-  const onSourcesDirty = useCallback((d: boolean) => setSourcesPending(d), []);
   const unreadable = done ? [] : run.drafts.filter((d) => d.include && d.acceptanceProblems?.length).map((d) => d.key);
   // 評価のあとでタイトル・本文が変わった（か確かめられない）run からはタスク化しない。評価・案は読める
   const stale = !!run.inputMatch && run.inputMatch.status !== "same";
@@ -106,8 +101,6 @@ export function Drafts({
         ? "保存していない題があります。欄から離れて保存するか、入力を捨ててからタスク化してください"
         : criteriaPending
           ? "保存していない受け入れ基準があります。案の詳細で保存するか取り消してからタスク化してください"
-          : sourcesPending && !done
-            ? "保存していない基準の出典と確認があります。案の詳細で保存するか取消してからタスク化してください"
           : unreadable.length
             ? `受け入れ基準が読めない案があります（${unreadable.join(", ")}）。案の詳細で直してからタスク化してください`
             : null));
@@ -323,26 +316,6 @@ export function Drafts({
         done={done}
         edit={detail ? criteriaEdits[titleKey(request.id, run.id, detail.key)] : undefined}
         onEdit={detail ? criteriaOps(detail) : undefined}
-        sources={
-          detail ? (
-            <CriteriaSources
-              key={`${run.id}/${detail.key}`}
-              criteria={detail.acceptanceCriteria}
-              sources={detail.acceptanceSources}
-              requestSources={request.requirementSources}
-              onDirty={onSourcesDirty}
-              {...(done || detail.acceptanceProblems?.length
-                ? {}
-                : {
-                    onSave: async (ops: { id: string; source: SourceOp }[]) => {
-                      const runId = run.id;
-                      const next = await api.patchDraft(request.id, runId, detail.key, { sourceOps: ops, expectedSources: detail.acceptanceSources ?? [] });
-                      putDraft(runId, next);
-                    },
-                  })}
-            />
-          ) : undefined
-        }
         onClose={() => {
           setSelection(null);
           opener.current?.focus();

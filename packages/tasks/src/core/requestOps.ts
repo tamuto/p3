@@ -1,28 +1,11 @@
 import { REQUEST_FIELD_GROUPS, TASK_FIELD_GROUPS, withoutManaged } from "./store/fieldGroups.ts";
-import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, recordedSourceSeq, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
+import { acceptanceChanged, acceptanceSeqChanged, applyAcceptanceOps, type AcceptanceOp } from "../features/requirements/shared/acceptance.ts";
 import { applyBlockOp, checkBlockedStatus, type BlockOp } from "../shared/taskBlock.ts";
-import { qualityCriteria, standardHash, taskQualityDiff } from "../features/quality/shared/quality.ts";
+import { qualityCriteria, QualityInputError } from "../features/quality/shared/quality.ts";
 import type { Request, Task } from "../shared/types.ts";
-import {
-  answersKey,
-  applySourceOps,
-  makeAnswer,
-  putAnswer,
-  requestSubject,
-  RequirementInputError,
-  settleSources,
-  sourceSeq,
-  sourcesKey,
-  type AnswerInput,
-  type Clarification,
-  type ClarifyAnswer,
-  type SourceOp,
-} from "../features/requirements/shared/requirementSource.ts";
+import { answersKey, makeAnswer, putAnswer, RequirementInputError, type AnswerInput, type Clarification, type ClarifyAnswer } from "../features/requirements/shared/clarify.ts";
 import { defaultRepo } from "../shared/workTarget.ts";
-import { appendCompletion, COMPLETION_SKIPPED, requestCompletionRecord, requestTriggers, taskCompletionRecord, taskTriggers, type CompletionContext, type RefCapture } from "../features/records/shared/completionRecord.ts";
-import { captureRefs } from "../features/records/core/completionRefs.ts";
 import { appendRework, reworkOf, REWORK_SKIPPED } from "../features/records/shared/reworkHistory.ts";
-import { applyPremiseOp, PremiseInputError, type PremiseChange, type PremiseOp } from "../features/records/shared/reviewCandidate.ts";
 import type { P3Context } from "./context.ts";
 import { withArchiveCheck, withChildOrder, withNewChild, withParentChange } from "./hierarchy.ts";
 import { type AncestorWarning, checkStatusChange, reopenAncestors, reopenIfNeeded } from "./requestStatus.ts";
@@ -55,96 +38,25 @@ export interface TaskResult {
   warnings: AncestorWarning[];
   reopened?: string;
   reopenedAncestors?: string[];
-  /** 済みのタスクの受け入れ基準・証拠の中身が変わったので、人の「済み」を外した（理由） */
-  checkCleared?: string;
-  /** 完了の記録が壊れているため、今回の記録を足せなかった（状態は変えた） */
-  completionSkipped?: string;
   /** 手戻りの履歴が壊れているため、今回の履歴を足せなかった（状態は変えた） */
   reworkSkipped?: string;
   /** 観測のシステムの項目に記録できなかった（項目・対象・理由。操作はした） */
   observationSkipped?: string[];
 }
 
-/** 品質基準の取り込み方（auto: 作業先に当てはまるもの / none: 取り込まない / ID の並び: 明示したもの） */
-export type QualityChoice = "auto" | "none" | readonly string[];
-
-/** 品質基準を受け入れ基準に取り込む操作（未設定・読めない設定なら無し） */
-export function qualityOpsFor(ctx: P3Context, repo: string | null, choice: QualityChoice): AcceptanceOp[] {
+/** タスクを作るときに足す品質基準の受け入れ基準（作業先に当てはまるもの。未設定なら無し。読めない設定なら理由付きで断る） */
+export function qualityOpsFor(ctx: P3Context, repo: string | null): AcceptanceOp[] {
   const q = ctx.ws.project.quality;
-  if (q?.state !== "set" || choice === "none") return [];
-  if (choice === "auto" && !repo) return [];
-  return qualityCriteria(q.config, ctx.ws.project.qualityVersion ?? "", { repo, ...(choice === "auto" ? {} : { ids: choice }) }).map((c) => ({ op: "add", text: c.text, quality: c.quality }));
-}
-
-/**
- * 今の品質基準との差分から、明示して選んだものを受け入れ基準に取り込む（add は足す、change は文と出典を直す、remove・exempt は消す）。
- * keys: "<kind>:<品質 ID>"（省くと edited 以外の全部）。書く直前に読み直した値に当てる。プロジェクトの設定を変えただけではタスクは変わらない
- */
-export async function importQuality(ctx: P3Context, rid: string, tid: string, keys: readonly string[] | undefined, opts: WriteOpts = {}): Promise<TaskResult & { applied: string[] }> {
-  const t = ctx.ws.tasksOf(rid).require(tid);
-  const diff = taskQualityDiff(t.acceptanceCriteria ?? [], ctx.ws.project.quality, t.repo).filter((d) => d.kind !== "edited");
-  const chosen = keys ? diff.filter((d) => keys.includes(`${d.kind}:${d.quality}`)) : diff;
-  if (keys) {
-    const unknown = keys.filter((k) => !diff.some((d) => `${d.kind}:${d.quality}` === k));
-    if (unknown.length) throw new OpRuleError(`取り込める差分にありません: ${unknown.join(", ")}（今の差分は p3 criteria ${t.id} quality で見る）`);
-  }
-  if (!chosen.length) throw new OpRuleError(`${t.ref} に取り込む品質基準の差分はありません`);
-  const q = ctx.ws.project.quality;
-  const version = ctx.ws.project.qualityVersion ?? "";
-  const config = q?.state === "set" ? q.config : { standards: [] };
-  const hashOf = (id: string) => standardHash(config.standards.find((s) => s.id === id)!);
-  const acceptance: AcceptanceOp[] = chosen.map((d): AcceptanceOp => {
-    if (d.kind === "add") return { op: "add", text: d.text!, quality: { id: d.quality, hash: hashOf(d.quality), version } };
-    if (d.kind === "change") return { op: "edit", id: d.criterion!, text: d.text!, quality: { id: d.quality, hash: hashOf(d.quality), version } };
-    return { op: "remove", id: d.criterion! };
-  });
-  const r = await updateTask(ctx, rid, tid, { acceptance }, opts);
-  return { ...r, applied: chosen.map((d) => `${d.kind}:${d.quality}`) };
+  if (q?.state === "invalid") throw new QualityInputError("quality_unreadable", `project.yaml の品質基準が読めないためタスクを作れません。ファイルを直してください: ${q.problems.join(" / ")}`);
+  if (q?.state !== "set") return [];
+  return qualityCriteria(q.config, repo).map((c) => ({ op: "add", text: c.text, quality: c.quality }));
 }
 
 /** 書く必要が無い（更新の中から抜けるため。外には出さない） */
 class NoChange extends Error {}
 
-/** 済みを外した理由（基準・証拠の中身が変わった） */
-export const CHECK_CLEARED_BY_ACCEPTANCE = "受け入れ基準か証拠の中身が変わったため、人の「済み」を外しました（もう一度確かめてください）";
-
 /** 要望を作った・変えた結果に添える、祖先を戻した結果（無ければ何も足さない） */
-export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[]; completionSkipped?: string; observationSkipped?: string[] };
-
-/** 完了の記録を作るときの周りの値（品質は今の project.yaml、参照先は書く前に取ったもの） */
-const completionContext = (ctx: P3Context, at: string, by: string | undefined, refs: RefCapture[] | undefined): CompletionContext => ({
-  at,
-  ...(by ? { by } : {}),
-  quality: ctx.ws.project.quality,
-  qualityVersion: ctx.ws.project.qualityVersion,
-  ...(refs ? { refs } : {}),
-});
-
-/**
- * タスクを書いた後の値（final）に、足すべき完了の記録を足した patch の部分（無ければ空）。rev は書いた後の rev。
- * 記録が壊れていて足せなければ skipped に理由を入れ、記録の項目には触れない（元の値のまま書き戻す）
- */
-function taskCompletionPatch(
-  ctx: P3Context,
-  rid: string,
-  prev: Task | undefined,
-  final: Task,
-  rev: number,
-  acceptanceChanged: boolean,
-  c: { at: string; by?: string; refs?: RefCapture[] },
-): { patch: Partial<Task>; skipped?: string } {
-  const triggers = taskTriggers(prev, final, acceptanceChanged);
-  if (!triggers.length) return { patch: {} };
-  const request = ctx.ws.requests.get(rid);
-  const cc = completionContext(ctx, c.at, c.by, c.refs);
-  let state: Pick<Task, "completionRecords" | "completionProblems"> = final;
-  for (const trigger of triggers) {
-    const list = appendCompletion(state, (id) => taskCompletionRecord(id, trigger, final, rev, request, cc));
-    if (!list) return { patch: {}, skipped: COMPLETION_SKIPPED };
-    state = { completionRecords: list };
-  }
-  return { patch: { completionRecords: state.completionRecords } };
-}
+export type RequestResult = Request & { reopenedAncestors?: string[]; warnings?: AncestorWarning[]; observationSkipped?: string[] };
 
 function changed(ctx: P3Context, kind: "task" | "request", request: string, ref?: string) {
   ctx.ws.emit({ type: "changed", kind, request, ref });
@@ -210,7 +122,7 @@ async function afterTaskWrite(ctx: P3Context, rid: string, task: Task, repo: str
 export async function createTask(
   ctx: P3Context,
   rid: string,
-  { criteria, quality, ...input }: Partial<Task> & { title: string; criteria?: readonly string[]; quality?: QualityChoice },
+  { criteria, ...input }: Partial<Task> & { title: string; criteria?: readonly string[] },
   actor?: string,
 ): Promise<TaskResult> {
   ctx.ws.requests.require(rid);
@@ -219,41 +131,31 @@ export async function createTask(
   for (const o of input.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
   // 受け入れ基準は文の並びで受け取り、ID（A1, A2, ...）はここで振る（基準・証拠をそのまま渡す道は持たない）
   // 停止は作るときには付けない（作業中にしてから block で付ける）
-  // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
   const plain = withoutManaged(input, TASK_FIELD_GROUPS);
-  // 品質基準: 作業先があれば当てはまるものを取り込む（auto）。作業先なしは明示したものだけ。none は取り込まない
-  const fromQuality = qualityOpsFor(ctx, repo, quality ?? "auto");
-  const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...fromQuality];
-  const now = new Date().toISOString();
-  const acceptance = ops.length ? applyAcceptanceOps({}, ops, { now, actor }) : {};
+  // 品質基準: 作業先に当てはまるものを受け入れ基準として足す（読めない設定なら何も書かずに断る）
+  const ops: AcceptanceOp[] = [...(criteria ?? []).map((text): AcceptanceOp => ({ op: "add", text })), ...qualityOpsFor(ctx, repo)];
+  const acceptance = ops.length ? applyAcceptanceOps({}, ops, { now: new Date().toISOString(), actor }) : {};
   const status = input.status ?? "todo";
-  // 完了で作るなら、完了の記録を最初の記録として足す（参照先は書く前に取る）
-  const refs = status === "done" ? await captureRefs(ctx.ws.refs()) : undefined;
-  const draft = { ...plain, ...acceptance, repo, status } as Task;
-  const { patch: records } = taskCompletionPatch(ctx, rid, undefined, draft, 1, false, { at: now, by: actor, refs });
-  const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status, ...records }, actor);
+  const task = await ctx.ws.tasksOf(rid).create({ ...plain, ...acceptance, repo, status }, actor);
   const observationSkipped = await observeTask(ctx, undefined, task, actor);
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, repo, actor);
   return { task, warnings: ancestorWarnings, ...after, ...(observationSkipped.length ? { observationSkipped } : {}) };
 }
 
 /**
- * タスクを変える。checked: 人の「済み」を付ける / 外す（付けられるのは完了したタスクだけ）。
- * acceptance: 受け入れ基準・証拠への操作（shared/acceptance.ts。書く直前に読み直した今の値に当て、規則に合わなければ何も書かない）。
- * 済みのタスクの基準・証拠の中身が変わったら済みを外し、checkCleared に理由を返す（同じ値の再保存・成果物だけの追加では外さない）。
+ * タスクを変える。acceptance: 受け入れ基準・証拠への操作（shared/acceptance.ts。書く直前に読み直した今の値に当て、規則に合わなければ何も書かない）。
+ * blockOp: 停止の操作。完了から戻したときは手戻りの履歴に1件足す（shared/reworkHistory.ts）。
  */
 export async function updateTask(
   ctx: P3Context,
   rid: string,
   tid: string,
-  patch: Partial<Task> & { checked?: boolean; acceptance?: readonly AcceptanceOp[]; blockOp?: BlockOp },
+  patch: Partial<Task> & { acceptance?: readonly AcceptanceOp[]; blockOp?: BlockOp },
   opts: WriteOpts = {},
 ): Promise<TaskResult> {
   const col = ctx.ws.tasksOf(rid);
-  const cur = col.require(tid);
-  const { checked, acceptance, blockOp, ...rest } = patch;
+  const { acceptance, blockOp, ...rest } = patch;
   // 基準・証拠は操作（acceptance）、停止は操作（blockOp）でだけ変える（値・履歴をそのまま書く道は持たない）
-  // 完了の記録は p3 が作る（値をそのまま書く道は持たない）
   const plain = withoutManaged(rest, TASK_FIELD_GROUPS);
   const next: Partial<Task> = { ...plain };
   if ("repo" in patch) {
@@ -261,15 +163,7 @@ export async function updateTask(
     next.repo = patch.repo ?? null;
   }
   for (const o of patch.repoOutputs ?? []) checkRepoTarget(ctx.ws, o.repo);
-  if (checked !== undefined) {
-    if (checked && (next.status ?? cur.status) !== "done") throw new OpRuleError(`${cur.ref} はまだ完了していません（済みにできるのは完了したタスクだけ）`);
-    next.checkedAt = checked ? new Date().toISOString() : undefined;
-  }
-  let checkCleared: string | undefined;
-  let completionSkipped: string | undefined;
   let reworkSkipped: string | undefined;
-  // 完了・済みになりうる更新なら、参照先を書く前に取る（ロックの外。取得時刻を残す）
-  const refs = next.status === "done" || checked === true ? await captureRefs(ctx.ws.refs()) : undefined;
   // 停止の操作だけで何も変わらない（同じ内容の付け直し・付いていない解除）なら書かない（rev を上げない）
   const onlyBlock = !!blockOp && !acceptance?.length && Object.keys(next).length === 0;
   let unchanged: Task | undefined;
@@ -291,34 +185,19 @@ export async function updateTask(
         }
         if (blockTo) out = { ...out, ...blockTo };
         checkBlockedStatus(fresh.status, status, blockTo ? blockTo.block : fresh.block, fresh.ref);
-        // 書いた後の値で完了の記録を足す（同時に変えた基準・証拠は変えた後の内容を写す）
-        const withRecords = (o: Partial<Task>, contentChanged: boolean): Partial<Task> => {
-          const final = { ...fresh, ...o };
-          if (final.status !== "done") final.checkedAt = undefined;
-          const r = taskCompletionPatch(ctx, rid, fresh, final, fresh.rev + 1, contentChanged, { at: now, by: opts.actor, refs });
-          completionSkipped = r.skipped;
-          // 手戻り（済みの解除・完了からの再開）。書く直前の値と保存する値で決める
-          const rw = reworkOf(fresh, final, { explicitUncheck: checked === false, acceptanceChanged: contentChanged });
-          let history: Partial<Task> = {};
-          if (rw) {
-            const list = appendRework(fresh, { at: now, ...(opts.actor ? { by: opts.actor } : {}), rev: fresh.rev + 1, ...rw });
-            if (list) history = { reworkHistory: list };
-            else reworkSkipped = REWORK_SKIPPED;
-          }
-          return { ...o, ...r.patch, ...history };
-        };
-        if (!acceptance?.length) return withRecords(out, false);
-        // 根拠の番号は、保存した番号・今ある記録・完了の記録の写しに残る番号の続き（旧データでも写しに残る番号は使い直さない）
-        const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor, requestSources: ctx.ws.requests.get(rid)?.requirementSources ?? [], sourceSeqFloor: recordedSourceSeq(fresh.completionRecords) });
-        if (!acceptanceChanged(fresh, changedTo)) {
-          // 中身は同じでも（同じ操作の中で足して消したなど）採番が進んだら、採番だけを書く（済み・完了の記録・手戻りは中身の変化として扱わない）
-          const seqOnly = acceptanceSeqChanged(fresh, changedTo) ? { acceptanceSeq: changedTo.acceptanceSeq, acceptanceSourceSeq: changedTo.acceptanceSourceSeq } : {};
-          return withRecords({ ...out, ...seqOnly }, false);
+        if (acceptance?.length) {
+          const changedTo = applyAcceptanceOps(fresh, acceptance, { now, actor: opts.actor });
+          // 中身は同じでも（同じ操作の中で足して消したなど）採番が進んだら、採番だけを書く
+          if (acceptanceChanged(fresh, changedTo)) out = { ...out, ...changedTo };
+          else if (acceptanceSeqChanged(fresh, changedTo)) out = { ...out, acceptanceSeq: changedTo.acceptanceSeq };
         }
-        // 済みの後に中身が変わった（同じ操作で済みを付け直すときは外さない）
-        const clear = !!fresh.checkedAt && !("checkedAt" in next);
-        if (clear) checkCleared = CHECK_CLEARED_BY_ACCEPTANCE;
-        return withRecords({ ...out, ...changedTo, ...(clear ? { checkedAt: undefined } : {}) }, true);
+        // 手戻り（完了からの再開）。書く直前の値と保存する値で決める
+        const rw = reworkOf(fresh, { status });
+        if (!rw) return out;
+        const list = appendRework(fresh, { at: now, ...(opts.actor ? { by: opts.actor } : {}), rev: fresh.rev + 1, ...rw });
+        if (list) return { ...out, reworkHistory: list };
+        reworkSkipped = REWORK_SKIPPED;
+        return out;
       },
       opts,
     );
@@ -329,15 +208,7 @@ export async function updateTask(
   if (unchanged && task === unchanged) return { task, warnings: [] };
   const observationSkipped = before ? await observeTask(ctx, before, task, opts.actor) : [];
   const { ancestorWarnings, ...after } = await afterTaskWrite(ctx, rid, task, patch.repo, opts.actor);
-  return {
-    task,
-    warnings: ancestorWarnings,
-    ...after,
-    ...(checkCleared ? { checkCleared } : {}),
-    ...(completionSkipped ? { completionSkipped } : {}),
-    ...(reworkSkipped ? { reworkSkipped } : {}),
-    ...(observationSkipped.length ? { observationSkipped } : {}),
-  };
+  return { task, warnings: ancestorWarnings, ...after, ...(reworkSkipped ? { reworkSkipped } : {}), ...(observationSkipped.length ? { observationSkipped } : {}) };
 }
 
 /** タスクをアーカイブする（.archive/ へ移す。消さない） */
@@ -368,43 +239,26 @@ export async function createRequest(ctx: P3Context, input: Partial<Request> & { 
  * parent を含むなら親の付け替え（undefined で外す）を関係のロックの中で確かめてから書く（hierarchy.ts）
  */
 export async function updateRequest(ctx: P3Context, rid: string, input: Partial<Request>, opts: WriteOpts = {}): Promise<RequestResult> {
-  // 要求の根拠・回答は操作（updateRequirement・answerClarification）でだけ変える（値をそのまま書く道は持たない）
-  // 完了の記録も p3 が作る
+  // 確認事項への回答は操作（saveClarifyAnswer）でだけ変える（値をそのまま書く道は持たない）
   const patch = withoutManaged(input, REQUEST_FIELD_GROUPS);
   checkMilestone(ctx, patch.milestone);
   await checkStatusChange(ctx.ws, rid, patch.status);
-  // 対応済・完了済になりうる更新なら、参照先を書く前に取る
-  const refs = patch.status === "resolved" || patch.status === "done" ? await captureRefs(ctx.ws.refs()) : undefined;
-  let completionSkipped: string | undefined;
   // 書く直前に読み直した値（観測のシステムの項目は、この値と書いた後の値で状態の変化を見る）
   let before: Request | undefined;
   // 状態か親が変わったら、未完了になった配下の分だけ祖先を戻す
   const after = async (r: Request) => (patch.status !== undefined || "parent" in patch ? withAncestors(r, await afterRequestWrite(ctx, r.id, opts.actor)) : r);
-  // 題・本文を変えたら、要望の根拠の記録の確認は効かなくなる（書く直前に読み直した値で、履歴へ移す）
-  // 対応済・完了済にしたら、書いた後の値で完了の記録を足す（判定に使ったタスクと子の要望を写す）
   const write = () =>
     ctx.ws.requests.update(
       rid,
       (fresh) => {
         before = fresh;
-        const p = withSettledSources(fresh, patch);
-        const final = { ...fresh, ...p };
-        const triggers = requestTriggers(fresh.status, final.status);
-        if (!triggers.length) return p;
-        const at = new Date().toISOString();
-        const parts = { tasks: ctx.ws.tasksOf(rid).list(), children: ctx.ws.requests.list().filter((r) => r.parent === rid) };
-        const list = appendCompletion(fresh, (id) => requestCompletionRecord(id, triggers[0], final, fresh.rev + 1, parts, completionContext(ctx, at, opts.actor, refs)));
-        if (!list) {
-          completionSkipped = COMPLETION_SKIPPED;
-          return p;
-        }
-        return { ...p, completionRecords: list };
+        return patch;
       },
       opts,
     );
   const skipped = async (r: RequestResult): Promise<RequestResult> => {
     const observationSkipped = before ? await observeRequest(ctx, before, r, opts.actor) : [];
-    return { ...r, ...(completionSkipped ? { completionSkipped } : {}), ...(observationSkipped.length ? { observationSkipped } : {}) };
+    return observationSkipped.length ? { ...r, observationSkipped } : r;
   };
   if (!("parent" in patch)) {
     const r = await write();
@@ -418,53 +272,14 @@ export async function updateRequest(ctx: P3Context, rid: string, input: Partial<
   return after(await skipped(r));
 }
 
-/** 題・本文の変更で効かなくなった要望の根拠の確認を履歴へ移した patch（変わらなければ patch のまま） */
-function withSettledSources(fresh: Request, patch: Partial<Request>): Partial<Request> {
-  if ((patch.title === undefined && patch.body === undefined) || !fresh.requirementSources?.length || fresh.requirementProblems?.length) return patch;
-  const subject = requestSubject({ title: patch.title ?? fresh.title, body: patch.body ?? fresh.body });
-  const settled = settleSources(fresh.requirementSources, () => subject, new Date().toISOString());
-  return sourcesKey(settled) === sourcesKey(fresh.requirementSources) ? patch : { ...patch, requirementSources: settled };
-}
-
-/** 要望の根拠・回答が読めないときは変えない */
+/** 要望の回答が読めないときは変えない */
 function checkRequirementReadable(r: Request) {
-  if (r.requirementProblems?.length) throw new RequirementInputError(`${r.id} の要求の根拠・回答のファイルの値が読めないため変えられません。request.md を直してください: ${r.requirementProblems.join(" / ")}`);
-}
-
-/**
- * 要望の要求の根拠の記録を変える（shared/requirementSource.ts の操作。書く直前に読み直した値に当て、規則に合わなければ何も書かない）。
- * 同じ値の再保存では書かない（rev を上げない）。expectedRev で競合を見る
- */
-export async function updateRequirement(ctx: P3Context, rid: string, ops: readonly SourceOp[], opts: WriteOpts = {}): Promise<Request> {
-  if (!ops.length) throw new RequirementInputError("根拠の記録への操作がありません");
-  let unchanged: Request | undefined;
-  const r = await ctx.ws.requests
-    .update(
-      rid,
-      (fresh) => {
-        checkRequirementReadable(fresh);
-        const before = fresh.requirementSources ?? [];
-        const subject = requestSubject(fresh);
-        const { list, seq } = applySourceOps(before, ops, { now: new Date().toISOString(), actor: opts.actor, subjectOf: () => subject, seq: fresh.requirementSeq });
-        if (sourcesKey(list) === sourcesKey(before) && seq === (fresh.requirementSeq ?? sourceSeq(before))) {
-          unchanged = fresh;
-          throw new NoChange();
-        }
-        return { requirementSources: list.length ? list : undefined, requirementSeq: seq > 0 ? seq : undefined };
-      },
-      opts,
-    )
-    .catch((e: unknown) => {
-      if (e instanceof NoChange && unchanged) return unchanged;
-      throw e;
-    });
-  if (r !== unchanged) changed(ctx, "request", rid);
-  return r;
+  if (r.requirementProblems?.length) throw new RequirementInputError(`${r.id} の確認事項への回答のファイルの値が読めないため変えられません。request.md を直してください: ${r.requirementProblems.join(" / ")}`);
 }
 
 /**
  * Preflight の確認事項に回答する（要望の clarifyAnswers に残す。過去の run と評価は書き換えない）。clarification は元の run の確認事項
- * （呼ぶ側が run から取り出す）。回答しただけでは根拠の記録を確認記録ありにしない。answer が null なら回答を消す
+ * （呼ぶ側が run から取り出す）。answer が null なら回答を消す
  */
 export async function saveClarifyAnswer(
   ctx: P3Context,
@@ -487,7 +302,7 @@ export async function saveClarifyAnswer(
           const next = cur.filter((a) => !(a.run === runId && a.question === q.id));
           return { clarifyAnswers: next.length ? next : undefined };
         }
-        saved = makeAnswer(runId, q, input, fresh.requirementSources ?? [], { now: new Date().toISOString(), actor: opts.actor });
+        saved = makeAnswer(runId, q, input, { now: new Date().toISOString(), actor: opts.actor });
         const next = putAnswer(cur, saved);
         if (answersKey(next) === answersKey(cur)) {
           saved = cur.find((a) => a.run === runId && a.question === q.id);
@@ -523,25 +338,3 @@ export async function archiveRequest(ctx: P3Context, rid: string): Promise<void>
   changed(ctx, "request", rid);
 }
 
-/**
- * 前提の変更を記録する（外部の規則の変更など。要望の premiseChanges に追記。shared/reviewCandidate.ts）。add: 対象（要望 ID・この要望の
- * タスク ID・要望の根拠の ID）と理由・新しい条件 / ack: 変更を確かめたことを対象と条件の版つきで残す。過去の完了の記録・状態・済み・
- * 基準・証拠は変えない。対象が無い・規則に合わない・rev の競合では何も書かない
- */
-export async function recordPremise(ctx: P3Context, rid: string, op: PremiseOp, opts: WriteOpts = {}): Promise<{ request: Request; change: PremiseChange }> {
-  let change: PremiseChange | undefined;
-  const r = await ctx.ws.requests.update(
-    rid,
-    (fresh) => {
-      if (fresh.premiseProblems?.length) throw new PremiseInputError(`${rid} の前提の変更の記録が読めないため足せません。request.md を直してください: ${fresh.premiseProblems.join(" / ")}`);
-      const tasks = ctx.ws.tasksOf(rid);
-      const exists = (t: string) => t === rid || !!tasks.get(t) || !!fresh.requirementSources?.some((s) => s.id === t);
-      const list = applyPremiseOp(fresh.premiseChanges ?? [], op, { now: new Date().toISOString(), actor: opts.actor, exists });
-      change = op.op === "add" ? list.at(-1) : list.find((c) => c.id === op.id);
-      return { premiseChanges: list };
-    },
-    opts,
-  );
-  changed(ctx, "request", rid);
-  return { request: r, change: change! };
-}

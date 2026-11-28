@@ -46,16 +46,6 @@ describe("タスクの作成", () => {
 });
 
 describe("タスクの更新", () => {
-  it("済みは完了したタスクだけ（同じ更新で完了にするのはよい）。外すのはいつでも", async () => {
-    const { ctx, rid } = await setup();
-    const t = await newTask(ctx, rid, { title: "A" });
-    await expect(updateTask(ctx, rid, t.id, { checked: true })).rejects.toBeInstanceOf(OpRuleError);
-    expect(ctx.ws.tasksOf(rid).require(t.id).rev).toBe(1);
-    const done = await updateTask(ctx, rid, t.id, { status: "done", checked: true });
-    expect(done.task.checkedAt).toEqual(expect.any(String));
-    expect((await updateTask(ctx, rid, t.id, { checked: false })).task.checkedAt).toBeUndefined();
-  });
-
   it("完了から戻すと対応済の要望を進行中に戻す（置き換えの警告は無い）", async () => {
     const { ctx, rid } = await setup();
     const old = await newTask(ctx, rid, { title: "古い", status: "done" });

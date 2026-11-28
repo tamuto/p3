@@ -49,20 +49,20 @@ ID（F01…）は後続の要望から参照するための番号。
 | F08 | データのフォルダの変更の監視・画面への変更通知（SSE）・読み直し | 分離 | 入口 | `src/core/store/dataWatcher.ts`・`src/server/api/routes.ts` の `/events`・`/reload`・`src/web/lib/appData.tsx`。監視と通知の仕組みは入口（全製品が使う）、何を読み直すか（要望・タスクのコレクション）は tasks。監視の失敗で serve を落とさない守りを引き継ぐ |
 | F09 | AI 向けの API の説明（`/api/ai/manifest`） | 分離 | 入口 | `src/server/api/manifest.ts`。説明の集め方は入口、各 API の説明の中身は製品が持つ。今の URL と形を守る |
 | F10 | 要望の登録と本文の編集、タグ・検索と ID の解決（`find`・`resolve`）・期限、親子・子の順・進捗の表示 | 維持 | tasks | `src/core/{requestOps,hierarchy,ops,requestStatus}.ts`・`src/cli/requestCommands.ts`・`src/web/routes/index.tsx`・`src/web/routes/requests/`。親子の完了の判定・集計・表示の順・既存の ID を守る |
-| F11 | 要求の出典と確認・確認事項への回答・前提の変化・メモ | 維持 | tasks | `src/shared/requirementSource.ts`・`src/core/requestOps.ts`・`src/core/store/noteStore.ts`・`src/cli/{requirementCommands,revisitCommands}.ts`。要望・基準を変えると確認が効かなくなり、評価対象の固定と採用の判定に効く |
+| F11 | 確認事項への回答・メモ（要求の出典と確認・前提の変化は廃止） | 簡素化（済み） | tasks | `src/features/requirements/shared/clarify.ts`・`src/core/requestOps.ts`・`src/core/store/noteStore.ts`。要望 261128-gbwmf で、要求の出典と確認・前提の変化を無くし、回答を回答・回答した役割・日だけにした（状態は回答済み・未回答）。回答は評価対象の固定と採用の判定に効く |
 | F12 | 添付の保存と参照、xlsx から Preflight の資料を作る経路 | 維持 | tasks | `src/core/store/attachments.ts`・`src/core/preflight/{xlsx,input}.ts`。元の添付と run に固定した資料の関係を守る |
 | F13 | Preflight の評価・評価対象の固定・履歴・再評価・取り消し・取り込み（Codex と手元のエージェント） | 維持 | tasks | `src/core/preflight/service.ts`・`src/cli/preflightCommands.ts`。Codex と手元のエージェントを選べること、古い run と評価対象の照合、Mock での確かめる経路が要る |
 | F14 | タスク案の編集・タスク化・子の要望への分割と採用 | 維持 | tasks | `src/core/preflight/{service,split,carryover}.ts`。案は人が選ぶ。タスクの直接作成の経路と、採用で引き継ぐ ID・基準・出典・依存を守る |
 | F15 | 画面資料の原稿・描画・表示と `render` コマンド | 維持 | tasks | `src/core/preflight/{uiMaterials,uiRender,wireframe,render}.ts`・`src/cli/render.ts`。描画の環境は任意。原稿と描いた画像の対応、描けないときの表示、既存のコマンドを守る |
-| F16 | タスクの直接作成・作業先とブランチ・状態・停止・依存・アーカイブ | 維持 | tasks | `src/core/{workTargets,requestOps}.ts`・`src/core/store/archivedTasks.ts`・`src/cli/taskCommands.ts`。要望を単位にした作業、タスクの状態と人の「済み」を分けること、古い ID と履歴を守る |
-| F17 | 受け入れ基準・証拠と根拠の種類・成果物・変更の記録・人の「済み」、完了の記録と参照先のコミットの取得 | 維持 | tasks | `src/shared/{acceptance,completionRecord}.ts`・`src/core/{requestOps,completionRefs,repoRefs}.ts`。証拠は申告と根拠の記録。中身が変わると済みを外す規則、古い形の読み込み、申告と未確認の区別を守る |
-| F18 | 品質基準とテンプレート、Preflight での固定と基準への取り込み | 維持 | tasks | `src/core/quality.ts`・`src/shared/qualityTemplates.ts`・`src/cli/qualityCommands.ts`。未設定でも使えること、版と作業先に応じた当てはめ、レビューの材料への影響を守る |
-| F19 | タスクの AI レビュー、マイルストーンレビューと run の管理 | 統合 | tasks | `src/core/{taskReview/,milestoneReview/,reviewRuns.ts}`。統合は既に共用している保存・取り消し・回復の範囲に限る。材料・結果・実行の対象の契約はそれぞれ残す。Preflight・リリースノートの生成も含めた run の管理の統合は、回復と取り消しの違いを照らしてから判断する |
-| F20 | 見直し候補・品質の改善要望 | 維持 | tasks | `src/core/{reviewCandidates,qualityImprovement}.ts`・`src/cli/revisitCommands.ts`。前者は完了の記録と今の条件の照合、後者は診断から原稿を作って明示の操作で登録する |
+| F16 | タスクの直接作成・作業先とブランチ・状態・停止・依存・アーカイブ | 維持 | tasks | `src/core/{workTargets,requestOps}.ts`・`src/core/store/archivedTasks.ts`・`src/cli/taskCommands.ts`。要望を単位にした作業、古い ID と履歴を守る（タスク単位の「済み」は要望 261128-gbwmf で無くした） |
+| F17 | 受け入れ基準・証拠と根拠の種類・成果物・変更の記録 | 簡素化（済み） | tasks | `src/features/requirements/shared/acceptance.ts`・`src/core/requestOps.ts`。要望 261128-gbwmf で、人の「済み」・完了の記録と参照先のコミットの取得を無くした（人の最終確認は要望の完了済）。古い形の読み込み、申告と未確認の区別を守る |
+| F18 | 品質基準と、タスクを作るときの基準への取り込み | 簡素化（済み） | tasks | `src/features/quality/`。要望 261128-gbwmf で、基準を ID・文・対象の参照先・確かめ方だけにし、テンプレート・版・除外・取り込みの出典と差分を無くした。未設定でも使えること、作業先に応じた当てはめを守る |
+| F19 | マイルストーンレビューと run の管理（タスクの AI レビューは廃止） | 維持 | tasks | `src/features/milestoneReview/`・`src/core/reviewRuns.ts`。タスクの AI レビューは要望 261128-gbwmf で無くした |
+| F20 | 見直し候補・品質の改善要望 | 廃止（済み） | — | 要望 261128-gbwmf で無くした（完了の記録・前提の変化とともに） |
 | F21 | マイルストーンの目的・予定機能・並び・リリース済み・要望の一括完了 | 維持 | tasks | `src/shared/{milestoneGoals,milestoneOrder}.ts`・`src/core/releaseNotes/completeRequests.ts`。項目の削除と一括完了は、親子の判定と参照の保護（記録のあるマイルストーンは消さない）に効く |
 | F22 | リリースノートの手での編集・保存・出力 | 維持 | tasks | `src/core/releaseNotes/service.ts`・`src/cli/releaseNotesCommands.ts`・`src/web/routes/release-notes.tsx`。マイルストーンと変更の記録に依存する。保存と出力の契約を守る |
 | F23 | リリースノートの AI 要約 | 簡素化 | tasks | `src/core/releaseNotes/generate.ts`。任意の生成として扱い、手で書いて保存する導線を先にする候補。生成と保存は既に分かれている。削除や CLI・API の変更の判断には利用実態が要る |
-| F24 | Preflight のリスクの振り返り、完了と手戻りの履歴 | 維持 | tasks | `src/core/retrospective.ts`・`src/shared/{completionRecord,reworkHistory}.ts`・`src/cli/retroCommands.ts`。採用した run が固定したリスク、人の判定と根拠、訂正の履歴は要望に属する |
+| F24 | 手戻りの履歴（Preflight のリスクの振り返りは廃止） | 簡素化（済み） | tasks | `src/features/records/shared/reworkHistory.ts`。要望 261128-gbwmf で、振り返りと完了の記録を無くし、手戻りの履歴は完了から戻したときだけ足す |
 | F25 | 開発の指標（要望の到達時間・完了時の受け入れ基準・手戻り）と、費用・リリース後の不具合などの値 | 分離（済み） | observer・tasks | 要望 261128-c7z79 で観測へ移した。指標は観測のシステムの項目で、tasks が要望・タスクの操作のその場で値を書く（`core/systemObservations.ts`）。費用などは利用者が決める観測の項目キー。以前の見るたびの集計・`p3 metrics`・人の記録（`metrics/manual.json`）は無くした |
 | F26 | Codex の準備・起動・診断、ChatGPT の接続、Docker とホストのパス、ログの秘密の除去 | 保留 | 未定 | `src/cli/{codex,chatgpt}.ts`・`src/core/{chatgpt,redact}.ts`・`src/core/preflight/{codexEngine,docker,hostPaths}.ts`・`src/server/api/chatgptRoutes.ts`。**B 案では暫定で tasks**。2 つの製品に共通する認証・実行環境と、設定・秘密の情報の境界が具体化したら決め直す。接続の保存先と各機能が渡す入力の範囲を守る |
 | F27 | デモデータと使い方の動画 | 維持 | tasks | `scripts/{demo,demoData}.ts`・`scripts/video/`。tasks の画面と CLI を使う開発用の道具（配布物には入らない）。B 案では tasks のパッケージに付ける |
@@ -70,12 +70,11 @@ ID（F01…）は後続の要望から参照するための番号。
 
 ### まとめ
 
-- **廃止**: 現時点で確定できる機能は無い。利用の頻度が分からない機能は、利用実態と代わりの経路を別の要望で評価する
+- **廃止**: F20（見直し候補・品質の改善要望）と、F11・F17・F19・F24 の一部（要求の出典と確認・前提・人の済み・完了の記録・タスクの AI レビュー・振り返り）を要望 261128-gbwmf で無くした
 - **簡素化の候補**: F23（リリースノートの AI 要約）
-- **統合の候補**: F19（AI レビューの run の管理。共用済みの範囲に限る）
 - **分離（B 案で分けて置く）**: F03〜F09。入口と kit に切り出すのは起動・登録・外枠・保存の土台・個人設定・監視で、中身（要望の運用）は tasks に残る
 - **保留**: F26（AI 接続・実行環境。暫定 tasks）。F25・F28 は要望 261128-c7z79 で観測（項目キーと値）に決めた
-- 残りは **tasks に維持**。要望から人の確認までの記録・振り返り・指標は tasks の責務
+- 残りは **tasks に維持**。要望から人の確認（要望の完了済）までの記録は tasks の責務
 
 ## B 案（261119-9d1zk）への引き継ぎ
 
@@ -123,7 +122,6 @@ ID（F01…）は後続の要望から参照するための番号。
 - 機能ごとの実際の利用の頻度と、外部のスクリプト・自動化が使っている CLI・API（簡素化・廃止の判断の前に要る。特に F23）
 - AI 接続・実行環境を製品の間で共通にするか（F26）: 2 つ目の製品が要る認証・実行環境・秘密の情報の範囲
 - B 案の配布の方式: kit・tasks を別のパッケージとして npm に出すか、`@infodb/p3` に同梱するか（261119-9d1zk の Preflight で比べる）
-- AI レビュー以外の run（Preflight・リリースノートの生成）の管理を統合できるか（F19）: 回復と取り消しの違い
 
 ## 照らした範囲
 

@@ -1,13 +1,12 @@
 import { ACCEPTANCE_KEYS, readAcceptance } from "../../features/requirements/shared/acceptance.ts";
 import { BLOCK_KEYS, readBlock } from "../../shared/taskBlock.ts";
-import { COMPLETION_KEYS, readCompletion } from "../../features/records/shared/completionRecord.ts";
-import { PREMISE_KEYS, readPremises } from "../../features/records/shared/reviewCandidate.ts";
 import { readRework, REWORK_KEYS } from "../../features/records/shared/reworkHistory.ts";
-import { readRequirement, REQUIREMENT_KEYS } from "../../features/requirements/shared/requirementSource.ts";
+import { readRequirement, REQUIREMENT_KEYS } from "../../features/requirements/shared/clarify.ts";
 import type { Request, Task } from "../../shared/types.ts";
 
 /**
- * p3 が管理する frontmatter の項目のまとまり（受け入れ基準・停止・完了の記録・手戻り・要求の根拠・前提）。1 か所で定義し、次をここから作る:
+ * p3 が管理する frontmatter の項目のまとまり（受け入れ基準・停止・手戻り・確認事項への回答）。以前の版の項目（済み・完了の記録・要求の根拠・
+ * 前提の変更）は読まず、知らない項目としてファイルに残す（関係のない更新でも消さない）。1 か所で定義し、次をここから作る:
  *   - 読む（normalize.ts）: まとまりごとの読む関数を順に当てる。読めない値は除いて、まとまりの problems の名前に理由を置く
  *   - 書き戻す（collection.ts の keepRaw）: problems があるまとまりの項目は、関係のない更新でファイルの元の値のまま書く
  *   - 書かない項目（collection.ts の derived）: problems はファイルに書かない（読むたびに決まる）
@@ -27,16 +26,13 @@ export interface FieldGroup<T> {
 }
 
 export const TASK_FIELD_GROUPS: readonly FieldGroup<Task>[] = [
-  { name: "受け入れ基準・証拠・基準の根拠", keys: ACCEPTANCE_KEYS, problems: "acceptanceProblems", read: readAcceptance },
+  { name: "受け入れ基準・証拠", keys: ACCEPTANCE_KEYS, problems: "acceptanceProblems", read: readAcceptance },
   { name: "停止と履歴", keys: BLOCK_KEYS, problems: "blockProblems", read: readBlock },
-  { name: "完了の記録", keys: COMPLETION_KEYS, problems: "completionProblems", read: readCompletion },
   { name: "手戻りの履歴", keys: REWORK_KEYS, problems: "reworkProblems", read: readRework },
 ];
 
 export const REQUEST_FIELD_GROUPS: readonly FieldGroup<Request>[] = [
-  { name: "要求の根拠・回答", keys: REQUIREMENT_KEYS, problems: "requirementProblems", read: readRequirement },
-  { name: "完了の記録", keys: COMPLETION_KEYS, problems: "completionProblems", read: readCompletion },
-  { name: "前提の変更", keys: PREMISE_KEYS, problems: "premiseProblems", read: readPremises },
+  { name: "確認事項への回答", keys: REQUIREMENT_KEYS, problems: "requirementProblems", read: readRequirement },
 ];
 
 /** まとまりを順に読んだ値（読む順は定義の順。後のまとまりが前の項目を上書きしない） */
@@ -54,8 +50,11 @@ export const problemKeysOf = <T>(groups: readonly FieldGroup<T>[]): (keyof T)[] 
 /** CLI・API の入力から外す項目（まとまりの項目と problems。p3 が操作でだけ変える） */
 export const managedKeysOf = <T>(groups: readonly FieldGroup<T>[]): readonly string[] => [...new Set(groups.flatMap((g) => [...g.keys, g.problems]))];
 
-/** 入力から p3 が管理する項目を外す（値をそのまま書く道を持たない） */
+/** 以前の版が管理していた項目（読まずにファイルに残す。入力からは書かない） */
+export const LEGACY_KEYS = ["checkedAt", "completionRecords", "acceptanceSources", "acceptanceSourceSeq", "requirementSources", "requirementSeq", "premiseChanges"] as const;
+
+/** 入力から p3 が管理する項目と以前の版の項目を外す（値をそのまま書く道を持たない） */
 export function withoutManaged<T extends object, G>(input: T, groups: readonly FieldGroup<G>[]): T {
-  const managed = new Set(managedKeysOf(groups));
+  const managed = new Set([...managedKeysOf(groups), ...LEGACY_KEYS]);
   return Object.fromEntries(Object.entries(input).filter(([k]) => !managed.has(k))) as T;
 }
