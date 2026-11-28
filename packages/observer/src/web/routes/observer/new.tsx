@@ -9,7 +9,7 @@ export const Route = createFileRoute("/observer/new")({ component: NewKey });
 function NewKey() {
   const navigate = useNavigate();
   return (
-    <div className="w-full max-w-3xl space-y-4 px-4 py-6 sm:px-6 lg:p-8">
+    <div className="w-full space-y-4 px-4 py-6 sm:px-6 lg:p-8">
       <Link to="/observer" className={linkCls}>
         ← 観測の一覧
       </Link>

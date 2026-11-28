@@ -10,6 +10,8 @@ import { openScenario, until, type Scenario } from "./scenario.ts";
 import type { UiEnv } from "./env.ts";
 
 const ids = { parent: "", child: "", grand: "", single: "", solo: "", a: "", b: "" };
+/** 1×1 の PNG（添付） */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const LONG = "とても長い題の親の要望で、狭い画面でも祖先の列が折り返されることを確かめるための文".repeat(2);
 
 async function prepare(env: UiEnv) {
@@ -104,6 +106,17 @@ describe.skipIf(!inject("chromium").available)("親子の要望の画面", () =>
       await page.getByRole("button", { name: "作成" }).click();
       await until.url(page, /\/requests\/\d{6}-[0-9a-z]{5}$/);
       await until.text(page.getByRole("navigation", { name: "親の要望" }), /申請の画面/);
+    });
+
+    await step("親を指定して開くと選んだ状態で、添付と一緒に作れる", async () => {
+      await page.goto(`/requests/new?parent=${ids.child}`);
+      expect(await page.getByLabel(/親の要望/).inputValue()).toBe(ids.child);
+      await page.getByLabel("タイトル").fill("申請の添付");
+      await page.getByLabel("添付するファイルを選ぶ").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: PNG });
+      await page.getByRole("button", { name: "作成して 1 件を添付" }).click();
+      await until.url(page, /\/requests\/\d{6}-[0-9a-z]{5}$/);
+      await until.text(page.getByRole("navigation", { name: "親の要望" }), /申請の画面/);
+      await until.visible(page.getByText("receipt.png").first());
     });
 
     await step("親も子も無い要望は今までどおり（祖先の列は出さない）", async () => {
