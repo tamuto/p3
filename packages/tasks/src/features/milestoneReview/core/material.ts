@@ -131,7 +131,7 @@ export function reviewInputOf(ws: Workspace, mid: string, extractedAt = new Date
   };
   const units = reviewUnits(m);
   // 品質基準（版つき）。未設定・読めないは警告にして、設定や改善の要望へ案内する
-  const quality = qualitySnapshot(ws.project.quality, ws.project.qualityVersion);
+  const quality = qualitySnapshot(ws.project.quality);
   if (quality.state === "unset") warnings.push({ code: "quality_unset", target: "project.yaml", message: "プロジェクトの品質基準は未設定です（品質は評価しません。p3 quality で設定するか、設定する要望を登録できます）" });
   if (quality.state === "invalid") warnings.push({ code: "quality_invalid", target: "project.yaml", message: `プロジェクトの品質基準が読めません（品質は評価しません。project.yaml を直してください）: ${(quality.problems ?? []).join(" / ")}` });
   const body = { milestone, units, requests, context, warnings, scope: REVIEW_SCOPE_RECORDS_ONLY, quality };
@@ -150,7 +150,7 @@ export function reviewInputHash(i: Pick<ReviewInput, "milestone" | "units" | "re
       ? { code: i.code.map((c) => [c.name, c.status, c.head ?? null, c.branch ?? null, c.dirty ?? 0, c.dirtyDigest ?? null, c.commits.map((x) => [x.sha, x.from, x.found])]) }
       : {}),
     // 品質基準（状態と版。変われば材料が変わった）
-    ...(i.quality ? { quality: [i.quality.state, i.quality.version] } : {}),
+    ...(i.quality ? { quality: [i.quality.state, i.quality.standards ?? i.quality.problems ?? []] } : {}),
   };
   return createHash("sha256").update(JSON.stringify(key)).digest("hex");
 }

@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MetricStore } from "../packages/observer/src/core/metricStore.ts";
-import type { SystemKey } from "../packages/observer/src/shared/metric.ts";
+import { CRITERIA_STATES, type SystemKey } from "../packages/observer/src/shared/metric.ts";
 import { createTask, updateRequest, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { completeMilestoneRequests, completionPlan } from "../packages/tasks/src/features/releaseNotes/core/completeRequests.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
@@ -22,7 +22,7 @@ async function setup() {
 }
 
 describe("タスク", () => {
-  it("完了になるたびに met でない基準の数（未達・未検証・証拠なし・古い証拠を含み、申告の met は含めない）、完了から戻すたびに手戻り 1", async () => {
+  it("完了になるたびに基準の状態ごとの数（未達・未検証・証拠なし・古い証拠・満たした。申告の met は満たしたに数える）、完了から戻すたびに手戻り 1", async () => {
     const { ctx, rid, values } = await setup();
     const { task } = await createTask(ctx, rid, { title: "実装", criteria: ["a", "b", "c", "d"] });
     const evidence = [
@@ -34,11 +34,13 @@ describe("タスク", () => {
     // 同じ状態の再送・成果物の追記では記録しない
     await updateTask(ctx, rid, task.id, { status: "done" });
     await updateTask(ctx, rid, task.id, { outputs: ["https://example.test/pr/1"] });
-    expect(await values("p3.task.criteria_unmet")).toEqual([{ value: 3, target: `${rid}/${task.id}`, milestone: "v1", by: "ai:x" }]);
+    const counts = async () => Object.fromEntries(await Promise.all(CRITERIA_STATES.map(async (st) => [st, (await values(`p3.task.criteria.${st}`)).map((v) => v.value)])));
+    expect(await counts()).toEqual({ unmet: [1], unverified: [1], missing: [1], stale: [0], met: [1] });
+    expect(await values("p3.task.criteria.unmet")).toEqual([{ value: 1, target: `${rid}/${task.id}`, milestone: "v1", by: "ai:x" }]);
     await updateTask(ctx, rid, task.id, { status: "doing" }, { actor: "human:a" });
     // 基準の文を変えると、その証拠は古い証拠になる
     await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "edit", id: "A1", text: "a2" }] });
-    expect((await values("p3.task.criteria_unmet")).map((v) => v.value)).toEqual([4, 3]);
+    expect(await counts()).toEqual({ unmet: [1, 1], unverified: [1, 1], missing: [1, 1], stale: [1, 0], met: [0, 1] });
     expect(await values("p3.task.rework")).toEqual([{ value: 1, target: `${rid}/${task.id}`, milestone: "v1", by: "human:a" }]);
   });
 
@@ -48,7 +50,8 @@ describe("タスク", () => {
     await createTask(ctx, rid, { title: "基準なし", status: "done" });
     const { task } = await createTask(ctx, rid, { title: "基準なし2" });
     await updateTask(ctx, rid, task.id, { status: "done" });
-    expect(await values("p3.task.criteria_unmet")).toEqual([expect.objectContaining({ value: 1, target: `${rid}/T001` })]);
+    expect(await values("p3.task.criteria.missing")).toEqual([expect.objectContaining({ value: 1, target: `${rid}/T001` })]);
+    expect(await values("p3.task.criteria.met")).toEqual([expect.objectContaining({ value: 0, target: `${rid}/T001` })]);
   });
 });
 
@@ -91,11 +94,11 @@ describe("記録の失敗", () => {
 
   it("操作はして、作成・単件の更新・一括完了の結果に項目・対象・理由を返す。API の結果にも入る", async () => {
     const { ctx, rid, dataDir } = await setup();
-    breakValues(dataDir, "p3.task.criteria_unmet");
+    breakValues(dataDir, "p3.task.criteria.unmet");
     breakValues(dataDir, "p3.request.lead_time_done");
     const created = await createTask(ctx, rid, { title: "済んだ作業", status: "done", criteria: ["a"] });
     expect(created.task.status).toBe("done");
-    expect(created.observationSkipped).toEqual([expect.stringContaining(`p3.task.criteria_unmet（${rid}/T001）`)]);
+    expect(created.observationSkipped).toEqual([expect.stringContaining(`p3.task.criteria.unmet（${rid}/T001）`)]);
     const app = apiRoutes(ctx);
     const send = (method: string, path: string, body?: unknown) => app.request(path, { method, headers: { "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
     await send("PATCH", `/requests/${rid}/tasks/T001`, { status: "doing" });
@@ -111,10 +114,10 @@ describe("記録の失敗", () => {
     const { root, rid } = await initialized();
     const add = p3(root, ["new", "作業", "--req", rid, "--criterion", "a", "--json"]);
     expect(add.code, add.err).toBe(0);
-    breakValues(join(root, ".p3"), "p3.task.criteria_unmet");
+    breakValues(join(root, ".p3"), "p3.task.criteria.unmet");
     const r = p3(root, ["move", "T001", "done", "--req", rid, "--record", "変えた", "--json"]);
     expect(r.code, r.err).toBe(0);
-    expect(r.err).toContain("観測の p3.task.criteria_unmet");
-    expect(r.json()).toMatchObject({ status: "done", observationSkipped: [expect.stringContaining("p3.task.criteria_unmet")] });
+    expect(r.err).toContain("観測の p3.task.criteria.unmet");
+    expect(r.json()).toMatchObject({ status: "done", observationSkipped: [expect.stringContaining("p3.task.criteria.unmet")] });
   });
 });

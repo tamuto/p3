@@ -1,6 +1,6 @@
 // リリースノートの画面で、マイルストーンの要望を一括で完了済にする: できないときの理由と導線・確かめとキャンセル・実行・
 // 対象0件・材料が変わったとき（何も書かない）・途中で止まったとき（応答を差し替える）とやり直し・二重に送らない・
-// タスクの済みと本文の入力を変えない・1280 と 375・キーボード・プロジェクトを跨ぐ serve。
+// タスクと本文の入力を変えない・1280 と 375・キーボード・プロジェクトを跨ぐ serve。
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { inViewport, pageOverflow } from "./layout.ts";
@@ -22,7 +22,6 @@ async function prepare(env: UiEnv) {
   await env.p3(["milestone", "add", "v2", "--title", "次のリリース"]);
   ids.a = await finished("検索", "v1");
   ids.b = await finished("通知", "v1");
-  await env.p3(["check", "T001", "--req", ids.a]); // 人の済み（変えないことを確かめる）
   ids.c = (await j(["request", "new", "途中の要望", "--milestone", "v1"])).id;
   await env.p3(["new", "まだの作業", "--req", ids.c]);
   ids.d = await finished("一覧", "v2");
@@ -31,7 +30,7 @@ async function prepare(env: UiEnv) {
 
 type Shown = { item: { status: string } };
 const statusOf = async (env: UiEnv, id: string) => (JSON.parse(await env.p3(["request", "show", id, "--json"])) as Shown).item.status;
-const checkedOf = async (env: UiEnv, id: string) => (JSON.parse(await env.p3(["show", `${id}/T001`, "--json"])) as { item: { checkedAt?: string } }).item.checkedAt;
+const taskOf = async (env: UiEnv, id: string) => (JSON.parse(await env.p3(["show", `${id}/T001`, "--json"])) as { item: { status: string; rev: number } }).item;
 
 const openButton = (page: Page) => page.getByRole("button", { name: /^要望を一括で完了済にする/ });
 const confirmGroup = (page: Page) => page.getByRole("group", { name: /の要望 \d+ 件を完了済にしますか/ });
@@ -45,7 +44,7 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
     await s?.close();
   });
 
-  it("未完了があればできず理由と導線を出し、確かめ・キャンセル・実行で対応済だけを完了済にする（済み・本文の入力は変えない）", async () => {
+  it("未完了があればできず理由と導線を出し、確かめ・キャンセル・実行で対応済だけを完了済にする（タスク・本文の入力は変えない）", async () => {
     const { page, step, env } = s;
     // 本文の欄（ラベルが欄を包むので、入力すると名前に本文が入る。id で指す）
     const body = page.locator("textarea#rn-body");
@@ -71,20 +70,19 @@ describe.skipIf(!inject("chromium").available)("リリースノート: 要望の
       await until.visible(group);
       await until.visible(group.getByText("検索"));
       await until.visible(group.getByText("通知"));
-      await until.visible(group.getByText("タスクの「済み」は変更しません"));
+      await until.visible(group.getByText("タスクは変更しません"));
       await page.keyboard.press("Enter"); // キャンセルにフォーカスがある
       await until.count(group, 0);
       expect(await openButton(page).evaluate((el) => el === document.activeElement)).toBe(true);
       expect(await statusOf(env, ids.a)).toBe("resolved");
     });
-    await step("実行すると対応済だけを完了済にし、済み・本文の入力・見送りは変えない", async () => {
-      const checked = await checkedOf(env, ids.a);
+    await step("実行すると対応済だけを完了済にし、タスク・本文の入力・見送りは変えない", async () => {
+      const task = await taskOf(env, ids.a);
       await openButton(page).click();
       await confirmGroup(page).getByRole("button", { name: "2件を完了済にする" }).click();
       await until.visible(page.getByRole("status").filter({ hasText: "2 件を完了済にしました" }));
       expect([await statusOf(env, ids.a), await statusOf(env, ids.b), await statusOf(env, ids.c)]).toEqual(["done", "done", "rejected"]);
-      expect(await checkedOf(env, ids.a)).toBe(checked);
-      expect(await checkedOf(env, ids.b)).toBeUndefined();
+      expect(await taskOf(env, ids.a)).toEqual(task);
       await until.value(body, "## 最初のリリース\n\n- 書きかけ");
       // 取り直した判定: 対象0件
       await until.visible(page.getByText("完了済にする要望はありません"));

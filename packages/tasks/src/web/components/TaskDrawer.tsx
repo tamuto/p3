@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptanceStatus } from "../../features/requirements/shared/acceptance.ts";
 import { AcceptancePanel, metSummary, shortfallSummary } from "../../features/requirements/web/Acceptance.tsx";
-import { CriteriaSources } from "../../features/requirements/web/RequirementSources.tsx";
-import { TaskReviewPanel } from "../../features/taskReview/web/TaskReview.tsx";
 import { TaskBlockPanel } from "./TaskBlock.tsx";
-import { QualityDiffPanel } from "../../features/quality/web/QualityDiff.tsx";
-import { CompletionRecords, ReviewPanel } from "../../features/records/web/CompletionReview.tsx";
-import type { ReviewDiagnosis } from "../../features/records/shared/reviewCandidate.ts";
 import { normalizeTaskId } from "../../shared/refs.ts";
 import { relationRole, type RepoOutput, type Task, TASK_STATUSES, TASK_STATUS_LABEL, type TaskStatus } from "../../shared/types.ts";
 import type { AppCtx } from "../lib/appCtx.ts";
@@ -44,8 +39,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   const rid = data.request.id;
   const id = `${rid}/${normalizeTaskId(rawId) ?? rawId}`;
   const [task, setTask] = useState<Task>();
-  // 見直しの診断（API の共通の結果。取り直しに失敗したら前の表示のまま知らせ、「候補なし」に置き換えない）
-  const [review, setReview] = useState<ReviewDiagnosis | null>(null);
   // 入力は下書きで持つ（取り直しても編集中は上書きしない。保存は編集を始めたときの rev で。lib/draft.ts）
   const [draft, setDraft] = useState<DraftState<Fields>>();
   /** 外で削除・アーカイブされた（入力は残し、保存しない） */
@@ -59,21 +52,17 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
   // 停止の入力中（保存していない入力）
   const [blockDirty, setBlockDirty] = useState(false);
   const onBlockDirty = useCallback((d: boolean) => setBlockDirty(d), []);
-  // 基準の出典と確認の入力中（受け入れ基準の編集と同じく、済みの変更を止める）
-  const [srcDirty, setSrcDirty] = useState(false);
-  const onSrcDirty = useCallback((d: boolean) => setSrcDirty(d), []);
-  useUnsaved(dirty || accDirty || blockDirty || srcDirty);
+  useUnsaved(dirty || accDirty || blockDirty);
 
   /**
    * 取り直す。fresh: 開いたとき（下書きも作り直す）。
-   * own: この画面での入力欄以外の操作（済み）の後。入力欄の項目が編集を始めたときのままなら、自分で上げた rev に合わせる
+   * own: この画面での入力欄以外の操作（基準・作業先・成果物の保存）の後。入力欄の項目が編集を始めたときのままなら、自分で上げた rev に合わせる
    */
   const load = async (fresh = false, own = false) => {
     try {
       const r = await latest.current.run(() => api.task(id));
       if (r === STALE) return;
       setTask(r.task);
-      setReview(r.review ?? null);
       setGone(false);
       const server = toDraft(r.task);
       setDraft((d) => {
@@ -168,18 +157,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
     }
   }
 
-  async function toggleChecked() {
-    // 保存していない入力がある間は済みを変えない（保存した内容で確かめる）
-    if (dirty || accDirty || blockDirty || srcDirty) return;
-    try {
-      await api.patchTask(id, { checked: !task!.checkedAt, rev: task!.rev });
-      await load(false, true);
-      data.reload();
-      ctx.reload();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
 
 
   return (
@@ -268,16 +245,10 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
           </div>
           {task.doneAt && (
             <div className="space-y-2 rounded-lg bg-ok-soft px-4 py-2.5">
-              <div className="flex flex-wrap items-center gap-3">
-                <DoneMark checked={!!task.checkedAt} />
-                {/* 人の済みは証拠の根拠とは別の、タスクごとの最終確認。済みの後も未達・申告のみは下に出したまま */}
-                <span className="min-w-0 flex-1">
-                  {task.checkedAt ? `人が確認済み（最終確認・${fmtTime(task.checkedAt)}）` : "人の最終確認：未。成果物と受け入れ基準の証拠・根拠を確認したら済みにしてください"}
-                </span>
-                <Button variant={task.checkedAt ? "secondary" : "primary"} disabled={dirty || accDirty || blockDirty || srcDirty} onClick={() => void toggleChecked()}>
-                  {task.checkedAt ? "済みを外す" : "済みにする"}
-                </Button>
-              </div>
+              <p className="flex flex-wrap items-center gap-3">
+                <DoneMark />
+                <span className="min-w-0 flex-1">完了（{fmtTime(task.doneAt)}）。人の最終確認は要望を完了済にして行います</span>
+              </p>
               {acc ? (
                 <p className={acc.shortfalls.length ? "text-base text-warn-strong" : "text-base text-ok-strong"}>
                   受け入れ基準: {metSummary(acc)}。{shortfallSummary(acc)}
@@ -285,29 +256,14 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
               ) : (
                 <p className="text-base text-fg-4">受け入れ基準なし</p>
               )}
-              {(dirty || accDirty || blockDirty || srcDirty) && <p className="text-base text-warn-strong">保存していない入力があります。保存するか取り消してから、保存した内容で確かめて済みを変えてください</p>}
             </div>
           )}
-          {/* 見直しが必要（候補）: 人の済みとは別の注意。表示しただけでは済み・状態は変わらない */}
-          {task.status === "done" && review && <ReviewPanel review={review} />}
-          {(task.completionRecords?.length || task.completionProblems?.length) && <CompletionRecords records={task.completionRecords} problems={task.completionProblems} />}
           <Section title="受け入れ基準と作業した側の証拠">
-            <QualityDiffPanel
-              task={task}
-              disabled={gone || accDirty}
-              onSaved={(cleared) => {
-                setMsg(cleared ?? null);
-                void load(false, true);
-                data.reload();
-                ctx.reload();
-              }}
-            />
             <AcceptancePanel
               task={task}
               disabled={gone}
               onDirty={onAccDirty}
-              onSaved={(cleared) => {
-                setMsg(cleared ?? null);
+              onSaved={() => {
                 void load(false, true);
                 data.reload();
                 ctx.reload();
@@ -315,24 +271,6 @@ export function TaskDrawer({ ctx, data, id: rawId, onClose }: { ctx: AppCtx; dat
             />
           </Section>
 
-          <CriteriaSources
-            criteria={task.acceptanceCriteria}
-            sources={task.acceptanceSources}
-            requestSources={data.request.requirementSources}
-            disabled={gone || !!task.acceptanceProblems?.length}
-            onDirty={onSrcDirty}
-            onSave={async (ops) => {
-              const res = await api.patchTask(id, { rev: task.rev, acceptance: ops.map((o) => ({ op: "source" as const, id: o.id, source: o.source })) });
-              setMsg(res.checkCleared ?? null);
-              void load(false, true);
-              data.reload();
-              ctx.reload();
-            }}
-          />
-
-          <Section title="タスクの AI レビュー">
-            <TaskReviewPanel task={task} unsaved={dirty || accDirty || blockDirty} />
-          </Section>
           {multi && <WorkTarget ctx={ctx} data={data} task={task} disabled={gone} onSaved={() => (void load(false, true), data.reload())} onError={setMsg} />}
           <Section title="成果物">
             {task.outputs.length || task.repoOutputs?.length ? (

@@ -1,22 +1,23 @@
 import { useEffect, useId, useState } from "react";
-import { ANSWER_STATE_LABEL, clarificationStates, type AnswerState, type Clarification, type ClarifyAnswer } from "../shared/requirementSource.ts";
+import { ANSWER_STATE_LABEL, clarificationStates, type AnswerState, type Clarification, type ClarifyAnswer } from "../shared/clarify.ts";
 import type { Request } from "../../../shared/types.ts";
-import { api, type RunInfo } from "../../../web/lib/api.ts";
+import { api, failureOf, saveErrorText, type RunInfo } from "../../../web/lib/api.ts";
 import { useUnsaved } from "../../../web/lib/unsaved.ts";
-import { sourceSaveError } from "./RequirementSources.tsx";
 import { Alert, Badge, Button, inputCls, type Tone } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
  * Preflight の確認事項（clarify の構造化した確認事項）のカードと回答欄。確認先・質問・対象・必要な根拠・判断への影響・元の run と ID・
  * 回答の状態を見せる。確認先が分からなければ分からないまま案内し、誰かが確認したように書かない。
  * 「回答を要望に保存」と「保存した内容で再評価」は分け、自動では実行しない。過去の run の質問なら、回答は今の要望に残ることを示す。
- * 回答しただけでは根拠の記録を確認記録ありにしない（確認の記録は「要求の出典と確認」で明示する）
  */
 
-const STATE_TONE: Record<AnswerState, Tone> = { answered: "emerald", unanswered: "amber", reconfirm: "rose", unlinked: "rose" };
+const STATE_TONE: Record<AnswerState, Tone> = { answered: "emerald", unanswered: "amber" };
 
-type Fields = { answer: string; by: string; on: string; source: string; basis: string; links: string[] };
-const fieldsOf = (a?: ClarifyAnswer): Fields => ({ answer: a?.answer ?? "", by: a?.by ?? "", on: a?.on ?? "", source: a?.source ?? "", basis: a?.basis ?? "", links: (a?.links ?? []).map((l) => l.id) });
+/** 保存の失敗（他で更新されたら入力は残して読み直しを促す） */
+const saveError = (e: unknown) => (failureOf(e) === "rev_conflict" ? "他で更新されました。入力は残しています。最新を読み込んでから、もう一度保存してください" : saveErrorText(e));
+
+type Fields = { answer: string; by: string; on: string };
+const fieldsOf = (a?: ClarifyAnswer): Fields => ({ answer: a?.answer ?? "", by: a?.by ?? "", on: a?.on ?? "" });
 
 export function Clarifications({
   request,
@@ -38,7 +39,7 @@ export function Clarifications({
 }) {
   const qs = run.assessment?.clarifications ?? [];
   const problems = run.assessment?.clarificationProblems ?? [];
-  const items = clarificationStates(run.id, qs, request.clarifyAnswers, request.requirementSources);
+  const items = clarificationStates(run.id, qs, request.clarifyAnswers);
   const [dirtyBy, setDirtyBy] = useState<Record<string, boolean>>({});
   const anyDirty = Object.values(dirtyBy).some(Boolean);
   useEffect(() => onDirty(anyDirty), [anyDirty, onDirty]);
@@ -127,17 +128,16 @@ function ClarificationCard({
     setBusy(true);
     setError(null);
     try {
-      await api.saveAnswer(request.id, { run: runId, question: q.id, answer: f.answer, by: f.by || undefined, on: f.on || undefined, source: f.source || undefined, basis: f.basis || undefined, links: f.links, rev: request.rev });
+      await api.saveAnswer(request.id, { run: runId, question: q.id, answer: f.answer, by: f.by || undefined, on: f.on || undefined, rev: request.rev });
       setOpen(false);
       onSaved();
     } catch (e) {
-      setError(sourceSaveError(e));
+      setError(saveError(e));
     } finally {
       setBusy(false);
     }
   };
   const fid = (k: string) => `${id}-${k}`;
-  const sources = request.requirementSources ?? [];
   return (
     <li className="min-w-0 space-y-2 rounded-lg bg-surface p-4 ring-1 ring-line" data-testid={`clarification-${q.id}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -171,8 +171,6 @@ function ClarificationCard({
             回答{answer.by || answer.on ? `（${[answer.by, answer.on].filter(Boolean).join("・")}）` : ""}
           </p>
           <p className="break-words whitespace-pre-wrap">{answer.answer}</p>
-          {answer.source && <p data-aux className="text-sm break-all text-fg-3">出典: {answer.source}</p>}
-          {!!answer.links?.length && <p data-aux className="text-sm text-fg-3">対応する記録: {answer.links.map((l) => l.id).join(", ")}</p>}
         </div>
       )}
       {open ? (
@@ -207,36 +205,6 @@ function ClarificationCard({
               <input id={fid("on")} type="date" className={inputCls} value={f.on} disabled={busy} onChange={(e) => setF({ ...f, on: e.target.value })} />
             </div>
           </div>
-          <div className="min-w-0">
-            <label className="block text-base" htmlFor={fid("source")}>
-              出典（任意）
-            </label>
-            <input id={fid("source")} className={inputCls} value={f.source} disabled={busy} onChange={(e) => setF({ ...f, source: e.target.value })} />
-          </div>
-          <div className="min-w-0">
-            <label className="block text-base" htmlFor={fid("basis")}>
-              根拠（任意）
-            </label>
-            <textarea id={fid("basis")} rows={2} className={inputCls} value={f.basis} disabled={busy} onChange={(e) => setF({ ...f, basis: e.target.value })} />
-          </div>
-          {sources.length > 0 && (
-            <fieldset className="min-w-0">
-              <legend className="text-base text-fg-3">対応する要望の記録（任意。回答しても確認記録ありにはなりません）</legend>
-              <div className="flex flex-wrap gap-3">
-                {sources.map((s) => (
-                  <label key={s.id} className="flex items-center gap-1 text-base">
-                    <input
-                      type="checkbox"
-                      checked={f.links.includes(s.id)}
-                      disabled={busy}
-                      onChange={(e) => setF({ ...f, links: e.target.checked ? [...f.links, s.id] : f.links.filter((x) => x !== s.id) })}
-                    />
-                    {s.id}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
           {dirty && <p className="text-base text-warn">未保存の回答があります</p>}
           {error && <Alert>{error}</Alert>}
           <div className="flex flex-wrap gap-2">

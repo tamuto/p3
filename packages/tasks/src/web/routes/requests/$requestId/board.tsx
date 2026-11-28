@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TASK_STATUS_LABEL, type Task, type TaskStatus } from "../../../../shared/types.ts";
 import { DoingMark, DoneMark, TodoMark } from "../../../components/Marks.tsx";
@@ -17,12 +17,11 @@ import { preflightClosedReason } from "../../../../shared/preflightClosed.ts";
  * 要望のタスクボード（V 字）。
  *
  *   ┌ 未着手 ──────┐ ┌ 完了 ────────┐
- *   │              │ │（済みは消える）│
+ *   │              │ │              │
  *   └──────┐       │ │       ┌──────┘
  *          └ 作業中 ┴─┴───────┘
  *
- * 未着手から下りて作業中、上がって完了。完了に人が「済み」を付けると消えるので、画面に残るのは要対応のものだけ。
- * 済みのタスクは「対応済み」のタブで一覧する。
+ * 未着手から下りて作業中、上がって完了。完了したタスクは完了の列に残る（人の最終確認は要望の完了済で行う）。
  * 「タスクを追加」で、Preflight を通さずにタスクを直接作れる（タスクが無くても。components/request/NewTaskForm.tsx）。
  * ?add=1 で開くと、そのフォームを開く（Preflight を使えない・失敗したときの案内から来る）。
  */
@@ -59,9 +58,8 @@ function BoardPage() {
   const blockedCount = tasks.filter((t) => t.block).length;
   const doingCount = tasks.filter((t) => t.status === "doing").length;
   const setOnlyBlocked = (v: boolean) => void navigate({ search: (prev) => ({ ...prev, blocked: v || undefined }), replace: true });
-  const checked = tasks.filter((t) => t.status === "done" && t.checkedAt).length;
 
-  async function patch(t: Task, p: { status?: TaskStatus; checked?: boolean }) {
+  async function patch(t: Task, p: { status?: TaskStatus }) {
     try {
       const res = await api.patchTask(t.ref, { ...p, rev: t.rev });
       // 完了済の祖先の下に未完了ができたときなどは、移したうえで知らせる
@@ -102,8 +100,8 @@ function BoardPage() {
   );
 
   const pane = (s: TaskStatus, aside?: ReactNode) => {
-    // 完了は、人が済みにしたものを出さない（対応済みのタブで見る）。停止中のみなら止まっているタスクだけ
-    const all = tasks.filter((t) => t.status === s && !t.checkedAt);
+    // 停止中のみなら止まっているタスクだけ
+    const all = tasks.filter((t) => t.status === s);
     const items = onlyBlocked ? all.filter((t) => t.block) : all;
     return (
       <Pane
@@ -127,7 +125,6 @@ function BoardPage() {
             dragging={dragId === t.id}
             onDragStart={() => setDragId(t.id)}
             onOpen={() => ctx.open(t.ref)}
-            onCheck={() => void patch(t, { checked: true })}
           />
         ))}
       </Pane>
@@ -176,19 +173,7 @@ function BoardPage() {
         <div className="grid gap-4 p-5 md:min-h-0 md:flex-1 md:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="grid gap-4 md:min-h-0 md:grid-cols-2">
             {pane("todo")}
-            {pane(
-              "done",
-              checked > 0 ? (
-                <Link
-                  to="/requests/$requestId/done"
-                  params={{ requestId: request.id }}
-                  className="text-base text-fg-4 hover:text-accent hover:underline"
-                  title="済みにしたタスクの一覧"
-                >
-                  済み {checked} 件 →
-                </Link>
-              ) : null,
-            )}
+            {pane("done")}
           </div>
           {pane("doing")}
         </div>
@@ -197,7 +182,7 @@ function BoardPage() {
   );
 }
 
-const MARK: Record<TaskStatus, ReactNode> = { todo: <TodoMark />, doing: <DoingMark />, done: <DoneMark checked={false} /> };
+const MARK: Record<TaskStatus, ReactNode> = { todo: <TodoMark />, doing: <DoingMark />, done: <DoneMark /> };
 
 function Pane({
   status,
@@ -250,7 +235,6 @@ function Card({
   dragging,
   onDragStart,
   onOpen,
-  onCheck,
 }: {
   task: Task;
   done: boolean;
@@ -259,7 +243,6 @@ function Card({
   dragging: boolean;
   onDragStart: () => void;
   onOpen: () => void;
-  onCheck: () => void;
 }) {
   // 同じ要望の中の依存だけを見る（別の要望への依存はタスク詳細で確認する）
   const blocking = t.relations.filter((r) => r.type === "depends_on" && !r.target.includes("/") && !doneIds.has(r.target));
@@ -318,11 +301,6 @@ function Card({
           <span className="text-base text-fg-4" title="ステータスを変えたときに記録された日時">
             {t.doneAt ? `完了 ${fmtTime(t.doneAt)}` : `作業中にした ${fmtTime(t.startedAt)}`}
           </span>
-        )}
-        {done && (
-          <Button onClick={(e) => (e.stopPropagation(), onCheck())} title="成果物を確認したら済みにする（このボードから消え、対応済みの一覧に移る）" className="ml-auto px-2 py-1">
-            ✓ 済み
-          </Button>
         )}
       </div>
     </article>

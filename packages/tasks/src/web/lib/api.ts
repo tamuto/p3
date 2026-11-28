@@ -5,12 +5,8 @@ import { apiBase, currentScope, scopeHeaders } from "./scope.ts";
 import { trackSave } from "./unsaved.ts";
 import type { AcceptanceCriterion, AcceptanceOp } from "../../features/requirements/shared/acceptance.ts";
 import type { BlockOp } from "../../shared/taskBlock.ts";
-import type { ClarifyAnswer, CriterionSource, RequestRequirementView, SourceOp } from "../../features/requirements/shared/requirementSource.ts";
-import type { ReviewDiagnosis, ReviewSummary } from "../../features/records/shared/reviewCandidate.ts";
-import type { EvidenceRef, RetrospectiveView, RiskState } from "../../features/retro/shared/retrospective.ts";
-import type { ImprovementDiagnosis, ImprovementSource } from "../../features/quality/shared/qualityImprovement.ts";
-import type { QualityOp, QualityState, QualityTemplate, TaskQualityDiffItem, TemplateDiff } from "../../features/quality/shared/quality.ts";
-import type { previewOf, TaskReviewListItem, TaskReviewRecord, TaskReviewRun } from "../../features/taskReview/shared/taskReview.ts";
+import type { ClarifyAnswer, RequestRequirementView } from "../../features/requirements/shared/clarify.ts";
+import type { QualityOp, QualityState, QualityStandard } from "../../features/quality/shared/quality.ts";
 import type { ReviewCodeRef, ReviewInput, ReviewListItem, ReviewRecord, ReviewRun, ReviewUnit, ReviewWarning } from "../../features/milestoneReview/shared/milestoneReview.ts";
 import type {
   AdoptionResult,
@@ -26,7 +22,6 @@ import type {
   ProposedTask,
   Request,
   RequestProgress,
-  RequestReviewCounts,
   Task,
   Theme,
   Attachment,
@@ -118,18 +113,6 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 /** 品質基準の表示（GET /quality） */
 export interface QualityViewData {
   quality: QualityState;
-  version: string;
-  diffs: TemplateDiff[];
-  templates: { id: string; version: number; title: string; description: string; items: number }[];
-}
-
-/** タスクの AI レビューの材料のプレビュー（POST .../review-preview） */
-export type TaskReviewPreview = ReturnType<typeof previewOf>;
-/** タスクの AI レビューの1回分。実行中は所有者の状態（local: serve 自身） */
-export type TaskReviewDetailView = TaskReviewRecord & { owner?: { state: "local" | "alive" } | { state: "dead" | "unknown"; reason: string } };
-export interface TaskReviewSpec {
-  targets?: string[];
-  viewpoint?: string;
 }
 
 /** レビューの材料のプレビュー（GET /milestones/:mid/review-preview） */
@@ -142,8 +125,8 @@ export interface ReviewPreview {
   /** 確かめる参照先のコード */
   code: ReviewCodeRef[];
   warnings: ReviewWarning[];
-  /** 品質基準（版。古い serve には無い） */
-  quality?: { state: "unset" | "set" | "invalid"; version: string; standards: { id: string; text: string; exempt?: string }[] };
+  /** 品質基準（古い serve には無い） */
+  quality?: { state: "unset" | "set" | "invalid"; standards: Pick<QualityStandard, "id" | "text">[] };
   scope: string;
   hash: string;
 }
@@ -182,10 +165,8 @@ export interface RequestDetail {
   hierarchyIssues?: HierarchyIssue[];
   /** 対応済にできるか（blocker: できない理由、excluded: 見送りで対象外の子） */
   completion?: { blocker?: string; excluded: string[] };
-  /** 要求の出典と確認（無い以前のサーバでは省略。画面は要望から shared の関数で作り直せる） */
+  /** 確認事項への回答（無い以前のサーバでは省略。画面は要望から shared の関数で作り直せる） */
   requirement?: RequestRequirementView;
-  /** 見直しが必要（候補）: 要望自身（対応済・完了済）・タスクごとの概要・配下の件数（無い以前のサーバでは省略） */
-  review?: { self?: ReviewDiagnosis; tasks: Record<string, ReviewSummary>; counts: RequestReviewCounts };
 }
 
 /** 着手などで添えられる警告（操作は行われている） */
@@ -279,38 +260,23 @@ export const api = {
   patchRequest: (rid: string, patch: Partial<Record<keyof Request, unknown>> & { rev?: number }) =>
     call<Request & { reopenedAncestors?: string[]; warnings?: { code: string; target: string; message: string }[] }>("PATCH", `/requests/${rid}`, patch),
 
-  /** 要望の要求の根拠の記録を変える（操作を順に当て、合わなければ 400 requirement_invalid。rev 違いは 409） */
-  saveSources: (rid: string, ops: SourceOp[], rev?: number) => call<{ request: Request; requirement: RequestRequirementView }>("POST", `/requests/${rid}/sources`, { ops, rev }),
   /** 確認事項に回答する（answer: null で消す。要望に残し、過去の run は書き換えない。再評価は別に始める） */
-  /** 要望の振り返り（確定した対象・リスクの確認・候補） */
-  retrospective: (rid: string) => call<RetrospectiveView>("GET", `/requests/${rid}/retrospective`),
-  /** 振り返りの対象を確定する（2回目からの訂正は reason が要る。version は読んだときの版） */
-  confirmRetrospective: (rid: string, b: { run: string; reason?: string; version: number }) => call<RetrospectiveView>("POST", `/requests/${rid}/retrospective/target`, b),
-  /** リスクの確認を記録する（人の判断。追記） */
-  judgeRisk: (rid: string, b: { risk: number; state: RiskState; facts?: string; scope?: string; reason?: string; evidence: EvidenceRef[]; version: number }) =>
-    call<RetrospectiveView>("POST", `/requests/${rid}/retrospective/judgments`, b),
-  saveAnswer: (rid: string, b: { run: string; question: string; answer: string | null; by?: string; on?: string; source?: string; basis?: string; links?: string[]; rev?: number }) =>
+  saveAnswer: (rid: string, b: { run: string; question: string; answer: string | null; by?: string; on?: string; rev?: number }) =>
     call<{ request: Request; answer: ClarifyAnswer | null; requirement: RequestRequirementView }>("POST", `/requests/${rid}/answers`, b),
 
   /** 子の表示順の保存（直下の子を全部、上から順に）。子が変わっていれば 409 code: child_order_invalid（今の並び children）、rev 違いは rev_conflict */
   orderChildren: (rid: string, children: string[], rev?: number) => call<{ request: Request; children: string[] }>("PUT", `/requests/${rid}/child-order`, { children, rev }),
 
-  task: (ref: string) => call<{ task: Task; review?: ReviewDiagnosis | null }>("GET", taskPath(ref)),
+  task: (ref: string) => call<{ task: Task }>("GET", taskPath(ref)),
   /** criteria: 受け入れ基準の文の並び（ID はサーバが振る） */
-  createTask: (rid: string, t: Partial<Task> & { criteria?: string[]; quality?: "auto" | "none" | string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
-  /** 今の品質基準との差分（読むだけ）と、明示した差分の取り込み */
-  taskQualityDiff: (ref: string) => call<{ quality: string; version?: string; diff: TaskQualityDiffItem[] }>("GET", `${taskPath(ref)}/quality-diff`),
-  importTaskQuality: (ref: string, keys: string[], rev: number) => call<Task & { applied: string[]; checkCleared?: string }>("POST", `${taskPath(ref)}/quality-import`, { keys, rev }),
+  createTask: (rid: string, t: Partial<Task> & { criteria?: string[] }) => call<Task>("POST", `/requests/${rid}/tasks`, t),
   /** アーカイブしたタスク（読むだけ。壊れたファイルは errors） */
   archivedTasks: (rid: string) => call<ArchivedTaskList>("GET", `/requests/${rid}/archived-tasks`),
   /** アーカイブの1件。無い → 404、読めない → 500 code: archive_unreadable（archiveUnreadable で見分ける） */
   archivedTask: (rid: string, tid: string) => call<{ task: ArchivedTask }>("GET", `/requests/${rid}/archived-tasks/${tid}`),
-  /**
-   * checked: 完了したタスクに人が「済み」を付ける / 外す。acceptance: 受け入れ基準・証拠への操作（順に当て、合わなければ 400 acceptance_invalid）。
-   * 済みのタスクの基準・証拠の中身が変わると済みを外し、応答に checkCleared（理由）
-   */
-  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; checked?: boolean; acceptance?: AcceptanceOp[]; blockOp?: BlockOp }) =>
-    call<WithWarnings<Task> & { checkCleared?: string }>("PATCH", taskPath(ref), patch),
+  /** acceptance: 受け入れ基準・証拠への操作（順に当て、合わなければ 400 acceptance_invalid） */
+  patchTask: (ref: string, patch: Partial<Record<keyof Task, unknown>> & { rev?: number; acceptance?: AcceptanceOp[]; blockOp?: BlockOp }) =>
+    call<WithWarnings<Task>>("PATCH", taskPath(ref), patch),
 
   /** note: メモを書き足してから実行する。始められなければ ApiError の body.note に保存したメモが入る */
   startPreflight: (rid: string, opts: { engine?: string; note?: string } = {}) => call<PreflightRun>("POST", `/requests/${rid}/preflight`, opts),
@@ -355,23 +321,9 @@ export const api = {
   cancelReleaseGeneration: (id: string) => call<{ cancelled: boolean }>("POST", `/release-generations/${id}/cancel`, {}),
   /** レビューの履歴のあるマイルストーン（project.yaml に無い孤立も） */
   reviewedMilestones: () => call<{ milestones: string[] }>("GET", "/milestone-reviews"),
-  /** 品質基準（project.yaml の quality。版が違えば 409 quality_conflict） */
+  /** 品質基準（project.yaml の quality） */
   quality: () => call<QualityViewData>("GET", "/quality"),
-  qualityTemplate: (id: string) => call<QualityTemplate>("GET", `/quality/templates/${encodeURIComponent(id)}`),
-  updateQuality: (ops: QualityOp[], version?: string) => call<QualityViewData>("POST", "/quality", { ops, version }),
-  /** 品質の不足の診断と改善要望の原稿（読むだけ）・明示の登録（登録先があれば 409 existing） */
-  improvementPreview: (source: ImprovementSource, keys?: string[]) =>
-    call<ImprovementDiagnosis & { picked: string[]; draft?: { title: string; body: string } }>("POST", "/quality/improvements/preview", { source, ...(keys ? { keys } : {}) }),
-  registerImprovement: (body: { source: ImprovementSource; keys: string[]; title: string; body: string; hash: string; reopenClosed?: boolean }) =>
-    call<{ request: Request; keys: string[] }>("POST", "/quality/improvements", body),
-  /** タスクの AI レビュー（読むだけ・始める・取消。結果を直す口は無い） */
-  taskReviewPreview: (rid: string, tid: string, spec: TaskReviewSpec = {}) => call<TaskReviewPreview>("POST", `/requests/${rid}/tasks/${tid}/review-preview`, spec),
-  taskReviews: (rid: string, tid: string) => call<{ items: TaskReviewListItem[] }>("GET", `/requests/${rid}/tasks/${tid}/reviews`),
-  taskReview: (rid: string, tid: string, run: string) => call<TaskReviewDetailView>("GET", `/requests/${rid}/tasks/${tid}/reviews/${encodeURIComponent(run)}`),
-  startTaskReview: (rid: string, tid: string, body: TaskReviewSpec & { engine?: "codex" | "mock"; expectedHash?: string }) =>
-    call<TaskReviewRun>("POST", `/requests/${rid}/tasks/${tid}/reviews`, body),
-  cancelTaskReview: (rid: string, tid: string, run: string, acknowledgeStopped = false) =>
-    call<{ run: TaskReviewRun; requested: boolean }>("POST", `/requests/${rid}/tasks/${tid}/reviews/${encodeURIComponent(run)}/cancel`, { acknowledgeStopped }),
+  updateQuality: (ops: QualityOp[]) => call<QualityViewData>("POST", "/quality", { ops }),
   reviewPreview: (mid: string) => call<ReviewPreview>("GET", `/milestones/${encodeURIComponent(mid)}/review-preview`),
   reviews: (mid: string) => call<{ items: ReviewListItem[] }>("GET", `/milestones/${encodeURIComponent(mid)}/reviews`),
   review: (mid: string, run: string) => call<ReviewDetailView>("GET", `/milestones/${encodeURIComponent(mid)}/reviews/${encodeURIComponent(run)}`),
@@ -386,13 +338,10 @@ export const api = {
     rid: string,
     runId: string,
     key: string,
-    patch: Partial<Omit<ProposedTask, "acceptanceCriteria" | "acceptanceSources">> & {
+    patch: Partial<Omit<ProposedTask, "acceptanceCriteria">> & {
       acceptanceCriteria?: { id?: string; text: string }[];
       expectedTitle?: string;
       expectedCriteria?: AcceptanceCriterion[];
-      /** 基準ごとの要求の根拠への操作。expectedSources（編集を始めたときの記録）が要る */
-      sourceOps?: { id: string; source: SourceOp }[];
-      expectedSources?: CriterionSource[];
     },
   ) =>
     call<ProposedTask>("PATCH", `/requests/${rid}/preflight/${runId}/drafts/${key}`, patch),

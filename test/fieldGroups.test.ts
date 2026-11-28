@@ -12,7 +12,8 @@ import { makeProject, newRequest, openTestProject } from "./helpers.ts";
 /**
  * p3 が管理する frontmatter の項目のまとまり（core/store/fieldGroups.ts）: 読む・書き戻す・書かない・入力から外す を 1 つの定義から作ること。
  * 全部のまとまりが壊れていても、知らない項目と一緒に関係のない更新で元の値のまま残り、直した項目だけが書き戻しから外れること、
- * 項目の無い旧データとゼロの値、版の競合、完了と状態の同じ書き込みを確かめる（まとまりごとの細かい規則は各機能のテスト）
+ * 項目の無い旧データとゼロの値、版の競合、以前の版の項目（完了の記録・済み・要求の根拠・前提）を読まずに残すことを確かめる
+ * （まとまりごとの細かい規則は各機能のテスト）
  */
 
 const BROKEN_TASK = [
@@ -50,8 +51,8 @@ describe("項目のまとまりの定義", () => {
     }
     // 問題のあるまとまりの項目だけを書き戻す
     const keep = keepRawOf(TASK_FIELD_GROUPS);
-    expect(keep({ completionProblems: ["x"] } as unknown as Task)).toEqual(["completionRecords"]);
-    expect(keep({ completionProblems: [] } as unknown as Task)).toEqual([]);
+    expect(keep({ blockProblems: ["x"] } as unknown as Task)).toEqual(["block", "blockHistory"]);
+    expect(keep({ blockProblems: [] } as unknown as Task)).toEqual([]);
   });
 });
 
@@ -62,6 +63,7 @@ describe("壊れた値・知らない項目・旧データ", () => {
     await ctx.ws.tasksOf(rid).reload(tid);
     const t = ctx.ws.tasksOf(rid).require(tid);
     for (const g of TASK_FIELD_GROUPS) expect(t[g.problems] as unknown[] | undefined, g.name).not.toHaveLength(0);
+    expect(Object.keys(t)).not.toContain("completionProblems"); // 以前の版の完了の記録は読まない
     await updateTask(ctx, rid, tid, { title: "題だけ" });
     let d = await front(file);
     expect(d).toMatchObject({ title: "題だけ", acceptanceCriteria: "壊れた", block: { reason: 1 }, completionRecords: [{ id: "broken" }], reworkHistory: [{ id: "X" }], "x-custom": "そのまま" });
@@ -81,7 +83,7 @@ describe("壊れた値・知らない項目・旧データ", () => {
     const file = join(dataDir, "requests", rid, "request.md");
     await writeFile(file, (await readFile(file, "utf8")).replace(/^rev:/m, "requirementSources: 壊れた\ncompletionRecords: 壊れた\npremiseChanges: 壊れた\nx-custom: 残す\nrev:"));
     await ctx.ws.requests.reload(rid);
-    await updateRequest(ctx, rid, { title: "題だけ", requirementSources: [], completionRecords: [], premiseChanges: [] });
+    await updateRequest(ctx, rid, { title: "題だけ" });
     const d = await front(file);
     expect(d).toMatchObject({ title: "題だけ", requirementSources: "壊れた", completionRecords: "壊れた", premiseChanges: "壊れた", "x-custom": "残す" });
     for (const g of REQUEST_FIELD_GROUPS) expect(d[g.problems], g.name).toBeUndefined();
@@ -94,23 +96,30 @@ describe("壊れた値・知らない項目・旧データ", () => {
       expect(t[g.problems], g.name).toBeUndefined();
       for (const k of g.keys) expect(t[k as keyof Task], k).toBeUndefined();
     }
-    await writeFile(file, (await readFile(file, "utf8")).replace("status: todo", "status: todo\nacceptanceSeq: 0\nacceptanceSourceSeq: 0"));
+    await writeFile(file, (await readFile(file, "utf8")).replace("status: todo", "status: todo\nacceptanceSeq: 0"));
     await ctx.ws.tasksOf(rid).reload(tid);
-    expect(ctx.ws.tasksOf(rid).require(tid)).toMatchObject({ acceptanceSeq: 0, acceptanceSourceSeq: 0 });
+    expect(ctx.ws.tasksOf(rid).require(tid)).toMatchObject({ acceptanceSeq: 0 });
     expect(ctx.ws.tasksOf(rid).require(tid).acceptanceProblems).toBeUndefined();
   });
 });
 
 describe("書き込み", () => {
-  it("入力から渡した管理の項目は書かず、版の競合は何も書かない。完了と完了の記録は同じ書き込みで残る", async () => {
+  it("入力から渡した管理の項目・以前の版の項目は書かず、版の競合は何も書かない。以前の版の済み・完了の記録は完了から戻しても残す", async () => {
     const { ctx, rid, tid, file } = await setup();
     const before = await readFile(file, "utf8");
     await expect(updateTask(ctx, rid, tid, { title: "x" }, { expectedRev: 99 })).rejects.toThrow(ConflictError);
     expect(await readFile(file, "utf8")).toBe(before);
-    const r = await updateTask(ctx, rid, tid, { status: "done", completionRecords: [{ id: "偽" }], reworkHistory: [{ id: "偽" }], block: { reason: "偽" }, acceptanceCriteria: [{ id: "A9", text: "偽" }] } as never);
+    const r = await updateTask(ctx, rid, tid, { status: "done", completionRecords: [{ id: "偽" }], checkedAt: "2026-01-01T00:00:00.000Z", reworkHistory: [{ id: "偽" }], block: { reason: "偽" }, acceptanceCriteria: [{ id: "A9", text: "偽" }] } as never);
     expect(r.task.rev).toBe(2);
-    const d = await front(file);
-    expect(d).toMatchObject({ status: "done", rev: 2, completionRecords: [{ id: "C1", trigger: "task_done", rev: 2 }] });
-    expect([d.reworkHistory, d.block, d.acceptanceCriteria]).toEqual([undefined, undefined, undefined]);
+    let d = await front(file);
+    expect(d).toMatchObject({ status: "done", rev: 2 });
+    expect([d.completionRecords, d.checkedAt, d.reworkHistory, d.block, d.acceptanceCriteria]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    // 以前の版が書いた済み・完了の記録はファイルに残し、完了から戻しても消さない（読まない）
+    await writeFile(file, (await readFile(file, "utf8")).replace("status: done", "status: done\ncheckedAt: 2026-10-01T00:00:00.000Z\ncompletionRecords:\n  - id: C1\n    trigger: task_done"));
+    await ctx.ws.tasksOf(rid).reload(tid);
+    await updateTask(ctx, rid, tid, { status: "doing" });
+    d = await front(file);
+    expect(d).toMatchObject({ status: "doing", completionRecords: [{ id: "C1", trigger: "task_done" }] });
+    expect(d.checkedAt).toEqual(expect.anything());
   });
 });

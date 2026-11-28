@@ -16,6 +16,11 @@ export interface MetricGuide {
   expected?: string | boolean;
 }
 
+/** カードに出す数（数値の項目だけ選べる。無ければ最後の値） */
+export const METRIC_AGGREGATES = ["sum", "avg", "last"] as const;
+export type MetricAggregate = (typeof METRIC_AGGREGATES)[number];
+export const METRIC_AGGREGATE_LABEL: Record<MetricAggregate, string> = { sum: "合計", avg: "平均", last: "最後の値" };
+
 /** 項目キーの定義（利用者が登録したもの。システムの項目は SYSTEM_KEYS で、system が付く） */
 export interface MetricKey {
   key: string;
@@ -24,6 +29,7 @@ export interface MetricKey {
   type: MetricType;
   unit?: string;
   guide?: MetricGuide;
+  aggregate?: MetricAggregate;
   system?: true;
   rev: number;
   createdAt?: string;
@@ -32,10 +38,14 @@ export interface MetricKey {
   updatedBy?: string;
 }
 
-/** 一覧の1件（値の数はマイルストーンで絞ったときはその数） */
+/** 一覧の1件（値の数・カードの数はマイルストーンで絞ったときはその値で） */
 export interface KeySummary extends MetricKey {
   count: number;
   latest?: MetricValue;
+  /** カードに出す数（項目キーの集計の方法で。値が無ければ無い） */
+  card?: MetricData;
+  /** 推移（数値の項目だけ。古い順に最後の SERIES_MAX 件） */
+  series?: { at: string; value: number }[];
 }
 
 export type MetricData = number | string | boolean | Record<string, unknown> | unknown[];
@@ -62,13 +72,29 @@ export interface Problem {
 
 /** システムの項目（p3 が tasks の操作のその場で記録する。利用者は作れず、値を足す・消すこともできない） */
 export const SYSTEM_PREFIX = "p3.";
+const criteria = (state: string, label: string): MetricKey => ({
+  key: `p3.task.criteria.${state}`,
+  name: `完了時の受け入れ基準: ${label}`,
+  type: "number",
+  unit: "件",
+  description: `タスクが完了になったときの、${label}の受け入れ基準の数。基準の無いタスクは記録しない`,
+  aggregate: "sum",
+  system: true,
+  rev: 0,
+});
 export const SYSTEM_KEYS: readonly MetricKey[] = [
-  { key: "p3.request.lead_time_resolved", name: "要望の到達時間（対応済まで）", type: "number", unit: "時間", description: "要望が初めて対応済になったときの、作成からの時間", system: true, rev: 0 },
-  { key: "p3.request.lead_time_done", name: "要望の到達時間（完了済まで）", type: "number", unit: "時間", description: "要望が初めて完了済になったときの、作成からの時間", system: true, rev: 0 },
-  { key: "p3.task.criteria_unmet", name: "完了時に満たしていない受け入れ基準", type: "number", unit: "件", description: "タスクが完了になったときの、満たした（met）でない受け入れ基準の数（未達・未検証・証拠なし・古い証拠）。基準の無いタスクは記録しない", system: true, rev: 0 },
-  { key: "p3.task.rework", name: "手戻り", type: "number", unit: "件", description: "タスクを完了から戻したとき 1", system: true, rev: 0 },
+  { key: "p3.request.lead_time_resolved", name: "要望の到達時間（対応済まで）", type: "number", unit: "時間", description: "要望が初めて対応済になったときの、作成からの時間", aggregate: "avg", system: true, rev: 0 },
+  { key: "p3.request.lead_time_done", name: "要望の到達時間（完了済まで）", type: "number", unit: "時間", description: "要望が初めて完了済になったときの、作成からの時間", aggregate: "avg", system: true, rev: 0 },
+  criteria("unmet", "未達"),
+  criteria("unverified", "未検証"),
+  criteria("missing", "証拠なし"),
+  criteria("stale", "古い証拠（基準を変えた後）"),
+  criteria("met", "満たした"),
+  { key: "p3.task.rework", name: "手戻り", type: "number", unit: "件", description: "タスクを完了から戻したとき 1", aggregate: "sum", system: true, rev: 0 },
 ];
-export type SystemKey = "p3.request.lead_time_resolved" | "p3.request.lead_time_done" | "p3.task.criteria_unmet" | "p3.task.rework";
+/** 完了時の受け入れ基準の状態ごとの項目（acceptanceStatus の状態と同じ名前） */
+export const CRITERIA_STATES = ["unmet", "unverified", "missing", "stale", "met"] as const;
+export type SystemKey = "p3.request.lead_time_resolved" | "p3.request.lead_time_done" | `p3.task.criteria.${(typeof CRITERIA_STATES)[number]}` | "p3.task.rework";
 export const systemKey = (key: string) => SYSTEM_KEYS.find((k) => k.key === key);
 
 export const METRIC_LIMITS = { key: 100, name: 200, description: 2000, unit: 50, expected: 1000, string: 10_000, json: 100_000, target: 200, milestone: 100, note: 2000 } as const;
@@ -105,8 +131,12 @@ export function checkKeyInput(input: Record<string, unknown>, creating: boolean)
   const unit = str(input.unit) || undefined;
   if (unit && unit.length > METRIC_LIMITS.unit) push("unit", `単位は ${METRIC_LIMITS.unit} 文字まで`);
   const guide = isMetricType(type) ? checkGuide(input.guide, type, push) : undefined;
+  const aggregate = input.aggregate === undefined || input.aggregate === null || input.aggregate === "" ? undefined : input.aggregate;
+  if (aggregate !== undefined && !(METRIC_AGGREGATES as readonly unknown[]).includes(aggregate)) push("aggregate", "カードに出す数は sum（合計）・avg（平均）・last（最後の値）のどれか");
+  else if (aggregate !== undefined && aggregate !== "last" && type !== "number") push("aggregate", "合計・平均は数値の項目だけに選べます");
   if (problems.length || !isMetricType(type)) return { problems };
-  return { value: { key, name, ...(description ? { description } : {}), type, ...(unit ? { unit } : {}), ...(guide ? { guide } : {}) }, problems };
+  const agg = aggregate && aggregate !== "last" ? (aggregate as MetricAggregate) : undefined;
+  return { value: { key, name, ...(description ? { description } : {}), type, ...(unit ? { unit } : {}), ...(guide ? { guide } : {}), ...(agg ? { aggregate: agg } : {}) }, problems };
 }
 
 function checkGuide(raw: unknown, type: MetricType, push: (path: string, message: string) => void): MetricGuide | undefined {
@@ -211,6 +241,27 @@ export function formatGuide(k: Pick<MetricKey, "guide" | "unit">): string | unde
   if (g.min !== undefined) return `${g.min}${u} 以上`;
   if (g.max !== undefined) return `${g.max}${u} 以下`;
   return undefined;
+}
+
+export const SERIES_MAX = 30;
+
+/**
+ * カードの数と推移（values は新しい順。合計・平均は数値だけ。平均は小数 2 桁で丸める）。推移は古い順に最後の SERIES_MAX 点で、合計の項目は
+ * 累計（値1つが1件の出来事のとき、1件ずつの線は平らで読めないため）、ほかは値そのもの。判定はしない
+ */
+export function cardOf(k: Pick<MetricKey, "type" | "aggregate">, values: readonly MetricValue[]): Pick<KeySummary, "card" | "series"> {
+  if (!values.length) return {};
+  if (k.type !== "number") return { card: values[0].value };
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const nums = values.map((v) => v.value as number);
+  const sum = nums.reduce((a, b) => a + b, 0);
+  const card = k.aggregate === "sum" ? round(sum) : k.aggregate === "avg" ? round(sum / nums.length) : nums[0];
+  let total = 0;
+  const points = values
+    .slice()
+    .reverse()
+    .map((v) => ({ at: v.at, value: k.aggregate === "sum" ? round((total += v.value as number)) : (v.value as number) }));
+  return { card, series: points.slice(-SERIES_MAX) };
 }
 
 /** 新しい順（いつの値か、同じなら番号の大きい方） */

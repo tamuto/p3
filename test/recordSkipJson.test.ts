@@ -8,8 +8,9 @@ import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
 import { makeProject, newRequest, openTestProject, tempDir } from "./helpers.ts";
 
 /**
- * p3 move / p3 set の --json: 状態は変えたが完了の記録・手戻りの履歴を残せなかったとき（記録が壊れている）、標準エラーの知らせに加えて、
- * JSON のトップレベルに API のタスクの PATCH と同じ項目名・文で completionSkipped / reworkSkipped を返すこと。知らせが無ければ省くこと、
+ * p3 move / p3 set の --json: 状態は変えたが手戻りの履歴を残せなかったとき（履歴が壊れている）、標準エラーの知らせに加えて、
+ * JSON のトップレベルに API のタスクの PATCH と同じ項目名・文で reworkSkipped を返すこと。知らせが無ければ省くこと。以前の版の完了の記録は
+ * 読まずに残すこと、
  * 標準出力は単独で JSON として読め、ほかの項目と標準エラーの知らせは今までどおりであることを確かめる
  */
 
@@ -20,7 +21,7 @@ function p3(dataDir: string, args: string[]) {
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
-const BROKEN_COMPLETION = "completionRecords:\n  - id: broken\n    trigger: what";
+const LEGACY_COMPLETION = "completionRecords:\n  - id: broken\n    trigger: what";
 const BROKEN_REWORK = "reworkHistory:\n  - id: X\n    cause: what";
 
 /** 壊れた記録を持つタスクを用意する（status と壊れた記録を frontmatter に書く） */
@@ -43,17 +44,14 @@ async function apiPatch(status: string, broken: string, body: Record<string, unk
 }
 
 describe("move / set の --json に記録を残せなかった知らせ", () => {
-  it("完了の記録が壊れたタスクを move・set で完了にすると、状態を変え、壊れた値を残し、completionSkipped を API と同じ文で返す", async () => {
-    const api = await apiPatch("doing", BROKEN_COMPLETION, { status: "done" });
-    expect(api.completionSkipped).toMatch(/完了の記録が読めない/);
+  it("以前の版の完了の記録（壊れていても）があるタスクを move・set で完了にすると、状態を変え、記録は読まずに残し、知らせも出さない", async () => {
     for (const args of [["move", "T001", "done"], ["set", "T001", "status=done"]]) {
-      const { dataDir, rid, file } = await setup("doing", BROKEN_COMPLETION);
+      const { dataDir, rid, file } = await setup("doing", LEGACY_COMPLETION);
       const r = p3(dataDir, [...args, "--req", rid, "--json"]);
       expect(r.code, r.err).toBe(0);
       const json = JSON.parse(r.out) as Record<string, unknown>;
-      expect(json).toMatchObject({ ref: `${rid}/T001`, status: "done", completionSkipped: api.completionSkipped });
-      expect(json.reworkSkipped).toBeUndefined();
-      expect(r.err).toContain(api.completionSkipped as string);
+      expect(json).toMatchObject({ ref: `${rid}/T001`, status: "done" });
+      expect(["completionSkipped" in json, "completionRecords" in json, "reworkSkipped" in json]).toEqual([false, false, false]);
       expect(await readFile(file, "utf8")).toContain("trigger: what");
     }
   });
@@ -67,7 +65,6 @@ describe("move / set の --json に記録を残せなかった知らせ", () => 
       expect(r.code, r.err).toBe(0);
       const json = JSON.parse(r.out) as Record<string, unknown>;
       expect(json).toMatchObject({ status: "doing", reworkSkipped: api.reworkSkipped });
-      expect(json.completionSkipped).toBeUndefined();
       expect(r.err).toContain(api.reworkSkipped as string);
       expect(await readFile(file, "utf8")).toContain("cause: what");
     }
@@ -80,14 +77,13 @@ describe("move / set の --json に記録を残せなかった知らせ", () => 
     const moved = p3(p.dataDir, ["move", "T001", "done", "--req", r.id, "--json"]);
     expect(moved.code, moved.err).toBe(0);
     const json = JSON.parse(moved.out) as Record<string, unknown>;
-    expect(json).toMatchObject({ status: "done", completionRecords: [expect.objectContaining({ id: "C1" })] });
-    expect("completionSkipped" in json).toBe(false);
+    expect(json).toMatchObject({ status: "done" });
     expect("reworkSkipped" in json).toBe(false);
     // 受け入れ基準の不足の知らせは標準エラーのまま（JSON には混ぜない）
     expect(moved.err).toContain("受け入れ基準の不足");
     const set = p3(p.dataDir, ["set", "T001", "status=doing", "--req", r.id, "--json"]);
     const back = JSON.parse(set.out) as Record<string, unknown>;
     expect(back).toMatchObject({ status: "doing", reworkHistory: [expect.objectContaining({ cause: "reopen" })] });
-    expect("completionSkipped" in back || "reworkSkipped" in back).toBe(false);
+    expect("reworkSkipped" in back).toBe(false);
   });
 });

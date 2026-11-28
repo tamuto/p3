@@ -4,7 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { parseRef, REQUEST_ID, TASK_ID, taskId } from "../../shared/refs.ts";
 import { milestoneGoalProblems, tidyMilestoneGoals } from "../../shared/milestoneGoals.ts";
-import { QualityInputError, qualityPlain, type QualityConfig } from "../../features/quality/shared/quality.ts";
+import { qualityPlain, type QualityConfig } from "../../features/quality/shared/quality.ts";
 import type { Milestone, ProjectConfig, Request, ServerEvent, Task } from "../../shared/types.ts";
 import { fileLayout, folderLayout, MarkdownCollection, NotFoundError, type PreparedLoad } from "./collection.ts";
 import { newRequestId, withFileLock } from "@infodb/p3-shared/node/fsutil.ts";
@@ -17,7 +17,6 @@ import { writeProjectFile, writeQualityFile } from "./projectFile.ts";
 import { resolveRefs, type ResolvedRef } from "../repoRefs.ts";
 import { RELEASE_NOTES_DIR, ReleaseNoteStore } from "../../features/releaseNotes/core/store.ts";
 import { MILESTONE_REVIEWS_DIR, MilestoneReviewStore } from "../../features/milestoneReview/core/store.ts";
-import { TASK_REVIEWS_DIR, TaskReviewStore } from "../../features/taskReview/core/store.ts";
 
 type Listener = (e: ServerEvent) => void;
 
@@ -46,7 +45,6 @@ export class ReloadError extends Error {}
  * ステータスを変えた日時を記録する（予定ではなく事実）。
  *   未着手以外にした → startedAt（未着手に戻したら消す）
  *   完了にした       → doneAt（完了から戻したら消す）
- *   完了から戻した              → 人の「済み」（checkedAt）も消す
  */
 export function stampStatus(prev: Task | undefined, next: Task): Task {
   if (prev && prev.status === next.status) return next;
@@ -56,7 +54,6 @@ export function stampStatus(prev: Task | undefined, next: Task): Task {
     ...next,
     startedAt: next.status === "todo" ? undefined : (prev?.startedAt ?? next.startedAt ?? now),
     doneAt: done ? now : undefined,
-    checkedAt: done ? next.checkedAt : undefined,
   };
 }
 
@@ -117,8 +114,6 @@ export class Workspace {
   readonly releaseNotes: ReleaseNoteStore;
   /** マイルストーンレビューの履歴（milestoneReview/store.ts） */
   readonly milestoneReviews: MilestoneReviewStore;
-  /** タスクの AI レビューの履歴（requests/<要望ID>/task-reviews/） */
-  readonly taskReviews: TaskReviewStore;
   private taskCollections = new Map<string, MarkdownCollection<Task>>();
   private listeners = new Set<Listener>();
   private watcher: DataWatcher | undefined;
@@ -143,7 +138,6 @@ export class Workspace {
     this.attachments = new AttachmentStore(this.requestsDir);
     this.releaseNotes = new ReleaseNoteStore(dataDir);
     this.milestoneReviews = new MilestoneReviewStore(dataDir);
-    this.taskReviews = new TaskReviewStore(this.requestsDir);
   }
 
   get requestsDir() {
@@ -328,17 +322,12 @@ export class Workspace {
   }
 
   /**
-   * 品質基準を、ロックの中で読み直した最新の値から作り直して書く（project.yaml の quality だけ）。expectedVersion が今の版と違えば
-   * QualityInputError（quality_conflict）で何も書かない。make が投げたら何も書かない
+   * 品質基準を、ロックの中で読み直した最新の値から作り直して書く（project.yaml の quality だけ。置き換えで書く）。make が投げたら何も書かない
    */
-  async writeQuality(make: (cur: ProjectConfig) => QualityConfig, opts: { expectedVersion?: string } = {}): Promise<ProjectConfig> {
+  async writeQuality(make: (cur: ProjectConfig) => QualityConfig): Promise<ProjectConfig> {
     const path = join(this.dataDir, "project.yaml");
     await withFileLock(join(this.dataDir, ".project.yaml.lock"), async () => {
       await this.loadProject();
-      const now = this.project.qualityVersion;
-      if (opts.expectedVersion !== undefined && opts.expectedVersion !== now) {
-        throw new QualityInputError("quality_conflict", `品質基準が他で変わりました（版 ${opts.expectedVersion} → ${now}）。最新を読み直してからやり直してください`);
-      }
       await writeQualityFile(path, qualityPlain(make(this.project)));
       await this.loadProject();
     });
@@ -441,11 +430,6 @@ export class Workspace {
       return;
     }
     if (top !== "requests" || !rid || !REQUEST_ID.test(rid)) return;
-    if (kind === TASK_REVIEWS_DIR) {
-      // タスクのレビューの履歴（ほかのプロセスの実行・取消）。ロックのフォルダ .locks は除く
-      if (file && !file.startsWith(".")) this.emit({ type: "task-review", request: rid, task: file });
-      return;
-    }
     if (kind === undefined || kind === "request.md") {
       // 要望の作成・削除（git pull でフォルダごと増減することもある）
       const known = !!this.requests.get(rid);
@@ -457,9 +441,6 @@ export class Workspace {
       if (!TASK_ID.test(id)) return;
       await this.tasksOf(rid).reload(id);
       this.emit({ type: "changed", kind: "task", request: rid, ref: `${rid}/${id}` });
-    } else if (kind === "retrospective.json") {
-      // 振り返りの記録（ほかのプロセスの確定・確認）
-      this.emit({ type: "changed", kind: "request", request: rid });
     } else if (kind === "preflight") {
       this.emit({ type: "changed", kind: "preflight", request: rid });
     } else if (kind === "notes") {

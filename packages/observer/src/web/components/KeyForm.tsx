@@ -1,6 +1,6 @@
 import { Alert, Button, Field, inputCls } from "@infodb/p3-shared/web/ui.tsx";
 import { useState } from "react";
-import { METRIC_TYPE_LABEL, METRIC_TYPES, type MetricKey, type MetricType } from "../../shared/metric.ts";
+import { METRIC_AGGREGATE_LABEL, METRIC_AGGREGATES, METRIC_TYPE_LABEL, METRIC_TYPES, type MetricAggregate, type MetricKey, type MetricType } from "../../shared/metric.ts";
 import { fieldErrors } from "../lib/api.ts";
 
 interface Draft {
@@ -12,6 +12,7 @@ interface Draft {
   min: string;
   max: string;
   expected: string;
+  aggregate: MetricAggregate;
 }
 
 const draftOf = (k?: MetricKey): Draft => ({
@@ -23,6 +24,7 @@ const draftOf = (k?: MetricKey): Draft => ({
   min: k?.guide?.min === undefined ? "" : String(k.guide.min),
   max: k?.guide?.max === undefined ? "" : String(k.guide.max),
   expected: k?.guide?.expected === undefined ? "" : String(k.guide.expected),
+  aggregate: k?.aggregate ?? "last",
 });
 
 /** 項目キーの登録・変更の入力（検証は API。誤りは項目の下に出す）。current を渡すと変更（キーは変えられない） */
@@ -40,7 +42,7 @@ export function KeyForm({ current, submitLabel, onSubmit, onCancel }: { current?
     setBusy(true);
     try {
       const guide = d.type === "number" ? { min: d.min, max: d.max } : d.type === "json" ? undefined : { expected: d.expected };
-      await onSubmit({ ...(current ? { rev: current.rev } : { key: d.key.trim() }), name: d.name, type: d.type, unit: d.unit, description: d.description, guide });
+      await onSubmit({ ...(current ? { rev: current.rev } : { key: d.key.trim() }), name: d.name, type: d.type, unit: d.unit, description: d.description, guide, aggregate: d.type === "number" ? d.aggregate : "last" });
     } catch (e) {
       setError({ message: (e as Error).message, fields: fieldErrors(e) });
     } finally {
@@ -71,6 +73,17 @@ export function KeyForm({ current, submitLabel, onSubmit, onCancel }: { current?
       <Field label="説明（任意）" error={error?.fields.description}>
         <textarea className={inputCls} rows={3} value={d.description} onChange={(e) => set({ description: e.target.value })} />
       </Field>
+      {d.type === "number" && (
+        <Field label="カードに出す数" hint="観測のトップのカードに大きく出す数。値1つが1件の出来事なら合計、毎回の測った値なら平均か最後の値" error={error?.fields.aggregate}>
+          <select className={inputCls} value={d.aggregate} onChange={(e) => set({ aggregate: e.target.value as MetricAggregate })}>
+            {METRIC_AGGREGATES.map((a) => (
+              <option key={a} value={a}>
+                {METRIC_AGGREGATE_LABEL[a]}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {d.type === "number" && (
         <div className="grid gap-4 sm:grid-cols-2">
           {text("min", "目安の下限（任意）", undefined, "guide.min")}

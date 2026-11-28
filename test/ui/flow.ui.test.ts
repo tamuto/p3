@@ -1,5 +1,5 @@
 // 主な流れ: 要望の登録 → Mock の Preflight → 評価と案の確認 → タスク化 → ボード → タスクの着手・完了（成果物・変更の記録）
-// → 人の確認（済み）→ 要望の完了済。状態はすべて画面の操作で変え、再読み込みしても残ることを確かめる。
+// → 要望の完了済（人の最終確認）。状態はすべて画面の操作で変え、再読み込みしても残ることを確かめる。
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { openScenario, until, type Scenario } from "./scenario.ts";
 
@@ -77,33 +77,28 @@ describe.skipIf(!inject("chromium").available)("主な流れ（要望の登録�
         await drawer.getByLabel(/^変更の記録/).fill(`## 何を変えたか\n\n- ${id} の作業をした\n`);
         await drawer.getByRole("button", { name: "保存" }).click();
         await until.visible(drawer.getByRole("link", { name: new RegExp(`example\\.com/expense/pull/${i}$`) }));
-      });
-      await step(`${id} を済みにする（人の確認）`, async () => {
-        const drawer = page.locator("aside");
-        await drawer.getByRole("button", { name: "済みにする" }).click();
-        await until.visible(drawer.getByText(/^人が確認済み（最終確認・.+）$/));
+        await until.visible(drawer.getByText(/人の最終確認は要望を完了済にして行います/));
         await drawer.getByRole("button", { name: "✕" }).click();
       });
     }
 
-    await step("ボードから済みのタスクが消え、済みの一覧に移る", async () => {
-      await until.count(page.locator("article"), 0);
-      await until.visible(page.getByRole("link", { name: `済み ${count} 件 →` }));
+    await step("ボードの完了の列に全部のタスクが並ぶ", async () => {
+      await until.count(pane(s, "完了").locator("article"), count);
     });
 
-    await step("要望を完了済にする", async () => {
+    await step("要望を完了済にする（人の最終確認）", async () => {
       await page.getByRole("link", { name: "概要・Preflight" }).click();
       const status = page.getByLabel("ステータス");
       await status.selectOption({ label: "完了済" });
       await until.value(status, "done");
     });
 
-    await step("再読み込みしても、要望の完了済とタスクの完了・済みが残る", async () => {
+    await step("再読み込みしても、要望の完了済とタスクの完了が残る", async () => {
       await page.reload();
       await until.text(header, TITLE);
       await until.value(page.getByLabel("ステータス"), "done");
-      await page.goto(`${requestUrl}/done`);
-      for (let i = 1; i <= count; i++) await until.visible(page.getByText(`T${String(i).padStart(3, "0")}`, { exact: true }).first());
+      await page.goto(`${requestUrl}/board`);
+      await until.count(pane(s, "完了").locator("article"), count);
     });
 
     await step("CLI から見ても保存されている", async () => {

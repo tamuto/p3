@@ -1,14 +1,9 @@
 import { cx } from "@infodb/p3-shared/web/ui.tsx";
 
 /**
- * スケジュールの印。完了 ○ / 済み ✓（人が確認した）/ 作業中 ◐ / 未着手 □ / 期限 ⚑
+ * スケジュールの印。完了 ○ / 作業中 ◐ / 未着手 □ / 期限 ⚑
  */
-export const DoneMark = ({ checked }: { checked: boolean }) =>
-  checked ? (
-    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-ok-solid text-[9px] leading-none font-bold text-white">✓</span>
-  ) : (
-    <span className="block h-3.5 w-3.5 rounded-full border-2 border-ok-solid bg-surface" />
-  );
+export const DoneMark = () => <span className="block h-3.5 w-3.5 rounded-full border-2 border-ok-solid bg-surface" />;
 export const DoingMark = () => (
   <span className="block h-3.5 w-3.5 rounded-full border-2 border-accent-solid bg-linear-to-r from-accent-solid from-50% to-transparent to-50%" />
 );

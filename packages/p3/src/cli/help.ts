@@ -30,17 +30,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                set codex.pathMap+=<このマシンのパス>=<Docker デーモンから見たパス>  パスの対応を足す
                                set codex.pathMap-=<このマシンのパス>  外す（codex.pathMap= で全部外す）
                                paths <このマシンのパス> ...  Docker にマウントするときのホストのパスと決め方（DevContainer では自動。変えない）
-  quality                      品質基準（project.yaml の quality。未設定・設定済み・読めない）とテンプレートの改版の差分
-                               templates / template <id>  同梱のテンプレート（版つきの例。業界の標準への認証ではない）
-                               未設定のままでも作業は続けられる（init は必須ではない）。未設定から add / adopt をそのまま使える
-                               init 意図して空にする（設定済みなら何も変えない）/ adopt <テンプレート> 写して採用する / upgrade <テンプレート> 改版の差分を当てる
-                               add --text 文 [--repo 名前 ...] (--command コマンド --success 成功の条件 | --reference 確かめ方)
-                               set <Q1> [--text] [--repo 名前 ...|all] [...] / rm <Q1> / exempt <Q1> --reason 理由 / unexempt <Q1>
+  quality                      品質基準（project.yaml の quality。ID・文・対象の参照先・確かめ方。無くても作業は続けられる）
+                               add --text 文 [--repo 名前 ...] [--how 確かめ方]  /  set <Q1> [--text] [--repo 名前 ...|all] [--how]  /  rm <Q1>
                                --repo は繰り返して複数の参照先（例: --repo app --repo infra）。add で省くと全参照先、set で省くと対象を変えない。
-                                 all は全参照先で、個別の名前とは一緒に使えない。--repo を繰り返せるのは quality add / set だけ
-                               --version <版> で、他で変わっていれば競合（終了コード 3）。P3 はコマンドを実行しない
-                               improve [task <要望>/<T> <run> | milestone <ID> <run>]  品質の不足の診断と改善要望の原稿（読むだけ）
-                                 --key <不足の鍵>... で選ぶ / --register --hash <診断の版> [--title] [--body] [--reopen] で明示して登録する
+                                 all は全参照先で、個別の名前とは一緒に使えない。--repo を繰り返せるのは quality add / set だけ。--how= で確かめ方を外す
+                               タスクを作るときに、作業先に当てはまる基準を受け入れ基準に足す（既にあるタスクは変えない）。P3 はコマンドを実行しない
   progress                     要望ごとの進捗（マイルストーンごと。--all で完了・見送りも。既定でも対応済を出す）
   milestone [ls | add <id> | set <id> | rm <id>]  マイルストーン（リリース）  --title 名前 --due YYYY-MM-DD --done
   milestone show <id>          目的・予定している機能と版（--json の milestonesVersion）
@@ -58,7 +52,7 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                既にあるノートの更新は --version <版>（show で見る。違えば競合で終了コード 3）
   release-notes export <id>     保存した本文だけを stdout に出す（出典・frontmatter は出さない）
   release-notes complete-requests <id> --based-on <hash>
-                               対応済の要望を一括で完了済にする（見送り以外の全要望が全タスク完了のときだけ。タスクの済みは変えない）。
+                               対応済の要望を一括で完了済にする（見送り以外の全要望が全タスク完了のときだけ。タスクは変えない）。
                                できるか・対象・hash は show で見る。材料が変わっていれば何も変えずに終了コード 3、途中で止まったら非ゼロ
                                例: p3 release-notes generate v0.2 > draft.md → 直す → p3 release-notes save v0.2 --file draft.md
                                    p3 release-notes export v0.2 > RELEASE.md
@@ -71,10 +65,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                logout: --forget（このマシンの登録ごと消す）
   observer status              p3-observer（観測基盤）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
                                --json で product・version・state・dataDir（null）
-  observer list [--milestone <ID>]   観測の項目キーの一覧と最後の値（システムの項目 p3.… を含む。データのフォルダの observer/metrics/）
+  observer list [--milestone <ID>]   観測の項目キーの一覧とカードの数（システムの項目 p3.… を含む。データのフォルダの observer/metrics/）
   observer show <キー> [--milestone <ID>]   項目キーと値（新しい順）。目安は並べて見せるだけで、判定はしない
   observer key add <キー> --name <名前> --type number|string|boolean|json [--unit <単位>] [--body <説明>]
-                                 [--min <下限>] [--max <上限>] [--expected <期待する値>]   項目キーを登録する（英小文字・数字・.・_・-。p3. は作れない）
+                                 [--min <下限>] [--max <上限>] [--expected <期待する値>] [--aggregate sum|avg|last]
+                                 項目キーを登録する（英小文字・数字・.・_・-。p3. は作れない。--aggregate はカードに出す数で、合計・平均は数値だけ。既定は最後の値）
   observer key set <キー> --rev <今の版> [--name ..] [--type ..] …   変える（省いた項目は今のまま。値があるあいだは --type を変えられない）
   observer key rm <キー> --rev <今の版>   消す（値があれば断る）
   observer value add <キー> <値|-> [--at <日付か日時>] [--target <対象>] [--milestone <ID>] [--note <メモ>]
@@ -104,12 +99,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
 タスク（今の要望の中。--req <要望> で指定、要望の作業ツリーの中なら省略可）
   ls                           一覧  --status s1,s2  --area パス  -q 語句  --repo <参照先>|none（作業先）  --all（全要望）
                                --blocked 止まっているタスクだけ（ほかの条件と AND。--archived とは一緒に使えない）
-                               --review 見直しが必要（候補）の完了したタスクだけ（ほかの条件と AND）
   show <T003|要望|語句>          詳細と関係（依存・置き換え）
                                --brief 作業に要る項目だけ（本文・状態・依存とその状態・置き換えの注意・成果物・rev）
   new <タイトル>                 --body 本文|- --area a --label l --status --output 成果物（繰り返し可）
                                --repo <参照先>|none 作業先（作業先にできる参照先だけ。足りないブランチは割り当てる）
-                               --criterion 文  受け入れ基準（繰り返し可。ID は A1, A2, ... を振る）
+                               --criterion 文  受け入れ基準（繰り返し可。ID は A1, A2, ... を振る。作業先に当てはまる品質基準も足す）
   set <T003> キー=値 ...         title status labels areas outputs repo（空で消す。outputs= はカンマ区切りで置き換える。repo=none は作業先なし）
                                --repo-output <参照先>=<成果物>  リポジトリごとの成果物を足す（repoOutputs= で全部外す）
                                --criterion 文  受け入れ基準を足す / --evidence・--evidence-file・--evidence-json  証拠を残す（move と同じ）
@@ -121,50 +115,24 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                --evidence-json 証拠.json|-  根拠つきでまとめて [{"id":"A1","result":"met","evidence":"…","basis":{"kind":"machine",…}}]
                                （--evidence と --evidence-file は根拠を書けない: 前の同じ結果の根拠を引き継ぎ、無ければ申告のみ・unverified は未確認）
                                不足（証拠なし・未達・未検証・基準を変えた後・申告のみの met）があっても完了は拒まず、stderr に出す
-  check <T003> [--off]         完了したタスクを人が確認して「済み」にする（--off で外す）
   block <T003> --reason 理由|- [--decision 決めてほしいこと|-]
                                作業中のタスクに止まっている理由を付ける・内容を直す（状態は作業中のまま。止まった時刻は直しても変えない）
                                理由 2000・決めてほしいこと 2000 文字まで。- は標準入力（どれか1つ）
   unblock <T003> --resolution 回答・解決の内容|-
                                停止を解除する（回答・解決の内容は必須・4000 文字まで。状態は変えず、自動では再開しない）
                                止まったままは未着手・完了へ動かせない（先に解除する）。付けた・直した・解除したことは履歴に残る
-  criteria <T003>              受け入れ基準と証拠・不足（作業した側の申告。人が済みにする前に読む）
+  criteria <T003>              受け入れ基準と証拠・不足（作業した側の申告。人が要望を完了済にする前に読む）
                                add <文>...  足す / edit <ID> <文>  文を変える（記録済みの証拠は再確認が必要になる）
                                rm <ID>...  消す（証拠は残る。ID は使い直さない） / order <ID>...  並べ替える（今の ID を全部）
   evidence <T003> <ID> <結果>   証拠を残す（再記録は置き換え）。本文は続けて書くか --body 本文|- / --file 本文.md
-                               --basis unverified|declaration|read|machine|observation  根拠の種類（作業した側の申告。P3 は検査を実行しない）
+                               --basis unverified|declaration|read|machine  根拠の種類（作業した側の申告。P3 は検査を実行しない）
                                  read: --reference 読んだもの / machine: --command コマンド --check-result 結果 --target <参照先>:<コミット>
-                                 observation: --observation <観測ID>/<結果ID>（満たしたの根拠は完了して期待どおりの結果だけ）
                                evidence <T003> --file 証拠.md|-  まとめて / --evidence-json 証拠.json|-  根拠つきでまとめて
                                evidence <T003> rm <ID>...  消す
-                               済みのタスクの基準・証拠の中身を変えると済みが外れる（同じ値の再保存・成果物の追加では外れない）
-  review <T003>                完了したタスクの AI レビュー（別の Codex のスレッドが、固定した差分と前後のコードを読むだけで基準と比べる。
-                               終わるまで待つ。Ctrl-C で取り消す。結果はタスクの状態・済み・基準・証拠を変えない）
-                               --target <参照先>:<コミット>[,<コミット>] | <参照先>:<base>..<head>  比較対象（繰り返し可。省くと成果物のコミット）
-                               --viewpoint builtin|project|<参照先>@<SHA>:<パス>  観点（省くと既定。project は project.yaml の taskReview.viewpoints）
-                               --engine codex|mock --preview 材料を見るだけ
-  reviews <T003>               レビューの履歴 / review-show <T003> <run> 1回分 / review-cancel <T003> <run> 取消
-                               （所有者を確かめられない run は --acknowledge-stopped で中断。無い → 2、実行中・終わっている・材料が変わった → 3）
   archive <T003>               .archive/ へ移す（消さない。ID は再利用しない）
   ls --archived                アーカイブしたタスクの一覧（今の要望。読むだけ。壊れたファイルは「読めない」に出す）
   show <T003> --archived       アーカイブしたタスクの詳細（本文・変更の記録・成果物）。通常の ls / show / 進捗には出ない
   find <語句>                    参照・タイトルで探す
-  source [<要望>]               要求の出典と確認（任意）: 根拠の記録と状態（未記録・未確認・確認記録あり・再確認が必要・対応先不明）・回答
-                               add  --target 対象の要求・前提 --source 出典（役割・資料名・版・節）--grounds 根拠|-（承認された計算例など）
-                               edit <S1> [同じ項目]  /  confirm <S1> --by 確かめた役割・アクター --on YYYY-MM-DD  /  rm <S1>
-                               （確認には出典・根拠・人・日が要る。題・本文・記録を変えると再確認が必要。記録は申告で P3 の保証ではない）
-  source <T003|D1> [<A1> 操作]   受け入れ基準ごとの記録（D1 はタスク案。--run PF-...）。add --from S1 で要望の記録を写す（確認は引き継がない）
-                               --sources-json 操作.json|-  まとめて（[{"criterion":"A1","op":"add","source":"…","basis":"…"}]）
-
-  retro [<要望>]                振り返り: 対象（確定した採用済みの Preflight とリスクの原文）と候補（採用を終えた run と作ったタスク・子の根拠）
-                               confirm <run> [--reason 訂正の理由]  対象を確定する（最新の実行・採用では変わらない。訂正は理由が要る。--rev で版）
-                               judge <番号> --state occurred|not_occurred|unchecked  リスクの確認（人の判断）。起きた → --facts 事実、
-                                 起きなかった → --scope 確認した範囲、どちらも根拠が要る。判断を変える・戻すには --reason
-                               --evidence review:T001:<run>:<項目>[:<位置>] | milestone:<ID>:<run>:<項目>[:<位置>][:<理由>] | rework:T001:R1 | manual:<参照>
-  revisit [<要望>] [--all]      見直しが必要（候補）: 完了の記録（完了・済みにしたときの条件）と今の条件の差（品質基準・受け入れ基準・
-                               要求の根拠・前提の変更）。完了済みも含む。候補を出すだけで状態・済みは変えない。確かめたら済みにし直す
-  premise [<要望>]              前提の変更の一覧 / add --target <要望 ID|T001|S1>（繰り返し可）--reason 理由 --condition 新しい条件・版
-                               ack <P1> --target <ID> --condition 確かめた条件  変更を確かめたことを残す（過去の記録・状態は変えない）
 Preflight
   preflight [<要望>]            評価・細分化を実行し、完了まで待つ  --engine codex|mock
                                タスク化した後の要望（進行中・対応済・完了済、タスク化・分割の採用をした要望）は再評価しない。変えたいことは新しい要望に
@@ -179,7 +147,7 @@ Preflight
                                （記録だけ。プロセスやコンテナは止めない）
   clarify [<要望>]              確認事項（ID・確認先・質問・必要な根拠・判断への影響）と回答の状態  --run PF-...
   answer [<要望>] <Q1>          確認事項に回答する（要望に残す。過去の run は書き換えない。再評価は preflight で明示して始める）
-                               --body 回答|-  --by 回答した役割  --on YYYY-MM-DD  --source 出典  --grounds 根拠|-  --link S1（対応する根拠の記録）
+                               --body 回答|-  --by 回答した役割  --on YYYY-MM-DD
                                --answer-json 回答.json|-  まとめて / answer [<要望>] <Q1> rm  消す
   notes [<要望>]                メモの一覧（次の Preflight に渡すもの・渡し済み）
   attach [ls]                  要望の添付（PNG / JPEG / xlsx）の一覧。要望は --req（要望の作業ツリーの中なら省略可）

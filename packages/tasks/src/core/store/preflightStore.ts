@@ -1,23 +1,13 @@
 import { readdir, readFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { PreflightRun, ProposedChild, ProposedTask, RunPulse } from "../../shared/types.ts";
-import { readDraftCriteria, readSourceSeq } from "../../features/requirements/shared/acceptance.ts";
-import { readCriterionSources } from "../../features/requirements/shared/requirementSource.ts";
+import { readDraftCriteria } from "../../features/requirements/shared/acceptance.ts";
 import { parseFrontmatter, stringifyFrontmatter } from "./frontmatter.ts";
 
-/** 案の受け入れ基準と要求の根拠（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由） */
-function draftCriteriaOf(raw: unknown, rawSources: unknown, rawSourceSeq: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems" | "acceptanceSources" | "acceptanceSourceSeq"> {
+/** 案の受け入れ基準（無い古い案は何も足さない。読めない項目は acceptanceProblems に理由。以前の版の要求の根拠は読まない） */
+function draftCriteriaOf(raw: unknown): Pick<ProposedTask, "acceptanceCriteria" | "acceptanceProblems"> {
   const { criteria, problems = [] } = readDraftCriteria(raw);
-  const sourceProblems: string[] = [];
-  const sources = readCriterionSources(rawSources, sourceProblems);
-  const seq = readSourceSeq(rawSourceSeq, sourceProblems);
-  const all = [...problems, ...sourceProblems];
-  return {
-    ...(criteria ? { acceptanceCriteria: criteria } : {}),
-    ...(sources ? { acceptanceSources: sources } : {}),
-    ...(seq !== undefined ? { acceptanceSourceSeq: seq } : {}),
-    ...(all.length ? { acceptanceProblems: all } : {}),
-  };
+  return { ...(criteria ? { acceptanceCriteria: criteria } : {}), ...(problems.length ? { acceptanceProblems: problems } : {}) };
 }
 import { withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
 import { writeJsonRecord } from "./jsonRecord.ts";
@@ -33,7 +23,7 @@ function draftOf(f: string, text: string): ProposedTask {
     dependsOn: Array.isArray(data.dependsOn) ? data.dependsOn.map(String) : [],
     include: data.include !== false,
     ...("repo" in data ? { repo: data.repo === null || data.repo === "" || data.repo === "none" ? null : String(data.repo) } : {}),
-    ...draftCriteriaOf(data.acceptanceCriteria, data.acceptanceSources, data.acceptanceSourceSeq),
+    ...draftCriteriaOf(data.acceptanceCriteria),
   };
 }
 
@@ -103,7 +93,7 @@ export class PreflightStore {
 
   /**
    * 1つの案を読み直す（loadDrafts と同じ規則。無ければ undefined）。案の更新は保存した後にこれで読み直して返し、更新の応答と
-   * 再読込で基準・根拠・採番と読めない理由（acceptanceProblems）を同じにする
+   * 再読込で基準と読めない理由（acceptanceProblems）を同じにする
    */
   async loadDraft(requestId: string, runId: string, key: string): Promise<ProposedTask | undefined> {
     const f = `${key}.md`;

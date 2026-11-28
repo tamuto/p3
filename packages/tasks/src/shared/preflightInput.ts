@@ -17,7 +17,7 @@ export function normalizeInput(r: { title: string; body: string }): Pick<Preflig
 /** 保存すると同じになる本文か */
 export const sameText = (a: string, b: string) => normalizeText(a) === normalizeText(b);
 
-const FIELD_LABEL: Record<InputField, string> = { title: "タイトル", body: "本文", parent: "親の目的（題・本文）", children: "子の要望", requirement: "要求の根拠・確認事項への回答" };
+const FIELD_LABEL: Record<InputField, string> = { title: "タイトル", body: "本文", parent: "親の目的（題・本文）", children: "子の要望", requirement: "確認事項への回答" };
 
 /** 変わった項目の表示（「タイトルと本文」） */
 export const changedLabel = (fields: readonly InputField[] | undefined) => (fields ?? []).map((k) => FIELD_LABEL[k]).join("と");

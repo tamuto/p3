@@ -37,31 +37,10 @@ export const AI_MANIFEST = {
       method: "GET|POST",
       path: "/api/quality",
       desc:
-        "品質基準（project.yaml の quality）。GET は {quality: {state: unset | set | invalid, ...}, version, diffs（採用したテンプレートの改版の差分）, templates}。" +
-        "POST {ops: [{op: init | adopt | upgrade | add | replace | edit | remove | exempt | unexempt, ...}], version?} で操作を順に当てて quality だけを書く（version が違えば 409 quality_conflict、" +
-        "規則に合わなければ 400 quality_invalid、読めない設定は 400 quality_unreadable。設定の保存 PUT /api/project は quality を書かない）。コマンドは実行しない",
+        "品質基準（project.yaml の quality。{id, text, repos?, how?} の並び）。GET は {quality: {state: unset | set | invalid, ...}}。" +
+        "POST {ops: [{op: add | replace | edit | remove, ...}]} で操作を順に当てて quality だけを書く（replace の base（編集を始めたときの一覧）が今と違えば 409 quality_conflict、" +
+        "規則に合わなければ 400 quality_invalid、読めない設定は 400 quality_unreadable。設定の保存 PUT /api/project は quality を書かない）。タスクを作るときに作業先に当てはまる基準を受け入れ基準に足す。コマンドは実行しない",
     },
-    { method: "GET", path: "/api/requests/:rid/tasks/:tid/quality-diff", desc: "タスクの受け入れ基準と今の品質基準の差分 {quality, version, diff: [{kind: add | change | remove | exempt | edited, quality, criterion?, text?, reason?}]}（読むだけ）" },
-    {
-      method: "POST",
-      path: "/api/requests/:rid/tasks/:tid/quality-import",
-      desc: "差分を明示して受け入れ基準に取り込む {keys?: [\"<kind>:<品質 ID>\"], rev?}（add は足す、change は文と出典を直す（証拠は再確認が必要になる）、remove・exempt は消す）。POST tasks の quality: auto | none | [ID] で作るときにも取り込む",
-    },
-    {
-      method: "POST",
-      path: "/api/quality/improvements/preview",
-      desc:
-        "品質の不足の診断と改善要望の原稿 {source: {type: project} | {type: task-review, request, task, run} | {type: milestone-review, milestone, run}, keys?}。" +
-        "{findings: [{key, kind: unset | invalid | violated | undetermined | exempt, ...}], hash, registered, picked, draft?}（読むだけ。除外は既定で選ばない）",
-    },
-    {
-      method: "POST",
-      path: "/api/quality/improvements",
-      desc:
-        "改善要望を明示して登録する {source, keys, title, body, hash, reopenClosed?}（201 {request, keys}）。診断が変わっていれば 409 diagnosis_changed、開いている登録先があれば 409 existing（existing.request）、" +
-        "閉じた要望で扱った不足は reopenClosed が無ければ 409 closed_existing。不足ごとの登録先は quality-improvements.json に残す",
-    },
-    { method: "GET", path: "/api/quality/templates/:id[?version=]", desc: "同梱の品質基準のテンプレートの中身（版つきの例。業界の標準への認証ではない）" },
     { method: "GET", path: "/api/project", desc: "プロジェクト設定と milestonesVersion（マイルストーンの版）" },
     {
       method: "PUT",
@@ -83,52 +62,20 @@ export const AI_MANIFEST = {
       desc: "参照先（共有の定義）。GET は読めたかの状態と、ローカルの画面にだけこのマシンのパス。POST {name, role?, readFirst?, writable?, map?, path?}",
     },
     { method: "PUT|DELETE", path: "/api/repos/:name/path", desc: "参照先のこのマシンのパス（個人設定）。このマシンのローカルの画面（Origin）からだけ" },
-    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block と証拠の概要 evidence（{met, total, declarationOnly, metByBasis, problems}。本文は載せない。基準も証拠も無ければ省く）・完了したタスクの見直しの状態 review、要望ごとの見直し候補の数 review: {self?, tasks, below}（below は自分を除く配下）" },
+    { method: "GET", path: "/api/requests[?parent=<要望ID>]", desc: "要望の一覧と進捗（更新の新しい順。parent で直下の子だけを親の表示順に）。止まっている自分のタスクの数 blocked と配下の数 subtree.blocked（作業中にも数える）、タスクの印に停止の今の値 block と証拠の概要 evidence（{met, total, declarationOnly, metByBasis, problems}。本文は載せない。基準も証拠も無ければ省く）" },
     { method: "POST", path: "/api/requests", desc: "要望の作成（parent で子の要望にする。省いた期限・マイルストーン・タグは親から写す）" },
     {
       method: "GET",
       path: "/api/requests/:rid",
       desc: "要望・タスク・Preflight・対応済なのに未完了のタスクがあるときの知らせ（issue）・親子（parent・ancestors・children・hierarchyIssues）・対応済にできるか（completion: blocker・見送りで対象外の子 excluded）・" +
-        "要求の出典と確認（requirement: {state, sources, answers, problems}。state は unrecorded / unconfirmed / confirmed / reconfirm / unlinked。申告の記録で P3 の保証ではない）・" +
-        "見直しが必要（候補）（review: {self?（対応済・完了済のときの要望自身の診断）, tasks（タスクごとの概要）, counts: {tasks, below}}）",
-    },
-    {
-      method: "GET|POST",
-      path: "/api/requests/:rid/premises",
-      desc:
-        "前提の変更（外部の規則の変更など。要望の premiseChanges に追記）。POST {op: \"add\", targets: [要望 ID|タスク ID|要望の根拠の ID], reason, condition, rev?} / {op: \"ack\", id, target, condition, rev?}（変更を確かめたことを残す）。" +
-        "基点の完了の記録より後の変更で、確認の無い対象は見直し候補の理由になる。過去の完了の記録・状態・済みは変えない。対象が無い・規則に合わなければ 400 premise_invalid、rev が違えば 409（何も書かない）",
-    },
-    {
-      method: "GET|POST",
-      path: "/api/requests/:rid/retrospective[/target]",
-      desc:
-        "要望の振り返り。GET は {version, target?（今の対象）, targets（確定と訂正の履歴）, candidates（採用を終えた run: {run, kind: tasks|split|legacy, latest, basis: [{key?, target, state}], risks}）, none?}。" +
-        "POST /target {run, reason?, version?} で対象を確定する（候補の run だけ。評価の版とリスクの原文を写す。2回目からの訂正は reason が要る）。候補でない・理由が無い → 400 retro_invalid、版が違う → 409 retro_conflict（何も書かない）。" +
-        "GET は今の対象のリスクと確認 risks: [{index, text, state, judgment?, history}]・三状態の件数 counts・全部の確認 judgments・根拠の今の照合 checks（ok|changed|missing|manual）も返す。" +
-        "POST /judgments {risk（0 から）, state: occurred|not_occurred|unchecked, facts?, scope?, reason?, evidence: [{kind: task_review, task, run, section, index?} | {kind: milestone_review, milestone, run, section, index?, reason?} | {kind: rework, task, history} | {kind: manual, reference, note?}], version?} でリスクの確認を追記する（人の判断。起きた → facts と根拠、起きなかった → scope と根拠、判断を変える → reason。範囲外の根拠は 400）",
-    },
-    {
-      method: "GET",
-      path: "/api/revisit[?request=<要望ID>]",
-      desc:
-        "見直しが必要（候補）の一覧（完了したタスクと対応済・完了済の要望。完了済みも含む）。各項目は {target, state, record, qualityVersion, reasons: [{code, target, was?, now?, related?}], unreadable?}。" +
-        "品質は作業先に当てはまる項目の差だけを見て、設定全体の版の違い・参照先の HEAD の更新では候補にしない。読むだけでファイルを書かない。タスクの一覧は ?review=true で候補だけに絞れる",
-    },
-    {
-      method: "POST",
-      path: "/api/requests/:rid/sources",
-      desc:
-        "要求の根拠の記録を変える {ops: [{op:\"add\", target?, source?, basis?, confirm?:{by, on}} | {op:\"edit\", id, target?, source?, basis?, confirm?} | {op:\"confirm\", id, by, on} | {op:\"remove\", id}], rev?}（CLI の p3 source と同じ。結果は {request, requirement}）。" +
-        "確認には出典・根拠・確かめた人（役割名・アクター名）・YYYY-MM-DD の日が要る。題・本文・記録の内容が変わると確認は再確認が必要になる（元に戻しても戻らない）。" +
-        "規則に合わなければ 400 code: requirement_invalid、rev が違えば 409 rev_conflict（どちらも何も書かない）。要望の根拠・回答は評価対象に入る（変えるとその評価からは採用しない）",
+        "確認事項への回答（requirement: {answers（state: answered）, problems}）",
     },
     {
       method: "POST",
       path: "/api/requests/:rid/answers",
       desc:
-        "Preflight の確認事項（run の assessment.clarifications）に回答する {run, question, answer（null で消す）, by?, on?, source?, basis?, links?: [根拠の記録の ID], rev?}（CLI の p3 answer と同じ）。" +
-        "回答は要望の clarifyAnswers に残し、過去の run は書き換えない。回答しただけでは根拠の記録を確認記録ありにしない。再評価は別に明示して始める",
+        "Preflight の確認事項（run の assessment.clarifications）に回答する {run, question, answer（null で消す）, by?, on?（YYYY-MM-DD）, rev?}（CLI の p3 answer と同じ）。" +
+        "回答は要望の clarifyAnswers に残し、過去の run は書き換えない。回答は評価対象に入る（変えるとその評価からは採用しない）。再評価は別に明示して始める。規則に合わなければ 400 requirement_invalid",
     },
     {
       method: "PATCH",
@@ -146,15 +93,13 @@ export const AI_MANIFEST = {
         "重複・無い要望・直下の子でない・足りないは 409 code: child_order_invalid（reason・ids・今の並び children。子が変わっていれば読み直す）、rev が違えば 409 code: rev_conflict。" +
         "表示の順で、実行の順・着手できるかは表さない",
     },
-    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
+    { method: "GET|POST", path: "/api/requests/:rid/tasks", desc: "要望のタスク（GET の ?blocked=true で止まっているものだけ（status・area・q と AND）。POST の criteria: [文] で受け入れ基準を付ける（ID は p3 が振る。作業先に当てはまる品質基準も足す。品質基準が読めなければ 400 quality_unreadable）。対応済の要望に未完了のタスクを足すと進行中に戻し reopened を返す。対応済の祖先も戻して reopenedAncestors、完了済の祖先は warnings の ancestor_done）" },
     { method: "GET|PATCH|DELETE", path: "/api/requests/:rid/tasks/:tid", desc: "タスク（GET は受け入れ基準の状態 acceptance（不足 shortfalls。基準なしは null）も返す。PATCH は rev で楽観ロック、null で項目を消す。" +
-        "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord|source, ...}] で順に当て（source は {op:\"source\", id: 基準の ID, source: 要求の根拠への操作}。POST sources と同じ操作で、from で要望の記録を写す）、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
+        "受け入れ基準・証拠は PATCH の acceptance: [{op: add|edit|remove|order|record|unrecord, ...}] で順に当て、規則に合わなければ何も書かず 400 code: acceptance_invalid。" +
         "record の basis は根拠 {kind: unverified|declaration} / {kind: read, reference} / {kind: machine, command, result, target}（作業した側の申告。P3 は検査を実行しない）。" +
         "省くと同じ結果の前の証拠の根拠を引き継ぎ、無ければ unverified は未確認・ほかは申告のみ。met / unmet に未確認、unverified にほかの根拠は付けられない。" +
         "acceptance には根拠ごとの met の件数 metByBasis と申告のみの基準 declarationOnly も入る。" +
-        "済みのタスクの基準・証拠の中身が変わると済みを外し checkCleared を返す。" +
-        "完了・済みにすると、そのときの条件の写しを completionRecords に追記する（要望の PATCH の対応済・完了済も同じ。記録の値は受け付けない。記録が読めず足せなければ completionSkipped）。完了になる・完了から戻る・要望が初めて対応済・完了済になると観測のシステムの項目に値を記録し、記録できなければ observationSkipped（文の並び。操作はした。タスクの作成・マイルストーンの一括完了の結果も同じ）。" +
-        "GET は見直しの診断 review（完了したタスクだけ。state: no_record|unreadable|none|candidate、基点の record、reasons: [{code, target, was?, now?, related?}]。状態は変えない）も返す。" +
+        "完了から戻すと手戻りの履歴 reworkHistory に追記する（値は受け付けない。履歴が読めず足せなければ reworkSkipped）。完了になる・完了から戻る・要望が初めて対応済・完了済になると観測のシステムの項目に値を記録し、記録できなければ observationSkipped（文の並び。操作はした。タスクの作成・マイルストーンの一括完了の結果も同じ）。" +
         "止まっている理由（停止）は PATCH の blockOp: {op: set, reason, decision?}（作業中だけ。内容を直しても since は変えない）/ {op: clear, resolution}（解除。状態は変えない）で変え、" +
         "日時・履歴は受け付けない。規則に合わなければ 400 block_invalid / block_not_doing、止まったまま未着手・完了へ動かすと 409 blocked（解除と移動を同じ PATCH に書けば一緒に保存する））" },
     {
@@ -209,7 +154,6 @@ export const AI_MANIFEST = {
       desc:
         "タスク案を直す {title?, description?, include?, repo?, acceptanceCriteria?, expectedTitle?, expectedCriteria?}。" +
         "acceptanceCriteria は受け入れ基準の並び全体 [{id?, text}]（id は残し、無い項目に振る。空で基準なし）で、expectedCriteria（編集を始めたときの基準）が要る。違えば 409 rev_conflict。" +
-        "sourceOps: 基準ごとの要求の根拠への操作 [{id: 基準の ID, source: 上の sources と同じ操作（add は from: 要望の記録の ID で写せる）}]。expectedSources（編集を始めたときの acceptanceSources）が要り、違えば 409 rev_conflict。" +
         "expectedTitle（編集を始めたときの題。制御用で案には書かない）を渡すと、" +
         "案のファイルを読み直した今の題と比べ、違えば 409 code: rev_conflict（current に今の案）で書かない。画面から題を変えるときは必ず渡す",
     },
@@ -241,7 +185,7 @@ export const AI_MANIFEST = {
       method: "POST",
       path: "/api/release-notes/:mid/complete-requests",
       desc:
-        "対応済の要望を一括で完了済にする {basedOn: completion.basedOn}。見送り以外の全要望が全タスク完了のときだけ。タスク（済み）・ノート・マイルストーンは変えない。" +
+        "対応済の要望を一括で完了済にする {basedOn: completion.basedOn}。見送り以外の全要望が全タスク完了のときだけ。タスク・ノート・マイルストーンは変えない。" +
         "材料が変わった・できないときは何も書かずに 409 code: material_changed / blocked {plan}。途中で止まったら 409 code: partial {result: completed, failed, notRun}",
     },
     {
@@ -263,20 +207,6 @@ export const AI_MANIFEST = {
       path: "/api/release-generations/:id[/cancel]",
       desc: "生成1件 {status: running|completed|failed|cancelled, failure?, items（文と出典）, markdown（本文の案）, warnings, materialChanged, log} / 取り消し",
     },
-    {
-      method: "POST",
-      path: "/api/requests/:rid/tasks/:tid/review-preview",
-      desc: "タスクの AI レビューの今の材料の要約と hash {targets?, viewpoint?}（比較項目・作業した側の証拠の状態・比較対象・観点の出典・注意。何も書かない）",
-    },
-    {
-      method: "GET|POST",
-      path: "/api/requests/:rid/tasks/:tid/reviews",
-      desc:
-        "タスクの AI レビューの履歴（新しい順。読めない記録も broken）/ 始める（202。{targets?, viewpoint?, engine?, expectedHash?}。完了したタスクだけ。" +
-        "材料が変わっていれば 409 material_changed、実行中なら 409 running）。結果はタスクの状態・済み・基準・証拠を変えない",
-    },
-    { method: "GET", path: "/api/requests/:rid/tasks/:tid/reviews/:run", desc: "タスクの AI レビューの1回分（固定した材料・結果。実行中は所有者の状態 owner）。結果を直す口は無い" },
-    { method: "POST", path: "/api/requests/:rid/tasks/:tid/reviews/:run/cancel", desc: "タスクの AI レビューを取り消す {acknowledgeStopped?}（マイルストーンレビューと同じ規則）" },
     { method: "GET", path: "/api/milestone-reviews", desc: "レビューの履歴のあるマイルストーン {milestones}（project.yaml に無い孤立も。履歴のあるマイルストーンは消せず ID も変えられない）" },
     { method: "GET", path: "/api/milestones/:mid/review-preview", desc: "マイルストーンレビューの今の材料（比較単位・目的・要望の件数と状態・参照先のコード・範囲・警告・hash）。何も書かない" },
     {

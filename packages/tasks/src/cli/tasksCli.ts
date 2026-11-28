@@ -3,10 +3,6 @@ import { openProject, type P3Context } from "../core/context.ts";
 import type { EngineStatus } from "../core/preflight/engine.ts";
 import { progress, resolveRef, resolveRequestId, titleOf } from "../core/ops.ts";
 import { requirementCommand } from "../features/requirements/cli/requirementCommands.ts";
-import { revisitCommand } from "../features/records/cli/revisitCommands.ts";
-import { retroCommand } from "../features/retro/cli/retroCommands.ts";
-import type { RequestProgress } from "../shared/types.ts";
-import { taskReviewCommand } from "../features/taskReview/cli/taskReviewCommands.ts";
 import { qualityCommand } from "../features/quality/cli/qualityCommands.ts";
 import { NotFoundError } from "../core/store/collection.ts";
 import { VIA_LABEL } from "../core/store/locate.ts";
@@ -25,18 +21,10 @@ import type { ResolvedProject } from "../core/store/locate.ts";
 import type { MachineSettings } from "../core/machineSettings.ts";
 
 /**
- * tasks の CLI: プロジェクトを開いた後のコマンドの振り分け（要望・タスク・Preflight・レビュー・品質・マイルストーン・リリースノート・
- * 振り返り・指標・設定・参照先）と、エラーから終了コードへの対応。引数の解釈・プロジェクトの決定・登録が1つだけのときの抑止・serve・
+ * tasks の CLI: プロジェクトを開いた後のコマンドの振り分け（要望・タスク・Preflight・品質・マイルストーン・リリースノート・
+ * マイルストーンレビュー・設定・参照先）と、エラーから終了コードへの対応。引数の解釈・プロジェクトの決定・登録が1つだけのときの抑止・serve・
  * help・guide・init・join・agents は入口（main.ts）が受け持ち、ここを呼ぶ
  */
-
-/** 進捗の行の見直し候補の印（要望自身・自分のタスク・配下を分ける。無ければ空） */
-function reviewMark(p: RequestProgress): string {
-  const r = p.review;
-  if (!r) return "";
-  const parts = [r.self?.state === "candidate" ? "要望" : "", r.tasks ? `タスク ${r.tasks}` : "", r.below ? `配下 ${r.below}` : ""].filter(Boolean);
-  return parts.length ? `  ※見直し候補（${parts.join("・")}）` : "";
-}
 
 /** 入口から渡すもの（tasks からは入口を読み込まない） */
 export interface TasksRun {
@@ -83,7 +71,7 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
   };
 
   const env: CommandEnv = { ctx, out, args, o, actor, current, expectedRev, requestArg, taskArg, split, cwd, target };
-  const handled = (await taskCommand(cmd, env)) ?? (await taskReviewCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env)) ?? (await revisitCommand(cmd, env)) ?? (await retroCommand(cmd, env));
+  const handled = (await taskCommand(cmd, env)) ?? (await preflightCommand(cmd, env)) ?? (await requirementCommand(cmd, env));
   if (handled !== undefined) return handled;
 
   switch (cmd) {
@@ -144,7 +132,7 @@ export async function runTasksCommand(r: TasksRun): Promise<number> {
                   : "",
                 p.request.tags.map((t) => `#${t}`).join(" "),
                 // 子のある要望は配下の集計（自分の値とは別）、子は親を添える
-                `${p.request.title}${p.blocked ? `  ⏸停止 ${p.blocked}` : ""}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}${p.subtree.blocked > p.blocked ? `・配下の停止 ${p.subtree.blocked - p.blocked}` : ""}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}${reviewMark(p)}`,
+                `${p.request.title}${p.blocked ? `  ⏸停止 ${p.blocked}` : ""}${p.children.length ? `  [配下 ${p.subtree.done}/${p.subtree.total}・子 ${p.children.length}${p.subtree.blocked > p.blocked ? `・配下の停止 ${p.subtree.blocked - p.blocked}` : ""}]` : ""}${p.request.parent ? `  ↑${p.request.parent}` : ""}${p.hierarchyIssues.length ? "  ※親子の問題" : ""}`,
               ]);
               return `${head}\n${table(rows)}`;
             })

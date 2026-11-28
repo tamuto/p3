@@ -1,16 +1,13 @@
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { AcceptanceInputError } from "../features/requirements/shared/acceptance.ts";
 import { QualityInputError } from "../features/quality/shared/quality.ts";
-import { RequirementInputError } from "../features/requirements/shared/requirementSource.ts";
-import { RetrospectiveError } from "../features/retro/shared/retrospective.ts";
-import { PremiseInputError } from "../features/records/shared/reviewCandidate.ts";
+import { RequirementInputError } from "../features/requirements/shared/clarify.ts";
 import { BlockInputError } from "../shared/taskBlock.ts";
 import { HierarchyError } from "./hierarchy.ts";
 import { SettingsError } from "./machineSettings.ts";
 import { ReviewRejected } from "../features/milestoneReview/core/service.ts";
 import { StaleInputError } from "./preflight/input.ts";
 import { ChildConflictError, ChildDraftsChangedError, DraftConflictError, PreflightClosedError } from "./preflight/service.ts";
-import { ImprovementError } from "../features/quality/core/qualityImprovement.ts";
 import { CompletionRejected } from "../features/releaseNotes/core/completeRequests.ts";
 import { GenerationRejected } from "../features/releaseNotes/core/generate.ts";
 import { ReleaseNoteError } from "../features/releaseNotes/core/store.ts";
@@ -20,7 +17,6 @@ import { ArchivedTaskReadError } from "./store/archivedTasks.ts";
 import { ConflictError, NotFoundError } from "./store/collection.ts";
 import { DataDirError, ProjectNotResolvedError } from "./store/locate.ts";
 import { MilestonesConflictError, ProjectInputError, ReloadError } from "./store/workspace.ts";
-import { TaskReviewRejected } from "../features/taskReview/core/material.ts";
 import { UserConfigError } from "./userConfig.ts";
 
 /**
@@ -58,7 +54,6 @@ export function errorOutcome(e: unknown): ErrorOutcome | undefined {
     if (e.code === "invalid") return { exit, cli, ...coded(422, "invalid") };
     return { exit, cli, ...coded(409, "rev_conflict", { reason: e.code }) };
   }
-  if (e instanceof RetrospectiveError) return { exit: e.code === "retro_conflict" ? 3 : 1, cli: e.code === "retro_conflict" ? conflict(e) : e.message, ...coded(e.code === "retro_invalid" ? 400 : 409, e.code) };
   if (e instanceof GenerationRejected) return { exit: 1, cli: e.message, ...coded(e.code === "running" ? 409 : 400, e.code) };
   if (e instanceof CompletionRejected) return { ...coded(409, e.code, { plan: e.plan }) };
   if (e instanceof HierarchyError) {
@@ -77,18 +72,10 @@ export function errorOutcome(e: unknown): ErrorOutcome | undefined {
     return { exit, cli: e.message, ...coded(status, e.code) };
   }
   if (e instanceof ReviewCancelRefused) return { exit: 3, cli: e.message, ...coded(409, e.code) };
-  if (e instanceof TaskReviewRejected) {
-    const busy = e.code === "running" || e.code === "material_changed";
-    return { exit: busy ? 3 : 1, cli: e.message, ...coded(busy ? 409 : 400, e.code, e.running ? { run: e.running } : {}) };
-  }
-  if (e instanceof ImprovementError) {
-    const busy = e.code === "diagnosis_changed" || e.code === "existing" || e.code === "closed_existing";
-    return { exit: e.code === "not_found" ? 2 : busy ? 3 : 1, cli: e.message, ...coded(e.code === "not_found" ? 404 : busy ? 409 : 400, e.code, e.existing ? { existing: e.existing } : {}) };
-  }
   if (e instanceof QualityInputError) return { exit: e.code === "quality_conflict" ? 3 : 1, cli: e.message, ...coded(e.code === "quality_conflict" ? 409 : 400, e.code) };
   if (e instanceof MilestonesConflictError) return { exit: 3, cli: conflict(e), ...coded(409, e.code, { milestonesVersion: e.current }) };
   // 規則に合わない入力（何も書いていない）。CLI は前置きなし
-  if (e instanceof AcceptanceInputError || e instanceof RequirementInputError || e instanceof PremiseInputError) return { exit: 1, cli: e.message, ...coded(400, e.code) };
+  if (e instanceof AcceptanceInputError || e instanceof RequirementInputError) return { exit: 1, cli: e.message, ...coded(400, e.code) };
   if (e instanceof BlockInputError) return { exit: 1, cli: e.message, ...coded(e.code === "blocked" ? 409 : 400, e.code) };
   if (e instanceof UsageError || e instanceof OpRuleError || e instanceof ProjectInputError) return { exit: 1, cli: e.message };
   // Preflight の案・子の案・評価対象（API だけ。409 は code で分ける: rev_conflict は読み直してやり直す / stale_input は評価のあとで要望が変わった）

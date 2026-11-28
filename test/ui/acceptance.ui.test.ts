@@ -1,8 +1,8 @@
 // 受け入れ基準と証拠の画面: タスク案の基準の編集（保存していない間はタスク化を止める）→ タスク化で写る、タスクの追加での基準の入力、
-// タスク詳細で基準と証拠を並べて確かめ・直し、不足があっても人が「済み」にできること、保存していない入力がある間は済みを止めること、
-// 済みの後の変更で済みが外れて理由が出ること、取り直し・競合で入力を消さないこと、基準なしのタスク、アーカイブの閲覧、
-// 幅 375 での長い証拠・パス・キーボードでの到達を確かめる。根拠の種類（結果と別のラベル・古い証拠の種類未記録・画面からの入力・
-// 進捗の申告のみの印・人の最終確認・競合で入力を残すこと・幅 375 / 1280）も確かめる。状態は CLI で用意する。
+// タスク詳細で基準と証拠を並べて確かめ・直し、不足を完了の近くに出すこと、基準を変えると証拠が再確認になること、
+// 取り直し・競合で入力を消さないこと、基準なしのタスク、アーカイブの閲覧、幅 375 での長い証拠・パス・キーボードでの到達を確かめる。
+// 根拠の種類（結果と別のラベル・古い証拠の種類未記録・画面からの入力・進捗の申告のみの印・競合で入力を残すこと・幅 375 / 1280）も
+// 確かめる。状態は CLI で用意する。
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -64,10 +64,9 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
     await s?.close();
   });
 
-  it("タスク詳細: 基準と証拠を並べ、不足を済みの近くに出す。証拠を残し、保存していない間は済みを止め、済みの後の変更で済みが外れる", async () => {
+  it("タスク詳細: 基準と証拠を並べ、不足を完了の近くに出す。証拠を残し、基準を変えると証拠が再確認になる", async () => {
     const { page, step, env } = s;
     const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "受け入れ基準と作業した側の証拠" }) });
-    const check = page.getByRole("button", { name: "済みにする" });
 
     await step("不足の数と項目ごとの結果・証拠", async () => {
       await page.goto(`/requests/${ids.tasks}?task=T001`);
@@ -76,16 +75,14 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await until.visible(panel.getByRole("listitem", { name: "受け入れ基準 A2" }).getByText("満たせなかった"));
       await until.visible(panel.getByRole("listitem", { name: "受け入れ基準 A3" }).getByText("証拠なし"));
       await until.visible(panel.getByText(LONG_PATH));
-      await until.enabled(check);
+      await until.visible(page.getByText(/人の最終確認は要望を完了済にして行います/));
     });
 
-    await step("証拠を編集している間は済みを止め、取消で戻る", async () => {
+    await step("証拠の入力を取消で捨てる", async () => {
       await panel.getByRole("button", { name: "A3 の証拠を登録" }).click();
       await panel.getByLabel(/証拠（必須）/).fill("375 で確かめた");
-      await until.disabled(check);
-      await until.visible(page.getByText(/保存していない入力があります。保存するか取り消してから/));
       await panel.getByRole("button", { name: "取消" }).click();
-      await until.enabled(check);
+      await until.visible(panel.getByRole("button", { name: "A3 の証拠を登録" }));
     });
 
     await step("証拠を保存すると不足が減る（満たしたは本文が要る）", async () => {
@@ -97,14 +94,10 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await until.visible(panel.getByText("幅 375 で確かめた（test/ui/acceptance.ui.test.ts）"));
     });
 
-    await step("不足があっても済みにでき、基準を変えると済みが外れて理由が出る", async () => {
-      await check.click();
-      await until.visible(page.getByRole("button", { name: "済みを外す" }));
+    await step("基準を変えると、その基準の証拠は再確認が必要になる", async () => {
       await panel.getByRole("button", { name: "基準を編集" }).click();
       await panel.getByLabel("受け入れ基準 A2").fill("差し戻しの理由を保存して再読み込みしても残る");
       await panel.getByRole("button", { name: "基準を保存" }).click();
-      await until.visible(page.getByText(/人の「済み」を外しました/));
-      await until.visible(check);
       await until.visible(panel.getByRole("listitem", { name: "受け入れ基準 A2" }).getByText("再確認が必要"));
     });
 
@@ -137,17 +130,16 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await until.visible(dialog.getByText("確かめていない", { exact: true }));
       // 根拠も読める（未検証の証拠は未確認）
       await until.visible(dialog.getByText("未確認", { exact: true }));
-      await until.visible(dialog.getByText("人の最終確認"));
       // 閲覧専用（証拠・基準の編集の操作は出さない）
       expect(await dialog.getByRole("button", { name: /証拠を|基準を/ }).count()).toBe(0);
     });
   });
 
-  it("根拠: 進捗に申告のみのタスク数を出し、詳細で結果と根拠を分けて読み、画面から根拠を入れ、人の最終確認と分けて示す", async () => {
+  it("根拠: 進捗に申告のみのタスク数を出し、詳細で結果と根拠を分けて読み、画面から根拠を入れる", async () => {
     const { page, step, env } = s;
     const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "受け入れ基準と作業した側の証拠" }) });
     const item = (id: string) => panel.getByRole("listitem", { name: `受け入れ基準 ${id}` });
-    const showJson = async (t: string) => JSON.parse(await env.p3(["show", t, "--req", ids.basis, "--json"])) as { item: { checkedAt?: string; acceptanceEvidence: { criterionId: string; basis?: Record<string, string> }[] } };
+    const showJson = async (t: string) => JSON.parse(await env.p3(["show", t, "--req", ids.basis, "--json"])) as { item: { acceptanceEvidence: { criterionId: string; basis?: Record<string, string> }[] } };
 
     await step("進捗の行に申告のみのタスク数、印から（キーボードで）タスクの詳細へ", async () => {
       await page.goto("/");
@@ -165,7 +157,7 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await until.visible(panel.getByText(/満たしたと申告 3\/4、うち申告のみ 1（読んで確認 1・検査結果あり 1）/));
     });
 
-    await step("結果と根拠は別のラベル。検査の項目・読んだもの・人の最終確認：未", async () => {
+    await step("結果と根拠は別のラベル。検査の項目・読んだもの", async () => {
       await page.goto(`/requests/${ids.basis}?task=T001`);
       await until.visible(item("A1").getByText("検査結果あり", { exact: true }));
       await until.visible(item("A1").getByText("結果", { exact: true }));
@@ -175,20 +167,12 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       await until.visible(item("A2").getByText("申告のみ", { exact: true }));
       await until.visible(item("A3").getByText("src/Receipt.tsx の案内の文"));
       await until.visible(item("A4").getByText("未確認", { exact: true }));
-      await until.visible(page.getByText(/^人の最終確認：未/));
     });
 
     await step("古い証拠は「申告のみ（種類未記録）」", async () => {
       await page.goto(`/requests/${ids.basis}?task=T002`);
       await until.visible(item("A1").getByText("申告のみ（種類未記録）"));
       await until.visible(item("A1").getByText(/根拠の種類を記録する前の証拠です/));
-    });
-
-    await step("申告のみが残っていても人が済み（最終確認）にでき、済みの後も申告のみは見える", async () => {
-      await page.getByRole("button", { name: "済みにする" }).click();
-      await until.visible(page.getByText(/^人が確認済み（最終確認・/));
-      await until.visible(page.getByText(/申告のみの達成 1 件/));
-      await until.visible(item("A1").getByText("申告のみ（種類未記録）"));
     });
 
     await step("画面から検査結果ありを入れる（欄がそろうまで保存できない）。再読み込みと CLI で同じ値", async () => {
@@ -220,17 +204,13 @@ describe.skipIf(!inject("chromium").available)("受け入れ基準と証拠", ()
       expect(t.item.acceptanceEvidence.find((e) => e.criterionId === "A3")!.basis).toEqual({ kind: "read", reference: "src/Receipt.tsx の案内の文" });
     });
 
-    await step("済みの後に根拠を変えると済みが外れ、同じ値の再保存では外れない", async () => {
-      await page.getByRole("button", { name: "済みにする" }).click();
-      await until.visible(page.getByText(/^人が確認済み（最終確認・/));
-      await env.p3(["evidence", "T001", "A1", "met", "添付のテストが通った", "--req", ids.basis, "--basis", "machine", "--command", MACHINE.command, "--check-result", MACHINE.result, "--target", MACHINE.target]);
-      expect((await showJson("T001")).item.checkedAt).toBeTruthy();
+    await step("根拠の種類を変えて保存できる", async () => {
       await panel.getByRole("button", { name: "A1 の証拠を編集" }).click();
       await panel.getByLabel(/根拠の種類/).selectOption({ label: "読んで確認" });
       await panel.getByLabel(/読んだもの/).fill("src/upload.ts の添付の処理");
       await panel.getByRole("button", { name: "証拠を保存" }).click();
-      await until.visible(page.getByText(/人の「済み」を外しました/));
-      await until.visible(page.getByText(/^人の最終確認：未/));
+      await until.visible(item("A1").getByText("src/upload.ts の添付の処理"));
+      expect((await showJson("T001")).item.acceptanceEvidence.find((e) => e.criterionId === "A1")!.basis).toEqual({ kind: "read", reference: "src/upload.ts の添付の処理" });
     });
 
     await step("競合しても根拠の入力を残し、最新に合わせて保存できる", async () => {

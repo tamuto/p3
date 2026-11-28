@@ -10,8 +10,6 @@ import { ReleaseGenerator } from "../features/releaseNotes/core/generate.ts";
 import { MockSummarizer } from "../features/releaseNotes/core/mockSummarizer.ts";
 import { MilestoneReviewService } from "../features/milestoneReview/core/service.ts";
 import { MockReviewer } from "../features/milestoneReview/core/mockReviewer.ts";
-import { TaskReviewService } from "../features/taskReview/core/service.ts";
-import { MockTaskReviewer } from "../features/taskReview/core/mockReviewer.ts";
 
 export interface P3Context {
   ws: Workspace;
@@ -20,8 +18,6 @@ export interface P3Context {
   releaseGenerator: ReleaseGenerator;
   /** マイルストーンレビュー（Codex の接続を Preflight と共有する） */
   milestoneReview: MilestoneReviewService;
-  /** タスクの AI レビュー（Codex の接続を Preflight と共有する。毎回新しいスレッド） */
-  taskReview: TaskReviewService;
   /** ChatGPT の接続（このマシン。サインインの待ち受けを Codex エンジンと共有する） */
   chatgpt?: ChatGptAccount;
   /** 個人設定に登録したプロジェクト名（参照先のこのマシンのパスを書くため。登録していなければ無い） */
@@ -61,7 +57,6 @@ export async function openProject(
   // 要約の生成も Preflight と同じ接続と既定のエンジン（preflight.engine）を使う
   const releaseGenerator = new ReleaseGenerator(ws, { codex, mock: new MockSummarizer() }, { engine: async () => (await source.get()).preflight.engine });
   const milestoneReview = new MilestoneReviewService(ws, { codex, mock: new MockReviewer() }, { engine: async () => (await source.get()).preflight.engine });
-  const taskReview = new TaskReviewService(ws, { codex, mock: new MockTaskReviewer() }, { engine: async () => (await source.get()).preflight.engine });
   const assistant = { codex, engine: async () => (await source.get()).preflight.engine };
-  return { ws, preflight, releaseGenerator, milestoneReview, taskReview, chatgpt, projectName: opts.projectName, assistant };
+  return { ws, preflight, releaseGenerator, milestoneReview, chatgpt, projectName: opts.projectName, assistant };
 }

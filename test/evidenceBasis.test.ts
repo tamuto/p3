@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,10 +16,8 @@ import {
 } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
 import { progress } from "../packages/tasks/src/core/ops.ts";
 import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
-import { extractTaskReview, taskReviewInputHash } from "../packages/tasks/src/features/taskReview/core/material.ts";
-import { taskReviewMaterial } from "../packages/tasks/src/features/taskReview/core/review.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { git, makeProject, newRequest, tempDir } from "./helpers.ts";
+import { makeProject, newRequest, tempDir } from "./helpers.ts";
 
 /**
  * 証拠の根拠の種類（basis）: 未確認・申告のみ・読んで確認・検査結果あり。古い証拠（basis なし）の読み方、入力の規則と組み合わせ、
@@ -171,33 +168,27 @@ async function setup() {
 }
 
 describe("保存と更新（core）", () => {
-  it("根拠を保存して読み直せる。根拠だけの変更で済みを外し、同じ値の再保存では記録の日時も済みも変えない", async () => {
+  it("根拠を保存して読み直せる。同じ値の再保存では記録の日時を変えず、根拠を変えると記録し直す", async () => {
     const { ctx, rid } = await setup();
     const { task } = await createTask(ctx, rid, { title: "t", criteria: ["一"] });
     await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e", basis: read }] }, { actor: "ai:test" });
-    await updateTask(ctx, rid, task.id, { checked: true }, { actor: "human:test" });
     await ctx.ws.reloadAll();
     const saved = ctx.ws.tasksOf(rid).require(task.id);
     expect(saved.acceptanceEvidence![0].basis).toEqual(read);
-    expect(saved.checkedAt).toBeTruthy();
 
     const same = await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e", basis: read }] }, { actor: "ai:other" });
-    expect(same.task.checkedAt).toBe(saved.checkedAt);
     expect(same.task.acceptanceEvidence![0].recordedAt).toBe(saved.acceptanceEvidence![0].recordedAt);
 
     const changed = await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e", basis: machine }] }, { actor: "ai:test" });
-    expect(changed.task.checkedAt).toBeUndefined();
-    expect(changed.checkCleared).toBeTruthy();
+    expect(changed.task.acceptanceEvidence![0].basis).toEqual(machine);
   });
 
-  it("申告のみの met があっても完了と人の済みを拒まない", async () => {
+  it("申告のみの met があっても完了を拒まない", async () => {
     const { ctx, rid } = await setup();
     const { task } = await createTask(ctx, rid, { title: "t", criteria: ["一"] });
     const done = await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "record", id: "A1", result: "met", evidence: "やった" }] });
     expect(done.task.status).toBe("done");
     expect(acceptanceStatus(done.task)!.declarationOnly).toEqual(["A1"]);
-    const checked = await updateTask(ctx, rid, task.id, { checked: true }, { actor: "human:test" });
-    expect(checked.task.checkedAt).toBeTruthy();
   });
 
   it("壊れた根拠のタスクは操作で変えず、無関係な更新でもファイルの元の値を残す", async () => {
@@ -231,33 +222,6 @@ describe("保存と更新（core）", () => {
     expect([row.total, row.done]).toEqual([2, 0]);
   });
 
-  it("レビューの材料に根拠が残り、根拠の変更で材料の hash が変わる。材料を作っても証拠と済みは変わらない", async () => {
-    const { ctx, rid, dataDir, root } = await setup();
-    const put = (path: string, c: string) => (mkdirSync(join(root, path, ".."), { recursive: true }), writeFileSync(join(root, path), c), git(root, "add", path));
-    put(".gitignore", ".p3/\n");
-    put("src/a.ts", "a1\n");
-    git(root, "commit", "-q", "-m", "最初");
-    put("src/a.ts", "a2\n");
-    git(root, "commit", "-q", "-m", "変更");
-    const sha = git(root, "rev-parse", "HEAD");
-    const { task } = await createTask(ctx, rid, { title: "t", repo: "main", criteria: ["一"] });
-    await updateTask(ctx, rid, task.id, { status: "done", outputs: [sha], acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e", basis: read }] });
-    await updateTask(ctx, rid, task.id, { checked: true }, { actor: "human:test" });
-    await ctx.ws.reloadAll();
-    const before = ctx.ws.tasksOf(rid).require(task.id);
-    const first = (await extractTaskReview(dataDir, rid, task.id, ctx.ws.refs())).input;
-    expect(first.task.evidence?.[0].basis).toEqual(read);
-    expect(taskReviewMaterial(first).task.workerEvidence[0]).toMatchObject({ criterion: "A1", basis: read, basisRecorded: true });
-    await ctx.ws.reloadAll();
-    const after = ctx.ws.tasksOf(rid).require(task.id);
-    expect(after.acceptanceEvidence).toEqual(before.acceptanceEvidence);
-    expect(after.checkedAt).toBe(before.checkedAt);
-    await updateTask(ctx, rid, task.id, { acceptance: [{ op: "record", id: "A1", result: "met", evidence: "e", basis: machine }] });
-    const second = (await extractTaskReview(dataDir, rid, task.id, ctx.ws.refs())).input;
-    expect(second.hash).not.toBe(first.hash);
-    const { extractedAt: _x, hash: _h, ...body } = first;
-    expect(taskReviewInputHash(body)).toBe(first.hash);
-  });
 });
 
 describe("API", () => {

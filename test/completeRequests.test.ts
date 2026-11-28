@@ -19,7 +19,7 @@ async function setup() {
     await new Promise((r) => setTimeout(r, 3));
     const r = await newRequest(p.ctx, { title, status: status as never, milestone });
     for (const [i, t] of tasks.entries()) {
-      await newTask(p.ctx, r.id, { title: `${title}-${i + 1}`, status: t.status as never, record: t.record, checkedAt: t.checked ? "2026-10-01T00:00:00.000Z" : undefined });
+      await newTask(p.ctx, r.id, { title: `${title}-${i + 1}`, status: t.status as never, record: t.record });
     }
     return r.id;
   };

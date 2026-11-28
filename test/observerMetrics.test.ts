@@ -44,6 +44,30 @@ describe("項目キー", () => {
     await expect(s.get("cost.ai")).rejects.toMatchObject({ code: "not_found" });
   });
 
+  it("カードに出す数（合計・平均・最後の値）を項目キーに持ち、一覧のカードの数と推移を絞った値で出す。数値以外は最後の値だけ", async () => {
+    const s = store();
+    await s.createKey({ key: "cost.ai", name: "費用", type: "number", aggregate: "sum" }, "h");
+    await s.createKey({ key: "build.ms", name: "ビルド", type: "number", aggregate: "avg" }, "h");
+    await s.createKey({ key: "note", name: "メモ", type: "string" }, "h");
+    await expect(s.createKey({ key: "bad", name: "x", type: "string", aggregate: "sum" }, "h")).rejects.toMatchObject({ problems: [expect.objectContaining({ path: "aggregate" })] });
+    await expect(s.createKey({ key: "bad", name: "x", type: "number", aggregate: "max" }, "h")).rejects.toMatchObject({ problems: [expect.objectContaining({ path: "aggregate" })] });
+    for (const [v, at, m] of [[100, "2026-11-01", "v1"], [200, "2026-11-02", "v1"], [50, "2026-11-03", "v2"]] as const) {
+      await s.addValue("cost.ai", { value: v, at, milestone: m }, "h");
+      await s.addValue("build.ms", { value: v, at, milestone: m }, "h");
+    }
+    await s.addValue("note", { value: "最初" }, "h");
+    const card = async (m?: string) => Object.fromEntries((await s.list(m)).keys.filter((k) => !k.system).map((k) => [k.key, [k.card, k.series?.map((p) => p.value)]]));
+    // 合計の推移は累計、平均・最後の値の推移は値そのもの
+    expect(await card()).toEqual({ "cost.ai": [350, [100, 300, 350]], "build.ms": [116.67, [100, 200, 50]], note: ["最初", undefined] });
+    expect(await card("v1")).toEqual({ "cost.ai": [300, [100, 300]], "build.ms": [150, [100, 200]], note: [undefined, undefined] });
+    // last は保存しない（既定）。システムの項目は既定を持つ
+    const k = await s.updateKey("cost.ai", 1, { name: "費用", type: "number", aggregate: "last" }, "h");
+    expect(k.aggregate).toBeUndefined();
+    expect((await card())["cost.ai"][0]).toBe(50);
+    expect(SYSTEM_KEYS.map((x) => [x.key, x.aggregate])).toContainEqual(["p3.request.lead_time_done", "avg"]);
+    expect(SYSTEM_KEYS.filter((x) => x.key.startsWith("p3.task.")).every((x) => x.aggregate === "sum")).toBe(true);
+  });
+
   it("値があるあいだは値の形を変えられず、キーを消せない（先に値を消す）", async () => {
     const s = store();
     await s.createKey({ key: "ok", name: "x", type: "number" }, "h");
@@ -150,6 +174,9 @@ describe("API と CLI", () => {
     const text = p3(root, ["observer", "show", "cost.ai"]).out;
     expect(text).toContain("目安    50000 円 以下（並べて見せるだけで、判定はしません）");
     expect(p3(root, ["observer", "list", "--milestone", "0.18.0", "--json"]).json().keys.find((k: { key: string }) => k.key === "cost.ai").count).toBe(1);
+    expect(p3(root, ["observer", "key", "set", "cost.ai", "--rev", "1", "--aggregate", "sum"]).code).toBe(0);
+    expect(p3(root, ["observer", "key", "set", "cost.ai", "--rev", "2", "--aggregate", "max"]).code).toBe(1);
+    expect(p3(root, ["observer", "list"]).out).toContain("AI の費用  合計 12000 円");
     // tasks のデータは変えない（増えたのは observer/metrics/ だけ）
     const after = snapshot(`${root}/.p3`);
     expect(Object.keys(after).filter((f) => !(f in before)).every((f) => f.startsWith("/observer/metrics/"))).toBe(true);

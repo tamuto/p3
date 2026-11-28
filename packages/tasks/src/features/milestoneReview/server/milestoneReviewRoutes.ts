@@ -47,7 +47,7 @@ export function milestoneReviewRoutes(ctx: P3Context) {
       context: i.context.length,
       code: i.code ?? [],
       warnings: i.warnings,
-      ...(i.quality ? { quality: { state: i.quality.state, version: i.quality.version, standards: (i.quality.standards ?? []).map((q) => ({ id: q.id, text: q.text, exempt: q.exempt?.reason })) } } : {}),
+      ...(i.quality ? { quality: { state: i.quality.state, standards: (i.quality.standards ?? []).map((q) => ({ id: q.id, text: q.text })) } } : {}),
       scope: i.scope,
       hash: i.hash,
       extractedAt: i.extractedAt,

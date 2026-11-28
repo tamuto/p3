@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { UsageError } from "@infodb/p3-shared/node/usage.ts";
 import { observerStatus } from "../core/status.ts";
 import { MetricError, MetricStore, type MetricErrorCode } from "../core/metricStore.ts";
-import { formatGuide, formatValue, METRIC_TYPE_LABEL, parseValueText, type KeySummary, type MetricKey, type MetricValue, type Problem } from "../shared/metric.ts";
+import { formatGuide, formatValue, METRIC_AGGREGATE_LABEL, METRIC_TYPE_LABEL, parseValueText, type KeySummary, type MetricKey, type MetricValue, type Problem } from "../shared/metric.ts";
 import type { MetricTarget } from "../shared/status.ts";
 
 export const OBSERVER_USAGE = [
   "p3 observer status [--json]",
   "p3 observer list [--milestone <ID>] [--json]（項目キーの一覧。システムの項目を含む）",
   "p3 observer show <キー> [--milestone <ID>] [--json]（項目キーと値。新しい順）",
-  "p3 observer key add <キー> --name <名前> --type number|string|boolean|json [--unit <単位>] [--body <説明>] [--min <下限>] [--max <上限>] [--expected <期待する値>]",
-  "p3 observer key set <キー> --rev <今の版> [--name ..] [--type ..] [--unit ..] [--body ..] [--min ..] [--max ..] [--expected ..]（省いた項目は今のまま。--unit= のように空にすると外す）",
+  "p3 observer key add <キー> --name <名前> --type number|string|boolean|json [--unit <単位>] [--body <説明>] [--min <下限>] [--max <上限>] [--expected <期待する値>] [--aggregate sum|avg|last]（カードに出す数。合計・平均は数値だけ）",
+  "p3 observer key set <キー> --rev <今の版> [--name ..] [--type ..] [--unit ..] [--body ..] [--min ..] [--max ..] [--expected ..] [--aggregate ..]（省いた項目は今のまま。--unit= のように空にすると外す）",
   "p3 observer key rm <キー> --rev <今の版>（値があれば断る）",
   "p3 observer value add <キー> <値|-> [--at <日付か日時>] [--target <対象>] [--milestone <ID>] [--note <メモ>]（- は標準入力。構造化データは JSON）",
   "p3 observer value rm <キー> <値 ID>",
@@ -33,6 +33,7 @@ export interface ObserverCliOptions {
   min?: string;
   max?: string;
   expected?: string;
+  aggregate?: string;
   rev?: string;
   at?: string;
   /** --target（値の対象。1つだけ） */
@@ -78,14 +79,14 @@ export async function observerCommand(args: string[], opts: ObserverCliOptions =
     if (sub === "key") {
       if (op === "add") {
         if (!key || more.length) throw new UsageError("使い方: p3 observer key add <キー> --name <名前> --type number|string|boolean|json …");
-        const k = await store.createKey({ key, name: opts.name, description: opts.body, type: opts.type, unit: opts.unit, guide: guideOf(undefined, opts) }, actor);
+        const k = await store.createKey({ key, name: opts.name, description: opts.body, type: opts.type, unit: opts.unit, guide: guideOf(undefined, opts), aggregate: opts.aggregate }, actor);
         return { data: k, text: `項目キーを登録しました: ${k.key}（${k.name}・${METRIC_TYPE_LABEL[k.type]}）` };
       }
       if (op === "set") {
         if (!key || more.length) throw new UsageError("使い方: p3 observer key set <キー> --rev <今の版> [--name ..] …");
         const { key: cur } = await store.get(key);
         const pick = <T>(flag: string | undefined, now: T) => (flag === undefined ? now : flag);
-        const k = await store.updateKey(key, revOf(opts.rev), { name: pick(opts.name, cur.name), description: pick(opts.body, cur.description), type: pick(opts.type, cur.type), unit: pick(opts.unit, cur.unit), guide: guideOf(cur, opts) }, actor);
+        const k = await store.updateKey(key, revOf(opts.rev), { name: pick(opts.name, cur.name), description: pick(opts.body, cur.description), type: pick(opts.type, cur.type), unit: pick(opts.unit, cur.unit), guide: guideOf(cur, opts), aggregate: pick(opts.aggregate, cur.aggregate) }, actor);
         return { data: k, text: `項目キーを変えました: ${k.key}（版 ${k.rev}）` };
       }
       if (op === "rm") {
@@ -133,8 +134,8 @@ const unitOf = (k: MetricKey) => (k.unit ? ` ${k.unit}` : "");
 function listText(keys: KeySummary[], unreadable: { file: string; reason: string }[], milestone?: string): string {
   const lines = [`観測の項目 ${keys.length} 件${milestone ? `（マイルストーン ${milestone} の値）` : ""}`];
   for (const k of keys) {
-    const last = k.latest ? `${formatValue(k.latest.value)}${unitOf(k)}（${k.latest.at.slice(0, 10)}）` : "値なし";
-    lines.push(`${k.key}  ${k.system ? "[システム]" : `v${k.rev}`}  ${k.name}  最後の値 ${last}・${k.count} 件`);
+    const card = k.card !== undefined && k.latest ? `${METRIC_AGGREGATE_LABEL[k.aggregate ?? "last"]} ${formatValue(k.card)}${unitOf(k)}（最後 ${k.latest.at.slice(0, 10)}）` : "値なし";
+    lines.push(`${k.key}  ${k.system ? "[システム]" : `v${k.rev}`}  ${k.name}  ${card}・${k.count} 件`);
   }
   for (const u of unreadable) lines.push(`⚠ 読めないファイル ${u.file}: ${u.reason}`);
   return lines.join("\n");
@@ -147,6 +148,7 @@ function showText(k: MetricKey, values: MetricValue[], milestone?: string): stri
     `  値の形  ${METRIC_TYPE_LABEL[k.type]}${k.unit ? `（${k.unit}）` : ""}`,
     ...(k.description ? [`  説明    ${k.description}`] : []),
     ...(guide ? [`  目安    ${guide}（並べて見せるだけで、判定はしません）`] : []),
+    `  カード  ${METRIC_AGGREGATE_LABEL[k.aggregate ?? "last"]}`,
     `値 ${values.length} 件${milestone ? `（マイルストーン ${milestone}）` : ""}`,
   ];
   for (const v of values) {

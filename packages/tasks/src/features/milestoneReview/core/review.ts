@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { CONTAINER_WORKSPACE } from "@infodb/codex-workspace";
-import { QUALITY_VERDICTS, type QualityVerdict } from "../../taskReview/shared/taskReview.ts";
 import {
+  QUALITY_VERDICTS,
+  type QualityVerdict,
   type ReviewQualityResult,
   REVIEW_VERDICTS,
   type ReviewCodeRef,
@@ -70,19 +71,15 @@ export function reviewMaterial(input: ReviewInput) {
     context: input.context,
     ...(input.quality?.state === "set"
       ? {
-          quality: {
-            version: input.quality.version,
-            standards: (input.quality.standards ?? []).filter((q) => !q.exempt).map((q) => ({ id: q.id, text: q.text, repos: q.repos ?? "全部", check: q.check })),
-            exempt: (input.quality.standards ?? []).filter((q) => q.exempt).map((q) => ({ id: q.id, reason: q.exempt!.reason })),
-          },
+          quality: { standards: (input.quality.standards ?? []).map((q) => ({ id: q.id, text: q.text, repos: q.repos ?? "全部", ...(q.how ? { how: q.how } : {}) })) },
         }
       : {}),
     warnings: input.warnings.map((w) => w.message),
   };
 }
 
-/** 品質を判定する基準（設定済みで除外していないもの） */
-const qualityTargets = (input: ReviewInput) => (input.quality?.state === "set" ? (input.quality.standards ?? []).filter((q) => !q.exempt) : []);
+/** 品質を判定する基準（設定済みのもの） */
+const qualityTargets = (input: ReviewInput) => (input.quality?.state === "set" ? (input.quality.standards ?? []) : []);
 
 function qualityInstructions(input: ReviewInput): string {
   const targets = qualityTargets(input);

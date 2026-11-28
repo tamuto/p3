@@ -1,6 +1,6 @@
 // 縦スクロールは1つ: 要望の画面では本文（request-content）だけが縦に送れ、共通の main と文書（ページ全体）は送れない。
 // 通常のタスク案・子の分割案・親を持つ子（長い祖先の題）と Preflight 未実行で、本文を末尾まで送れ、見出しのコピーとタブは
-// 本文の外に残る。横に送るタブ（要望・設定・リリースノート）と上のナビゲーションは縦に送れない。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード・対応済み）も文書は送れない。
+// 本文の外に残る。横に送るタブ（要望・設定・リリースノート）と上のナビゲーションは縦に送れない。ほかの画面（進捗・新しい要望・設定・リリースノート・タスクボード）も文書は送れない。
 // 局所スクロールの例外（実行ログ）は対象を名指しして、末尾まで届くことを確かめる。375 / 1280・明暗・高さ 900 / 600。
 import type { Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -16,7 +16,7 @@ const paragraphs = (n: number) => Array.from({ length: n }, (_, i) => `段落 ${
 async function prepare(env: UiEnv) {
   const make = async (title: string, body: string, ...args: string[]) =>
     (JSON.parse(await env.p3(["request", "new", title, "--body", "-", ...args, "--json"], body)) as { id: string }).id;
-  // 通常のタスク案（タスク化して、タスクボード・対応済みも見る）
+  // 通常のタスク案（タスク化して、タスクボードも見る）
   ids.plain = await make("通常のタスク案", `${items(3)}\n\n${paragraphs(40)}`);
   await env.p3(["preflight", ids.plain, "--engine", "mock", "--json"]);
   await env.p3(["accept", ids.plain]);
@@ -126,7 +126,6 @@ describe.skipIf(!inject("chromium").available)("縦スクロールは1つ", () =
                 "/settings?tab=repos",
                 "/release-notes",
                 `/requests/${ids.plain}/board`,
-                `/requests/${ids.plain}/done`,
               ]) {
                 await page.goto(path);
                 await until.visible(page.locator("main > *").first());

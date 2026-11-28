@@ -78,12 +78,8 @@ describe("p3 のタスク操作（--req で要望を指定）", () => {
     expect(p3(root, ["show", `${rid}/T1`]).out).toContain("変更の記録:\n  - 認証の失敗");
     expect(p3(root, ["move", "T2", "done", "--req", rid]).code).toBe(0);
     expect(p3(root, ["move", "T2", "todo", "--req", rid]).code).toBe(0);
-    // 人が確認して「済み」にする（完了前のタスクは拒む）
-    expect(p3(root, ["check", "T2", "--req", rid]).err).toContain("まだ完了していません");
-    expect(p3(root, ["check", "T1", "--req", rid]).code).toBe(0);
-    expect(p3(root, ["show", `${rid}/T1`, "--json"]).json().item.checkedAt).toBeTruthy();
-    expect(p3(root, ["check", "T1", "--off", "--req", rid]).code).toBe(0);
-    expect(p3(root, ["show", `${rid}/T1`, "--json"]).json().item.checkedAt).toBeUndefined();
+    // タスク単位の「済み」は無い（人の最終確認は要望を完了済にする）
+    expect(p3(root, ["check", "T1", "--req", rid]).code).toBe(1);
     expect(p3(root, ["ls", "--all", "--json"]).json()).toHaveLength(2);
     const progress = p3(root, ["progress", "--json"]).json();
     expect(progress[0]).toMatchObject({ total: 2, done: 1, counts: { todo: 1, doing: 0, done: 1 } });

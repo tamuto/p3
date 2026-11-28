@@ -1,12 +1,12 @@
 import { Alert, Badge, Button, Empty, Field, inputCls, Loading, linkCls, Section } from "@infodb/p3-shared/web/ui.tsx";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { formatGuide, formatValue, METRIC_TYPE_LABEL, parseValueText, type MetricKey, type MetricValue } from "../../../shared/metric.ts";
+import { formatGuide, formatValue, METRIC_AGGREGATE_LABEL, METRIC_TYPE_LABEL, parseValueText, type MetricKey, type MetricValue } from "../../../shared/metric.ts";
 import { KeyForm } from "../../components/KeyForm.tsx";
 import { fieldErrors, observerApi } from "../../lib/api.ts";
 import { useLoad } from "../../lib/useLoad.ts";
 
-/** /observer/$key?m=: 項目キーと値（新しい順）。利用者の項目は変える・消す・値を足す・消すができる（システムの項目は p3 が記録するので見るだけ） */
+/** /observer/$key?m=: 項目キーの設定と値の一覧（新しい順。推移はトップのカードに出す）。利用者の項目は変える・消す・値を足す・消すができる（システムの項目は p3 が記録するので見るだけ） */
 export const Route = createFileRoute("/observer/$key")({
   component: KeyDetail,
   validateSearch: (s: Record<string, unknown>): { m?: string } => ({ m: typeof s.m === "string" && s.m ? s.m : undefined }),
@@ -61,7 +61,6 @@ function KeyDetail() {
           ) : (
             <KeyInfo k={load.value.key} count={load.value.values.length} onEdit={() => setEditing(true)} onDelete={() => void act(async () => (await observerApi.deleteKey(key, load.value.key.rev), void navigate({ to: "/observer" })))} />
           )}
-          {load.value.key.type === "number" && <Trend k={load.value.key} values={load.value.values} />}
           {!load.value.key.system && <AddValue k={load.value.key} milestone={m} onAdded={reload} />}
           <Section title={`値 ${load.value.values.length} 件${m ? `（マイルストーン ${m}）` : ""}`}>
             <Values k={load.value.key} values={load.value.values} onDelete={(id) => void act(() => observerApi.deleteValue(key, id))} />
@@ -88,6 +87,8 @@ function KeyInfo({ k, count, onEdit, onDelete }: { k: MetricKey; count: number; 
             <dd className="whitespace-pre-wrap">{k.description}</dd>
           </>
         )}
+        <dt className="text-fg-3">カードに出す数</dt>
+        <dd>{METRIC_AGGREGATE_LABEL[k.aggregate ?? "last"]}</dd>
         {guide && (
           <>
             <dt className="text-fg-3">目安</dt>
@@ -115,49 +116,6 @@ function KeyInfo({ k, count, onEdit, onDelete }: { k: MetricKey; count: number; 
   );
 }
 
-/**
- * 数値の推移（古い順の折れ線。点に日時と値の説明。表は下の値の一覧）。横は画面の幅に合わせて伸ばし（preserveAspectRatio="none"）、
- * 線と点は伸ばさない（vector-effect で線 2px・点 8px のまま。点は長さ 0 の線を丸い端で描く）
- */
-function Trend({ k, values }: { k: MetricKey; values: MetricValue[] }) {
-  const pts = values.filter((v) => typeof v.value === "number").slice().reverse();
-  if (pts.length < 2) return null;
-  const nums = pts.map((v) => v.value as number);
-  const lo = Math.min(...nums);
-  const hi = Math.max(...nums);
-  const W = 600;
-  const H = 120;
-  const P = 10;
-  const x = (i: number) => P + (i * (W - 2 * P)) / (pts.length - 1);
-  const y = (n: number) => (hi === lo ? H / 2 : H - P - ((n - lo) * (H - 2 * P)) / (hi - lo));
-  const u = k.unit ? ` ${k.unit}` : "";
-  const fixed = { vectorEffect: "non-scaling-stroke" as const, strokeLinecap: "round" as const };
-  return (
-    <figure className="space-y-1">
-      <figcaption className="text-fg-3">
-        推移（古い順・{pts.length} 件。最小 {lo}
-        {u}・最大 {hi}
-        {u}）
-      </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-32 w-full text-accent" role="img" aria-label={`${k.name}の推移`}>
-        <line x1={P} x2={W - P} y1={H - P} y2={H - P} className="stroke-line" strokeWidth={1} {...fixed} />
-        <polyline points={pts.map((v, i) => `${x(i)},${y(v.value as number)}`).join(" ")} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" {...fixed} />
-        {pts.map((v, i) => {
-          const d = `M${x(i)} ${y(v.value as number)}h0`;
-          return (
-            <g key={v.id}>
-              <path d={d} className="stroke-surface" strokeWidth={12} {...fixed} />
-              <path d={d} stroke="currentColor" strokeWidth={8} {...fixed} />
-              <path d={d} stroke="transparent" strokeWidth={24} {...fixed}>
-                <title>{`${v.at.slice(0, 16).replace("T", " ")}  ${String(v.value)}${u}${v.target ? `  ${v.target}` : ""}`}</title>
-              </path>
-            </g>
-          );
-        })}
-      </svg>
-    </figure>
-  );
-}
 
 function AddValue({ k, milestone, onAdded }: { k: MetricKey; milestone?: string; onAdded: () => void }) {
   const empty = { value: "", at: "", target: "", milestone: milestone ?? "", note: "" };

@@ -20,7 +20,6 @@ import { Route as RequestsNewRouteImport } from './../../../tasks/src/web/routes
 import { Route as RequestsRequestIdIndexRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/index'
 import { Route as RequestsRequestIdArchiveRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/archive'
 import { Route as RequestsRequestIdBoardRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/board'
-import { Route as RequestsRequestIdDoneRouteImport } from './../../../tasks/src/web/routes/requests/$requestId/done'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -78,11 +77,6 @@ const RequestsRequestIdBoardRoute = RequestsRequestIdBoardRouteImport.update({
   path: '/board',
   getParentRoute: () => RequestsRequestIdRoute,
 } as any)
-const RequestsRequestIdDoneRoute = RequestsRequestIdDoneRouteImport.update({
-  id: '/done',
-  path: '/done',
-  getParentRoute: () => RequestsRequestIdRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -95,7 +89,6 @@ export interface FileRoutesByFullPath {
   '/observer/': typeof ObserverIndexRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -108,7 +101,6 @@ export interface FileRoutesByTo {
   '/observer': typeof ObserverIndexRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRoutesById {
@@ -123,7 +115,6 @@ export interface FileRoutesById {
   '/observer/': typeof ObserverIndexRoute
   '/requests/$requestId/archive': typeof RequestsRequestIdArchiveRoute
   '/requests/$requestId/board': typeof RequestsRequestIdBoardRoute
-  '/requests/$requestId/done': typeof RequestsRequestIdDoneRoute
   '/requests/$requestId/': typeof RequestsRequestIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -139,7 +130,6 @@ export interface FileRouteTypes {
     | '/observer/'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/done'
     | '/requests/$requestId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -152,7 +142,6 @@ export interface FileRouteTypes {
     | '/observer'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/done'
     | '/requests/$requestId'
   id:
     | '__root__'
@@ -166,7 +155,6 @@ export interface FileRouteTypes {
     | '/observer/'
     | '/requests/$requestId/archive'
     | '/requests/$requestId/board'
-    | '/requests/$requestId/done'
     | '/requests/$requestId/'
   fileRoutesById: FileRoutesById
 }
@@ -260,27 +248,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRequestIdBoardRouteImport
       parentRoute: typeof RequestsRequestIdRoute
     }
-    '/requests/$requestId/done': {
-      id: '/requests/$requestId/done'
-      path: '/done'
-      fullPath: '/requests/$requestId/done'
-      preLoaderRoute: typeof RequestsRequestIdDoneRouteImport
-      parentRoute: typeof RequestsRequestIdRoute
-    }
   }
 }
 
 interface RequestsRequestIdRouteChildren {
   RequestsRequestIdArchiveRoute: typeof RequestsRequestIdArchiveRoute
   RequestsRequestIdBoardRoute: typeof RequestsRequestIdBoardRoute
-  RequestsRequestIdDoneRoute: typeof RequestsRequestIdDoneRoute
   RequestsRequestIdIndexRoute: typeof RequestsRequestIdIndexRoute
 }
 
 const RequestsRequestIdRouteChildren: RequestsRequestIdRouteChildren = {
   RequestsRequestIdArchiveRoute: RequestsRequestIdArchiveRoute,
   RequestsRequestIdBoardRoute: RequestsRequestIdBoardRoute,
-  RequestsRequestIdDoneRoute: RequestsRequestIdDoneRoute,
   RequestsRequestIdIndexRoute: RequestsRequestIdIndexRoute,
 }
 

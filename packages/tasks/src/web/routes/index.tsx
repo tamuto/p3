@@ -35,13 +35,13 @@ import {
 
 /**
  * 進捗: 左に要望、右にスケジュール。
- *   完了 ○ / 済み ✓（完了にした日）、作業中 ◐（作業中にした日）、未着手 □（今日の右に残りの数）
+ *   完了 ○（完了にした日）、作業中 ◐（作業中にした日）、未着手 □（今日の右に残りの数）
  *   要望の期限 ⚑、マイルストーン ◆ と縦の破線、今日は縦の線
  * 期間に上限はなく、見えている範囲だけを描く（仮想スクロール）。ズーム（日 / 週 / 月）で幅を変える。
  * 狭い画面（スマートフォン）では左の一覧を縮め（lib/timeline.ts の leftWidth）、ステータスとタイトルを2段で出す。
  */
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom; blocked?: boolean; review?: boolean } => ({
+  validateSearch: (s: Record<string, unknown>): { show?: Show; tags?: string[]; task?: string; zoom?: Zoom; blocked?: boolean } => ({
     show: parseShow(s.show),
     /** 選んだタグ（JSON の配列）。以前の ?tag= も読む（lib/requestFilter.ts の parseTagsSearch） */
     tags: parseTagsSearch(s.tags, s.tag),
@@ -50,8 +50,6 @@ export const Route = createFileRoute("/")({
     zoom: s.zoom === "week" || s.zoom === "month" ? s.zoom : undefined,
     /** 止まっているタスクのある要望だけ（表示範囲・タグと AND） */
     blocked: s.blocked === true || s.blocked === 1 || s.blocked === "1" || s.blocked === "true" ? true : undefined,
-    /** 見直しが必要（候補）のある要望だけ（完了済み・対応済みも含める。タグ・停止中と AND） */
-    review: s.review === true || s.review === 1 || s.review === "1" || s.review === "true" ? true : undefined,
   }),
   component: ProgressPage,
 });
@@ -66,7 +64,7 @@ const ZOOM_LABEL: Record<Zoom, string> = { day: "日", week: "週", month: "月"
 /** ISO 日時 → ローカルの日付 */
 const dateOf = (iso: string) => localToday(new Date(iso));
 
-type MarkKind = "checked" | "done" | "doing" | "blocked";
+type MarkKind = "done" | "doing" | "blocked";
 
 /** URL に残っている以前の ?tag= を外す */
 const withoutLegacyTag = <T extends object>(search: T): T => {
@@ -76,7 +74,7 @@ const withoutLegacyTag = <T extends object>(search: T): T => {
 
 function ProgressPage() {
   const ctx = useAppCtx();
-  const { show = "open", tags, task, zoom = "day", blocked: onlyBlocked, review: onlyReview } = Route.useSearch();
+  const { show = "open", tags, task, zoom = "day", blocked: onlyBlocked } = Route.useSearch();
   // URL から読むたびに別の配列になるので、中身で決める
   const tagsKey = JSON.stringify(tags ?? []);
   const selectedTags = useMemo<string[]>(() => JSON.parse(tagsKey), [tagsKey]);
@@ -93,15 +91,11 @@ function ProgressPage() {
       const i = milestones.findIndex((m) => m.id === p.request.milestone);
       return [i < 0 ? milestones.length : i, p.request.due ?? "9999"] as const;
     };
-    // 見直し候補のみ: 完了済みを隠す表示範囲でも、候補は完了済み・対応済みにあるので全部から探す
-    const base = filterRequests(ctx.requests, onlyReview ? "all" : show, selectedTags);
+    const base = filterRequests(ctx.requests, show, selectedTags);
     // 停止中のみ: 止まっている自分のタスクがある要望だけ（祖先は文脈として木が出す）。印は止まっているタスクだけを描き、完了率は絞る前のまま
     const blockedHit = onlyBlocked ? base.filter((p) => p.blocked > 0).map((p) => ({ ...p, tasks: p.tasks.filter((t) => t.block) })) : base;
-    // 見直し候補のみ: 要望自身か自分のタスクに候補がある要望だけ（配下だけの親は文脈として木が出す）
-    const hit = onlyReview ? blockedHit.filter((p) => ownReview(p) > 0) : blockedHit;
-    return hit.sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
-  }, [ctx.requests, milestones, show, selectedTags, onlyBlocked, onlyReview]);
-  const reviewTotal = matched.reduce((n, p) => n + ownReview(p), 0);
+    return blockedHit.sort((a, b) => order(a)[0] - order(b)[0] || order(a)[1].localeCompare(order(b)[1]));
+  }, [ctx.requests, milestones, show, selectedTags, onlyBlocked]);
   const blockedTotal = matched.reduce((n, p) => n + p.blocked, 0);
   // 親子の木: 子は親の下に並べ、絞り込みに合う子の祖先は文脈として出す（数えない）。畳んだ親はこの画面の間だけ覚える
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -226,15 +220,6 @@ function ProgressPage() {
             停止中 {blockedTotal} 件・{matched.length} 要望
           </span>
         )}
-        <label className="flex items-center gap-1.5 text-base" title="完了済み・対応済みも含めて、完了したときの条件から変わったものがある要望だけ">
-          <input type="checkbox" checked={!!onlyReview} onChange={(e) => void navigate({ search: (prev) => ({ ...prev, review: e.target.checked || undefined }), replace: true })} />
-          見直し候補のみ
-        </label>
-        {onlyReview && (
-          <span className="text-base text-fg-4" title="要望自身と自分のタスクの候補の合計（配下を二重に数えない）。完了済みも含む">
-            見直し候補 {reviewTotal} 件・{matched.length} 要望
-          </span>
-        )}
         <TagFilter
           requests={ctx.requests}
           selected={selectedTags}
@@ -250,16 +235,7 @@ function ProgressPage() {
         <Legend />
       </div>
 
-      {!hasRows && onlyReview ? (
-        <div className="p-10">
-          <Empty>
-            見直しが必要（候補）の要望はありません（完了済みも含めて探しました）。
-            <Button variant="link" onClick={() => void navigate({ search: (prev) => ({ ...prev, review: undefined }), replace: true })} className="ml-2">
-              絞り込みを解除
-            </Button>
-          </Empty>
-        </div>
-      ) : !hasRows && onlyBlocked ? (
+      {!hasRows && onlyBlocked ? (
         <div className="p-10">
           <Empty>
             停止中のタスクはありません。
@@ -371,11 +347,6 @@ function DrawerFor({ ctx, taskId, onClose }: { ctx: ReturnType<typeof useAppCtx>
   return <TaskDrawer ctx={ctx} data={data} id={taskId} onClose={onClose} />;
 }
 
-/** 要望自身と自分のタスクの見直し候補の数（配下は含めない） */
-const ownReview = (p: RequestProgress) => (p.review?.self?.state === "candidate" ? 1 : 0) + (p.review?.tasks ?? 0);
-const reviewTitle = (p: RequestProgress) =>
-  [p.review?.self?.state === "candidate" ? "要望自身が見直しが必要（候補）" : "", p.review?.tasks ? `自分のタスク ${p.review.tasks} 件が見直しが必要（候補）` : "", "完了したときの条件から変わったもの。状態・済みは変わっていません"].filter(Boolean).join("\n");
-
 /** 申告のみの met があるタスクの数（基準の数ではない。概要の件数は shared/acceptance.ts の evidenceSummary） */
 const declarationTasks = (tasks: readonly TaskMark[]) => tasks.filter((t) => (t.evidence?.declarationOnly ?? 0) > 0).length;
 
@@ -393,8 +364,7 @@ function Legend() {
   );
   return (
     <div className="ml-auto flex flex-wrap items-center gap-3 text-base text-fg-4">
-      {item(<DoneMark checked={false} />, "完了")}
-      {item(<DoneMark checked />, "済み")}
+      {item(<DoneMark />, "完了")}
       {item(<DoingMark />, "作業中")}
       {item(<BlockedMark />, "停止中")}
       {item(<TodoMark />, "未着手")}
@@ -454,16 +424,6 @@ function RequestCell({ t, top, narrow, onToggle }: { t: TreeRow; top: number; na
               申告のみ {declarationTasks(p.tasks)}
             </span>
           )}
-          {ownReview(p) > 0 && (
-            <span className="shrink-0 rounded bg-warn-soft px-1 text-sm whitespace-nowrap text-warn-strong ring-1 ring-warn-line" title={reviewTitle(p)}>
-              見直し {ownReview(p)}
-            </span>
-          )}
-          {!narrow && (p.review?.below ?? 0) > 0 && (
-            <span className="shrink-0 text-sm whitespace-nowrap text-warn" title="子孫の要望自身とそのタスクの見直し候補の数（この要望自身の候補ではありません）">
-              配下の見直し {p.review!.below}
-            </span>
-          )}
           {p.hierarchyIssues.length > 0 && (
             <span className="shrink-0 text-sm text-warn" title={p.hierarchyIssues.map((i) => i.message).join("\n")}>
               ※親子
@@ -507,7 +467,7 @@ function RequestLane({
   const groups = useMemo(() => {
     const marks: { date: string; kind: MarkKind; item: TaskMark }[] = [];
     for (const task of p.tasks) {
-      if (task.status === "done" && task.doneAt) marks.push({ date: dateOf(task.doneAt), kind: task.checkedAt ? "checked" : "done", item: task });
+      if (task.status === "done" && task.doneAt) marks.push({ date: dateOf(task.doneAt), kind: "done", item: task });
       else if (task.status === "doing") marks.push({ date: task.startedAt ? dateOf(task.startedAt) : today, kind: task.block ? "blocked" : "doing", item: task });
     }
     return groupMarks(marks, zoom);
@@ -515,7 +475,7 @@ function RequestLane({
   const todo = p.tasks.filter((m) => m.status === "todo");
   const overdue = !closed && !!r.due && r.due < today && p.tasks.some((m) => m.status !== "done");
   const cy = top + ROW_H / 2;
-  const icon = (kind: string) => (kind === "blocked" ? <BlockedMark /> : kind === "doing" ? <DoingMark /> : <DoneMark checked={kind === "checked"} />);
+  const icon = (kind: string) => (kind === "blocked" ? <BlockedMark /> : kind === "doing" ? <DoingMark /> : <DoneMark />);
 
   // 同じまとまりに種類の違う印が並ぶときは横にずらす（件数の丸が付くぶん広めに）
   const slot = new Map<string, number>();
@@ -584,7 +544,7 @@ function RequestLane({
             key: m.ref,
             label: (
               <>
-                {icon(m.status === "done" ? (m.checkedAt ? "checked" : "done") : m.block ? "blocked" : "doing")}
+                {icon(m.status === "done" ? "done" : m.block ? "blocked" : "doing")}
                 <span className="font-mono text-sm text-fg-4">{m.id}</span>
                 <span className="truncate">{m.title}</span>
                 {!!m.evidence?.declarationOnly && <span className="shrink-0 text-sm text-warn-strong">申告のみ {m.evidence.declarationOnly}</span>}

@@ -1,113 +1,94 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { localInstructions } from "../packages/tasks/src/core/preflight/instructions.ts";
 import { updateQuality } from "../packages/tasks/src/features/quality/core/quality.ts";
-import { createTask, importQuality, updateTask } from "../packages/tasks/src/core/requestOps.ts";
+import { createTask, updateTask } from "../packages/tasks/src/core/requestOps.ts";
 import { apiRoutes } from "../packages/tasks/src/server/api/routes.ts";
-import { acceptanceStatus } from "../packages/tasks/src/features/requirements/shared/acceptance.ts";
-import { taskQualityDiff } from "../packages/tasks/src/features/quality/shared/quality.ts";
 import { makeProject, newRequest } from "./helpers.ts";
 
 /**
- * 品質基準を Preflight とタスクの受け入れ基準へつなぐ: Preflight の run に固定して指示に入れる、タスク化・直接作成で作業先に当てはまる
- * ものを出典つきで取り込む（作業先なしは明示だけ・二重に足さない）、設定を変えてもタスクは変わらず差分を明示して取り込む
- * （変わった条件の証拠は再確認・済みは外れる）、読めない出典を黙って基準なしにしない
+ * 品質基準を Preflight とタスクの受け入れ基準へつなぐ: Preflight の指示に今の基準を入れる、タスク化・直接作成で作業先に当てはまる
+ * ものを品質 ID つきで足す（参照先の指定が無い基準は作業先なしにも足す・二重に足さない）、設定を変えても既にあるタスクは変えない、
+ * 読めない設定ではタスクを作らない、以前の版の取り込みの出典（hash・version）は ID だけ読む
  */
 
 async function setup() {
   const p = await makeProject();
   await updateQuality(p.ctx.ws, [
-    { op: "add", standard: { text: "lint が通る", check: { kind: "machine", command: "pnpm lint", success: "終了コード 0" } } },
-    { op: "add", standard: { text: "main だけの規約", repos: ["main"], check: { kind: "manual", reference: "規約" } } },
-    { op: "add", standard: { text: "除外した基準", check: { kind: "manual", reference: "r" } } },
-    { op: "exempt", id: "Q3", reason: "対象外" },
+    { op: "add", standard: { text: "lint が通る", how: "pnpm lint（成功: 終了コード 0）" } },
+    { op: "add", standard: { text: "main だけの規約", repos: ["main"], how: "規約" } },
   ]);
   const req = await newRequest(p.ctx, { title: "通知", status: "draft", body: "- 送る\n- 記録する" });
   return { ...p, rid: req.id };
 }
+const qualityIds = (t: { acceptanceCriteria?: { quality?: { id: string } }[] }) => (t.acceptanceCriteria ?? []).filter((c) => c.quality).map((c) => c.quality!.id);
 
 describe("Preflight", () => {
-  it("始めたときの品質基準を run に固定して指示に入れ、タスク化で作業先の案に出典つきで足す（作業先なしの案には足さない）", async () => {
+  it("指示に今の品質基準と確かめ方を入れ、中の指示は実行しないと書く。タスク化で作業先に当てはまる基準を足す（作業先なしには全参照先の基準だけ）", async () => {
     const { ctx, rid } = await setup();
+    const local = await newRequest(ctx, { title: "手元", status: "draft", body: "- 一" });
+    const p = await ctx.preflight.prepare(local.id);
+    const text = readFileSync(p.instructions, "utf8");
+    for (const s of ["このプロジェクトの品質基準", "Q1［全部の参照先］ lint が通る（確かめ方: pnpm lint（成功: 終了コード 0））", "Q2［main］", "実行しないでください"]) expect(text).toContain(s);
+
     const { id } = await ctx.preflight.start(rid, { engine: "mock" });
     await ctx.preflight.wait(rid, id);
-    // 実行中・後に設定を変えても、run の版を使う
-    await updateQuality(ctx.ws, [{ op: "add", standard: { text: "後から足した", check: { kind: "manual", reference: "r" } } }]);
-    const run = (await ctx.preflight.get(rid, id))!;
-    expect(run.quality).toMatchObject({ state: "set", standards: [{ id: "Q1" }, { id: "Q2" }, { id: "Q3" }] });
     await ctx.preflight.updateDraft(rid, id, "D2", { repo: null });
-    const r = await ctx.preflight.materialize(rid, id);
-    const [t1, t2] = r.tasks;
-    expect(t1.acceptanceCriteria!.filter((c) => c.quality).map((c) => c.quality!.id)).toEqual(["Q1", "Q2"]);
-    expect(t1.acceptanceCriteria!.find((c) => c.quality?.id === "Q1")!.text).toBe("[Q1] lint が通る（検査: pnpm lint（成功: 終了コード 0））");
+    const [t1, t2] = (await ctx.preflight.materialize(rid, id)).tasks;
+    expect(qualityIds(t1)).toEqual(["Q1", "Q2"]);
+    expect(t1.acceptanceCriteria!.find((c) => c.quality?.id === "Q1")!.text).toBe("[Q1] lint が通る（pnpm lint（成功: 終了コード 0））");
     expect(t1.acceptanceCriteria![0].quality).toBeUndefined(); // 案の固有の基準はそのまま
-    expect(t2.acceptanceCriteria!.some((c) => c.quality)).toBe(false);
+    expect(qualityIds(t2)).toEqual(["Q1"]);
   });
 
-  it("手元のエージェントの指示にも同じ品質基準を入れ、中の指示は実行しないと書く", async () => {
-    const { ctx, rid } = await setup();
-    const p = await ctx.preflight.prepare(rid);
-    const text = readFileSync(p.instructions, "utf8");
-    for (const s of ["このプロジェクトの品質基準", "Q1［全部の参照先］ lint が通る", "Q2［main］", "適用の除外: 対象外", "実行しないでください"]) expect(text).toContain(s);
-    expect(localInstructions).toBeTypeOf("function");
+  it("品質基準の設定が読めなければタスク化を断り、タスクを作らない", async () => {
+    const { ctx, rid, dataDir } = await setup();
+    const { id } = await ctx.preflight.start(rid, { engine: "mock" });
+    await ctx.preflight.wait(rid, id);
+    const file = join(dataDir, "project.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace("id: Q2", "id: 壊れた"));
+    await ctx.ws.reloadAll();
+    await expect(ctx.preflight.materialize(rid, id)).rejects.toMatchObject({ code: "quality_unreadable" });
+    expect(ctx.ws.tasksOf(rid).list()).toHaveLength(0);
   });
 });
 
-describe("直接作成と明示の取り込み", () => {
-  it("作業先があれば当てはまるものを取り込み、none は取り込まず、作業先なしは明示したものだけ。同じ品質 ID は二重に足さない", async () => {
+describe("直接作成", () => {
+  it("作業先に当てはまる基準を足し、作業先なしには全参照先の基準だけ。同じ品質 ID は二重に足さない。設定を変えても既にあるタスクは変えない", async () => {
     const { ctx, rid } = await setup();
     const auto = (await createTask(ctx, rid, { title: "a", repo: "main", criteria: ["固有の条件"] })).task;
     expect(auto.acceptanceCriteria!.map((c) => [c.id, c.quality?.id ?? null])).toEqual([["A1", null], ["A2", "Q1"], ["A3", "Q2"]]);
-    expect((await createTask(ctx, rid, { title: "b", repo: "main", quality: "none" })).task.acceptanceCriteria).toBeUndefined();
-    expect((await createTask(ctx, rid, { title: "c", repo: null })).task.acceptanceCriteria).toBeUndefined();
-    const explicit = (await createTask(ctx, rid, { title: "d", repo: null, quality: ["Q1"] })).task;
-    expect(explicit.acceptanceCriteria!.map((c) => c.quality?.id)).toEqual(["Q1"]);
-    await expect(createTask(ctx, rid, { title: "e", repo: null, quality: ["Q9"] })).rejects.toThrow(/Q9/);
-    await expect(updateTask(ctx, rid, auto.id, { acceptance: [{ op: "add", text: "x", quality: { id: "Q1", hash: "h", version: "v" } }] })).rejects.toThrow(/取り込み済み/);
+    expect(qualityIds((await createTask(ctx, rid, { title: "c", repo: null })).task)).toEqual(["Q1"]);
+    await expect(updateTask(ctx, rid, auto.id, { acceptance: [{ op: "add", text: "x", quality: { id: "Q1" } }] })).rejects.toThrow(/取り込み済み/);
+    await updateQuality(ctx.ws, [{ op: "edit", id: "Q1", standard: { text: "lint が警告なしで通る" } }, { op: "add", standard: { text: "新しい" } }]);
+    const after = ctx.ws.tasksOf(rid).require(auto.id);
+    expect([after.rev, qualityIds(after)]).toEqual([auto.rev, ["Q1", "Q2"]]);
   });
 
-  it("設定を変えてもタスクは変わらない。差分を明示して取り込むと、変わった条件の証拠は再確認・済みは外れる。消えた基準・除外も示す", async () => {
-    const { ctx, rid } = await setup();
-    const { task } = await createTask(ctx, rid, { title: "a", repo: "main" });
-    await updateTask(ctx, rid, task.id, { status: "done", acceptance: [{ op: "record", id: "A1", result: "met", evidence: "pnpm lint 0" }, { op: "record", id: "A2", result: "met", evidence: "読んだ" }] });
-    await updateTask(ctx, rid, task.id, { checked: true });
-    const before = ctx.ws.tasksOf(rid).require(task.id);
-    await updateQuality(ctx.ws, [
-      { op: "edit", id: "Q1", standard: { check: { kind: "machine", command: "pnpm lint --max-warnings 0", success: "終了コード 0" } } },
-      { op: "exempt", id: "Q2", reason: "やめた" },
-      { op: "add", standard: { text: "新しい基準", check: { kind: "manual", reference: "r" } } },
-    ]);
-    expect(ctx.ws.tasksOf(rid).require(task.id).rev).toBe(before.rev);
-    const diff = taskQualityDiff(before.acceptanceCriteria!, ctx.ws.project.quality, "main");
-    expect(diff.map((d) => `${d.kind}:${d.quality}`)).toEqual(["change:Q1", "exempt:Q2", "add:Q4"]);
-    const r = await importQuality(ctx, rid, task.id, ["change:Q1", "add:Q4"]);
-    expect(r.checkCleared).toBeTruthy();
-    const st = acceptanceStatus(r.task)!;
-    expect(st.items.map((i) => [i.id, i.state])).toEqual([["A1", "stale"], ["A2", "met"], ["A3", "missing"]]);
-    expect(r.task.acceptanceCriteria![0].quality!.version).toBe(ctx.ws.project.qualityVersion);
-    await expect(importQuality(ctx, rid, task.id, ["add:Q9"])).rejects.toThrow(/取り込める差分にありません/);
-    const rest = await importQuality(ctx, rid, task.id, undefined);
-    expect(rest.applied).toEqual(["exempt:Q2"]);
-    expect(taskQualityDiff(rest.task.acceptanceCriteria!, ctx.ws.project.quality, "main")).toEqual([]);
+  it("設定が読めなければ作らない（CLI・API と同じ core）。API の作成も同じ基準を足す", async () => {
+    const { ctx, rid, dataDir } = await setup();
+    const app = apiRoutes(ctx);
+    const made = await app.request(`/requests/${rid}/tasks`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "c", repo: null }) });
+    expect(qualityIds((await made.json()) as { acceptanceCriteria: { quality: { id: string } }[] })).toEqual(["Q1"]);
+    const file = join(dataDir, "project.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace("id: Q2", "id: 壊れた"));
+    await ctx.ws.reloadAll();
+    const before = ctx.ws.tasksOf(rid).list().length;
+    await expect(createTask(ctx, rid, { title: "d", repo: "main" })).rejects.toMatchObject({ code: "quality_unreadable" });
+    const refused = await app.request(`/requests/${rid}/tasks`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "e" }) });
+    expect(refused.status).toBe(400);
+    expect(ctx.ws.tasksOf(rid).list()).toHaveLength(before);
   });
 
-  it("読めない出典は問題として知らせ（基準なしにしない）、API でも差分を読んで取り込める", async () => {
+  it("以前の版の取り込みの出典（hash・version つき）は ID だけ読み、無関係な更新でも消さない", async () => {
     const { ctx, rid, dataDir } = await setup();
     const { task } = await createTask(ctx, rid, { title: "a", repo: "main" });
     const file = join(dataDir, "requests", rid, "tasks", `${task.id}.md`);
-    writeFileSync(file, readFileSync(file, "utf8").replace(/quality:\n(\s+)id: Q1/, "quality:\n$1id: 1"));
+    writeFileSync(file, readFileSync(file, "utf8").replace(/quality:\n(\s+)id: Q1/, "quality:\n$1id: Q1\n$1hash: abc\n$1version: v1"));
     await ctx.ws.reloadAll();
-    const broken = ctx.ws.tasksOf(rid).require(task.id);
-    expect(broken.acceptanceProblems?.join("")).toMatch(/出典/);
-    expect(acceptanceStatus(broken)).toBeTruthy();
-    const { task: t2 } = await createTask(ctx, rid, { title: "b", repo: "main", quality: "none" });
-    const app = apiRoutes(ctx);
-    const d = (await (await app.request(`/requests/${rid}/tasks/${t2.id}/quality-diff`)).json()) as { diff: { kind: string; quality: string }[] };
-    expect(d.diff.map((x) => `${x.kind}:${x.quality}`)).toEqual(["add:Q1", "add:Q2"]);
-    const res = await app.request(`/requests/${rid}/tasks/${t2.id}/quality-import`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keys: ["add:Q2"] }) });
-    expect(((await res.json()) as { applied: string[] }).applied).toEqual(["add:Q2"]);
-    const made = await app.request(`/requests/${rid}/tasks`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "c", repo: null, quality: ["Q1"] }) });
-    expect(((await made.json()) as { acceptanceCriteria: { quality: { id: string } }[] }).acceptanceCriteria.map((c) => c.quality.id)).toEqual(["Q1"]);
+    const legacy = ctx.ws.tasksOf(rid).require(task.id);
+    expect([legacy.acceptanceProblems, legacy.acceptanceCriteria![0].quality]).toEqual([undefined, { id: "Q1" }]);
+    await updateTask(ctx, rid, task.id, { labels: ["x"] });
+    expect(qualityIds(ctx.ws.tasksOf(rid).require(task.id))).toEqual(["Q1", "Q2"]);
   });
 });

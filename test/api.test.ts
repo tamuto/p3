@@ -138,15 +138,34 @@ describe("REST API", () => {
     expect((await call("POST", "/requests", { title: "x", milestone: "nope" })).status).toBe(400);
   });
 
-  it("完了したタスクに人が「済み」を付け外しできる。完了前は 400", async () => {
+  it("タスクを完了にでき、以前の版の済み（checked）は入力にしても書かない", async () => {
     const { call, rid } = await setup();
     await call("POST", `/requests/${rid}/tasks`, { title: "A" });
-    expect((await call("PATCH", `/requests/${rid}/tasks/T001`, { checked: true })).status).toBe(400);
     const done = await call("PATCH", `/requests/${rid}/tasks/T001`, { status: "done", checked: true });
-    expect(done.body.checkedAt).toBeTruthy();
-    expect((await call("PATCH", `/requests/${rid}/tasks/T001`, { checked: false })).body.checkedAt).toBeUndefined();
+    expect(done.status).toBe(200);
+    expect(done.body.checkedAt).toBeUndefined();
     const list = await call("GET", "/requests");
     expect(list.body[0].tasks).toEqual([expect.objectContaining({ id: "T001", status: "done", doneAt: expect.any(String) })]);
+  });
+
+  it("消した機能の API（見直し候補・振り返り・前提・要求の出典・タスクの AI レビュー・品質の改善要望とテンプレート・差分の取り込み）は無い", async () => {
+    const { call, rid, ctx } = await setup();
+    await call("POST", `/requests/${rid}/tasks`, { title: "A" });
+    const app = apiRoutes(ctx);
+    for (const [method, path] of [
+      ["GET", "/revisit"],
+      ["GET", `/requests/${rid}/retrospective`],
+      ["POST", `/requests/${rid}/premises`],
+      ["POST", `/requests/${rid}/sources`],
+      ["POST", `/requests/${rid}/tasks/T001/review-preview`],
+      ["GET", `/requests/${rid}/tasks/T001/reviews`],
+      ["POST", "/quality/improvements/preview"],
+      ["GET", "/quality/templates/basic"],
+      ["GET", `/requests/${rid}/tasks/T001/quality-diff`],
+      ["POST", `/requests/${rid}/tasks/T001/quality-import`],
+    ]) expect((await app.request(path, { method, ...(method === "GET" ? {} : { headers: { "content-type": "application/json" }, body: "{}" }) })).status, `${method} ${path}`).toBe(404);
+    const detail = await call("GET", `/requests/${rid}`);
+    expect(detail.body.review).toBeUndefined();
   });
 
   it("エンジンの状態を返す（テストの Mock）", async () => {
