@@ -1,7 +1,7 @@
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createExclusive, nowIso, withFileLock, writeFileAtomic } from "@infodb/p3-shared/node/fsutil.ts";
-import { byNewest, checkKeyInput, checkValueInput, keyProblem, SYSTEM_KEYS, SYSTEM_PREFIX, systemKey, type KeySummary, type MetricKey, type MetricValue, type Problem, type SystemKey } from "../shared/metric.ts";
+import { byNewest, cardOf, checkKeyInput, checkValueInput, keyProblem, SYSTEM_KEYS, SYSTEM_PREFIX, systemKey, type KeySummary, type MetricKey, type MetricValue, type Problem, type SystemKey } from "../shared/metric.ts";
 
 /**
  * 観測の項目キーと値の保存（docs/architecture.md「p3-observer」の「保存」）。プロジェクトのデータのフォルダの observer/metrics/ だけを読み書きする
@@ -60,7 +60,7 @@ export class MetricStore {
         const all = (await this.readValues(k.key)).values;
         for (const v of all) if (v.milestone) milestones.add(v.milestone);
         const values = this.filter(all, milestone);
-        keys.push({ ...k, count: values.length, ...(values[0] ? { latest: values[0] } : {}) });
+        keys.push({ ...k, count: values.length, ...(values[0] ? { latest: values[0] } : {}), ...cardOf(k, values) });
       } catch (e) {
         unreadable.push({ file: `values/${k.key}.json`, reason: (e as Error).message });
         keys.push({ ...k, count: 0 });

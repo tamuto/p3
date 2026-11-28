@@ -944,7 +944,8 @@ frontmatter は tasks だけが使うので tasks（`core/store/frontmatter.ts`�
 - 状態の変化は、書く直前に読み直した値（更新の関数の中の `fresh`）と書いた後の値で見る。同じ状態の再送・成果物の追記は変化ではない
   - 要望が初めて対応済・完了済になった → `p3.request.lead_time_resolved`・`p3.request.lead_time_done`（作成からの時間。時間・小数 2 桁）。「初めて」は観測にその要望（対象）の値が
     まだ無いことで決め、確かめと追加は観測のロックの中で行う（`recordSystem` の `once`）。対応済を経ない完了済は完了済の項目だけ
-  - タスクが完了になった（完了で作った・未完了から完了にした）→ `p3.task.criteria_unmet`（`acceptanceStatus` で met でない基準の数。根拠の種類は問わない。基準が無ければ記録しない、読めなければ失敗）
+  - タスクが完了になった（完了で作った・未完了から完了にした）→ `p3.task.criteria.<状態>`（`acceptanceStatus` の状態 unmet・unverified・missing・stale・met ごとの数を、
+    それぞれの項目に1回ずつ。根拠の種類は問わない。基準が無ければ記録しない、読めなければ各項目が失敗）。以前の版の `p3.task.criteria_unmet` は読まない
   - タスクを完了から戻した → `p3.task.rework`（1）
 - 対象は要望 ID かタスクの参照（`<要望ID>/T001`）、マイルストーンは記録したときの要望のもの、登録した人は操作の変更者（無ければ `p3`）
 - 記録に失敗しても操作は止めない（状態の保存は先に済んでいる）。失敗は文の並び `observationSkipped` で返し、CLI は標準エラーと `--json` の結果、API は結果
@@ -953,12 +954,14 @@ frontmatter は tasks だけが使うので tasks（`core/store/frontmatter.ts`�
 
 **保存**（`core/metricStore.ts`。型・検証は `shared/metric.ts` の1か所で、CLI・API・画面が同じ検証を使い、誤りは項目の場所 `path` ごとに返す）
 
-- 場所: 入口・アプリが解決したプロジェクトのデータのフォルダの `observer/metrics/`。`keys/<キー>.json`（利用者の項目キー。`{ format: 1, key, rev, name, description?, type, unit?, guide?, createdAt, createdBy, updatedAt, updatedBy }`）と
+- 場所: 入口・アプリが解決したプロジェクトのデータのフォルダの `observer/metrics/`。`keys/<キー>.json`（利用者の項目キー。`{ format: 1, key, rev, name, description?, type, unit?, guide?, aggregate?, createdAt, createdBy, updatedAt, updatedBy }`）と
   `values/<キー>.json`（その項目の値の全部。`{ format: 1, key, seq, values: [{ id: V1…, at, value, by, recordedAt, target?, milestone?, note? }] }`。`seq` は振った最後の番号で、消した番号は使い直さない）
 - キーは英小文字・数字・`.`・`_`・`-` だけで、英小文字か数字で始める（ファイル名にするので `.` で始めない。100 文字まで）
 - 書き込みは `observer/metrics/.lock`（shared の `withFileLock`）の中で読み直した値に当て、置き換えで書く（shared の `writeFileAtomic`。作成は `createExclusive`）。
   キーの変更・削除と値の追加が重なっても、値のあるキーを消す・形を変えることは起きない。ロックは同じマシンのプロセスの間だけで、複数のマシンでは項目キーの版の照合だけに頼る
 - 読めない・形の版が違うファイルは一覧に理由を出し、上書きしない
+- カードに出す数（`aggregate`: `sum`・`avg`・`last`。無ければ最後の値。合計・平均は数値の項目だけ）は項目キーが持ち、一覧（`list`）が値から計算して
+  `card` と推移 `series`（数値だけ。古い順に最後の 30 点。合計の項目は累計）を添える（`shared/metric.ts` の `cardOf`。平均は小数 2 桁）。集計は見せ方で、判定ではない
 
 **入口**
 
@@ -966,7 +969,7 @@ frontmatter は tasks だけが使うので tasks（`core/store/frontmatter.ts`�
 | --- | --- |
 | CLI | `p3 observer status`（プロジェクトを決めない）・`list`・`show`・`key add / set / rm`・`value add / rm`（tasks と同じ方法でプロジェクトを決める。`cli/observerCli.ts`）。入口の `cli/main.ts` が名前空間 `observer` を振り分ける |
 | API | `/api/observer`（プロジェクトを跨ぐ serve は `/api/projects/<名前>/observer`）の `/status`・`/keys`・`/keys/:key`・`/keys/:key/values`（`server/api/routes.ts`）。tasks の API より先に付ける |
-| 画面 | `/observer`（一覧）・`/observer/new`（項目の登録）・`/observer/$key`（項目と値・数値の推移・値を足す・消す）。tasks と同じ外枠・同じ対象で出し、API の基点はアプリの Boot が決める（`web/lib/scope.ts`） |
+| 画面 | `/observer`（項目ごとのカード: カードに出す数・推移の小さな線（`web/components/Sparkline.tsx`）と目安の点線・件数・最後の日時）・`/observer/new`（項目の登録）・`/observer/$key`（項目の設定と値の一覧・値を足す・消す）。tasks と同じ外枠・同じ対象で出し、API の基点はアプリの Boot が決める（`web/lib/scope.ts`） |
 
 **起動の構成**（製品は入口のビルドのときに組み込んだもの。serve は常に全部を起動する）
 

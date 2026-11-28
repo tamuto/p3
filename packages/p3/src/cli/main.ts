@@ -225,6 +225,7 @@ async function main(argv: string[]): Promise<number> {
       min: o.min,
       max: o.max,
       expected: o.expected,
+      aggregate: o.aggregate,
       rev: o.rev,
       at: o.at,
       valueTarget: o.target,

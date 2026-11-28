@@ -39,6 +39,7 @@ const OPTIONS = {
   title: { type: "string" },
   input: { type: "string" },
   expected: { type: "string" },
+  aggregate: { type: "string" },
   done: { type: "boolean" },
   off: { type: "boolean" },
   body: { type: "string" },

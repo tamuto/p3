@@ -21,7 +21,7 @@ async function prepare(env: UiEnv) {
   await env.p3(["accept", ids.board]);
   ids.drafts = (await j(["request", "new", `案を見る要望（${LONG_TITLE}）`, "--body", "-"], body)).id;
   await env.p3(["preflight", ids.drafts, "--engine", "mock"]);
-  // 観測: 長い名前・単位・説明・目安の項目に、長い対象とメモの値（推移の図が出る3件）と、長い構造化データの項目
+  // 観測: 長い名前・単位・説明・目安の項目に、長い対象とメモの値（カードに推移の図が出る3件）と、長い構造化データの項目
   await env.p3(["observer", "key", "add", "closing.minutes", "--name", `月末の締めの時間（${LONG_TITLE}）`, "--type", "number", "--unit", "分", "--body", LONG_TITLE, "--min", "0", "--max", "120"]);
   for (const [v, at] of [["42", "2026-10-31"], ["35", "2026-11-15"], ["58", "2026-11-30"]]) {
     await env.p3(["observer", "value", "add", "closing.minutes", v, "--at", at, "--milestone", "v1.1", "--target", `${ids.board}/T001`, "--note", LONG_TITLE]);
@@ -95,7 +95,7 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     name: "観測の一覧",
     open: async (page) => {
       await page.goto("/observer");
-      await until.visible(page.getByRole("link", { name: /月末の締めの時間/ }));
+      await until.visible(page.getByRole("img", { name: /月末の締めの時間.*の推移/ }));
     },
   },
   {
@@ -106,10 +106,10 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     },
   },
   {
-    name: "観測の項目と値（推移）",
+    name: "観測の項目と値（数値）",
     open: async (page) => {
       await page.goto("/observer/closing.minutes");
-      await until.visible(page.getByRole("img", { name: /の推移$/ }));
+      await until.visible(page.getByRole("cell", { name: /58 分/ }));
     },
   },
   {
@@ -215,7 +215,7 @@ describe.skipIf(!inject("chromium").available)("文字の大きさと拡大表�
     }, page);
     await s.step(at("観測の値を足す・項目を変える"), async () => {
       await page.goto("/observer/closing.minutes");
-      await until.visible(page.getByRole("img", { name: /の推移$/ }));
+      await until.visible(page.getByRole("cell", { name: /58 分/ }));
       await page.getByLabel(/^値（/).fill("40");
       await page.getByLabel(/^値（/).focus();
       none(await tabTo(page, page.getByRole("button", { name: "足す", exact: true }), "足す"), at("観測の値を足す"));

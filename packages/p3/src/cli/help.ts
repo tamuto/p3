@@ -65,10 +65,11 @@ export const HELP = `p3（infodb p3）— 要望ごとにフォルダを分け�
                                logout: --forget（このマシンの登録ごと消す）
   observer status              p3-observer（観測基盤）の起動状態と版（tasks と共通の版）。プロジェクトを決めず、何も作らない
                                --json で product・version・state・dataDir（null）
-  observer list [--milestone <ID>]   観測の項目キーの一覧と最後の値（システムの項目 p3.… を含む。データのフォルダの observer/metrics/）
+  observer list [--milestone <ID>]   観測の項目キーの一覧とカードの数（システムの項目 p3.… を含む。データのフォルダの observer/metrics/）
   observer show <キー> [--milestone <ID>]   項目キーと値（新しい順）。目安は並べて見せるだけで、判定はしない
   observer key add <キー> --name <名前> --type number|string|boolean|json [--unit <単位>] [--body <説明>]
-                                 [--min <下限>] [--max <上限>] [--expected <期待する値>]   項目キーを登録する（英小文字・数字・.・_・-。p3. は作れない）
+                                 [--min <下限>] [--max <上限>] [--expected <期待する値>] [--aggregate sum|avg|last]
+                                 項目キーを登録する（英小文字・数字・.・_・-。p3. は作れない。--aggregate はカードに出す数で、合計・平均は数値だけ。既定は最後の値）
   observer key set <キー> --rev <今の版> [--name ..] [--type ..] …   変える（省いた項目は今のまま。値があるあいだは --type を変えられない）
   observer key rm <キー> --rev <今の版>   消す（値があれば断る）
   observer value add <キー> <値|-> [--at <日付か日時>] [--target <対象>] [--milestone <ID>] [--note <メモ>]
